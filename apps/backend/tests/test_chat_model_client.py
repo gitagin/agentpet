@@ -1,0 +1,222 @@
+from __future__ import annotations
+
+import asyncio
+
+import pytest
+
+from app.services.chat_model import ChatModelError, LangChainGraphChatClient, classify_chat_model_exception
+
+
+class FakeAIMessage:
+    def __init__(self, content):
+        self.content = content
+
+
+class FakeAgent:
+    def __init__(self, result):
+        self.result = result
+        self.calls = []
+
+    async def ainvoke(self, payload):
+        self.calls.append(payload)
+        return self.result
+
+
+class FailingAgent:
+    async def ainvoke(self, payload):
+        raise RuntimeError("provider down")
+
+
+class HangingAgent:
+    async def ainvoke(self, payload):
+        await asyncio.sleep(10)
+        return {"messages": [FakeAIMessage("too late")]}
+
+
+def test_langchain_graph_client_uses_create_agent_boundary() -> None:
+    captured = {}
+    fake_agent = FakeAgent(
+        {"messages": [FakeAIMessage("模型回复内容")]}
+    )
+
+    def fake_model_factory(client: LangChainGraphChatClient):
+        captured["api_key"] = client.api_key
+        captured["base_url"] = client.base_url
+        captured["model"] = client.model
+        captured["timeout_seconds"] = client.timeout_seconds
+        return "fake-model"
+
+    def fake_agent_factory(model, system_prompt, tools):
+        captured["agent_model"] = model
+        captured["system_prompt"] = system_prompt
+        captured["tools"] = list(tools)
+        return fake_agent
+
+    client = LangChainGraphChatClient(
+        api_key="sk-test",
+        base_url="https://example.test/v1/",
+        model="demo-model",
+        timeout_seconds=12,
+        model_factory=fake_model_factory,
+        agent_factory=fake_agent_factory,
+    )
+
+    result = asyncio.run(
+        async_complete(client, user_message="你好", system_prompt="使用中文回答。")
+    )
+
+    assert result == "模型回复内容"
+    assert captured == {
+        "api_key": "sk-test",
+        "base_url": "https://example.test/v1/",
+        "model": "demo-model",
+        "timeout_seconds": 12,
+        "agent_model": "fake-model",
+        "system_prompt": "使用中文回答。",
+        "tools": [],
+    }
+    assert fake_agent.calls == [{"messages": [{"role": "user", "content": "你好"}]}]
+
+
+def test_langchain_graph_client_extracts_content_blocks() -> None:
+    fake_agent = FakeAgent(
+        {"messages": [FakeAIMessage([{"type": "text", "text": "第一段"}, {"content": "第二段"}])]}
+    )
+    client = LangChainGraphChatClient(
+        api_key="sk-test",
+        base_url="https://example.test/v1",
+        model="demo-model",
+        model_factory=lambda _client: "fake-model",
+        agent_factory=lambda _model, _prompt, _tools: fake_agent,
+    )
+
+    result = asyncio.run(async_complete(client, user_message="你好"))
+
+    assert result == "第一段第二段"
+
+
+def test_langchain_graph_client_uses_last_non_empty_message() -> None:
+    fake_agent = FakeAgent(
+        {"messages": [FakeAIMessage("tool-backed answer"), FakeAIMessage("   ")]}
+    )
+    client = LangChainGraphChatClient(
+        api_key="sk-test",
+        base_url="https://example.test/v1",
+        model="demo-model",
+        model_factory=lambda _client: "fake-model",
+        agent_factory=lambda _model, _prompt, _tools: fake_agent,
+    )
+
+    result = asyncio.run(async_complete(client, user_message="hello"))
+
+    assert result == "tool-backed answer"
+
+
+def test_langchain_graph_client_passes_tools_to_create_agent() -> None:
+    captured = {}
+    fake_agent = FakeAgent({"messages": [FakeAIMessage("已调用工具")]})
+    fake_tools = [object(), object()]
+
+    def fake_agent_factory(model, system_prompt, tools):
+        captured["tools"] = list(tools)
+        return fake_agent
+
+    client = LangChainGraphChatClient(
+        api_key="sk-test",
+        base_url="https://example.test/v1",
+        model="demo-model",
+        model_factory=lambda _client: "fake-model",
+        agent_factory=fake_agent_factory,
+    )
+
+    result = asyncio.run(
+        client.complete_with_tools(
+            user_message="你好",
+            system_prompt="使用工具。",
+            tools=fake_tools,
+        )
+    )
+
+    assert result.text == "已调用工具"
+    assert result.raw_result == {"messages": [fake_agent.result["messages"][0]]}
+    assert captured["tools"] == fake_tools
+
+
+def test_langchain_graph_client_wraps_agent_errors() -> None:
+    client = LangChainGraphChatClient(
+        api_key="sk-test",
+        base_url="https://example.test/v1",
+        model="demo-model",
+        model_factory=lambda _client: "fake-model",
+        agent_factory=lambda _model, _prompt, _tools: FailingAgent(),
+    )
+
+    with pytest.raises(ChatModelError, match="模型调用失败"):
+        asyncio.run(async_complete(client, user_message="你好"))
+
+
+def test_langchain_graph_client_times_out_hanging_agent() -> None:
+    client = LangChainGraphChatClient(
+        api_key="sk-test",
+        base_url="https://example.test/v1",
+        model="demo-model",
+        timeout_seconds=0.01,
+        model_factory=lambda _client: "fake-model",
+        agent_factory=lambda _model, _prompt, _tools: HangingAgent(),
+    )
+
+    with pytest.raises(ChatModelError) as exc_info:
+        asyncio.run(async_complete(client, user_message="你好"))
+
+    assert exc_info.value.code == "provider_timeout"
+    assert "超时" in str(exc_info.value)
+
+
+def test_chat_model_error_classifies_unsupported_model() -> None:
+    class BadRequestError(Exception):
+        status_code = 400
+
+    error = classify_chat_model_exception(BadRequestError("Not supported model MiMo-v2.5"))
+
+    assert error.code == "unsupported_model"
+    assert "模型名称" in str(error)
+
+
+def test_chat_model_error_classifies_authentication_failure() -> None:
+    class AuthError(Exception):
+        status_code = 401
+
+    error = classify_chat_model_exception(AuthError("invalid api key"))
+
+    assert error.code == "authentication_failed"
+    assert "API 密钥" in str(error)
+
+
+def test_chat_model_error_redacts_secret_like_details() -> None:
+    error = classify_chat_model_exception(RuntimeError("provider echoed tp-secretvalue1234567890"))
+
+    assert "tp-secretvalue" not in error.detail
+    assert "[REDACTED]" in error.detail
+
+
+def test_langchain_graph_client_rejects_empty_response() -> None:
+    fake_agent = FakeAgent({"messages": [FakeAIMessage("   ")]})
+    client = LangChainGraphChatClient(
+        api_key="sk-test",
+        base_url="https://example.test/v1",
+        model="demo-model",
+        model_factory=lambda _client: "fake-model",
+        agent_factory=lambda _model, _prompt, _tools: fake_agent,
+    )
+
+    with pytest.raises(ChatModelError, match="空回复"):
+        asyncio.run(async_complete(client, user_message="你好"))
+
+
+async def async_complete(
+    client: LangChainGraphChatClient,
+    *,
+    user_message: str,
+    system_prompt: str | None = None,
+) -> str:
+    return await client.complete(user_message=user_message, system_prompt=system_prompt)

@@ -1,0 +1,8 @@
+# Wiki Index
+
+This file is the required content map for the LLM-maintained wiki.
+
+| Type | Page | Summary | Aliases | Sources | Updated |
+| --- | --- | --- | --- | ---: | --- |
+| report | [[Wiki/Reports/API-Answer.md]] | What did API Source say? |  | 0 | 2026-05-15T15:49:21.104031Z |
+| source | [[Wiki/Sources/API-Source.md]] | 来源类型：`manual` |  | 1 | 2026-05-15T15:49:21.072721Z |

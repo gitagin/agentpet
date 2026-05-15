@@ -1,0 +1,32 @@
+[project]
+name = "agent-pet-backend"
+version = "0.2.0"
+description = "FastAPI sidecar for Agent Pet"
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi>=0.110",
+  "uvicorn>=0.27",
+  "pydantic>=2.7.4,<3",
+  "pydantic-settings>=2.2",
+  "python-multipart>=0.0.9",
+  "langchain>=1.2,<1.3",
+  "langchain-openai>=1.1.14,<2",
+  "langchain-qdrant>=1.1,<2",
+  "langgraph>=1.1.5,<1.2",
+  "qdrant-client>=1.16,<2",
+  "kuzu>=0.11,<1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "pytest-asyncio>=0.23",
+  "httpx>=0.27",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+markers = [
+  "live_model: optional acceptance gate that requires LIVE_MODEL_BASE_URL, LIVE_CHAT_MODEL, and LIVE_MODEL_API_KEY",
+]

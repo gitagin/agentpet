@@ -1,0 +1,25 @@
+{
+  "window": {
+    "width": 280,
+    "height": 380,
+    "minVisibleWidth": 72,
+    "minVisibleHeight": 72
+  },
+  "hitboxes": {
+    "model": {
+      "width": 176,
+      "height": 238,
+      "bottom": 72
+    },
+    "inputDock": {
+      "width": 248,
+      "height": 48,
+      "bottom": 10
+    },
+    "chatBubble": {
+      "width": 214,
+      "height": 58,
+      "bottom": 304
+    }
+  }
+}

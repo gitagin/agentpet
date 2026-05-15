@@ -1,0 +1,87 @@
+{
+  "name": "agent-pet-desktop",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "node electron/dev.mjs",
+    "build": "tsc --noEmit && vite build",
+    "electron": "electron .",
+    "electron:dev": "node electron/dev.mjs",
+    "electron:build": "npm run build",
+    "live2d:check": "node scripts/validate-live2d-assets.mjs --target all",
+    "live2d:check:public": "node scripts/validate-live2d-assets.mjs --target public",
+    "live2d:check:dist": "node scripts/validate-live2d-assets.mjs --target dist",
+    "live2d:summary": "node scripts/validate-live2d-assets.mjs --target public --summary",
+    "live2d:sdk:check": "node scripts/validate-cubism-sdk.mjs --target public",
+    "live2d:sdk:check:dist": "node scripts/validate-cubism-sdk.mjs --target dist",
+    "live2d:sdk:check:all": "node scripts/validate-cubism-sdk.mjs --target all",
+    "pet:bubble:check": "node scripts/validate-pet-bubble-pagination.mjs",
+    "package:check": "node scripts/validate-electron-packaging.mjs",
+    "package:win": "npm run package:win:zip",
+    "package:win:dir": "npm run build && electron-builder --win dir",
+    "package:win:zip": "npm run build && electron-builder --win zip",
+    "preflight": "powershell -NoProfile -ExecutionPolicy Bypass -File ..\\..\\scripts\\preflight-windows.ps1",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "lucide-react": "^0.468.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.0.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "electron": "^30.0.0",
+    "electron-builder": "^24.13.3",
+    "typescript": "^5.0.0",
+    "vite": "^5.0.0"
+  },
+  "build": {
+    "appId": "local.agent-pet.desktop",
+    "productName": "桌面记忆助手",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "pet-hitbox.json",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../backend",
+        "to": "backend",
+        "filter": [
+          "app/**/*",
+          "migrations/**/*",
+          "pyproject.toml",
+          "!**/__pycache__/**",
+          "!**/.pytest_cache/**",
+          "!**/*.pyc",
+          "!**/*.pyo",
+          "!**/.venv/**",
+          "!**/venv/**",
+          "!**/env/**",
+          "!**/.env/**",
+          "!**/*.sqlite",
+          "!**/*.sqlite3",
+          "!**/*.db"
+        ]
+      }
+    ],
+    "asar": true,
+    "npmRebuild": false,
+    "win": {
+      "target": [
+        "dir",
+        "zip"
+      ],
+      "artifactName": "${productName}-${version}-win-${arch}.${ext}"
+    }
+  }
+}

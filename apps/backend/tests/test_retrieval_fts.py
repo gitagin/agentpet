@@ -1,0 +1,260 @@
+from pathlib import Path
+
+from app.repositories.storage import NoteRepository, VaultRepository
+from app.services.retrieval import RetrievalService
+from app.storage.database import Database, MigrationRunner
+from app.storage.markdown import parse_markdown
+
+
+def test_rebuild_index_and_search_returns_citation_fields(tmp_path: Path) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / "Memory.md").write_text("# Memory\n\nAlpha keyword lives here.", encoding="utf-8")
+    db = Database(tmp_path / "app.db")
+    service = RetrievalService(db)
+    service.initialize()
+    vault_id = service.bind_vault(str(vault))
+
+    rebuild = service.rebuild_index(vault_id)
+    response = service.search(vault_id=vault_id, query="keyword", top_k=5)
+
+    assert rebuild.status == "success"
+    assert rebuild.files_seen == 1
+    assert response.results
+    assert response.results[0].relative_path == "Memory.md"
+    assert "keyword" in response.results[0].snippet
+
+
+def test_replace_note_keeps_chunks_and_fts_transactionally_consistent(tmp_path: Path) -> None:
+    db = Database(tmp_path / "app.db")
+    MigrationRunner(db).apply()
+    with db.connect() as conn:
+        with conn:
+            vault_id = VaultRepository(conn).upsert(tmp_path / "vault")
+        repo = NoteRepository(conn)
+
+        repo.replace_note(
+            vault_id=vault_id,
+            relative_path="Memory.md",
+            markdown=parse_markdown("# Old\n\nalpha", fallback_title="Memory"),
+            modified_at=1.0,
+        )
+        repo.replace_note(
+            vault_id=vault_id,
+            relative_path="Memory.md",
+            markdown=parse_markdown("# New\n\nbeta", fallback_title="Memory"),
+            modified_at=2.0,
+        )
+
+        chunk_count = conn.execute("SELECT count(*) FROM note_chunks").fetchone()[0]
+        fts_count = conn.execute("SELECT count(*) FROM note_fts").fetchone()[0]
+        alpha_count = conn.execute("SELECT count(*) FROM note_fts WHERE note_fts MATCH 'alpha'").fetchone()[0]
+        beta_count = conn.execute("SELECT count(*) FROM note_fts WHERE note_fts MATCH 'beta'").fetchone()[0]
+
+    assert chunk_count == fts_count == 1
+    assert alpha_count == 0
+    assert beta_count == 1
+
+
+def test_rebuild_index_removes_deleted_markdown_from_search(tmp_path: Path) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    stale = vault / "Old.md"
+    current = vault / "Current.md"
+    stale.write_text("# Old\n\nstale-keyword", encoding="utf-8")
+    current.write_text("# Current\n\ncurrent-keyword", encoding="utf-8")
+    db = Database(tmp_path / "app.db")
+    service = RetrievalService(db)
+    service.initialize()
+    vault_id = service.bind_vault(str(vault))
+    service.rebuild_index(vault_id)
+
+    stale.unlink()
+    rebuild = service.rebuild_index(vault_id)
+
+    assert rebuild.status == "success"
+    assert service.search(vault_id=vault_id, query="stale-keyword", top_k=5).results == []
+    current_results = service.search(vault_id=vault_id, query="current-keyword", top_k=5).results
+    assert current_results
+    assert current_results[0].relative_path == "Current.md"
+
+
+def test_search_treats_punctuation_as_user_text(tmp_path: Path) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / "Memory.md").write_text("# Memory\n\nalpha beta", encoding="utf-8")
+    db = Database(tmp_path / "app.db")
+    service = RetrievalService(db)
+    service.initialize()
+    vault_id = service.bind_vault(str(vault))
+    service.rebuild_index(vault_id)
+
+    response = service.search(vault_id=vault_id, query='alpha )*"', top_k=5)
+
+    assert response.results
+
+
+def test_search_falls_back_to_substring_for_chinese_phrases(tmp_path: Path) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / "Memory.md").write_text(
+        "# 中文记忆\n\n我喜欢使用桌面记忆助手管理本地知识库。",
+        encoding="utf-8",
+    )
+    db = Database(tmp_path / "app.db")
+    service = RetrievalService(db)
+    service.initialize()
+    vault_id = service.bind_vault(str(vault))
+    service.rebuild_index(vault_id)
+
+    response = service.search(vault_id=vault_id, query="桌面记忆助手", top_k=5)
+
+    assert response.results
+    assert response.results[0].relative_path == "Memory.md"
+    assert "[桌面记忆助手]" in response.results[0].snippet
+
+
+def test_search_normalizes_english_question_to_significant_terms(tmp_path: Path) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / "People.md").write_text(
+        "# Ada\n\nAda prefers concise status updates.",
+        encoding="utf-8",
+    )
+    db = Database(tmp_path / "app.db")
+    service = RetrievalService(db)
+    service.initialize()
+    vault_id = service.bind_vault(str(vault))
+    service.rebuild_index(vault_id)
+
+    response = service.search(
+        vault_id=vault_id,
+        query="What does the vault say about Ada preference?",
+        top_k=5,
+    )
+
+    assert response.results
+    assert response.results[0].relative_path == "People.md"
+    assert "Ada" in response.results[0].snippet
+
+
+def test_search_normalizes_chinese_question_to_preference_synonyms(tmp_path: Path) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / "People.md").write_text(
+        "# Ada\n\nAda 喜欢简洁状态更新。",
+        encoding="utf-8",
+    )
+    db = Database(tmp_path / "app.db")
+    service = RetrievalService(db)
+    service.initialize()
+    vault_id = service.bind_vault(str(vault))
+    service.rebuild_index(vault_id)
+
+    response = service.search(vault_id=vault_id, query="Ada 有什么偏好？", top_k=5)
+
+    assert response.results
+    assert response.results[0].relative_path == "People.md"
+    assert "喜欢" in response.results[0].snippet
+
+
+def test_search_source_scope_filters_and_sanitizes_daily_chat(tmp_path: Path) -> None:
+    vault = tmp_path / "vault"
+    daily_path = vault / "Memories" / "Daily" / "2026" / "05" / "\u7b2c1\u5468_05-01\u81f305-07" / "\u661f\u671f\u65e5"
+    daily_path.mkdir(parents=True)
+    (daily_path / "2026-05-03.md").write_text(
+        "# 2026-05-03 \u804a\u5929\u8bb0\u5fc6\n\n"
+        "## 12:00:00\n\n"
+        "- \u7528\u6237\u95ee\u9898\uff1a`5\u67083\u65e5\u6211\u8bf4\u4e86\u4ec0\u4e48`\n"
+        "- \u684c\u5ba0\u56de\u7b54\uff1a\u4f60\u8bf4\u4e86 scope-token\u3002\n"
+        "- conversation_id\uff1a`conversation-secret`\n"
+        "- user_message_id\uff1a`user-secret`\n"
+        "- assistant_message_id\uff1a`assistant-secret`\n"
+        "- agent_run_id\uff1a`run-secret`\n",
+        encoding="utf-8",
+    )
+    old_daily_path = vault / "2026" / "05" / "\u7b2c1\u5468_05-01\u81f305-07" / "\u661f\u671f\u65e5"
+    old_daily_path.mkdir(parents=True)
+    (old_daily_path / "2026-05-03.md").write_text(
+        "# Old Daily\n\nscope-token old root daily should be knowledge.",
+        encoding="utf-8",
+    )
+    long_term = vault / "Memories" / "LongTerm"
+    long_term.mkdir(parents=True)
+    (long_term / "Preferences.md").write_text(
+        "# Preferences\n\nscope-token confirmed preference.",
+        encoding="utf-8",
+    )
+    (vault / "Knowledge.md").write_text("# Knowledge\n\nscope-token knowledge note.", encoding="utf-8")
+    (vault / "Inbox").mkdir()
+    (vault / "Inbox" / "Pending Memories.md").write_text(
+        "# Pending\n\nscope-token pending memory.",
+        encoding="utf-8",
+    )
+    db = Database(tmp_path / "app.db")
+    service = RetrievalService(db)
+    service.initialize()
+    vault_id = service.bind_vault(str(vault))
+    service.rebuild_index(vault_id)
+
+    daily = service.search(vault_id=vault_id, query="scope-token", top_k=5, source_scope="daily_chat")
+    knowledge = service.search(vault_id=vault_id, query="scope-token", top_k=5, source_scope="knowledge_base")
+    personal = service.search(vault_id=vault_id, query="scope-token", top_k=5, source_scope="personal_memory")
+    mixed = service.search(vault_id=vault_id, query="scope-token", top_k=10, source_scope="all")
+
+    assert [result.source_scope for result in daily.results] == ["daily_chat"]
+    assert "conversation_id" not in daily.results[0].snippet
+    assert "agent_run_id" not in daily.results[0].snippet
+    assert "Memories/Daily" in daily.results[0].relative_path
+    assert all(not result.relative_path.startswith("2026/") for result in daily.results)
+    assert [result.relative_path for result in knowledge.results] == ["Knowledge.md"]
+    assert [result.relative_path for result in personal.results] == ["Memories/LongTerm/Preferences.md"]
+    assert all(result.relative_path != "Inbox/Pending Memories.md" for result in mixed.results)
+    assert all(not result.relative_path.startswith("2026/") for result in mixed.results)
+
+
+def test_daily_chat_date_query_matches_daily_file_even_without_keyword_overlap(tmp_path: Path) -> None:
+    vault = tmp_path / "vault"
+    daily_path = vault / "Memories" / "Daily" / "2026" / "05" / "\u7b2c1\u5468_05-01\u81f305-07" / "\u661f\u671f\u4e00"
+    daily_path.mkdir(parents=True)
+    (daily_path / "2026-05-04.md").write_text(
+        "# 2026-05-04 \u804a\u5929\u8bb0\u5fc6\n\n"
+        "## 01:38:46\n\n"
+        "- \u7528\u6237\u95ee\u9898\uff1a\u6211\u559c\u6b22\u82f9\u679c\n"
+        "- \u684c\u5ba0\u56de\u7b54\uff1a\u6211\u4e5f\u559c\u6b22\u82f9\u679c\u3002\n"
+        "- conversation_id\uff1a`conversation-secret`\n"
+        "- agent_run_id\uff1a`run-secret`\n",
+        encoding="utf-8",
+    )
+    db = Database(tmp_path / "app.db")
+    service = RetrievalService(db)
+    service.initialize()
+    vault_id = service.bind_vault(str(vault))
+    service.rebuild_index(vault_id)
+
+    response = service.search(vault_id=vault_id, query="我在5月4号说了什么事情吗", top_k=5, source_scope="daily_chat")
+
+    assert response.results
+    assert response.results[0].relative_path.endswith("2026-05-04.md")
+    assert response.results[0].source_scope == "daily_chat"
+    assert "我喜欢苹果" in response.results[0].snippet
+    assert "conversation_id" not in response.results[0].snippet
+    assert "agent_run_id" not in response.results[0].snippet
+
+
+def test_hybrid_search_falls_back_to_fts_when_vector_index_unavailable(tmp_path: Path) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / "Memory.md").write_text("# Memory\n\nfallback-vector-keyword", encoding="utf-8")
+    db = Database(tmp_path / "app.db")
+    service = RetrievalService(db)
+    service.initialize()
+    vault_id = service.bind_vault(str(vault))
+    service.rebuild_index(vault_id)
+
+    response = service.search(vault_id=vault_id, query="fallback-vector-keyword", top_k=5, mode="hybrid")
+
+    assert response.results
+    assert response.results[0].retrieval_mode == "fts"
+    assert response.metadata["retrieval_mode"] == "hybrid"
+    assert response.metadata["vector_available"] is False

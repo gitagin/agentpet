@@ -1,0 +1,24 @@
+{
+  "models": [
+    {
+      "id": "UG",
+      "label": "UG",
+      "directory": "/live2d/UG/",
+      "model": "ugofficial.model3.json",
+      "icon": "icon.png"
+    },
+    {
+      "id": "by_booru_kala",
+      "label": "卡拉",
+      "directory": "/live2d/by_booru/",
+      "model": "卡拉.model3.json",
+      "icon": "头像.png"
+    },
+    {
+      "id": "by_lingwu05_baimeimo",
+      "label": "baimeimo",
+      "directory": "/live2d/by_令吾05/",
+      "model": "baimeimo.model3.json"
+    }
+  ]
+}
