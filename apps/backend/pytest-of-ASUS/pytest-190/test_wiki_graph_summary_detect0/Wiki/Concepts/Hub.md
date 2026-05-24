@@ -1,3 +1,0 @@
-# Hub
-
-Central page.

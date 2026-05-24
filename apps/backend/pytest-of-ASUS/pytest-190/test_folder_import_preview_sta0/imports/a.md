@@ -1,3 +1,0 @@
-# A
-
-Folder fact A.

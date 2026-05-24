@@ -1,1 +1,0 @@
-- The user prefers deterministic local memory checks.

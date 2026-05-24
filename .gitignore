@@ -8,6 +8,7 @@ venv/
 # Node
 node_modules/
 dist/
+release/
 .vite/
 
 # Local app data
@@ -15,6 +16,20 @@ dist/
 *.sqlite
 *.sqlite3
 logs/
+
+# 临时文件和测试产物
+.tmp/
+*.tmp
+**/.tmp/
+apps/backend/pytest-of-*/
+
+# SQLite WAL 文件
+*.sqlite-wal
+*.sqlite-shm
+
+# 测试生成的 Vault 和 Markdown 产物
+tests/fixtures/tmp/
+tests/smoke_output/
 
 # OS/editor
 .DS_Store
