@@ -1,15 +1,13 @@
+from collections.abc import Iterator
+
 from fastapi.testclient import TestClient
 import pytest
 
 
 @pytest.fixture()
-def client(tmp_path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    monkeypatch.setenv("AGENT_PET_SQLITE_PATH", str(tmp_path / "desktop-cors.sqlite3"))
-    from app.config import get_settings
-    from app.main import create_app
-
-    get_settings.cache_clear()
-    return TestClient(create_app())
+def client(client_factory) -> Iterator[TestClient]:
+    with client_factory(sqlite_name="desktop-cors.sqlite3") as test_client:
+        yield test_client
 
 
 def test_vite_desktop_origin_can_read_health(client: TestClient) -> None:

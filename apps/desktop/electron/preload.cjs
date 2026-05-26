@@ -10,6 +10,30 @@ contextBridge.exposeInMainWorld("agentDesktop", {
   getUiState: (key) => ipcRenderer.sendSync("agent-pet:get-ui-state", key),
   setUiState: (key, value) => ipcRenderer.send("agent-pet:set-ui-state", key, value),
   getSidecarStatus: () => ipcRenderer.invoke("agent-pet:get-sidecar-status"),
+  apiRequest: (pathOrUrl, options) => ipcRenderer.invoke("agent-pet:api-request", pathOrUrl, options),
+  startSseStream: (streamId, pathOrUrl) => ipcRenderer.invoke("agent-pet:sse-start", streamId, pathOrUrl),
+  cancelSseStream: (streamId) => ipcRenderer.invoke("agent-pet:sse-cancel", streamId),
+  onSseChunk: (callback) => {
+    const listener = (_event, streamId, chunk) => callback(streamId, chunk);
+    ipcRenderer.on("agent-pet:sse-chunk", listener);
+    return () => {
+      ipcRenderer.removeListener("agent-pet:sse-chunk", listener);
+    };
+  },
+  onSseEnd: (callback) => {
+    const listener = (_event, streamId) => callback(streamId);
+    ipcRenderer.on("agent-pet:sse-end", listener);
+    return () => {
+      ipcRenderer.removeListener("agent-pet:sse-end", listener);
+    };
+  },
+  onSseError: (callback) => {
+    const listener = (_event, streamId, error) => callback(streamId, error);
+    ipcRenderer.on("agent-pet:sse-error", listener);
+    return () => {
+      ipcRenderer.removeListener("agent-pet:sse-error", listener);
+    };
+  },
   showReminderNotification: (payload) => ipcRenderer.invoke("agent-pet:show-reminder-notification", payload),
   getWindowMode: () => ipcRenderer.invoke("agent-pet:get-window-mode"),
   openControlWindow: (targetId) => ipcRenderer.invoke("agent-pet:open-control-window", targetId),

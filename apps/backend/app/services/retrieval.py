@@ -102,6 +102,8 @@ class RetrievalService:
                 "retrieval_mode": search_mode,
                 "vector_available": bool(self.vector_index and self.vector_index.available),
             }
+            if self.vector_index is not None and self.vector_index.config.unavailable_reason:
+                metadata["vector_unavailable_reason"] = self.vector_index.config.unavailable_reason
             raw_results = []
             vector_results = []
             fts_results = []

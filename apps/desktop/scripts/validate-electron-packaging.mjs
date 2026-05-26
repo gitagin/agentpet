@@ -43,35 +43,46 @@ record(
   JSON.stringify(packageJson.build?.files ?? null),
 );
 
-const mainText = fs.readFileSync(path.join(root, "electron/main.cjs"), "utf8");
+const electronRuntimeFiles = [
+  "electron/main.cjs",
+  "electron/windows.js",
+  "electron/tray.js",
+  "electron/sidecar.js",
+  "electron/proxy.js",
+  "electron/ipc.js",
+];
+const runtimeText = electronRuntimeFiles
+  .filter(exists)
+  .map((relativePath) => fs.readFileSync(path.join(root, relativePath), "utf8"))
+  .join("\n");
 record(
-  "Electron main reads shared pet hitbox config",
-  /require\(["']\.\.\/pet-hitbox\.json["']\)/.test(mainText),
+  "Electron runtime reads shared pet hitbox config",
+  /require\(["']\.\.\/pet-hitbox\.json["']\)/.test(runtimeText),
   "require(\"../pet-hitbox.json\")",
 );
 record(
-  "Electron main supports AGENT_PET_BACKEND_DIR override",
-  /process\.env\.AGENT_PET_BACKEND_DIR/.test(mainText),
+  "Electron runtime supports AGENT_PET_BACKEND_DIR override",
+  /process\.env\.AGENT_PET_BACKEND_DIR/.test(runtimeText),
   "AGENT_PET_BACKEND_DIR",
 );
 record(
-  "Electron main searches packaged resources backend and sidecar",
-  /process\.resourcesPath/.test(mainText) &&
-    /path\.join\(packagedResourcesPath,\s*["']backend["']\)/.test(mainText) &&
-    /path\.join\(packagedResourcesPath,\s*["']sidecar["']\)/.test(mainText),
+  "Electron runtime searches packaged resources backend and sidecar",
+  /process\.resourcesPath/.test(runtimeText) &&
+    /path\.join\(packagedResourcesPath,\s*["']backend["']\)/.test(runtimeText) &&
+    /path\.join\(packagedResourcesPath,\s*["']sidecar["']\)/.test(runtimeText),
   "process.resourcesPath/backend and process.resourcesPath/sidecar",
 );
 record(
-  "Electron main keeps sidecar token in environment",
-  /AGENT_PET_SESSION_TOKEN:\s*sessionToken/.test(mainText) &&
-    !/["']--?(?:session-)?token["']/i.test(mainText),
+  "Electron runtime keeps sidecar token in environment",
+  /AGENT_PET_SESSION_TOKEN:\s*sessionToken/.test(runtimeText) &&
+    !/["']--?(?:session-)?token["']/i.test(runtimeText),
   "AGENT_PET_SESSION_TOKEN env",
 );
 record(
-  "Electron main gives managed sidecar a persistent data directory",
-  /app\.getPath\(["']userData["']\)/.test(mainText) &&
-    /AGENT_PET_DATA_DIR/.test(mainText) &&
-    /AGENT_PET_SQLITE_PATH/.test(mainText),
+  "Electron runtime gives managed sidecar a persistent data directory",
+  /app\.getPath\(["']userData["']\)/.test(runtimeText) &&
+    /AGENT_PET_DATA_DIR/.test(runtimeText) &&
+    /AGENT_PET_SQLITE_PATH/.test(runtimeText),
   "app.getPath(\"userData\") -> AGENT_PET_DATA_DIR unless explicit env overrides exist",
 );
 const extraResources = packageJson.build?.extraResources ?? [];

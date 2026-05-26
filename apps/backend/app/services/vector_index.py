@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import hashlib
+import logging
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
@@ -9,6 +9,10 @@ from typing import Any, Iterable
 from app.models.common import new_id
 from app.repositories.storage import SearchResult
 from app.storage.markdown import ParsedMarkdown
+from app.utils.hash import sha256_hex
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -18,6 +22,7 @@ class VectorIndexConfig:
     collection_name: str
     embedding_model: str
     embeddings: Any | None = None
+    unavailable_reason: str | None = None
 
 
 class VectorIndexUnavailableError(Exception):
@@ -27,31 +32,6 @@ class VectorIndexUnavailableError(Exception):
 class VectorChunkRepository:
     def __init__(self, conn: sqlite3.Connection) -> None:
         self.conn = conn
-        self.ensure_schema()
-
-    def ensure_schema(self) -> None:
-        self.conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS vector_chunks (
-                vector_id TEXT PRIMARY KEY,
-                chunk_id TEXT NOT NULL,
-                note_id TEXT NOT NULL,
-                vault_id TEXT NOT NULL,
-                relative_path TEXT NOT NULL,
-                content_hash TEXT NOT NULL,
-                collection_name TEXT NOT NULL,
-                embedding_model TEXT NOT NULL,
-                created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-            )
-            """
-        )
-        self.conn.execute(
-            """
-            CREATE INDEX IF NOT EXISTS idx_vector_chunks_vault_path
-            ON vector_chunks(vault_id, relative_path)
-            """
-        )
 
     def replace_note_vectors(
         self,
@@ -145,7 +125,11 @@ class LangChainQdrantVectorIndex:
         try:
             store.delete(ids=ids)
         except Exception:
-            pass
+            logger.exception(
+                "Vector index delete failed before upsert",
+                extra={"vault_id": vault_id, "relative_path": relative_path, "vector_count": len(ids)},
+            )
+            raise
         documents = []
         for chunk, vector_id in zip(markdown.chunks, ids):
             documents.append(
@@ -226,4 +210,4 @@ def _vector_id(
     embedding_model: str,
 ) -> str:
     raw = "\n".join([vault_id, relative_path, content_hash, collection_name, embedding_model])
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    return sha256_hex(raw)

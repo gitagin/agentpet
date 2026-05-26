@@ -7,7 +7,7 @@
 1. 不要修改 `node_modules/`、`dist/`、`release/`、`*.db`、`logs/` 等生成物或本地状态文件。
 2. 实现没验证就不要把状态改成 `Covered`。
 3. 回复里必须列出所有实际运行过的命令和结果。
-4. Vault 内部 Markdown 写入必须有用户确认，不能静默修改。
+4. 私人桌宠默认低风险自动整理；高风险 Vault/Markdown/状态操作必须确认，且确认不可关闭。
 5. Renderer 能力只走 contextBridge IPC，不得直接调用 Node/FS。
 
 ## 项目概览
@@ -158,12 +158,20 @@ LIVE_MODEL_API_KEY            # optional  — live model acceptance gate 的 pro
 
 ### 写入安全边界
 
+- 默认产品方向是私人桌宠自动整理模式：普通聊天只需要用户输入自然语言；低风险日记归档、结构化日记、长期记忆、Wiki 新建/补充/归档/报告和低风险体检报告可以自动执行并记录到 `agent_actions` 活动账本。
+- 普通聊天完成后应形成闭环：回答前按意图检索日记、长期记忆和 Wiki；回答后写每日聊天日记和结构化日记；高价值、非敏感、可复用的回答总结可自动沉淀到 `Wiki/Companion/Summaries/*.md`。
+- 自动整理必须经过策略判定并产生可追踪记录：`action_type`、来源消息、风险级别、目标文件、摘要、状态、是否可撤销；可逆 Markdown 写入要保存回滚快照，撤销要生成新的活动记录。
+- 自动 Wiki 写入仍受 Vault 路径安全限制：只能写 Vault 内 Markdown，Wiki 页面只能落在 `Wiki/*.md` 家族，不允许绝对路径、`..`、隐藏目录、symlink/reparse point 或越界路径。
+- Wiki 知识页必须遵守维护契约：原始来源只读；保留 8 章模板；用 Obsidian 双链标明原文出处和触发来源；区分原文事实与整理推断；包含页面更新日志和 7 项自检；集中日志写入 `Wiki/log.md`；术语和格式陷阱由 lint 检查。
+- 高风险或不确定操作必须取得用户确认后才能执行，确认开关不可关闭。
+
 以下操作必须取得用户确认后才能执行：
 
-- 写入真实用户 Vault 内部 Markdown 文件 （原因：Markdown Vault 是用户可见知识库，错误写入会污染个人资料）
-- 确认 memory proposal （原因：候选记忆未确认前不得写入正式 Markdown）
-- 执行 Wiki ingest apply、query archive 写入、`write_page` （原因：这些操作会在 `Wiki/` 下创建或修改长期页面）
-- 删除、移动、批量重写 Vault Markdown、SQLite、migration 文件 （原因：路径安全测试只能防越界，不能代替用户对内容变更的授权）
+- 初始化、绑定或切换真实知识库目录 （原因：会改变后端 active Vault）
+- 删除、移动、批量重写 Vault Markdown、SQLite、migration 文件 （原因：这些操作有数据丢失或 schema 不兼容风险）
+- 覆盖用户原文、执行不可逆大范围替换、批量清理 local-state/schema （原因：自动化策略不能代替用户对破坏性变更的授权）
+- 写入或保存敏感凭据、API key、token、私钥或疑似 credential 内容 （原因：`memory_policy.py` 会判为敏感内容，不能进入普通记忆/Vault）
+- 处理重大矛盾事实、身份/关系连续性、低置信度记忆提升或冲突合并 （原因：这些会影响桌宠长期人格/关系状态）
 - 修改 SQLite schema （原因：schema 变化会影响已有本地状态文件）
 - 运行会清理进程或端口占用的命令 （原因：可能终止用户正在使用的 uvicorn/Electron 进程）
 
@@ -349,8 +357,8 @@ Live2D assets/runtime      → Push-Location apps\desktop; npm run live2d:check:
 ### 需要用户确认的操作
 
 - 初始化、绑定或切换真实知识库目录 （原因：会改变后端 active Vault）
-- 确认写入候选长期记忆 （原因：会修改用户 Markdown）
-- 应用 Wiki ingest plan、归档 query answer、执行 Wiki synthesize 写入 （原因：会修改 `Wiki/` 内容和索引）
+- 确认高风险或低置信候选长期记忆；普通高置信记忆默认进入自动整理与活动账本 （原因：私人桌宠不应让日常记忆都变成待审核提案）
+- 应用高风险 Wiki ingest plan、破坏性 query archive、破坏性 synthesize 或 lint repair；普通低风险 Wiki 新建/补充/归档/报告默认可自动执行并可追踪/可撤销 （原因：普通整理不应打断对话，高风险写入仍需用户授权）
 - 删除、移动、批量改写 Markdown、SQLite、migration 文件 （原因：这些操作有数据丢失或 schema 不兼容风险）
 - 安装、升级、删除 Python 或 npm 依赖 （原因：会改变开发环境和可复现测试结果）
 - 停止占用端口的非本次启动进程 （原因：可能终止用户正在使用的服务）
@@ -359,7 +367,7 @@ Live2D assets/runtime      → Push-Location apps\desktop; npm run live2d:check:
 
 - [ ] 是否改动了禁止修改路径？→ 阻塞提交
 - [ ] 是否改 schema 但没有新增 migration 和 pytest？→ 阻塞提交
-- [ ] 是否改 Vault 内部文件写入路径但没有路径安全测试？→ 阻塞提交
+- [ ] 是否改 Vault 内部文件写入路径但没有路径安全和活动账本/撤销测试？→ 阻塞提交
 - [ ] 是否改 renderer 权限边界但没有运行 Electron migration 校验？→ 阻塞提交
 - [ ] 是否把 `Covered` / `Partial` / `Gap` 写成未被证据支持的状态？→ 阻塞提交
 - [ ] 是否只看 `progress.md` 而未核对当前代码？→ 阻塞提交

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-import sqlite3
 from datetime import datetime, timezone
 
+from apps.backend.tests._schema import migrated_connection
 from app.services.chat_auto_memory import ChatAutoMemoryService, ChatAutoMemoryStore
+from app.services.chat_answer_wiki_summary import ChatAnswerWikiSummaryService
 from app.services.memory import SafeMarkdownWriter
+from app.services.wiki import WikiService
 
 
 def build_service(tmp_path, now_values, index_jobs=None):
@@ -15,7 +17,7 @@ def build_service(tmp_path, now_values, index_jobs=None):
         return values.pop(0)
 
     return ChatAutoMemoryService(
-        ChatAutoMemoryStore(sqlite3.connect(":memory:")),
+        ChatAutoMemoryStore(migrated_connection()),
         SafeMarkdownWriter(tmp_path),
         now_provider=now_provider,
         index_refresh=lambda path: jobs.append(path) or f"index:{path}",
@@ -136,3 +138,76 @@ def test_daily_chat_memory_uses_fixed_seven_day_month_weeks(tmp_path):
         second_week.entry.markdown_path
         == "Memories/Daily/2026/05/第2周_05-08至05-14/星期五/2026-05-08.md"
     )
+
+
+def test_chat_answer_wiki_summary_skips_low_value_chat(tmp_path):
+    service = ChatAnswerWikiSummaryService(WikiService(SafeMarkdownWriter(tmp_path)))
+
+    plan = service.plan(
+        user_question="你好",
+        assistant_answer="你好，我在。",
+        conversation_id="conversation-1",
+        user_message_id="user-1",
+        assistant_message_id="assistant-1",
+        agent_run_id="run-1",
+        diary_markdown_path="Memories/Daily/2026/05/第1周_05-01至05-07/星期日/2026-05-03.md",
+        memory_date="2026-05-03",
+    )
+
+    assert plan is None
+    assert not (tmp_path / "Wiki").exists()
+
+
+def test_chat_answer_wiki_summary_writes_template_sources_and_logs(tmp_path):
+    wiki = WikiService(SafeMarkdownWriter(tmp_path))
+    service = ChatAnswerWikiSummaryService(wiki)
+
+    plan = service.plan(
+        user_question="优化桌宠回答后日记和 Wiki 自动整理流程",
+        assistant_answer=(
+            "- 桌宠应先按意图检索日记、长期记忆和 Wiki。\n"
+            "- 回答完成后写入日记，再自我总结。\n"
+            "- 有价值的总结要带证据、更新日志和自检清单写入 Wiki。"
+        ),
+        conversation_id="conversation-1",
+        user_message_id="user-1",
+        assistant_message_id="assistant-1",
+        agent_run_id="run-1",
+        diary_markdown_path="Memories/Daily/2026/05/第1周_05-01至05-07/星期日/2026-05-03.md",
+        memory_date="2026-05-03",
+        diary_object_ids=("obj-1",),
+    )
+    assert plan is not None
+
+    written = service.write(plan, source_message_id="user-1")
+
+    target = tmp_path.joinpath(*written.page.relative_path.split("/"))
+    text = target.read_text(encoding="utf-8")
+    assert written.before_snapshot["exists"][written.page.relative_path] is False
+    assert written.after_snapshot["exists"][written.page.relative_path] is True
+    assert "### 核心定义" in text
+    assert "### 原文出处" in text
+    assert "### 更新日志" in text
+    assert "### 自检清单" in text
+    assert "[[Memories/Daily/2026/05/第1周_05-01至05-07/星期日/2026-05-03.md]]" in text
+    assert "agent_run_id：`run-1`" in text
+    assert written.page.relative_path in (tmp_path / "Wiki" / "index.md").read_text(encoding="utf-8")
+    assert written.page.relative_path in (tmp_path / "Wiki" / "log.md").read_text(encoding="utf-8")
+
+
+def test_chat_answer_wiki_summary_skips_sensitive_content(tmp_path):
+    service = ChatAnswerWikiSummaryService(WikiService(SafeMarkdownWriter(tmp_path)))
+
+    plan = service.plan(
+        user_question="把接口凭据整理进 wiki",
+        assistant_answer="api_key=sk-agent-memory-secret-1234567890 应该写入 Wiki。",
+        conversation_id="conversation-1",
+        user_message_id="user-1",
+        assistant_message_id="assistant-1",
+        agent_run_id="run-1",
+        diary_markdown_path="Memories/Daily/2026/05/第1周_05-01至05-07/星期日/2026-05-03.md",
+        memory_date="2026-05-03",
+    )
+
+    assert plan is None
+    assert not (tmp_path / "Wiki").exists()

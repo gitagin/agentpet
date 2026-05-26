@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -21,8 +20,10 @@ from app.models.api import (
     WikiPageWriteRequest,
     WikiSchemaStatus,
 )
-from app.services.memory import MarkdownWriteError, SafeMarkdownWriter, utc_now_iso
-from app.services.memory_policy import evaluate_memory_content
+from app.services.memory import MarkdownWriteError, SafeMarkdownWriter
+from app.services.write_policy import MarkdownWritePolicyRequest, evaluate_markdown_write
+from app.utils.hash import sha256_hex
+from app.utils.time import utc_now_iso
 from app.storage.markdown import read_markdown
 
 
@@ -31,6 +32,25 @@ WIKI_SCHEMA_PATH = f"{WIKI_ROOT}/AGENTS.md"
 WIKI_INDEX_PATH = f"{WIKI_ROOT}/index.md"
 WIKI_LOG_PATH = f"{WIKI_ROOT}/log.md"
 WIKI_CORE_PATHS = {WIKI_SCHEMA_PATH, WIKI_INDEX_PATH, WIKI_LOG_PATH}
+WIKI_PAGE_TEMPLATE_SECTIONS = (
+    "核心定义",
+    "核心要点",
+    "经典案例",
+    "实践方法",
+    "常见误区",
+    "相关知识点",
+    "原文出处",
+    "对用户/决策的意义",
+)
+WIKI_SELF_CHECK_ITEMS = (
+    "索引同步",
+    "关键词同步",
+    "关系图谱",
+    "入链检查",
+    "AGENTS 同步",
+    "内嵌日志",
+    "集中日志",
+)
 
 
 @dataclass(frozen=True)
@@ -64,6 +84,44 @@ Maintain a growing markdown wiki from immutable source material. The assistant i
 - comparison: structured contrast between entities, concepts, or approaches.
 - report: operational output such as lint or query archive reports.
 
+## Hard Boundaries
+- Raw source directories and original diary files are read-only evidence. Never delete, rewrite, or silently normalize them.
+- Wiki pages may summarize, link, and annotate evidence, but must not pretend inferred summaries are original claims.
+- Every maintained page should add internal links, cite source paths, update the index, and append the central log.
+
+## Required Page Template
+Every maintained knowledge page should keep these eight sections in order:
+1. 核心定义
+2. 核心要点
+3. 经典案例
+4. 实践方法
+5. 常见误区
+6. 相关知识点
+7. 原文出处
+8. 对用户/决策的意义
+
+Pages may add an extra `更新日志` and `自检清单` section after the eight required sections.
+
+## Evidence And Trigger Source
+- Claims copied or derived from source material must cite Obsidian links such as `[[Memories/Daily/...]]` or `[[Wiki/Sources/...]]`.
+- The `原文出处` section must separate original claims from assistant inference.
+- Automatic writes must record trigger source: user query/message id, agent run id, and source paths when available.
+
+## Review And Self Check
+Before considering a write complete, run the seven-item self-check:
+1. 索引同步
+2. 关键词同步
+3. 关系图谱
+4. 入链检查
+5. AGENTS 同步
+6. 内嵌日志
+7. 集中日志
+
+## Version And Logs
+- Frontmatter should include `revision`, `confidence`, `disputed`, and `sources` when possible.
+- Conflicting knowledge is marked instead of deleted; preserve both sides and cite their sources.
+- Double-layer logs are required: per-page `更新日志` plus append-only `Wiki/log.md`.
+
 ## Ingest
 1. Preserve the raw source and source hash.
 2. Create or update a source page.
@@ -76,11 +134,20 @@ Maintain a growing markdown wiki from immutable source material. The assistant i
 1. Read `Wiki/index.md` first to identify relevant pages.
 2. Read relevant wiki pages and necessary raw sources.
 3. Answer only from evidence.
-4. Archive reusable answers or propose page updates.
-5. Append `Wiki/log.md`.
+4. Save valuable answers as maintained pages when they are reusable and safe.
+5. Update `Wiki/index.md`.
+6. Append page update log and `Wiki/log.md`.
+7. Run or schedule lint/self-check.
 
 ## Lint
 Check contradictions, stale statements, orphan pages, broken links, missing index entries, missing log records, duplicate concepts, naming drift, and schema/frontmatter gaps.
+
+## Terminology And Format Traps
+- query: answer a user question from diary, memory, and Wiki evidence.
+- organize: create or update maintained Wiki pages from reusable evidence.
+- source: immutable raw evidence or diary record.
+- synthesis: assistant inference that must be labeled as inference.
+- Common traps: placeholder counts left unfilled, inconsistent heading formats, orphan pages, zero-byte pages, links outside Wiki/Memories, empty `sources`, missing page logs.
 
 ## Writing Rules
 - Keep pages concise, structured, and linkable.
@@ -117,12 +184,20 @@ class WikiService:
         self.index_refresh = index_refresh
 
     def write_page(self, request: WikiPageWriteRequest) -> WikiPageResponse:
-        policy = evaluate_memory_content(f"{request.title}\n{request.content}\n{_metadata_policy_text(request)}")
+        relative_path = resolve_wiki_path(request.title, request.target_path)
+        policy = evaluate_markdown_write(
+            MarkdownWritePolicyRequest(
+                scope="wiki",
+                target_path=relative_path,
+                title=request.title,
+                content=request.content,
+                metadata=_write_policy_metadata(request),
+            )
+        )
         if not policy.allowed:
             raise SensitiveWikiRejectedError(policy.reason)
 
         self.ensure_core_files()
-        relative_path = resolve_wiki_path(request.title, request.target_path)
         target = self.writer.resolve_markdown_path(relative_path)
         existed = target.exists()
         now = utc_now_iso()
@@ -403,7 +478,7 @@ def slugify_wiki_title(title: str) -> str:
     compact = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "", compact)
     compact = compact.strip(".- ")
     if not compact:
-        compact = hashlib.sha256(title.encode("utf-8")).hexdigest()[:12]
+        compact = sha256_hex(title)[:12]
     return compact[:80]
 
 
@@ -453,6 +528,7 @@ def _page_type(relative_path: str, frontmatter: dict[str, str | list[str]]) -> s
         "entities": "entity",
         "concepts": "concept",
         "syntheses": "synthesis",
+        "companion": "synthesis",
         "comparisons": "comparison",
         "reports": "report",
     }.get(folder, "page")
@@ -605,20 +681,20 @@ def _metadata_block(*, tags: list[str], links: list[str]) -> str:
     return "\n".join(lines)
 
 
-def _metadata_policy_text(request: WikiPageWriteRequest) -> str:
-    values = [
-        request.page_type or "",
-        request.confidence or "",
-        request.expiry or "",
-        request.source_message_id or "",
-        *request.tags,
-        *request.links,
-        *request.authors,
-        *request.contributors,
-        *request.aliases,
-        *request.sources,
-    ]
-    return "\n".join(value for value in values if value)
+def _write_policy_metadata(request: WikiPageWriteRequest) -> dict[str, str]:
+    values = {
+        "page_type": request.page_type or "",
+        "confidence": request.confidence or "",
+        "expiry": request.expiry or "",
+        "source_message_id": request.source_message_id or "",
+        "tags": ", ".join(request.tags),
+        "links": ", ".join(request.links),
+        "authors": ", ".join(request.authors),
+        "contributors": ", ".join(request.contributors),
+        "aliases": ", ".join(request.aliases),
+        "sources": ", ".join(request.sources),
+    }
+    return {key: value for key, value in values.items() if value}
 
 
 def _wiki_frontmatter(request: WikiPageWriteRequest, relative_path: str) -> dict[str, str | list[str]]:
@@ -629,6 +705,7 @@ def _wiki_frontmatter(request: WikiPageWriteRequest, relative_path: str) -> dict
     data: dict[str, str | list[str]] = {
         "title": request.title.strip(),
         "type": page_type,
+        "revision": "1",
         "disputed": "true" if request.disputed else "false",
     }
     optional_scalars = {

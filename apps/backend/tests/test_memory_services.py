@@ -1,7 +1,6 @@
-import sqlite3
-
 import pytest
 
+from apps.backend.tests._schema import migrated_connection
 from app.models.enums import MemoryProposalStatus, MemoryProposalType
 from app.services.memory import (
     MarkdownWriteHooks,
@@ -14,7 +13,7 @@ from app.services.memory import (
 
 
 def build_service(tmp_path, hooks=None, index_refresh=None):
-    store = MemoryProposalStore(sqlite3.connect(":memory:"))
+    store = MemoryProposalStore(migrated_connection())
     writer = SafeMarkdownWriter(tmp_path, hooks=hooks)
     return MemoryService(store, writer, index_refresh=index_refresh)
 
@@ -93,3 +92,54 @@ def test_safe_markdown_write_hooks_are_called(tmp_path):
         ("before", "Pending Memories.md", "- Pending memory\n"),
         ("after", "Pending Memories.md", "- Pending memory\n"),
     ]
+
+
+def test_safe_markdown_write_removes_backup_after_success(tmp_path):
+    target = tmp_path / "Memory.md"
+    backup = tmp_path / "Memory.md.bak"
+    target.write_text("Old\n", encoding="utf-8")
+    writer = SafeMarkdownWriter(tmp_path)
+
+    writer.write("Memory.md", "New\n")
+
+    assert target.read_text(encoding="utf-8") == "New\n"
+    assert not backup.exists()
+
+
+def test_safe_markdown_writers_share_lock_for_same_file(tmp_path):
+    first = SafeMarkdownWriter(tmp_path)
+    second = SafeMarkdownWriter(tmp_path)
+    target = first.resolve_markdown_path("Memory.md")
+
+    assert first._lock_for(target) is second._lock_for(target)
+
+
+def test_safe_markdown_write_restores_backup_when_after_hook_fails(tmp_path):
+    target = tmp_path / "Memory.md"
+    backup = tmp_path / "Memory.md.bak"
+    target.write_text("Old\n", encoding="utf-8")
+
+    def fail_after_write(path, text):
+        raise RuntimeError("index refresh failed")
+
+    writer = SafeMarkdownWriter(tmp_path, hooks=MarkdownWriteHooks(after_write=fail_after_write))
+
+    with pytest.raises(RuntimeError, match="index refresh failed"):
+        writer.write("Memory.md", "New\n")
+
+    assert target.read_text(encoding="utf-8") == "Old\n"
+    assert not backup.exists()
+
+
+def test_safe_markdown_write_removes_new_file_when_after_hook_fails(tmp_path):
+    target = tmp_path / "Memory.md"
+
+    def fail_after_write(path, text):
+        raise RuntimeError("index refresh failed")
+
+    writer = SafeMarkdownWriter(tmp_path, hooks=MarkdownWriteHooks(after_write=fail_after_write))
+
+    with pytest.raises(RuntimeError, match="index refresh failed"):
+        writer.write("Memory.md", "New\n")
+
+    assert not target.exists()

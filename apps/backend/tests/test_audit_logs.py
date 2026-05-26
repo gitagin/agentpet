@@ -2,30 +2,24 @@ from __future__ import annotations
 
 import sqlite3
 import time
+from collections.abc import Iterator
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.conftest import auth_headers
+
 
 @pytest.fixture()
-def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    monkeypatch.setenv("AGENT_PET_SESSION_TOKEN", "audit-token")
-    monkeypatch.setenv("AGENT_PET_SQLITE_PATH", str(tmp_path / "state.sqlite3"))
-
-    from app.config import get_settings
-    from app.main import create_app
-
-    get_settings.cache_clear()
-    return TestClient(create_app())
+def client(client_factory) -> Iterator[TestClient]:
+    with client_factory(session_token="audit-token") as test_client:
+        yield test_client
 
 
 def auth(request_id: str = "audit-request") -> dict[str, str]:
-    return {
-        "Authorization": "Bearer audit-token",
-        "X-Request-ID": request_id,
-    }
+    return auth_headers("audit-token", request_id=request_id)
 
 
 def audit_rows(client: TestClient) -> list[sqlite3.Row]:

@@ -1,95 +1,109 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Sequence
-from typing import Protocol
+from dataclasses import dataclass
+from typing import Any, Protocol, runtime_checkable
 
 from app.models.api import (
     MemoryProposalActionResponse,
     MemoryProposalCreateRequest,
     MemorySearchResponse,
     QueryArchiveLintResponse,
+    QueryArchiveResponse,
     QueryArchiveRequest,
     TaskCreateRequest,
     TaskCreateResponse,
+    WikiIngestApplyRequest,
+    WikiIngestApplyResponse,
     WikiIngestPreviewRequest,
     WikiIngestPreviewResponse,
     WikiIngestReviewRequest,
     WikiIngestReviewResponse,
     WikiLintProposal,
+    WikiLintReportResponse,
     WikiLintRequest,
     WikiPageResponse,
     WikiPageWriteRequest,
     WikiQueryArchiveProposal,
     WikiSynthesisProposal,
+    WikiSynthesizeResponse,
     WikiSynthesizeRequest,
 )
 from app.services.chat_model import AgentModelRegistry, ChatModelRunResult
 
-MemorySearchReturn = MemorySearchResponse | Awaitable[MemorySearchResponse]
-MemoryProposalReturn = MemoryProposalActionResponse | Awaitable[MemoryProposalActionResponse]
-TaskCreateReturn = TaskCreateResponse | Awaitable[TaskCreateResponse]
-WikiManageReturn = WikiPageResponse | Awaitable[WikiPageResponse]
-WikiIngestPreviewReturn = WikiIngestPreviewResponse | Awaitable[WikiIngestPreviewResponse]
-WikiIngestReviewReturn = WikiIngestReviewResponse | Awaitable[WikiIngestReviewResponse]
-QueryArchiveLintReturn = QueryArchiveLintResponse | Awaitable[QueryArchiveLintResponse]
-WikiQueryArchiveProposalReturn = WikiQueryArchiveProposal | Awaitable[WikiQueryArchiveProposal]
-WikiSynthesisProposalReturn = WikiSynthesisProposal | Awaitable[WikiSynthesisProposal]
-WikiLintProposalReturn = WikiLintProposal | Awaitable[WikiLintProposal]
-ChatModelReturn = str | Awaitable[str]
-
-
 class RetrievalServiceProtocol(Protocol):
-    def search(
+    async def search(
         self,
         query: str,
         top_k: int = 5,
         mode: str = "fts",
         source_scope: str = "all",
-    ) -> MemorySearchReturn: ...
+    ) -> MemorySearchResponse: ...
 
 
 class MemoryProposalServiceProtocol(Protocol):
-    def create_proposal(
+    async def create_proposal(
         self, request: MemoryProposalCreateRequest
-    ) -> MemoryProposalReturn: ...
+    ) -> MemoryProposalActionResponse: ...
 
 
 class TaskServiceProtocol(Protocol):
-    def create(self, request: TaskCreateRequest) -> TaskCreateReturn: ...
+    async def create(self, request: TaskCreateRequest) -> TaskCreateResponse: ...
 
 
 class WikiServiceProtocol(Protocol):
-    def manage_page(self, request: WikiPageWriteRequest) -> WikiManageReturn: ...
+    async def manage_page(self, request: WikiPageWriteRequest) -> WikiPageResponse: ...
 
 
 class WikiWorkflowServiceProtocol(Protocol):
-    def preview_ingest(
+    async def preview_ingest(
         self, request: WikiIngestPreviewRequest
-    ) -> WikiIngestPreviewReturn: ...
+    ) -> WikiIngestPreviewResponse: ...
 
-    def review_ingest(
+    async def review_ingest(
         self, request: WikiIngestReviewRequest
-    ) -> WikiIngestReviewReturn: ...
+    ) -> WikiIngestReviewResponse: ...
 
-    def lint_query_archive(
+    async def lint_query_archive(
         self, request: QueryArchiveRequest
-    ) -> QueryArchiveLintReturn: ...
+    ) -> QueryArchiveLintResponse: ...
 
-    def plan_query_archive(
+    async def archive_query(
         self, request: QueryArchiveRequest
-    ) -> WikiQueryArchiveProposalReturn: ...
+    ) -> QueryArchiveResponse: ...
 
-    def plan_synthesis(
+    async def plan_query_archive(
+        self, request: QueryArchiveRequest
+    ) -> WikiQueryArchiveProposal: ...
+
+    async def synthesize(
         self, request: WikiSynthesizeRequest
-    ) -> WikiSynthesisProposalReturn: ...
+    ) -> WikiSynthesizeResponse: ...
 
-    def plan_lint(
+    async def plan_synthesis(
+        self, request: WikiSynthesizeRequest
+    ) -> WikiSynthesisProposal: ...
+
+    async def run_lint(
         self, request: WikiLintRequest
-    ) -> WikiLintProposalReturn: ...
+    ) -> WikiLintReportResponse: ...
+
+    async def plan_lint(
+        self, request: WikiLintRequest
+    ) -> WikiLintProposal: ...
+
+    async def apply_ingest(
+        self, request: WikiIngestApplyRequest
+    ) -> WikiIngestApplyResponse: ...
 
 
+@runtime_checkable
 class ChatModelServiceProtocol(Protocol):
-    def complete(self, *, user_message: str, system_prompt: str | None = None) -> ChatModelReturn: ...
+    async def complete(self, *, user_message: str, system_prompt: str | None = None) -> str: ...
+
+
+@runtime_checkable
+class ToolCallingChatModelProtocol(Protocol):
     def complete_with_tools(
         self,
         *,
@@ -99,10 +113,35 @@ class ChatModelServiceProtocol(Protocol):
     ) -> ChatModelRunResult | Awaitable[ChatModelRunResult]: ...
 
 
+@runtime_checkable
+class ContinuitySignalProtocol(Protocol):
+    kind: str
+    title: str
+    summary: str
+    intensity: str
+    display_hint: str
+    source_state_keys: tuple[str, ...]
+
+
+@runtime_checkable
 class ContinuityServiceProtocol(Protocol):
     def context_block(self) -> str: ...
     def presence_context_block(self) -> str: ...
-    def presence_signal(self) -> object | None: ...
+    def presence_signal(self) -> ContinuitySignalProtocol | None: ...
+
+
+@dataclass(slots=True)
+class AgentRuntimeServices:
+    retrieval: RetrievalServiceProtocol | None = None
+    memory: MemoryProposalServiceProtocol | None = None
+    tasks: TaskServiceProtocol | None = None
+    wiki: WikiServiceProtocol | None = None
+    wiki_workflow: WikiWorkflowServiceProtocol | None = None
+    continuity: ContinuityServiceProtocol | None = None
+    companion_retrieval_reports: Any | None = None
+    chat_model: ChatModelServiceProtocol | None = None
+    model_registry: AgentModelRegistry | None = None
+    automation_settings: Any | None = None
 
 
 class AgentServices(Protocol):

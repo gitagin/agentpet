@@ -160,11 +160,12 @@ if (electronFiles.length === 0) {
 const electronMainPath = packageJson.main
   ? path.resolve(desktopRoot, packageJson.main)
   : path.join(desktopRoot, "electron", "main.cjs");
+const electronRuntimeFiles = electronFiles.filter((file) => /\.(?:cjs|js)$/i.test(file));
+const electronRuntimeText = electronRuntimeFiles.map(readText).join("\n");
 
 if (!exists(electronMainPath)) {
   fail(`Electron main file is missing: ${rel(electronMainPath)}`);
 } else {
-  const mainText = readText(electronMainPath);
   for (const expected of [
     "contextIsolation: true",
     "nodeIntegration: false",
@@ -173,54 +174,54 @@ if (!exists(electronMainPath)) {
     "setWindowOpenHandler",
     "will-navigate",
   ]) {
-    if (!mainText.includes(expected)) {
-      fail(`Electron main security setting is missing: ${expected}`);
+    if (!electronRuntimeText.includes(expected)) {
+      fail(`Electron runtime security setting is missing: ${expected}`);
     }
   }
 
-  if (!/127\.0\.0\.1|localhost/.test(mainText)) {
-    fail("Electron main does not declare a loopback sidecar/API origin.");
+  if (!/127\.0\.0\.1|localhost/.test(electronRuntimeText)) {
+    fail("Electron runtime does not declare a loopback sidecar/API origin.");
   }
 
-  if (!hasAny(mainText, [/\bspawn\s*\(/, /\bexecFile\s*\(/, /child_process/])) {
-    fail("Electron main does not include a sidecar process launch signal.");
+  if (!hasAny(electronRuntimeText, [/\bspawn\s*\(/, /\bexecFile\s*\(/, /child_process/])) {
+    fail("Electron runtime does not include a sidecar process launch signal.");
   }
 
-  if (!hasAny(mainText, [/\brandomUUID\s*\(/, /\brandomBytes\s*\(/, /crypto\.getRandomValues/])) {
-    fail("Electron main does not generate a per-launch session token with a cryptographic RNG.");
+  if (!hasAny(electronRuntimeText, [/\brandomUUID\s*\(/, /\brandomBytes\s*\(/, /crypto\.getRandomValues/])) {
+    fail("Electron runtime does not generate a per-launch session token with a cryptographic RNG.");
   }
 
-  if (!/AGENT_PET_SESSION_TOKEN/.test(mainText)) {
-    fail("Electron main does not pass the session token to the sidecar through AGENT_PET_SESSION_TOKEN.");
+  if (!/AGENT_PET_SESSION_TOKEN/.test(electronRuntimeText)) {
+    fail("Electron runtime does not pass the session token to the sidecar through AGENT_PET_SESSION_TOKEN.");
   }
 
-  if (!hasAny(mainText, [/\benv\s*:/, /\.stdin\.write\s*\(/])) {
-    fail("Electron main does not pass sidecar secrets through environment variables or stdin.");
+  if (!hasAny(electronRuntimeText, [/\benv\s*:/, /\.stdin\.write\s*\(/])) {
+    fail("Electron runtime does not pass sidecar secrets through environment variables or stdin.");
   }
 
-  if (hasAny(mainText, [
+  if (hasAny(electronRuntimeText, [
     /["']--?(?:session-)?token["']/i,
     /["']AGENT_PET_SESSION_TOKEN["']\s*,/,
     /\bargs\s*[:=]\s*\[[^\]]*(?:sessionToken|AGENT_PET_SESSION_TOKEN|Bearer)/is,
     /spawn\s*\([^)]*\[[^\]]*(?:sessionToken|AGENT_PET_SESSION_TOKEN|Bearer)/is,
     /execFile\s*\([^)]*\[[^\]]*(?:sessionToken|AGENT_PET_SESSION_TOKEN|Bearer)/is,
   ])) {
-    fail("Electron main appears to include a token in sidecar command-line arguments.");
+    fail("Electron runtime appears to include a token in sidecar command-line arguments.");
   }
 
-  if (hasAny(mainText, [
+  if (hasAny(electronRuntimeText, [
     /console\.(?:log|info|warn|error)\s*\([^)]*(?:sessionToken|AGENT_PET_SESSION_TOKEN|Bearer)/is,
     /shell\.openExternal\s*\([^)]*(?:sessionToken|AGENT_PET_SESSION_TOKEN|Bearer)/is,
   ])) {
-    fail("Electron main appears to log or externalize bearer-token material.");
+    fail("Electron runtime appears to log or externalize bearer-token material.");
   }
 
-  if (!hasAny(mainText, [/\bkill\s*\(/, /\bAbortController\b/, /\bdispose\b/])) {
-    fail("Electron main does not include sidecar shutdown/cleanup handling.");
+  if (!hasAny(electronRuntimeText, [/\bkill\s*\(/, /\bAbortController\b/, /\bdispose\b/])) {
+    fail("Electron runtime does not include sidecar shutdown/cleanup handling.");
   }
 
-  if (!hasAny(mainText, [/setPermissionRequestHandler/, /session\.defaultSession\.setPermissionRequestHandler/])) {
-    fail("Electron main does not deny or broker renderer permission requests.");
+  if (!hasAny(electronRuntimeText, [/setPermissionRequestHandler/, /session\.defaultSession\.setPermissionRequestHandler/])) {
+    fail("Electron runtime does not deny or broker renderer permission requests.");
   }
 }
 

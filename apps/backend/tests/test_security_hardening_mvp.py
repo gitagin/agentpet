@@ -8,22 +8,12 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-
-FORBIDDEN_HEALTH_KEYS = {
-    "active_vault_id",
-    "vault_id",
-    "vault_path",
-    "root_path",
-    "model_provider",
-    "model_config",
-    "api_key",
-    "token",
-    "authorization",
-}
+from apps.backend.tests._schema import migrate_db
+from tests.conftest import FORBIDDEN_HEALTH_KEYS, auth_headers, iter_keys
 
 
 def _auth() -> dict[str, str]:
-    return {"Authorization": "Bearer hardening-token"}
+    return auth_headers("hardening-token")
 
 
 def _iter_strings(value: Any) -> Iterator[str]:
@@ -38,26 +28,10 @@ def _iter_strings(value: Any) -> Iterator[str]:
         yield value
 
 
-def _iter_keys(value: Any) -> Iterator[str]:
-    if isinstance(value, dict):
-        for key, nested in value.items():
-            yield str(key)
-            yield from _iter_keys(nested)
-    elif isinstance(value, list):
-        for item in value:
-            yield from _iter_keys(item)
-
-
 @pytest.fixture()
-def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    monkeypatch.setenv("AGENT_PET_SESSION_TOKEN", "hardening-token")
-    monkeypatch.setenv("AGENT_PET_SQLITE_PATH", str(tmp_path / "state.sqlite3"))
-
-    from app.config import get_settings
-    from app.main import create_app
-
-    get_settings.cache_clear()
-    return TestClient(create_app())
+def client(client_factory) -> Iterator[TestClient]:
+    with client_factory(session_token="hardening-token") as test_client:
+        yield test_client
 
 
 def _bind_vault(client: TestClient, vault: Path) -> str:
@@ -70,7 +44,14 @@ def _bind_vault(client: TestClient, vault: Path) -> str:
     return str(response.json()["vault_id"])
 
 
-def test_model_key_endpoint_never_returns_plaintext_key(client: TestClient) -> None:
+def test_model_key_endpoint_never_returns_plaintext_key(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services import settings
+
+    monkeypatch.setattr(settings, "_dpapi_available", lambda: True)
+    monkeypatch.setattr(settings, "_dpapi_protect", lambda data: b"protected-" + data)
     secret = "sk-live-super-secret-model-key-1234567890"
 
     response = client.put(
@@ -86,13 +67,13 @@ def test_model_key_endpoint_never_returns_plaintext_key(client: TestClient) -> N
     serialized = response.text
     assert secret not in serialized
     assert "super-secret-model-key" not in serialized
-    assert "api_key" not in {key.lower() for key in _iter_keys(payload)}
+    assert "api_key" not in {key.lower() for key in iter_keys(payload)}
 
 
 def test_model_key_secret_uses_replaceable_credential_store(tmp_path: Path) -> None:
     from app.services.settings import InMemoryCredentialStore, SettingsStore
 
-    db_path = tmp_path / "state.sqlite3"
+    db_path = migrate_db(tmp_path / "state.sqlite3")
     credentials = InMemoryCredentialStore()
     store = SettingsStore(db_path, credential_store=credentials)
     secret = "sk-direct-store-secret-1234567890"
@@ -110,6 +91,72 @@ def test_model_key_secret_uses_replaceable_credential_store(tmp_path: Path) -> N
     assert set(columns) == {"provider", "masked", "credential_ref", "created_at", "updated_at"}
     assert row["masked"] != secret
     assert secret.encode("utf-8") not in db_path.read_bytes()
+
+
+def test_local_credential_store_rejects_unprotected_storage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services import settings
+    from app.services.settings import CredentialStoreError, LocalCredentialStore
+
+    monkeypatch.setattr(settings, "_dpapi_available", lambda: False)
+    store = LocalCredentialStore(tmp_path / "credentials")
+
+    with pytest.raises(CredentialStoreError, match="仅支持 Windows DPAPI"):
+        store.put("model-key:test", "sk-unprotected-secret")
+
+    assert not any((tmp_path / "credentials").glob("*"))
+
+
+def test_mask_secret_only_reveals_last_four_characters() -> None:
+    from app.services.settings import mask_secret
+
+    assert mask_secret("sk-abcdefghijklmnopqrstuvwxyz123456") == "****3456"
+    assert not mask_secret("sk-abcdefghijklmnopqrstuvwxyz123456").startswith("sk")
+
+
+def test_local_credential_store_removes_file_when_chmod_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services import settings
+    from app.services.settings import CredentialStoreError, LocalCredentialStore
+
+    monkeypatch.setattr(settings, "_dpapi_available", lambda: True)
+    monkeypatch.setattr(settings, "_dpapi_protect", lambda data: b"protected-" + data)
+
+    def raise_chmod(_path: Path, _mode: int) -> None:
+        raise OSError("chmod failed")
+
+    monkeypatch.setattr(settings.os, "chmod", raise_chmod)
+    store = LocalCredentialStore(tmp_path / "credentials")
+
+    with pytest.raises(CredentialStoreError, match="权限设置失败"):
+        store.put("model-key:test", "sk-permission-secret")
+
+    assert not any((tmp_path / "credentials").glob("*"))
+
+
+def test_local_credential_store_uses_dpapi_when_available(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services import settings
+    from app.services.settings import LocalCredentialStore
+
+    monkeypatch.setattr(settings, "_dpapi_available", lambda: True)
+    monkeypatch.setattr(settings, "_dpapi_protect", lambda data: b"protected-" + data)
+    monkeypatch.setattr(settings, "_dpapi_unprotect", lambda data: data.removeprefix(b"protected-"))
+    store = LocalCredentialStore(tmp_path / "credentials")
+
+    store.put("model-key:test", "sk-dpapi-secret")
+
+    assert store.get("model-key:test") == "sk-dpapi-secret"
+    files = list((tmp_path / "credentials").glob("*"))
+    assert len(files) == 1
+    assert files[0].suffix == ".dpapi"
+    assert files[0].read_bytes() != b"sk-dpapi-secret"
 
 
 def test_legacy_plaintext_model_key_migration_purges_sqlite_bytes(tmp_path: Path) -> None:
@@ -153,7 +200,12 @@ def test_legacy_plaintext_model_key_migration_purges_sqlite_bytes(tmp_path: Path
 def test_health_remains_unauthenticated_and_does_not_leak_runtime_state(
     client: TestClient,
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    from app.services import settings
+
+    monkeypatch.setattr(settings, "_dpapi_available", lambda: True)
+    monkeypatch.setattr(settings, "_dpapi_protect", lambda data: b"protected-" + data)
     vault = tmp_path / "Vault"
     _bind_vault(client, vault)
     secret = "sk-health-leak-check-1234567890"
@@ -169,7 +221,7 @@ def test_health_remains_unauthenticated_and_does_not_leak_runtime_state(
     assert "X-Request-ID" in response.headers
     payload = response.json()
     assert payload["status"] == "ok"
-    assert FORBIDDEN_HEALTH_KEYS.isdisjoint({key.lower() for key in _iter_keys(payload)})
+    assert FORBIDDEN_HEALTH_KEYS.isdisjoint({key.lower() for key in iter_keys(payload)})
     body_values = set(_iter_strings(payload))
     assert str(vault) not in body_values
     assert secret not in response.text
@@ -323,6 +375,27 @@ def test_sensitive_api_key_memory_proposal_is_rejected_before_pending_state(
     assert pending.json()["proposals"] == []
 
 
+def test_model_key_endpoint_reports_credential_store_errors(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services import settings
+
+    monkeypatch.setattr(settings, "_dpapi_available", lambda: False)
+
+    response = client.put(
+        "/api/settings/model-key",
+        headers=_auth(),
+        json={"provider": "openai-compatible", "api_key": "sk-unavailable-dpapi"},
+    )
+
+    assert response.status_code == 503
+    payload = response.json()
+    assert payload["error"]["code"] == "http_error"
+    assert "仅支持 Windows DPAPI" in payload["error"]["message"]
+    assert "未被保存" in payload["error"]["message"]
+
+
 def test_validation_errors_do_not_echo_sensitive_request_input(client: TestClient) -> None:
     secret = "sk-validation-secret-1234567890"
 
@@ -339,7 +412,7 @@ def test_validation_errors_do_not_echo_sensitive_request_input(client: TestClien
     payload = response.json()
     assert payload["error"]["code"] == "validation_error"
     assert secret not in response.text
-    assert "input" not in {key.lower() for key in _iter_keys(payload)}
+    assert "input" not in {key.lower() for key in iter_keys(payload)}
 
 
 def test_internal_service_error_mappers_do_not_echo_exception_text() -> None:

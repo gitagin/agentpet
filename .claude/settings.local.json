@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm --prefix apps/desktop run typecheck)",
+      "Bash(npm --prefix apps/desktop run build)"
+    ]
+  }
+}

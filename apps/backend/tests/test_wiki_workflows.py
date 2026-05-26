@@ -14,6 +14,7 @@ from app.models.api import (
     MemorySearchResult,
     QueryArchiveRequest,
     WikiIngestApplyRequest,
+    WikiIngestConfirmRequest,
     WikiIngestPreviewRequest,
     WikiIngestReviewRequest,
     WikiLintRequest,
@@ -33,9 +34,10 @@ from app.services.wiki_workflows import (
     WikiWorkflowService,
 )
 from app.storage.database import Database, MigrationRunner
+from tests.conftest import auth_headers
 
 
-AUTH_HEADERS = {"Authorization": "Bearer test-token"}
+AUTH_HEADERS = auth_headers()
 
 
 class FakeReviewModel:
@@ -49,19 +51,10 @@ class FakeReviewModel:
 
 
 @pytest.fixture()
-def api_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[tuple[TestClient, Path]]:
+def api_client(tmp_path: Path, client_factory) -> Iterator[tuple[TestClient, Path]]:
     db_path = tmp_path / "state.sqlite3"
-    monkeypatch.setenv("AGENT_PET_SESSION_TOKEN", "test-token")
-    monkeypatch.setenv("AGENT_PET_SQLITE_PATH", str(db_path))
-    monkeypatch.setenv("AGENT_PET_DATA_DIR", str(tmp_path / "data"))
-
-    from app.config import get_settings
-    from app.main import create_app
-
-    get_settings.cache_clear()
-    with TestClient(create_app()) as client:
+    with client_factory(sqlite_name="state.sqlite3", data_dir=tmp_path / "data") as client:
         yield client, db_path
-    get_settings.cache_clear()
 
 
 def test_ingest_preview_is_bounded_and_does_not_write_pages(tmp_path: Path) -> None:
@@ -79,7 +72,8 @@ def test_ingest_preview_is_bounded_and_does_not_write_pages(tmp_path: Path) -> N
         )
     )
 
-    assert response.status == "planned"
+    assert response.status == "preview"
+    assert response.preview_token
     assert len(response.page_plans) == 2
     assert response.page_plans[0].target_path == "Wiki/Sources/Knowledge-Wiki-Theory.md"
     assert response.page_plans[1].target_path.startswith("Wiki/Concepts/")
@@ -88,9 +82,18 @@ def test_ingest_preview_is_bounded_and_does_not_write_pages(tmp_path: Path) -> N
     assert (vault_root / "Wiki" / "log.md").exists()
 
     with database.connect() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM wiki_sources").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM wiki_workflow_runs").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM wiki_workflow_page_updates").fetchone()[0] == 0
+
+    confirmed = _confirm_ingest(service, response)
+    assert confirmed.status == "planned"
+    assert confirmed.preview_token is None
+    with database.connect() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM wiki_sources").fetchone()[0] == 1
         assert conn.execute("SELECT COUNT(*) FROM wiki_workflow_runs").fetchone()[0] == 1
         assert conn.execute("SELECT COUNT(*) FROM wiki_workflow_page_updates").fetchone()[0] == 2
-        source = conn.execute("SELECT raw_content FROM wiki_sources WHERE id = ?", (response.source_id,)).fetchone()
+        source = conn.execute("SELECT raw_content FROM wiki_sources WHERE id = ?", (confirmed.source_id,)).fetchone()
     assert source["raw_content"] == "# Knowledge Wiki Theory\n\nIngest creates summaries.\n\n[[Query]]\n[[Lint]]"
 
 
@@ -136,6 +139,10 @@ def test_ingest_preview_adds_cross_page_maintenance_plans(tmp_path: Path) -> Non
     assert not _vault_file(vault_root, "Wiki/Comparisons/Agent-Runtime-vs-Control-Panel.md").exists()
 
     with database.connect() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM wiki_workflow_page_updates").fetchone()[0] == 0
+
+    _confirm_ingest(service, response)
+    with database.connect() as conn:
         assert conn.execute("SELECT COUNT(*) FROM wiki_workflow_page_updates").fetchone()[0] == len(paths)
 
 
@@ -158,16 +165,20 @@ def test_file_import_preview_stores_raw_content_metadata_and_does_not_write_page
         )
     )
 
-    assert response.status == "planned"
+    assert response.status == "preview"
     assert response.source_metadata["source_kind"] == "file"
     assert response.source_metadata["file_name"] == "notes.md"
     assert response.page_plans[0].target_path == "Wiki/Sources/notes.md"
     assert not _vault_file(vault_root, response.page_plans[0].target_path).exists()
 
     with database.connect() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM wiki_sources").fetchone()[0] == 0
+
+    confirmed = _confirm_ingest(service, response)
+    with database.connect() as conn:
         row = conn.execute(
             "SELECT raw_content, source_type, source_uri, metadata_json FROM wiki_sources WHERE id = ?",
-            (response.source_id,),
+            (confirmed.source_id,),
         ).fetchone()
     assert row["raw_content"] == "# Imported Notes\n\nFile import fact for [[Importer]]."
     assert row["source_type"] == "file"
@@ -204,7 +215,11 @@ def test_folder_import_preview_stays_inside_import_root_and_defers_wiki_writes(t
     assert "Folder fact A." in response.summary
     assert not _vault_file(vault_root, response.page_plans[0].target_path).exists()
     with database.connect() as conn:
-        row = conn.execute("SELECT raw_content, metadata_json FROM wiki_sources WHERE id = ?", (response.source_id,)).fetchone()
+        assert conn.execute("SELECT COUNT(*) FROM wiki_sources").fetchone()[0] == 0
+
+    confirmed = _confirm_ingest(service, response)
+    with database.connect() as conn:
+        row = conn.execute("SELECT raw_content, metadata_json FROM wiki_sources WHERE id = ?", (confirmed.source_id,)).fetchone()
     assert "## a.md" in row["raw_content"]
     assert "## image.png" in row["raw_content"]
     assert json.loads(row["metadata_json"])["files"][1]["file_name"] == "image.png"
@@ -244,7 +259,11 @@ def test_url_and_webpage_import_preview_use_supplied_content_without_network(tmp
     assert response.source_metadata["network_fetch"] is False
     assert response.source_metadata["url"] == "https://example.test/article"
     with database.connect() as conn:
-        row = conn.execute("SELECT raw_content, source_type, metadata_json FROM wiki_sources WHERE id = ?", (response.source_id,)).fetchone()
+        assert conn.execute("SELECT COUNT(*) FROM wiki_sources").fetchone()[0] == 0
+
+    confirmed = _confirm_ingest(service, response)
+    with database.connect() as conn:
+        row = conn.execute("SELECT raw_content, source_type, metadata_json FROM wiki_sources WHERE id = ?", (confirmed.source_id,)).fetchone()
     assert "Supplied webpage fact." in row["raw_content"]
     assert row["source_type"] == "url"
     assert json.loads(row["metadata_json"])["network_fetch"] is False
@@ -285,21 +304,25 @@ def test_image_asset_import_preview_stores_asset_metadata_and_apply_writes_later
     assert preview.source_metadata["file_name"] == "diagram.png"
     assert not _vault_file(vault_root, preview.page_plans[0].target_path).exists()
     with database.connect() as conn:
-        row = conn.execute("SELECT raw_content, metadata_json FROM wiki_sources WHERE id = ?", (preview.source_id,)).fetchone()
+        assert conn.execute("SELECT COUNT(*) FROM wiki_sources").fetchone()[0] == 0
+
+    confirmed = _confirm_ingest(service, preview)
+    with database.connect() as conn:
+        row = conn.execute("SELECT raw_content, metadata_json FROM wiki_sources WHERE id = ?", (confirmed.source_id,)).fetchone()
     assert row["raw_content"] == "Diagram shows the importer review flow."
     assert json.loads(row["metadata_json"])["file_size_bytes"] == image.stat().st_size
 
-    review = asyncio.run(service.review_ingest(WikiIngestReviewRequest(run_id=preview.run_id)))
+    review = asyncio.run(service.review_ingest(WikiIngestReviewRequest(run_id=confirmed.run_id)))
     applied = service.apply_ingest(
         WikiIngestApplyRequest(
-            run_id=preview.run_id,
-            approved_targets=[preview.page_plans[0].target_path],
+            run_id=confirmed.run_id,
+            approved_targets=[confirmed.page_plans[0].target_path],
             review_id=review.review_id,
             review_acknowledged=True,
         )
     )
     assert applied.pages_written == 1
-    assert _vault_file(vault_root, preview.page_plans[0].target_path).exists()
+    assert _vault_file(vault_root, confirmed.page_plans[0].target_path).exists()
 
 
 def test_ingest_apply_writes_only_approved_targets_and_schedules_index(tmp_path: Path) -> None:
@@ -314,6 +337,7 @@ def test_ingest_apply_writes_only_approved_targets_and_schedules_index(tmp_path:
             max_pages=3,
         )
     )
+    preview = _confirm_ingest(service, preview)
     approved = [preview.page_plans[0].target_path]
     review = asyncio.run(service.review_ingest(WikiIngestReviewRequest(run_id=preview.run_id)))
 
@@ -484,6 +508,7 @@ def test_ingest_review_with_model_persists_findings_and_recommendations(tmp_path
             max_pages=2,
         )
     )
+    preview = _confirm_ingest(service, preview)
 
     review = asyncio.run(service.review_ingest(WikiIngestReviewRequest(run_id=preview.run_id)))
 
@@ -515,6 +540,7 @@ def test_ingest_review_without_model_is_stable_degraded_path(tmp_path: Path) -> 
             max_pages=1,
         )
     )
+    preview = _confirm_ingest(service, preview)
 
     review = asyncio.run(service.review_ingest(WikiIngestReviewRequest(run_id=preview.run_id)))
 
@@ -550,6 +576,7 @@ def test_ingest_review_falls_back_to_semantic_model_when_wiki_model_missing(tmp_
             max_pages=1,
         )
     )
+    preview = _confirm_ingest(service, preview)
 
     review = asyncio.run(service.review_ingest(WikiIngestReviewRequest(run_id=preview.run_id)))
 
@@ -580,6 +607,7 @@ def test_ingest_review_uses_requested_reviewer_agent(tmp_path: Path) -> None:
             max_pages=1,
         )
     )
+    preview = _confirm_ingest(service, preview)
 
     review = asyncio.run(
         service.review_ingest(
@@ -618,6 +646,7 @@ def test_ingest_review_cache_is_scoped_to_requested_reviewer(tmp_path: Path) -> 
             max_pages=1,
         )
     )
+    preview = _confirm_ingest(service, preview)
 
     wiki_review = asyncio.run(service.review_ingest(WikiIngestReviewRequest(run_id=preview.run_id)))
     semantic_review = asyncio.run(
@@ -949,6 +978,40 @@ def test_wiki_workflow_api_requires_auth(api_client: tuple[TestClient, Path]) ->
     assert review.json()["error"]["code"] == "missing_authorization"
 
 
+def test_wiki_ingest_confirm_rejects_expired_preview_token(
+    api_client: tuple[TestClient, Path],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, _db_path = api_client
+    vault_root = tmp_path / "Vault"
+    init = client.post(
+        "/api/vaults/init",
+        headers=AUTH_HEADERS,
+        json={"path": str(vault_root), "create_if_missing": True},
+    )
+    assert init.status_code == 200
+
+    preview = client.post(
+        "/api/wiki/ingest/preview",
+        headers=AUTH_HEADERS,
+        json={"title": "Expired Source", "content": "# Expired Source", "max_pages": 1},
+    )
+    assert preview.status_code == 200
+
+    import app.services.wiki_workflows as wiki_workflows
+
+    monkeypatch.setattr(wiki_workflows.time, "monotonic", lambda: 1_000_000_000.0)
+    confirm = client.post(
+        "/api/wiki/ingest/confirm",
+        headers=AUTH_HEADERS,
+        json={"preview_token": preview.json()["preview_token"], "user_confirmed": True},
+    )
+
+    assert confirm.status_code == 400
+    assert confirm.json()["error"]["code"] == "wiki_ingest_preview_token_invalid"
+
+
 def test_wiki_workflow_api_writes_and_audits(api_client: tuple[TestClient, Path], tmp_path: Path) -> None:
     client, db_path = api_client
     vault_root = tmp_path / "Vault"
@@ -972,22 +1035,32 @@ def test_wiki_workflow_api_writes_and_audits(api_client: tuple[TestClient, Path]
     assert preview.status_code == 200
     preview_payload = preview.json()
 
+    confirm = client.post(
+        "/api/wiki/ingest/confirm",
+        headers=AUTH_HEADERS,
+        json={"preview_token": preview_payload["preview_token"], "user_confirmed": True},
+    )
+    assert confirm.status_code == 200
+    confirmed_payload = confirm.json()
+    assert confirmed_payload["status"] == "planned"
+    assert confirmed_payload["preview_token"] is None
+
     review = client.post(
         "/api/wiki/ingest/review",
         headers=AUTH_HEADERS,
-        json={"run_id": preview_payload["run_id"]},
+        json={"run_id": confirmed_payload["run_id"]},
     )
     assert review.status_code == 200
     review_payload = review.json()
     assert review_payload["status"] == "model_not_configured"
-    assert review_payload["recommended_targets"] == [plan["target_path"] for plan in preview_payload["page_plans"]]
+    assert review_payload["recommended_targets"] == [plan["target_path"] for plan in confirmed_payload["page_plans"]]
 
     apply = client.post(
         "/api/wiki/ingest/apply",
         headers=AUTH_HEADERS,
         json={
-            "run_id": preview_payload["run_id"],
-            "approved_targets": [preview_payload["page_plans"][0]["target_path"]],
+            "run_id": confirmed_payload["run_id"],
+            "approved_targets": [confirmed_payload["page_plans"][0]["target_path"]],
             "review_id": review_payload["review_id"],
             "review_acknowledged": True,
         },
@@ -1101,6 +1174,7 @@ def test_wiki_workflow_api_writes_and_audits(api_client: tuple[TestClient, Path]
 
     assert {
         "wiki.ingest.preview",
+        "wiki.ingest.confirm",
         "wiki.ingest.review",
         "wiki.ingest.apply",
         "wiki.query_archive.lint",
@@ -1124,8 +1198,16 @@ def _reviewed_ingest(service: WikiWorkflowService, *, title: str = "Apply Securi
             max_pages=2,
         )
     )
+    preview = _confirm_ingest(service, preview)
     review = asyncio.run(service.review_ingest(WikiIngestReviewRequest(run_id=preview.run_id)))
     return preview, review
+
+
+def _confirm_ingest(service: WikiWorkflowService, preview):
+    assert preview.preview_token
+    return service.confirm_ingest(
+        WikiIngestConfirmRequest(preview_token=preview.preview_token, user_confirmed=True)
+    )
 
 
 def _assert_apply_rejected_without_writes(
@@ -1171,6 +1253,7 @@ def _workflow_service(
     review_model=None,
     review_model_resolver=None,
 ) -> WikiWorkflowService:
+    MigrationRunner(database).apply()
     wiki = WikiService(SafeMarkdownWriter(vault_root), index_refresh=lambda _path: index_job_id)
     return WikiWorkflowService(database, wiki, review_model=review_model, review_model_resolver=review_model_resolver)
 

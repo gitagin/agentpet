@@ -12,7 +12,7 @@ except ImportError:
         pass
 
 from langchain_core.tools import StructuredTool
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.api import (
     MemoryProposalActionResponse,
@@ -20,24 +20,29 @@ from app.models.api import (
     MemorySearchResponse,
     MemorySearchResult,
     QueryArchiveRequest,
+    QueryArchiveResponse,
     WikiIngestPagePlan,
     WikiIngestPreviewRequest,
     WikiIngestPreviewResponse,
     WikiIngestReviewFinding,
     WikiIngestReviewRequest,
     WikiIngestReviewResponse,
+    WikiLintReportResponse,
     WikiLintProposal,
     WikiLintRequest,
     TaskCreateRequest,
     TaskCreateResponse,
     WikiQueryArchiveProposal,
     WikiSynthesisProposal,
+    WikiSynthesizeResponse,
     WikiSynthesizeRequest,
     WikiPageResponse,
     WikiPageWriteRequest,
 )
 from app.models.enums import MemoryProposalType
+from app.models.event_payloads import WikiProposalCoreFields
 from app.services.memory_policy import evaluate_memory_content
+from app.utils.coerce import coerce_model
 
 from .services import (
     MemoryProposalServiceProtocol,
@@ -78,6 +83,13 @@ class SensitiveMemoryRejectedError(Exception):
         super().__init__("疑似密钥或凭据的敏感内容不能保存为长期记忆。")
 
 
+class ModelInvocationFailedError(Exception):
+    code = "model_invocation_failed"
+
+    def __init__(self) -> None:
+        super().__init__("模型调用失败，请检查模型服务地址、模型名称和 API 密钥。")
+
+
 @dataclass(frozen=True, slots=True)
 class AgentToolResult:
     name: str
@@ -86,6 +98,9 @@ class AgentToolResult:
         | MemoryProposalActionResponse
         | TaskCreateResponse
         | WikiPageResponse
+        | QueryArchiveResponse
+        | WikiSynthesizeResponse
+        | WikiLintReportResponse
         | "WikiIngestProposal"
         | WikiQueryArchiveProposal
         | WikiSynthesisProposal
@@ -93,7 +108,11 @@ class AgentToolResult:
     )
 
 
-class SearchMemoryInput(BaseModel):
+class AgentToolInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class SearchMemoryInput(AgentToolInput):
     query: str = Field(min_length=1, description="需要从知识库中检索的关键词或问题")
     top_k: int = Field(default=5, ge=1, le=20, description="最多返回的片段数量")
     mode: str = Field(default="fts", description="检索模式，v0.1 使用 fts")
@@ -103,7 +122,7 @@ class SearchMemoryInput(BaseModel):
     )
 
 
-class ProposeMemoryInput(BaseModel):
+class ProposeMemoryInput(AgentToolInput):
     content: str = Field(min_length=1, description="需要用户确认后写入的长期记忆内容")
     target_path: str = Field(
         default=DEFAULT_MEMORY_TARGET_PATH,
@@ -112,7 +131,7 @@ class ProposeMemoryInput(BaseModel):
     source_message_id: str | None = Field(default=None, description="来源消息 ID")
 
 
-class CreateTaskInput(BaseModel):
+class CreateTaskInput(AgentToolInput):
     title: str = Field(min_length=1, description="任务标题")
     description: str = Field(default="", description="任务描述")
     due_at: str | None = Field(default=None, description="截止时间 ISO 字符串")
@@ -121,7 +140,7 @@ class CreateTaskInput(BaseModel):
     source_text: str | None = Field(default=None, description="用户原始输入")
 
 
-class ManageWikiPageInput(BaseModel):
+class ManageWikiPageInput(AgentToolInput):
     title: str = Field(min_length=1, description="Wiki page title")
     content: str = Field(min_length=1, description="Markdown content to write into the wiki page")
     operation: str = Field(default="append", description="create, append, or replace_section")
@@ -132,7 +151,7 @@ class ManageWikiPageInput(BaseModel):
     source_message_id: str | None = Field(default=None, description="Source message ID")
 
 
-class PlanWikiIngestInput(BaseModel):
+class PlanWikiIngestInput(AgentToolInput):
     title: str = Field(min_length=1, description="Title for the Vault/Wiki ingest plan")
     content: str = Field(min_length=1, description="Source Markdown or note text to plan into the Vault")
     source_type: str = Field(default="agent_chat", description="Source type, for example agent_chat or manual")
@@ -143,7 +162,7 @@ class PlanWikiIngestInput(BaseModel):
     source_message_id: str | None = Field(default=None, description="Source message ID")
 
 
-class PlanWikiQueryArchiveInput(BaseModel):
+class PlanWikiQueryArchiveInput(AgentToolInput):
     question: str = Field(min_length=1, description="Question that produced the answer to archive")
     answer: str = Field(min_length=1, description="Answer markdown/text to archive after user confirmation")
     citations: list[MemorySearchResult] = Field(default_factory=list, description="Knowledge-base citations")
@@ -156,7 +175,7 @@ class PlanWikiQueryArchiveInput(BaseModel):
     allow_mixed_sources: bool = Field(default=False, description="Allow non-knowledge citations")
 
 
-class PlanWikiSynthesisInput(BaseModel):
+class PlanWikiSynthesisInput(AgentToolInput):
     title: str = Field(min_length=1, description="Synthesis page title")
     content: str = Field(min_length=1, description="Synthesis markdown/text to write after confirmation")
     source_paths: list[str] = Field(default_factory=list, description="Source Wiki page paths")
@@ -166,15 +185,13 @@ class PlanWikiSynthesisInput(BaseModel):
     source_message_id: str | None = Field(default=None, description="Source message ID")
 
 
-class PlanWikiLintInput(BaseModel):
+class PlanWikiLintInput(AgentToolInput):
     write_report: bool = Field(default=True, description="Whether confirmation should write a lint report")
     source_message_id: str | None = Field(default=None, description="Source message ID")
 
 
-class WikiIngestProposal(BaseModel):
+class WikiIngestProposal(WikiProposalCoreFields):
     proposal_type: str = "ingest"
-    status: str
-    title: str
     run_id: str
     source_id: str
     source_hash: str
@@ -186,7 +203,6 @@ class WikiIngestProposal(BaseModel):
     review_findings: list[WikiIngestReviewFinding] = Field(default_factory=list)
     recommended_targets: list[str] = Field(default_factory=list)
     model_error: str | None = None
-    source_message_id: str | None = None
 
     @classmethod
     def from_preview_review(
@@ -252,7 +268,10 @@ class AgentToolSet:
         return StructuredTool.from_function(
             coroutine=self.manage_wiki_page,
             name="manage_wiki_page",
-            description="Create or update a Markdown page under the Wiki/ knowledge-base area.",
+            description=(
+                "Create or update a low-risk Markdown page under Wiki/. "
+                "Use this for private desktop-pet auto-organization. Do not use it for deletes, moves, or sensitive content."
+            ),
             args_schema=ManageWikiPageInput,
         )
 
@@ -335,10 +354,10 @@ class AgentToolSet:
         if self.retrieval is None:
             raise AgentToolUnavailableError("search_memory")
         try:
-            value = self.retrieval.search(query, top_k=top_k, mode=mode, source_scope=source_scope)
+            value = await self.retrieval.search(query, top_k=top_k, mode=mode, source_scope=source_scope)
         except TypeError:
-            value = self.retrieval.search(query, top_k=top_k, mode=mode)
-        response = _coerce_search_response(await _maybe_await(value))
+            value = await self.retrieval.search(query, top_k=top_k, mode=mode)
+        response = _coerce_search_response(value)
         self._notify("search_memory", response)
         return response
 
@@ -361,8 +380,8 @@ class AgentToolSet:
             target_path=target_path,
             source_message_id=source_message_id,
         )
-        value = self.memory.create_proposal(request)
-        response = _coerce_memory_response(await _maybe_await(value))
+        value = await self.memory.create_proposal(request)
+        response = _coerce_memory_response(value)
         self._notify("propose_memory", response)
         return response
 
@@ -386,8 +405,8 @@ class AgentToolSet:
             timezone=timezone,
             source_text=source_text,
         )
-        value = self.tasks.create(request)
-        response = _coerce_task_response(await _maybe_await(value))
+        value = await self.tasks.create(request)
+        response = _coerce_task_response(value)
         self._notify("create_task", response)
         return response
 
@@ -419,8 +438,8 @@ class AgentToolSet:
             links=links or [],
             source_message_id=source_message_id,
         )
-        value = self.wiki.manage_page(request)
-        response = _coerce_wiki_response(await _maybe_await(value))
+        value = await self.wiki.manage_page(request)
+        response = _coerce_wiki_response(value)
         self._notify("manage_wiki_page", response)
         return response
 
@@ -443,26 +462,20 @@ class AgentToolSet:
             raise SensitiveMemoryRejectedError(policy.reason)
 
         preview = _coerce_wiki_ingest_preview(
-            await _maybe_await(
-                self.wiki_workflow.preview_ingest(
-                    WikiIngestPreviewRequest(
-                        title=title,
-                        content=content,
-                        source_type=source_type,
-                        source_uri=source_uri,
-                        tags=tags or [],
-                        links=links or [],
-                        max_pages=max_pages,
-                    )
+            await self.wiki_workflow.preview_ingest(
+                WikiIngestPreviewRequest(
+                    title=title,
+                    content=content,
+                    source_type=source_type,
+                    source_uri=source_uri,
+                    tags=tags or [],
+                    links=links or [],
+                    max_pages=max_pages,
                 )
             )
         )
         review = _coerce_wiki_ingest_review(
-            await _maybe_await(
-                self.wiki_workflow.review_ingest(
-                    WikiIngestReviewRequest(run_id=preview.run_id)
-                )
-            )
+            await self.wiki_workflow.review_ingest(WikiIngestReviewRequest(run_id=preview.run_id))
         )
         proposal = WikiIngestProposal.from_preview_review(
             title=title,
@@ -493,9 +506,6 @@ class AgentToolSet:
         if not policy.allowed:
             raise SensitiveMemoryRejectedError(policy.reason)
 
-        planner = getattr(self.wiki_workflow, "plan_query_archive", None)
-        if planner is None:
-            raise AgentToolUnavailableError("plan_wiki_query_archive")
         request = QueryArchiveRequest(
             question=question,
             answer=answer,
@@ -508,7 +518,7 @@ class AgentToolSet:
             source_message_id=source_message_id,
             allow_mixed_sources=allow_mixed_sources,
         )
-        response = _coerce_wiki_query_archive_proposal(await _maybe_await(planner(request)))
+        response = _coerce_wiki_query_archive_proposal(await self.wiki_workflow.plan_query_archive(request))
         self._notify("plan_wiki_query_archive", response)
         return response
 
@@ -529,9 +539,6 @@ class AgentToolSet:
         if not policy.allowed:
             raise SensitiveMemoryRejectedError(policy.reason)
 
-        planner = getattr(self.wiki_workflow, "plan_synthesis", None)
-        if planner is None:
-            raise AgentToolUnavailableError("plan_wiki_synthesis")
         request = WikiSynthesizeRequest(
             title=title,
             content=content,
@@ -540,7 +547,7 @@ class AgentToolSet:
             tags=tags or [],
             links=links or [],
         )
-        response = _coerce_wiki_synthesis_proposal(await _maybe_await(planner(request)))
+        response = _coerce_wiki_synthesis_proposal(await self.wiki_workflow.plan_synthesis(request))
         response = response.model_copy(update={"source_message_id": source_message_id})
         self._notify("plan_wiki_synthesis", response)
         return response
@@ -553,11 +560,8 @@ class AgentToolSet:
         if self.wiki_workflow is None:
             raise AgentToolUnavailableError("plan_wiki_lint")
 
-        planner = getattr(self.wiki_workflow, "plan_lint", None)
-        if planner is None:
-            raise AgentToolUnavailableError("plan_wiki_lint")
         response = _coerce_wiki_lint_proposal(
-            await _maybe_await(planner(WikiLintRequest(write_report=write_report)))
+            await self.wiki_workflow.plan_lint(WikiLintRequest(write_report=write_report))
         )
         response = response.model_copy(update={"source_message_id": source_message_id})
         self._notify("plan_wiki_lint", response)
@@ -571,6 +575,9 @@ class AgentToolSet:
             | MemoryProposalActionResponse
             | TaskCreateResponse
             | WikiPageResponse
+            | QueryArchiveResponse
+            | WikiSynthesizeResponse
+            | WikiLintReportResponse
             | WikiIngestProposal
             | WikiQueryArchiveProposal
             | WikiSynthesisProposal
@@ -579,14 +586,6 @@ class AgentToolSet:
     ) -> None:
         if self.observer is not None:
             self.observer(AgentToolResult(name=name, value=value))
-
-
-async def _maybe_await(value):
-    import inspect
-
-    if inspect.isawaitable(value):
-        return await value
-    return value
 
 
 def _coerce_search_response(value) -> MemorySearchResponse:
@@ -598,48 +597,32 @@ def _coerce_search_response(value) -> MemorySearchResponse:
 
 
 def _coerce_memory_response(value) -> MemoryProposalActionResponse:
-    if isinstance(value, MemoryProposalActionResponse):
-        return value
-    return MemoryProposalActionResponse.model_validate(value)
+    return coerce_model(value, MemoryProposalActionResponse)
 
 
 def _coerce_task_response(value) -> TaskCreateResponse:
-    if isinstance(value, TaskCreateResponse):
-        return value
-    return TaskCreateResponse.model_validate(value)
+    return coerce_model(value, TaskCreateResponse)
 
 
 def _coerce_wiki_response(value) -> WikiPageResponse:
-    if isinstance(value, WikiPageResponse):
-        return value
-    return WikiPageResponse.model_validate(value)
+    return coerce_model(value, WikiPageResponse)
 
 
 def _coerce_wiki_ingest_preview(value) -> WikiIngestPreviewResponse:
-    if isinstance(value, WikiIngestPreviewResponse):
-        return value
-    return WikiIngestPreviewResponse.model_validate(value)
+    return coerce_model(value, WikiIngestPreviewResponse)
 
 
 def _coerce_wiki_ingest_review(value) -> WikiIngestReviewResponse:
-    if isinstance(value, WikiIngestReviewResponse):
-        return value
-    return WikiIngestReviewResponse.model_validate(value)
+    return coerce_model(value, WikiIngestReviewResponse)
 
 
 def _coerce_wiki_query_archive_proposal(value) -> WikiQueryArchiveProposal:
-    if isinstance(value, WikiQueryArchiveProposal):
-        return value
-    return WikiQueryArchiveProposal.model_validate(value)
+    return coerce_model(value, WikiQueryArchiveProposal)
 
 
 def _coerce_wiki_synthesis_proposal(value) -> WikiSynthesisProposal:
-    if isinstance(value, WikiSynthesisProposal):
-        return value
-    return WikiSynthesisProposal.model_validate(value)
+    return coerce_model(value, WikiSynthesisProposal)
 
 
 def _coerce_wiki_lint_proposal(value) -> WikiLintProposal:
-    if isinstance(value, WikiLintProposal):
-        return value
-    return WikiLintProposal.model_validate(value)
+    return coerce_model(value, WikiLintProposal)

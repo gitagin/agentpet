@@ -1,31 +1,36 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from collections.abc import Iterator
 from pathlib import Path
 import sqlite3
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app.scheduler import InMemoryReminderScheduler
+from apps.backend.tests._schema import migrate_db
+from app.scheduler import ReminderSchedulerError
 from app.services.chat_model import ChatModelError
 from app.services.tasks import TaskService, TaskStore
+from tests.conftest import auth_headers
 
 
 @pytest.fixture()
-def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    monkeypatch.setenv("AGENT_PET_SESSION_TOKEN", "test-token")
-    monkeypatch.setenv("AGENT_PET_SQLITE_PATH", str(tmp_path / "state.sqlite3"))
-
-    from app.config import get_settings
-    from app.main import create_app
-
-    get_settings.cache_clear()
-    return TestClient(create_app())
+def client(client_factory) -> Iterator[TestClient]:
+    with client_factory() as test_client:
+        yield test_client
 
 
 def auth() -> dict[str, str]:
-    return {"Authorization": "Bearer test-token"}
+    return auth_headers()
+
+
+class FailingReminderScheduler:
+    def schedule(self, reminder_id: str, trigger_at_utc: datetime, title: str) -> str:
+        raise ReminderSchedulerError("提醒调度器不可用")
+
+    def cancel(self, job_id: str) -> None:
+        pass
 
 
 def test_model_key_is_persisted_and_never_returned_plaintext(client: TestClient) -> None:
@@ -58,7 +63,7 @@ def test_model_key_is_persisted_and_never_returned_plaintext(client: TestClient)
     assert payload == {
         "provider": "openai-compatible",
         "status": "configured",
-        "masked": "sk...ue",
+        "masked": "****alue",
     }
     assert secret not in response.text
 
@@ -79,7 +84,7 @@ def test_model_key_is_persisted_and_never_returned_plaintext(client: TestClient)
         config_row = conn.execute("SELECT * FROM model_config WHERE id = 1").fetchone()
 
     assert columns == {"provider", "masked", "credential_ref", "created_at", "updated_at"}
-    assert row["masked"] == "sk...ue"
+    assert row["masked"] == "****alue"
     assert row["credential_ref"]
     assert config_row["base_url"] == "https://example.test/v1"
     assert config_row["model"] == "demo-model"
@@ -179,7 +184,7 @@ def test_agent_model_settings_are_persisted_per_agent(client: TestClient) -> Non
     assert config_response.json()["base_url"] == "https://chat.example.test/v1"
     assert key_response.status_code == 200
     assert key_response.json()["configured"] is True
-    assert key_response.json()["masked"] == "sk...et"
+    assert key_response.json()["masked"] == "****cret"
     assert second_config.status_code == 200
 
     listed = client.get("/api/settings/agent-models", headers=auth())
@@ -214,7 +219,7 @@ def test_agent_model_settings_are_persisted_per_agent(client: TestClient) -> Non
 
     assert [row["agent_id"] for row in config_rows] == ["chat_agent", "task_agent"]
     assert key_row["agent_id"] == "chat_agent"
-    assert key_row["masked"] == "sk...et"
+    assert key_row["masked"] == "****cret"
     assert key_row["credential_ref"]
     assert b"sk-chat-secret" not in db_path.read_bytes()
 
@@ -411,6 +416,22 @@ def test_legacy_agent_model_configs_are_migrated_and_removed(tmp_path: Path) -> 
     assert "knowledge_agent" not in remaining_ids
 
 
+def test_agent_model_key_requires_base_url_before_saving(tmp_path: Path) -> None:
+    from app.services.settings import ConfigurationError, InMemoryCredentialStore, SettingsStore
+
+    db_path = migrate_db(tmp_path / "state.sqlite3")
+    store = SettingsStore(db_path, credential_store=InMemoryCredentialStore())
+    try:
+        with pytest.raises(ConfigurationError, match="未配置 Base URL"):
+            store.set_agent_model_key(
+                agent_id="chat_agent",
+                provider="openai-compatible",
+                api_key="sk-agent-key-without-base-url",
+            )
+    finally:
+        store.close()
+
+
 def test_sql_migration_removes_legacy_agent_model_ids(tmp_path: Path) -> None:
     from app.storage.database import Database, MigrationRunner
 
@@ -567,7 +588,7 @@ def test_model_test_recovers_after_agent_provider_is_corrected(
                 "mimo",
                 "https://wrong.example.test/v1",
                 "wrong-model",
-                "sk...et",
+                "****cret",
                 "model-key:agent:chat_agent",
                 1,
                 "2026-01-01T00:00:00Z",
@@ -725,12 +746,12 @@ def test_startup_restores_unscheduled_reminders(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    db_path = tmp_path / "state.sqlite3"
-    failing_scheduler = InMemoryReminderScheduler(fail_schedule=True)
+    db_path = migrate_db(tmp_path / "state.sqlite3")
+    failing_scheduler = FailingReminderScheduler()
     store = TaskStore(db_path)
     created = TaskService(store, scheduler=failing_scheduler).create(
         title="Retry on startup",
-        remind_at="2026-04-27T09:00:00",
+        remind_at=(datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat(),
         timezone="UTC",
     )
     store.close()
@@ -745,7 +766,7 @@ def test_startup_restores_unscheduled_reminders(
     get_settings.cache_clear()
     with TestClient(create_app()) as startup_client:
         scheduler = startup_client.app.state.reminder_scheduler
-        assert f"reminder:{created.reminder.id}" in scheduler.jobs
+        assert scheduler.get_job(f"reminder:{created.reminder.id}") is not None
 
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row

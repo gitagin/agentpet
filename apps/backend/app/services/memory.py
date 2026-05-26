@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-import hashlib
 import os
 import sqlite3
 import tempfile
 import threading
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
 from app.models.common import new_id
 from app.models.enums import MemoryProposalStatus, MemoryProposalType
+from app.utils.hash import sha256_bytes_hex
+from app.utils.time import utc_now_iso
 
 
 class MemoryServiceError(Exception):
@@ -64,12 +64,8 @@ class MarkdownWriteHooks:
     after_write: Callable[[Path, str], None] | None = None
 
 
-def utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-
-
 def content_hash_bytes(content: bytes) -> str:
-    return hashlib.sha256(content).hexdigest()
+    return sha256_bytes_hex(content)
 
 
 def content_hash_text(content: str) -> str:
@@ -82,32 +78,10 @@ class MemoryProposalStore:
         self.conn = sqlite3.connect(db) if self._owns_connection else db
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA foreign_keys = ON")
-        self._ensure_schema()
 
     def close(self) -> None:
         if self._owns_connection:
             self.conn.close()
-
-    def _ensure_schema(self) -> None:
-        self.conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS memory_proposals (
-                id TEXT PRIMARY KEY,
-                type TEXT NOT NULL,
-                content TEXT NOT NULL,
-                target_path TEXT NOT NULL,
-                target_content_hash TEXT,
-                source_message_id TEXT,
-                status TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
-                rejected_reason TEXT,
-                written_path TEXT,
-                error TEXT
-            )
-            """
-        )
-        self.conn.commit()
 
     def insert(self, proposal: MemoryProposal) -> MemoryProposal:
         self.conn.execute(
@@ -191,12 +165,14 @@ class MemoryProposalStore:
         )
 
 
+_file_locks: dict[str, threading.RLock] = {}
+_file_locks_guard = threading.Lock()
+
+
 class SafeMarkdownWriter:
     def __init__(self, vault_root: str | Path, hooks: MarkdownWriteHooks | None = None):
         self.vault_root = Path(vault_root).resolve()
         self.hooks = hooks or MarkdownWriteHooks()
-        self._locks: dict[Path, threading.RLock] = {}
-        self._locks_guard = threading.Lock()
 
     def resolve_markdown_path(self, relative_path: str) -> Path:
         if Path(relative_path).is_absolute():
@@ -238,7 +214,8 @@ class SafeMarkdownWriter:
             if self.hooks.before_write:
                 self.hooks.before_write(target, markdown)
             backup = None
-            if target.exists():
+            had_existing = target.exists()
+            if had_existing:
                 backup = target.with_name(f"{target.name}.bak")
                 backup.write_bytes(target.read_bytes())
             fd, temp_name = tempfile.mkstemp(prefix=f".{target.name}.", suffix=".tmp", dir=target.parent)
@@ -252,15 +229,27 @@ class SafeMarkdownWriter:
             except OSError as exc:
                 try:
                     temp_path.unlink(missing_ok=True)
+                    if backup and backup.exists():
+                        os.replace(backup, target)
                 finally:
                     raise MarkdownWriteError(f"安全写入 Markdown 失败：{exc}") from exc
-            if self.hooks.after_write:
-                self.hooks.after_write(target, markdown)
+            try:
+                if self.hooks.after_write:
+                    self.hooks.after_write(target, markdown)
+            except Exception:
+                if backup and backup.exists():
+                    os.replace(backup, target)
+                elif not had_existing:
+                    target.unlink(missing_ok=True)
+                raise
+            if backup:
+                backup.unlink(missing_ok=True)
             return target
 
     def _lock_for(self, target: Path) -> threading.RLock:
-        with self._locks_guard:
-            return self._locks.setdefault(target, threading.RLock())
+        key = str(target.resolve())
+        with _file_locks_guard:
+            return _file_locks.setdefault(key, threading.RLock())
 
     def _decode_existing(self, data: bytes) -> tuple[str, str, bool]:
         if not data:

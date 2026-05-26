@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import sqlite3
 from dataclasses import dataclass
@@ -11,7 +10,8 @@ from typing import Iterable
 from app.models.common import new_id
 from app.models.enums import MemoryFactStatus
 from app.services.diary_memory_extractor import DiaryMemoryExtractor, DiaryMemoryObject
-from app.services.memory import utc_now_iso
+from app.utils.hash import sha256_hex
+from app.utils.time import utc_now_iso
 
 
 DEFAULT_DIARY_MEMORY_TYPE = "event"
@@ -83,80 +83,10 @@ class DiaryMemoryStore:
         self.conn = sqlite3.connect(db) if self._owns_connection else db
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA foreign_keys = ON")
-        self._ensure_schema()
 
     def close(self) -> None:
         if self._owns_connection:
             self.conn.close()
-
-    def _ensure_schema(self) -> None:
-        self.conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS diary_memory_objects (
-                id TEXT PRIMARY KEY,
-                vault_id TEXT NOT NULL,
-                type TEXT NOT NULL,
-                summary TEXT NOT NULL,
-                topic TEXT,
-                emotion TEXT,
-                people_json TEXT NOT NULL DEFAULT '[]',
-                keywords_json TEXT NOT NULL DEFAULT '[]',
-                importance REAL NOT NULL DEFAULT 0,
-                confidence REAL NOT NULL DEFAULT 0,
-                occurred_at TEXT NOT NULL,
-                timezone TEXT NOT NULL,
-                status TEXT NOT NULL DEFAULT 'active',
-                object_hash TEXT NOT NULL UNIQUE,
-                extraction_model TEXT,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            )
-            """
-        )
-        self.conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS diary_memory_object_sources (
-                object_id TEXT NOT NULL REFERENCES diary_memory_objects(id) ON DELETE CASCADE,
-                source_type TEXT NOT NULL,
-                source_id TEXT NOT NULL,
-                conversation_id TEXT,
-                user_message_id TEXT,
-                assistant_message_id TEXT,
-                agent_run_id TEXT,
-                markdown_path TEXT,
-                note_id TEXT,
-                chunk_id TEXT,
-                PRIMARY KEY (object_id, source_type, source_id)
-            )
-            """
-        )
-        self.conn.execute(
-            """
-            CREATE VIRTUAL TABLE IF NOT EXISTS diary_memory_object_fts USING fts5(
-                object_id UNINDEXED,
-                type,
-                summary,
-                topic,
-                emotion,
-                people,
-                keywords,
-                tokenize = 'unicode61'
-            )
-            """
-        )
-        self.conn.execute(
-            """
-            CREATE INDEX IF NOT EXISTS idx_diary_memory_objects_vault_time
-            ON diary_memory_objects(vault_id, occurred_at)
-            """
-        )
-        self.conn.execute(
-            """
-            CREATE INDEX IF NOT EXISTS idx_diary_memory_objects_status_updated
-            ON diary_memory_objects(status, updated_at)
-            """
-        )
-        self.conn.commit()
 
     def insert_object(
         self,
@@ -506,7 +436,7 @@ def _object_hash(
             source_id.strip(),
         ]
     )
-    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+    return sha256_hex(normalized)
 
 
 def _json_list(values: tuple[str, ...]) -> str:

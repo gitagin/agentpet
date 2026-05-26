@@ -20,8 +20,8 @@ export const agentModelDefinitions: Array<{ id: AgentModelId; label: string; des
   { id: "semantic_analysis_agent", label: "\u8bed\u4e49\u5206\u6790\u667a\u80fd\u4f53", description: "\u5224\u65ad\u610f\u56fe\u4e0e\u4e0a\u4e0b\u6587\u9700\u6c42" },
   { id: "memory_retrieval_agent", label: "\u8bb0\u5fc6\u68c0\u7d22\u667a\u80fd\u4f53", description: "\u641c\u7d22\u4e2a\u4eba\u8bb0\u5fc6\u548c\u65e5\u5e38\u804a\u5929\u8bb0\u5f55" },
   { id: "knowledge_retrieval_agent", label: "\u77e5\u8bc6\u68c0\u7d22\u667a\u80fd\u4f53", description: "\u641c\u7d22\u6301\u4e45\u5316\u77e5\u8bc6\u5e93\u6587\u6863" },
-  { id: "memory_proposal_agent", label: "\u8bb0\u5fc6\u63d0\u6848\u667a\u80fd\u4f53", description: "\u521b\u5efa\u5f85\u786e\u8ba4\u7684\u957f\u671f\u8bb0\u5fc6\u63d0\u6848" },
-  { id: "continuity_agent", label: "\u8fde\u7eed\u6027\u667a\u80fd\u4f53", description: "\u63d0\u70bc\u5f85\u786e\u8ba4\u7684\u8eab\u4efd\u3001\u5173\u7cfb\u548c\u60c5\u7eea\u8fde\u7eed\u6027" },
+  { id: "memory_proposal_agent", label: "\u8bb0\u5fc6\u6574\u7406\u667a\u80fd\u4f53", description: "\u5904\u7406\u9700\u8981\u786e\u8ba4\u7684\u957f\u671f\u8bb0\u5fc6\u6574\u7406" },
+  { id: "continuity_agent", label: "\u8fde\u7eed\u6027\u667a\u80fd\u4f53", description: "\u63d0\u70bc\u8eab\u4efd\u3001\u5173\u7cfb\u548c\u60c5\u7eea\u8fde\u7eed\u6027\uff0c\u9ad8\u98ce\u9669\u65f6\u8fdb\u5165\u786e\u8ba4" },
   { id: "task_agent", label: "\u4efb\u52a1\u667a\u80fd\u4f53", description: "\u521b\u5efa\u672c\u5730\u4efb\u52a1\u548c\u63d0\u9192" },
 ];
 
@@ -101,6 +101,28 @@ export function hasUnsavedAgentModelDraft(draft: AgentModelDraft): boolean {
     draft.base_url !== draft.saved_base_url ||
     draft.model !== draft.saved_model
   );
+}
+
+export function buildSavedAgentModelDraftPatch(
+  draft: AgentModelDraft,
+  config: AgentModelSettings,
+  keyStatus?: Pick<AgentModelSettings, "masked"> | null,
+): Partial<AgentModelDraft> {
+  const provider = config.provider || "";
+  const baseUrl = config.base_url || "";
+  const model = config.model || "";
+  const masked = keyStatus?.masked || config.masked || draft.masked;
+  return {
+    provider,
+    base_url: baseUrl,
+    model,
+    api_key: "",
+    configured: Boolean(masked),
+    masked: masked || "",
+    saved_provider: provider,
+    saved_base_url: baseUrl,
+    saved_model: model,
+  };
 }
 
 export function agentLabel(agentId: AgentModelId | string): string {

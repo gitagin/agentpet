@@ -1,39 +1,23 @@
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.conftest import auth_headers, iter_keys
+
 
 @pytest.fixture()
-def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    monkeypatch.setenv("AGENT_PET_SESSION_TOKEN", "diagnostics-token")
-    monkeypatch.setenv("AGENT_PET_SQLITE_PATH", str(tmp_path / "state.sqlite3"))
-
-    from app.config import get_settings
-    from app.main import create_app
-
-    get_settings.cache_clear()
-    return TestClient(create_app())
+def client(client_factory) -> Iterator[TestClient]:
+    with client_factory(session_token="diagnostics-token") as test_client:
+        yield test_client
 
 
 def auth() -> dict[str, str]:
-    return {"Authorization": "Bearer diagnostics-token"}
-
-
-def iter_keys(value: Any) -> list[str]:
-    keys: list[str] = []
-    if isinstance(value, dict):
-        for key, nested in value.items():
-            keys.append(str(key))
-            keys.extend(iter_keys(nested))
-    elif isinstance(value, list):
-        for item in value:
-            keys.extend(iter_keys(item))
-    return keys
+    return auth_headers("diagnostics-token")
 
 
 def test_diagnostics_export_requires_authorization(client: TestClient) -> None:

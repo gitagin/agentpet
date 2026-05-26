@@ -7,9 +7,13 @@ from ..models.api import (
     QueryArchiveHistoryResponse,
     QueryArchiveRequest,
     QueryArchiveResponse,
+    WikiDiagnosticQueueItem,
+    WikiDiagnosticQueueRequest,
+    WikiDiagnosticQueueResponse,
     WikiIndexResponse,
     WikiIngestApplyRequest,
     WikiIngestApplyResponse,
+    WikiIngestConfirmRequest,
     WikiIngestPreviewRequest,
     WikiIngestPreviewResponse,
     WikiIngestReviewRequest,
@@ -28,6 +32,8 @@ from ..models.api import (
 )
 from ..services.memory import MarkdownWriteError
 from ..services.wiki import SensitiveWikiRejectedError, WikiService, WikiWriteError
+from ..utils.hash import sha256_hex
+from ..utils.time import utc_now_iso
 from ..services.wiki_lint import WikiLintService
 from ..services.wiki_workflows import (
     QueryArchiveNotFoundError,
@@ -39,6 +45,7 @@ from ..services.wiki_workflows import (
 from .wiring import (
     audit_reason,
     record_audit,
+    wiki_diagnostics_queue_service_dependency,
     wiki_lint_service_dependency,
     wiki_service_dependency,
     wiki_workflow_service_dependency,
@@ -252,6 +259,31 @@ async def preview_wiki_import(
     return response
 
 
+@router.post("/ingest/confirm", response_model=WikiIngestPreviewResponse)
+async def confirm_wiki_ingest(
+    confirm_request: WikiIngestConfirmRequest,
+    request: Request,
+    service: WikiWorkflowService = Depends(wiki_workflow_service_dependency),
+) -> WikiIngestPreviewResponse:
+    try:
+        response = service.confirm_ingest(confirm_request)
+    except WikiWorkflowError as exc:
+        record_audit(
+            request,
+            action="wiki.ingest.confirm",
+            result="failed",
+            reason=audit_reason(request, code=getattr(exc, "code", exc.__class__.__name__)),
+        )
+        raise _workflow_error(exc) from exc
+    record_audit(
+        request,
+        action="wiki.ingest.confirm",
+        result="success",
+        reason=audit_reason(request, run_id=response.run_id, source_id=response.source_id),
+    )
+    return response
+
+
 @router.post("/ingest/apply", response_model=WikiIngestApplyResponse)
 async def apply_wiki_ingest(
     apply_request: WikiIngestApplyRequest,
@@ -448,6 +480,67 @@ async def run_wiki_lint(
         ),
     )
     return response
+
+
+@router.post("/diagnostics/queue", response_model=WikiDiagnosticQueueResponse)
+async def get_wiki_diagnostics_queue(
+    queue_request: WikiDiagnosticQueueRequest,
+    request: Request,
+    service=Depends(wiki_diagnostics_queue_service_dependency),
+) -> WikiDiagnosticQueueResponse:
+    generated_at = utc_now_iso()
+    raw_items = service.list_items()
+    allowed = set(queue_request.kinds)
+    items = []
+    for raw in raw_items:
+        if allowed and raw.diagnostic_type not in allowed:
+            continue
+        items.append(_diagnostic_queue_item(raw, generated_at, include_repair=queue_request.include_repair_preview))
+        if len(items) >= queue_request.limit:
+            break
+    summary: dict[str, int] = {"items": len(items)}
+    for item in items:
+        summary[item.kind] = summary.get(item.kind, 0) + 1
+    record_audit(
+        request,
+        action="wiki.diagnostics.queue.read",
+        result="success",
+        reason=audit_reason(request, count=str(len(items))),
+    )
+    return WikiDiagnosticQueueResponse(generated_at=generated_at, summary=summary, items=items)
+
+
+def _diagnostic_queue_item(raw, generated_at: str, *, include_repair: bool) -> WikiDiagnosticQueueItem:
+    related_paths = [raw.path] if raw.path else []
+    if raw.repair_preview is not None:
+        related_paths = list(dict.fromkeys([*related_paths, *raw.repair_preview.related_paths]))
+    key = "|".join([raw.diagnostic_type, raw.issue_code, raw.path or "", raw.target or "", raw.message])
+
+    return WikiDiagnosticQueueItem(
+        id=sha256_hex(key)[:16],
+        kind=raw.diagnostic_type,
+        severity=raw.severity,
+        title=raw.title,
+        question=_diagnostic_question(raw),
+        reason=raw.message,
+        related_paths=related_paths,
+        target=raw.target,
+        issue_code=raw.issue_code,
+        repair_proposal=raw.repair_preview if include_repair else None,
+        created_at=generated_at,
+    )
+
+
+def _diagnostic_question(raw) -> str:
+    if raw.diagnostic_type == "contradiction":
+        return f"如何处理 {raw.path or raw.target or 'Wiki'} 中的潜在冲突？"
+    if raw.diagnostic_type == "stale_claim":
+        return f"{raw.path or 'Wiki'} 中哪些陈旧说法需要刷新？"
+    if raw.diagnostic_type == "missing_link":
+        return f"缺失链接 [[{raw.target or 'unknown'}]] 应该指向或创建哪一页？"
+    if raw.diagnostic_type == "missing_concept":
+        return f"是否需要为 [[{raw.target or 'unknown'}]] 建立概念页？"
+    return raw.message
 
 
 def _workflow_error(exc: Exception) -> AppError:

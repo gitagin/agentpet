@@ -113,15 +113,6 @@ class VaultRepository:
         self.get(vault_id)
         self.conn.execute(
             """
-            CREATE TABLE IF NOT EXISTS app_state (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL,
-                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-            )
-            """
-        )
-        self.conn.execute(
-            """
             INSERT INTO app_state(key, value, updated_at)
             VALUES ('active_vault_id', ?, datetime('now'))
             ON CONFLICT(key) DO UPDATE SET
@@ -132,15 +123,6 @@ class VaultRepository:
         )
 
     def get_active(self) -> sqlite3.Row | None:
-        self.conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS app_state (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL,
-                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-            )
-            """
-        )
         row = self.conn.execute(
             """
             SELECT vaults.*

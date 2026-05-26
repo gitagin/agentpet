@@ -1,7 +1,12 @@
 import json
+import logging
 import sqlite3
+from pathlib import Path
+import sys
+import types
 from datetime import datetime, timezone
 
+from apps.backend.tests._schema import migrate_db
 from app.models.enums import MemoryFactStatus
 from app.services.long_term_memory import LongTermMemoryService
 from app.services.memory import SafeMarkdownWriter
@@ -9,8 +14,12 @@ from app.services.memory_graph import MemoryFactCandidate, MemoryGraphStore
 from app.storage.database import Database, MigrationRunner
 
 
+def graph_db(tmp_path: Path) -> Path:
+    return migrate_db(tmp_path / "state.sqlite3")
+
+
 def test_memory_graph_records_active_fact_and_deduplicates_support(tmp_path):
-    store = MemoryGraphStore(tmp_path / "state.sqlite3", graph_root=tmp_path / "graph")
+    store = MemoryGraphStore(graph_db(tmp_path), graph_root=tmp_path / "graph")
 
     first = store.upsert_candidate(
         MemoryFactCandidate(
@@ -49,7 +58,7 @@ def test_memory_graph_records_active_fact_and_deduplicates_support(tmp_path):
 
 
 def test_memory_graph_quarantines_conflicting_fact_until_confirmed(tmp_path):
-    store = MemoryGraphStore(tmp_path / "state.sqlite3", graph_root=tmp_path / "graph")
+    store = MemoryGraphStore(graph_db(tmp_path), graph_root=tmp_path / "graph")
     active = store.upsert_candidate(
         MemoryFactCandidate(
             category="preference",
@@ -84,7 +93,7 @@ def test_memory_graph_quarantines_conflicting_fact_until_confirmed(tmp_path):
 
 
 def test_memory_graph_records_optional_expansion_fields_and_searches_them(tmp_path):
-    store = MemoryGraphStore(tmp_path / "state.sqlite3", graph_root=tmp_path / "graph")
+    store = MemoryGraphStore(graph_db(tmp_path), graph_root=tmp_path / "graph")
 
     result = store.upsert_candidate(
         MemoryFactCandidate(
@@ -161,6 +170,7 @@ def test_memory_graph_upgrades_existing_fact_table_with_safe_defaults(tmp_path):
     conn.commit()
     conn.close()
 
+    migrate_db(db_path)
     store = MemoryGraphStore(db_path)
     facts = store.search_active("coffee")
 
@@ -195,7 +205,7 @@ def test_long_term_memory_writes_structured_graph_fact(tmp_path):
     service = LongTermMemoryService(
         SafeMarkdownWriter(tmp_path),
         now_provider=lambda: datetime(2026, 5, 4, 10, 11, 12, tzinfo=timezone.utc),
-        graph_store=MemoryGraphStore(tmp_path / "state.sqlite3", graph_root=tmp_path / "memory-graph"),
+        graph_store=MemoryGraphStore(graph_db(tmp_path), graph_root=tmp_path / "memory-graph"),
     )
 
     result = service.remember_from_user_message(
@@ -214,3 +224,74 @@ def test_long_term_memory_writes_structured_graph_fact(tmp_path):
     assert facts[0].predicate == "is"
     assert facts[0].object == "apple"
     service.close()
+
+
+def test_kuzu_mirror_initialization_failure_logs_and_keeps_store_usable(tmp_path, monkeypatch, caplog):
+    class FailingDatabase:
+        def __init__(self, path: str) -> None:
+            raise RuntimeError("kuzu init failed")
+
+    monkeypatch.setitem(
+        sys.modules,
+        "kuzu",
+        types.SimpleNamespace(Database=FailingDatabase, Connection=lambda db: None),
+    )
+    caplog.set_level(logging.WARNING, logger="app.services.memory_graph")
+
+    store = MemoryGraphStore(graph_db(tmp_path), graph_root=tmp_path / "graph")
+    try:
+        result = store.upsert_candidate(
+            MemoryFactCandidate(
+                category="preference",
+                subject="fruit",
+                predicate="is",
+                object="apple",
+                source_text="I like apple",
+                confidence=0.9,
+            )
+        )
+
+        assert result.inserted is True
+        assert "Kuzu mirror initialization failed; memory graph mirroring is disabled" in caplog.text
+    finally:
+        store.close()
+
+
+def test_kuzu_mirror_update_failure_logs_and_keeps_sqlite_fact(tmp_path, monkeypatch, caplog):
+    class FakeDatabase:
+        def __init__(self, path: str) -> None:
+            self.path = path
+
+    class FailingConnection:
+        def __init__(self, db: FakeDatabase) -> None:
+            self.calls = 0
+
+        def execute(self, query: str, params=None) -> None:
+            self.calls += 1
+            if self.calls > 5:
+                raise RuntimeError("kuzu update failed")
+
+    monkeypatch.setitem(
+        sys.modules,
+        "kuzu",
+        types.SimpleNamespace(Database=FakeDatabase, Connection=FailingConnection),
+    )
+    caplog.set_level(logging.WARNING, logger="app.services.memory_graph")
+    store = MemoryGraphStore(graph_db(tmp_path), graph_root=tmp_path / "graph")
+    try:
+        result = store.upsert_candidate(
+            MemoryFactCandidate(
+                category="preference",
+                subject="fruit",
+                predicate="is",
+                object="apple",
+                source_text="I like apple",
+                confidence=0.9,
+            )
+        )
+
+        assert result.inserted is True
+        assert store.search_active("fruit")[0].id == result.fact.id
+        assert "Kuzu mirror update failed; disabling memory graph mirroring" in caplog.text
+    finally:
+        store.close()

@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from app.models.common import new_id
 from app.models.enums import ReminderStatus, TaskStatus
 from app.scheduler import ReminderScheduler
+from app.utils.time import utc_now_iso
 
 
 class TaskServiceError(Exception):
@@ -102,10 +103,6 @@ COLON_TIME_RE = re.compile(
 POINT_TIME_RE = re.compile(
     rf"(?P<period>凌晨|早上|上午|中午|下午|晚上|夜里)?\s*(?P<hour>{NUMBER_TOKEN})\s*(?:点|时)(?P<half>半)?(?:(?P<minute>{NUMBER_TOKEN})\s*分?)?"
 )
-
-
-def utc_now_iso() -> str:
-    return datetime.now(dt_timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def parse_datetime_to_utc(value: str | None, timezone: str | None) -> tuple[str | None, str | None]:
@@ -273,51 +270,10 @@ class TaskStore:
         self.conn = sqlite3.connect(db) if self._owns_connection else db
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA foreign_keys = ON")
-        self._ensure_schema()
 
     def close(self) -> None:
         if self._owns_connection:
             self.conn.close()
-
-    def _ensure_schema(self) -> None:
-        self.conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS tasks (
-                id TEXT PRIMARY KEY,
-                title TEXT NOT NULL,
-                description TEXT NOT NULL DEFAULT '',
-                due_at_utc TEXT,
-                status TEXT NOT NULL,
-                source_text TEXT,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            )
-            """
-        )
-        self.conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS reminders (
-                id TEXT PRIMARY KEY,
-                task_id TEXT NOT NULL,
-                remind_at_utc TEXT NOT NULL,
-                time_parse_timezone TEXT NOT NULL,
-                status TEXT NOT NULL,
-                scheduler_job_id TEXT,
-                error TEXT,
-                triggered_at TEXT,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
-                FOREIGN KEY(task_id) REFERENCES tasks(id)
-            )
-            """
-        )
-        reminder_columns = {
-            row["name"]
-            for row in self.conn.execute("PRAGMA table_info(reminders)").fetchall()
-        }
-        if "triggered_at" not in reminder_columns:
-            self.conn.execute("ALTER TABLE reminders ADD COLUMN triggered_at TEXT")
-        self.conn.commit()
 
     def insert_task_with_reminder(self, task: Task, reminder: Reminder | None) -> TaskCreateResult:
         with self.conn:

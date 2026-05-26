@@ -1,7 +1,10 @@
 from pathlib import Path
 
+import pytest
+
 from app.repositories.storage import NoteRepository, VaultRepository
 from app.services.retrieval import RetrievalService
+from app.services.vector_index import LangChainQdrantVectorIndex, VectorIndexConfig
 from app.storage.database import Database, MigrationRunner
 from app.storage.markdown import parse_markdown
 
@@ -258,3 +261,76 @@ def test_hybrid_search_falls_back_to_fts_when_vector_index_unavailable(tmp_path:
     assert response.results[0].retrieval_mode == "fts"
     assert response.metadata["retrieval_mode"] == "hybrid"
     assert response.metadata["vector_available"] is False
+
+
+def test_hybrid_search_reports_vector_unavailable_reason(tmp_path: Path) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / "Memory.md").write_text("# Memory\n\nmissing-key-vector-fallback", encoding="utf-8")
+    db = Database(tmp_path / "app.db")
+    vector_index = LangChainQdrantVectorIndex(
+        VectorIndexConfig(
+            enabled=False,
+            root_path=tmp_path / "vector-index",
+            collection_name="test_collection",
+            embedding_model="test-embedding",
+            unavailable_reason="embedding_api_key_missing",
+        )
+    )
+    service = RetrievalService(db, vector_index=vector_index)
+    service.initialize()
+    vault_id = service.bind_vault(str(vault))
+    service.rebuild_index(vault_id)
+
+    response = service.search(vault_id=vault_id, query="missing-key-vector-fallback", top_k=5, mode="hybrid")
+
+    assert response.results
+    assert response.results[0].retrieval_mode == "fts"
+    assert response.metadata["vector_available"] is False
+    assert response.metadata["vector_unavailable_reason"] == "embedding_api_key_missing"
+
+
+class RecordingVectorStore:
+    def __init__(self) -> None:
+        self.add_documents_called = False
+
+    def delete(self, *, ids) -> None:
+        raise RuntimeError("delete failed")
+
+    def add_documents(self, *, documents, ids) -> None:
+        self.add_documents_called = True
+
+
+class DeleteFailingVectorIndex(LangChainQdrantVectorIndex):
+    def __init__(self, store: RecordingVectorStore, root_path: Path) -> None:
+        super().__init__(
+            VectorIndexConfig(
+                enabled=True,
+                root_path=root_path,
+                collection_name="test_collection",
+                embedding_model="test-embedding",
+                embeddings=object(),
+            )
+        )
+        self.store = store
+
+    def _store(self):
+        return self.store
+
+    def _document(self, *, page_content: str, metadata: dict):
+        return {"page_content": page_content, "metadata": metadata}
+
+
+def test_vector_upsert_stops_before_add_documents_when_delete_fails(tmp_path: Path) -> None:
+    store = RecordingVectorStore()
+    index = DeleteFailingVectorIndex(store, tmp_path / "vector-index")
+
+    with pytest.raises(RuntimeError, match="delete failed"):
+        index.upsert_markdown(
+            vault_id="vault-1",
+            note_id="note-1",
+            relative_path="Memory.md",
+            markdown=parse_markdown("# Memory\n\nalpha beta", fallback_title="Memory"),
+        )
+
+    assert store.add_documents_called is False

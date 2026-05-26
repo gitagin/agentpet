@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-import inspect
 import json
+import logging
 import re
 import sqlite3
 from dataclasses import dataclass
-from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
 from app.models.common import new_id
 from app.services.memory_policy import evaluate_memory_content
-from app.services.tasks import utc_now_iso
+from app.utils.hash import sha256_hex
+from app.utils.time import utc_now_iso
 
 
 CONTINUITY_STATE_KEYS = (
@@ -24,6 +24,9 @@ CONTINUITY_STATE_KEYS = (
     "recent_emotional_signals",
 )
 CONTINUITY_PROPOSAL_KINDS = {"identity", "relationship", "mood", "energy", "open_thread"}
+
+logger = logging.getLogger(__name__)
+
 PENDING = "pending"
 CONFIRMED = "confirmed"
 REJECTED = "rejected"
@@ -88,7 +91,6 @@ class ContinuityService:
         self.conn = sqlite3.connect(db) if self._owns_connection else db
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA foreign_keys = ON")
-        self._ensure_schema()
 
     def close(self) -> None:
         if self._owns_connection:
@@ -319,7 +321,7 @@ class ContinuityService:
         if model_client is None:
             return []
         try:
-            response = model_client.complete(
+            text = await model_client.complete(
                 user_message=_continuity_model_prompt(user_message, assistant_answer),
                 system_prompt=(
                     "You are continuity_agent. Return only compact JSON proposals for "
@@ -327,9 +329,13 @@ class ContinuityService:
                     "claim anything is confirmed."
                 ),
             )
-            text = await _maybe_await(response)
             payload = json.loads(_extract_json_object(str(text)))
         except Exception:
+            logger.warning(
+                "Continuity model extraction failed; falling back to deterministic candidates",
+                exc_info=True,
+                extra={"user_message_length": len(user_message), "assistant_answer_length": len(assistant_answer)},
+            )
             return []
         proposals = payload.get("proposals") if isinstance(payload, dict) else payload
         if not isinstance(proposals, list):
@@ -485,54 +491,6 @@ class ContinuityService:
             (proposal_id,),
         ).fetchone()
 
-    def _ensure_schema(self) -> None:
-        self.conn.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS continuity_state (
-                state_key TEXT PRIMARY KEY,
-                value TEXT NOT NULL,
-                confidence REAL NOT NULL,
-                source_proposal_id TEXT,
-                source_conversation_id TEXT,
-                source_message_id TEXT,
-                agent_run_id TEXT,
-                updated_at TEXT NOT NULL
-            );
-
-            CREATE TABLE IF NOT EXISTS continuity_proposals (
-                id TEXT PRIMARY KEY,
-                proposal_hash TEXT NOT NULL UNIQUE,
-                kind TEXT NOT NULL,
-                summary TEXT NOT NULL,
-                evidence TEXT NOT NULL,
-                confidence REAL NOT NULL,
-                source_conversation_id TEXT,
-                source_message_id TEXT,
-                agent_run_id TEXT,
-                status TEXT NOT NULL,
-                rejected_reason TEXT,
-                error TEXT,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_continuity_proposals_status
-            ON continuity_proposals(status, created_at);
-
-            CREATE INDEX IF NOT EXISTS idx_continuity_proposals_source
-            ON continuity_proposals(agent_run_id, source_message_id);
-
-            CREATE TABLE IF NOT EXISTS continuity_events (
-                id TEXT PRIMARY KEY,
-                proposal_id TEXT NOT NULL REFERENCES continuity_proposals(id) ON DELETE CASCADE,
-                action TEXT NOT NULL,
-                reason TEXT,
-                created_at TEXT NOT NULL
-            );
-            """
-        )
-        self.conn.commit()
-
     @staticmethod
     def _map_proposal(row: sqlite3.Row) -> ContinuityProposal:
         return ContinuityProposal(
@@ -658,7 +616,7 @@ def _proposal_hash(
             agent_run_id or "",
         ]
     )
-    return sha256(raw.encode("utf-8")).hexdigest()
+    return sha256_hex(raw)
 
 
 def _merge_compact_list(existing: str | None, incoming: str, *, limit: int) -> str:
@@ -694,12 +652,6 @@ def _extract_json_object(text: str) -> str:
     if start < 0 or end < start:
         raise ValueError("continuity_json_missing")
     return text[start : end + 1]
-
-
-async def _maybe_await(value: Any) -> Any:
-    if inspect.isawaitable(value):
-        return await value
-    return value
 
 
 def _evidence_excerpt(text: str) -> str:

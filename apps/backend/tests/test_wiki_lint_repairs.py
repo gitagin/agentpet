@@ -109,3 +109,46 @@ def test_wiki_lint_report_write_includes_repair_proposals(tmp_path: Path) -> Non
     report_text = report_path.read_text(encoding="utf-8")
     assert "Repair Proposals" in report_text
     assert "wiki_stale_marker" in report_text
+
+
+def test_wiki_lint_detects_template_sources_logs_and_format_traps(tmp_path: Path) -> None:
+    db_path = tmp_path / "state.sqlite3"
+    vault_root = tmp_path / "Vault"
+    wiki_root = vault_root / "Wiki"
+    wiki_root.mkdir(parents=True)
+    (wiki_root / "Concept.md").write_text(
+        "---\n"
+        "title: Concept\n"
+        "type: page\n"
+        "tags: [auto-wiki]\n"
+        "---\n"
+        "# Concept\n\n"
+        "Useful content with TODO and [[External/Bad]].\n",
+        encoding="utf-8",
+    )
+
+    database = Database(db_path)
+    MigrationRunner(database).apply()
+    with database.connect() as conn:
+        with conn:
+            vault_id = VaultRepository(conn).upsert(vault_root)
+
+    service = WikiLintService(db_path, vault_id=vault_id, vault_root=vault_root)
+    try:
+        report = service.run(WikiLintRequest(write_report=False))
+    finally:
+        service.close()
+
+    codes = {issue.code for issue in report.issues}
+    assert {
+        "wiki_template_section_missing",
+        "wiki_source_reference_missing",
+        "wiki_trigger_source_missing",
+        "wiki_revision_missing",
+        "wiki_page_update_log_missing",
+        "wiki_inbound_link_count_low",
+        "wiki_link_path_outside_known_roots",
+        "wiki_placeholder_left",
+    }.issubset(codes)
+    proposal_codes = {proposal.issue_code for proposal in report.repair_proposals}
+    assert "wiki_template_section_missing" in proposal_codes

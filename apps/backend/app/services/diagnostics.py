@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import re
 import sqlite3
 from pathlib import PurePath
@@ -15,8 +14,9 @@ from app.models.api import (
     DiagnosticsVaultStatus,
 )
 from app.services.settings import SettingsStore
-from app.services.tasks import utc_now_iso
 from app.storage.database import Database
+from app.utils.hash import sha256_hex
+from app.utils.time import utc_now_iso
 
 
 SECRET_VALUE_PATTERNS = [
@@ -80,7 +80,19 @@ class DiagnosticsExporter:
         ]
         table_counts = {
             table: _safe_count(conn, table)
-            for table in ("vaults", "notes", "note_chunks", "index_jobs", "audit_logs", "tasks")
+            for table in (
+                "vaults",
+                "notes",
+                "note_chunks",
+                "index_jobs",
+                "audit_logs",
+                "agent_actions",
+                "tasks",
+                "diary_memory_objects",
+                "memory_graph_facts",
+                "companion_consolidation_runs",
+                "companion_retrieval_reports",
+            )
         }
         return DiagnosticsDatabaseStatus(
             path_configured=self.settings.database_path is not None,
@@ -201,5 +213,5 @@ def _redact_match(value: str) -> str:
 def _diagnostic_id(value: str | None) -> str | None:
     if not value:
         return None
-    digest = hashlib.sha256(value.encode("utf-8")).hexdigest()[:12]
+    digest = sha256_hex(value)[:12]
     return f"id:{digest}"

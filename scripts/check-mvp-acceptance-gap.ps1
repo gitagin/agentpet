@@ -70,28 +70,31 @@ if (-not (Test-Path $MatrixPath)) {
   }
 }
 
-$mainPath = Join-Path $DesktopRoot "electron\main.cjs"
-if (-not (Test-Path $mainPath)) {
+$electronMainPath = Join-Path $DesktopRoot "electron\main.cjs"
+$electronRoot = Join-Path $DesktopRoot "electron"
+if (-not (Test-Path $electronMainPath)) {
   Add-Failure "Electron main file is missing."
 } else {
-  $main = Read-Text $mainPath
-  if (-not (Test-Text $main "spawn\s*\(")) {
-    Add-Failure "Electron main no longer shows a sidecar spawn signal."
+  $electronRuntimeFiles = Get-ChildItem -Path $electronRoot -File |
+    Where-Object { $_.Extension -in @(".cjs", ".js") }
+  $electronRuntime = ($electronRuntimeFiles | ForEach-Object { Read-Text $_.FullName }) -join "`n"
+  if (-not (Test-Text $electronRuntime "spawn\s*\(")) {
+    Add-Failure "Electron runtime no longer shows a sidecar spawn signal."
   }
-  if (-not (Test-Text $main "AGENT_PET_SESSION_TOKEN")) {
-    Add-Failure "Electron main no longer passes AGENT_PET_SESSION_TOKEN to the sidecar."
+  if (-not (Test-Text $electronRuntime "AGENT_PET_SESSION_TOKEN")) {
+    Add-Failure "Electron runtime no longer passes AGENT_PET_SESSION_TOKEN to the sidecar."
   }
-  if (-not (Test-Text $main "\bNotification\b|new\s+Notification\s*\(")) {
-    Add-Failure "Electron main no longer references Notification; update MVP-14 matrix if reminder delivery is removed."
+  if (-not (Test-Text $electronRuntime "\bNotification\b|new\s+Notification\s*\(")) {
+    Add-Failure "Electron runtime no longer references Notification; update MVP-14 matrix if reminder delivery is removed."
   }
-  if (-not (Test-Text $main "agent-pet:show-reminder-notification")) {
+  if (-not (Test-Text $electronRuntime "agent-pet:show-reminder-notification")) {
     Add-Failure "Electron reminder notification IPC bridge is missing."
   }
-  if (-not (Test-Text $main "\bTray\b|new\s+Tray\s*\(")) {
-    Add-Failure "Electron main no longer references Tray; update tray coverage notes."
+  if (-not (Test-Text $electronRuntime "\bTray\b|new\s+Tray\s*\(")) {
+    Add-Failure "Electron runtime no longer references Tray; update tray coverage notes."
   }
-  if (Test-Text $main "autoUpdater|electron-updater") {
-    Add-Failure "Electron main now references an updater; update signed auto-update coverage notes."
+  if (Test-Text $electronRuntime "autoUpdater|electron-updater") {
+    Add-Failure "Electron runtime now references an updater; update signed auto-update coverage notes."
   }
 }
 
@@ -100,11 +103,15 @@ if (-not (Test-Path $schedulerPath)) {
   Add-Failure "Reminder scheduler file is missing."
 } else {
   $scheduler = Read-Text $schedulerPath
-  if (-not (Test-Text $scheduler "class\s+InMemoryReminderScheduler")) {
-    Add-Failure "InMemoryReminderScheduler signal is missing; update reminder coverage."
-  }
-  if (Test-Text $scheduler "APScheduler|BackgroundScheduler|AsyncIOScheduler") {
-    Add-Failure "APScheduler signal found; update MVP-14 matrix and add runtime delivery tests."
+  foreach ($term in @(
+    "class\s+APSchedulerReminderScheduler",
+    "AsyncIOScheduler",
+    "SQLAlchemyJobStore",
+    "fire_reminder_job"
+  )) {
+    if (-not (Test-Text $scheduler $term)) {
+      Add-Failure "Persistent reminder scheduler signal is missing: $term"
+    }
   }
 }
 
@@ -124,6 +131,22 @@ if (Test-Path $taskTestsPath) {
   Add-Failure "Task service tests are missing."
 }
 
+$schedulerTestsPath = Join-Path $BackendRoot "tests\test_reminder_scheduler.py"
+if (Test-Path $schedulerTestsPath) {
+  $schedulerTests = Read-Text $schedulerTestsPath
+  foreach ($term in @(
+    "test_reminder_job_persists_across_scheduler_restart",
+    "test_due_reminder_job_marks_reminder_triggered",
+    "test_cancelled_reminder_job_is_not_restored_after_restart"
+  )) {
+    if ($schedulerTests -notlike "*$term*") {
+      Add-Failure "Persistent scheduler acceptance evidence is missing: $term"
+    }
+  }
+} else {
+  Add-Failure "Persistent reminder scheduler tests are missing."
+}
+
 $desktopFiles = Get-ChildItem -Path $DesktopRoot -Recurse -File |
   Where-Object { $_.FullName -notmatch "\\node_modules\\|\\dist\\" }
 $desktopText = ($desktopFiles | ForEach-Object { Read-Text $_.FullName }) -join "`n"
@@ -131,7 +154,7 @@ if (-not (Test-Text $desktopText "live2d|Cubism")) {
   Add-Failure "Live2D/Cubism signal is missing; update Live2D coverage notes."
 }
 
-Add-Note "Checked MVP matrix, reminder runtime gap, Live2D partial coverage, tray integration, and updater gap."
+Add-Note "Checked MVP matrix, persistent reminder runtime, Live2D partial coverage, tray integration, and updater gap."
 
 foreach ($note in $notes) {
   Write-Host "note: $note"

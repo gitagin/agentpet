@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.models.common import new_id
-from app.services.tasks import utc_now_iso
+from app.utils.time import utc_now_iso
 
 
 @dataclass(frozen=True)
@@ -25,7 +25,6 @@ class AuditLogService:
         self.conn = sqlite3.connect(db) if self._owns_connection else db
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA foreign_keys = ON")
-        self._ensure_schema()
 
     def close(self) -> None:
         if self._owns_connection:
@@ -78,22 +77,6 @@ class AuditLogService:
             (limit,),
         ).fetchall()
         return [self._map(row) for row in rows]
-
-    def _ensure_schema(self) -> None:
-        self.conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS audit_logs (
-                id TEXT PRIMARY KEY,
-                actor TEXT NOT NULL,
-                action TEXT NOT NULL,
-                target_path TEXT,
-                result TEXT NOT NULL,
-                reason TEXT,
-                created_at TEXT NOT NULL DEFAULT (datetime('now'))
-            )
-            """
-        )
-        self.conn.commit()
 
     @staticmethod
     def _map(row: sqlite3.Row) -> AuditLogEntry:

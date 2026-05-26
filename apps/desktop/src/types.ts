@@ -15,11 +15,29 @@ export type ApiErrorBody = {
 
 export type ConnectionSettings = {
   baseUrl: string;
-  sessionToken: string;
 };
 
-export type DesktopSidecarConfig = ConnectionSettings & {
-  dataDir?: string;
+export type DesktopSidecarConfig = ConnectionSettings;
+
+export type DesktopApiRequestOptions = {
+  method?: string;
+  headers?: Record<string, string>;
+  body?: string;
+  auth?: boolean;
+};
+
+export type DesktopApiResponse = {
+  status: number;
+  statusText: string;
+  headers: Record<string, string>;
+  body: string;
+};
+
+export type DesktopSseError = {
+  status?: number;
+  statusText?: string;
+  body?: string;
+  message?: string;
 };
 
 export type DesktopSidecarStatus = {
@@ -27,7 +45,6 @@ export type DesktopSidecarStatus = {
   baseUrl: string;
   host: string;
   port: number;
-  dataDir?: string;
   managed: boolean;
   pid: number | null;
   updatedAt: string;
@@ -68,6 +85,12 @@ declare global {
       getUiState?: (key: string) => string | null;
       setUiState?: (key: string, value: string | null) => void;
       getSidecarStatus?: () => Promise<DesktopSidecarStatus>;
+      apiRequest?: (pathOrUrl: string, options?: DesktopApiRequestOptions) => Promise<DesktopApiResponse>;
+      startSseStream?: (streamId: string, pathOrUrl: string) => Promise<{ streamId: string }>;
+      cancelSseStream?: (streamId: string) => Promise<void>;
+      onSseChunk?: (callback: (streamId: string, chunk: string) => void) => () => void;
+      onSseEnd?: (callback: (streamId: string) => void) => () => void;
+      onSseError?: (callback: (streamId: string, error: DesktopSseError) => void) => () => void;
       showReminderNotification?: (
         payload: DesktopReminderNotificationRequest,
       ) => Promise<DesktopReminderNotificationResult>;
@@ -117,6 +140,43 @@ export type ChatToolEvent = {
   label: string;
   detail: string;
   tone?: "info" | "success" | "error";
+};
+
+export type AgentActionRiskTier = "low" | "medium" | "high";
+
+export type AgentActionDecision = "auto" | "notify" | "ask";
+
+export type AgentAction = {
+  action_id: string;
+  source_agent_run_id?: string | null;
+  source_conversation_id?: string | null;
+  source_message_id?: string | null;
+  action_type: string;
+  risk_tier: AgentActionRiskTier;
+  decision: AgentActionDecision;
+  status: string;
+  title: string;
+  summary: string;
+  target_paths: string[];
+  reversible: boolean;
+  reverted_by?: string | null;
+  reverts_action_id?: string | null;
+  error?: string | null;
+  source: Record<string, string>;
+  diff_summary: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+  completed_at?: string | null;
+};
+
+export type AgentActionListResponse = {
+  actions: AgentAction[];
+};
+
+export type AgentActionRevertResponse = {
+  action: AgentAction;
+  reverted: AgentAction;
 };
 
 export type ChatWikiProposalState = "pending" | "confirmed" | "rejected" | "applying" | "applied" | "failed";
@@ -273,6 +333,13 @@ export type WikiIngestPreviewResponse = {
   status: string;
   page_plans: WikiIngestPagePlan[];
   summary: string;
+  source_metadata?: Record<string, unknown>;
+  preview_token?: string | null;
+};
+
+export type WikiIngestConfirmRequest = {
+  preview_token: string;
+  user_confirmed: boolean;
 };
 
 export type WikiIngestApplyRequest = {
@@ -461,7 +528,48 @@ export type WikiLintRunResponse = {
     reason: string;
     related_paths: string[];
   }>;
+  repair_proposals?: WikiLintRepairProposal[];
   report_page?: WikiPageResponse | null;
+};
+
+export type WikiLintRepairProposal = {
+  proposal_id: string;
+  status: string;
+  issue_code: string;
+  title: string;
+  target_path?: string | null;
+  operation: "create" | "append" | "replace_section" | "reindex" | "review" | "delete_index_record" | string;
+  reason: string;
+  markdown_preview: string;
+  related_paths: string[];
+};
+
+export type WikiDiagnosticQueueKind = "contradiction" | "stale_claim" | "missing_link" | "missing_concept";
+
+export type WikiDiagnosticQueueRequest = {
+  kinds?: WikiDiagnosticQueueKind[];
+  limit?: number;
+  include_repair_preview?: boolean;
+};
+
+export type WikiDiagnosticQueueItem = {
+  id: string;
+  kind: WikiDiagnosticQueueKind;
+  severity: "info" | "warning" | "error";
+  title: string;
+  question: string;
+  reason: string;
+  related_paths: string[];
+  target?: string | null;
+  issue_code: string;
+  repair_proposal?: WikiLintRepairProposal | null;
+  created_at: string;
+};
+
+export type WikiDiagnosticQueueResponse = {
+  generated_at: string;
+  summary: Record<string, number>;
+  items: WikiDiagnosticQueueItem[];
 };
 
 export type MemoryProposalType = "preference" | "fact" | "event" | "goal" | "rule";
@@ -782,6 +890,46 @@ export type MemoryGraphFactListResponse = {
 export type MemoryGraphFactActionResponse = {
   fact_id: string;
   status: string;
+};
+
+export type CompanionConsolidationRunRequest = {
+  from?: string | null;
+  to?: string | null;
+  limit?: number;
+};
+
+export type CompanionConsolidationRunResponse = {
+  run_id: string;
+  status: string;
+  source_count: number;
+  output_count: number;
+  skipped_count: number;
+  reason?: string | null;
+  fact_ids: string[];
+  started_at: string;
+  completed_at?: string | null;
+};
+
+export type CompanionRetrievalReport = {
+  id: string;
+  agent_run_id: string;
+  strategy: string;
+  candidate_count: number;
+  selected_count: number;
+  duplicate_drop_count: number;
+  per_scope_drop_count: number;
+  budget_drop_count: number;
+  item_budget: number;
+  per_scope_limit: number;
+  char_budget: number;
+  used_chars: number;
+  source_counts: Record<string, number>;
+  selected_scopes: string[];
+  created_at: string;
+};
+
+export type CompanionRetrievalReportListResponse = {
+  reports: CompanionRetrievalReport[];
 };
 
 export type VaultStatusResponse = {

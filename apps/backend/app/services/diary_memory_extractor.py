@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import inspect
 import json
+import logging
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -14,8 +14,11 @@ MIN_DIARY_MEMORY_CONFIDENCE = 0.4
 QUARANTINE_CONFIDENCE_MAX = 0.6
 
 
+logger = logging.getLogger(__name__)
+
+
 class DiaryExtractionModelProtocol(Protocol):
-    def complete(self, *, user_message: str, system_prompt: str | None = None) -> Any: ...
+    async def complete(self, *, user_message: str, system_prompt: str | None = None) -> Any: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,12 +50,17 @@ class DiaryMemoryExtractor:
             return []
 
         try:
-            response = self.model_client.complete(
+            response = await self.model_client.complete(
                 user_message=_user_prompt(text, memory_date=memory_date, source_path=source_path),
                 system_prompt=DIARY_EXTRACTION_SYSTEM_PROMPT,
             )
-            payload = _parse_json_payload(str(await _maybe_await(response)))
+            payload = _parse_json_payload(str(response))
         except Exception:
+            logger.warning(
+                "Diary memory extraction failed; skipping durable memories",
+                exc_info=True,
+                extra={"memory_date": memory_date, "source_path": source_path},
+            )
             return []
 
         raw_objects = _extract_object_list(payload)
@@ -270,12 +278,6 @@ def _clamp_float(value: Any, *, default: float) -> float:
     except (TypeError, ValueError):
         number = default
     return max(0.0, min(1.0, number))
-
-
-async def _maybe_await(value: Any) -> Any:
-    if inspect.isawaitable(value):
-        return await value
-    return value
 
 
 def _truncate(value: str, limit: int) -> str:

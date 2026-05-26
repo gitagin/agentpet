@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import hashlib
 import inspect
 import json
+import logging
 import re
 from dataclasses import dataclass
 from datetime import datetime
@@ -12,7 +12,12 @@ from zoneinfo import ZoneInfo
 from app.services.memory import SafeMarkdownWriter
 from app.services.memory_graph import MemoryFactCandidate, MemoryGraphStore, MemoryGraphWriteResult
 from app.services.memory_policy import evaluate_memory_content
+from app.services.write_policy import MarkdownWritePolicyRequest, evaluate_markdown_write
+from app.utils.hash import sha256_hex
 DEFAULT_LONG_TERM_MEMORY_TIMEZONE = "Asia/Shanghai"
+
+logger = logging.getLogger(__name__)
+
 PREFERENCES_PATH = "Memories/LongTerm/Preferences.md"
 PROFILE_PATH = "Memories/LongTerm/Profile.md"
 
@@ -99,7 +104,15 @@ class LongTermMemoryService:
             user_message_id=user_message_id,
             agent_run_id=agent_run_id,
         )
-        policy = evaluate_memory_content(markdown)
+        policy = evaluate_markdown_write(
+            MarkdownWritePolicyRequest(
+                scope="long_term_memory",
+                target_path=candidate.target_path,
+                title=candidate.subject,
+                content=markdown,
+                metadata={"category": candidate.category},
+            )
+        )
         if not policy.allowed:
             return LongTermMemoryWriteResult(written=False, reason=policy.reason)
 
@@ -336,12 +349,12 @@ def _candidate_hash(candidate: LongTermMemoryCandidate) -> str:
             candidate.value.casefold().strip(),
         ]
     )
-    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:16]
+    return sha256_hex(normalized)[:16]
 
 
 def _sensitive_field_reason(subject: str) -> str | None:
     normalized = subject.casefold().replace(" ", "").replace("_", "-")
-    markers = (
+    credential_markers = (
         "apikey",
         "api-key",
         "token",
@@ -354,8 +367,36 @@ def _sensitive_field_reason(subject: str) -> str | None:
         "令牌",
         "凭证",
     )
-    if any(marker in normalized for marker in markers):
+    sensitive_domain_markers = (
+        "身份证",
+        "手机号",
+        "电话",
+        "住址",
+        "地址",
+        "位置",
+        "健康",
+        "疾病",
+        "诊断",
+        "用药",
+        "财务",
+        "收入",
+        "工资",
+        "银行",
+        "银行卡",
+        "法律",
+        "诉讼",
+        "情绪",
+        "抑郁",
+        "焦虑",
+        "自杀",
+        "关系",
+        "伴侣",
+        "家人",
+    )
+    if any(marker in normalized for marker in credential_markers):
         return "sensitive_field"
+    if any(marker in normalized for marker in sensitive_domain_markers):
+        return "sensitive_life_domain"
     return None
 
 
@@ -385,6 +426,11 @@ def _extract_model_long_term_candidates(
         text = _await_if_needed_sync(response)
         payload = _parse_json_payload(str(text))
     except Exception:
+        logger.warning(
+            "Long-term memory model extraction failed; skipping model candidates",
+            exc_info=True,
+            extra={"model_name": model_name},
+        )
         return []
     raw_facts = _extract_fact_list(payload)
     candidates: list[LongTermMemoryCandidate] = []
@@ -402,6 +448,10 @@ def _await_if_needed_sync(value):
 
             return asyncio.run(value)
         except RuntimeError:
+            logger.warning(
+                "Long-term memory model await failed; treating response as unavailable",
+                exc_info=True,
+            )
             return ""
     return value
 

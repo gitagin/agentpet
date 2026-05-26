@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 
 from app.models.enums import MemoryFactStatus
 from app.services.diary_memory_extractor import DiaryMemoryExtractor, extract_diary_memories
@@ -12,7 +13,7 @@ class FakeDiaryModel:
         self.response = response
         self.calls: list[dict[str, str | None]] = []
 
-    def complete(self, *, user_message: str, system_prompt: str | None = None) -> str:
+    async def complete(self, *, user_message: str, system_prompt: str | None = None) -> str:
         self.calls.append({"user_message": user_message, "system_prompt": system_prompt})
         return self.response
 
@@ -162,11 +163,14 @@ def test_returns_no_objects_on_unparseable_model_output() -> None:
     assert result == []
 
 
-def test_returns_no_objects_when_model_raises() -> None:
+def test_returns_no_objects_when_model_raises(caplog) -> None:
     class FailingModel:
-        def complete(self, *, user_message: str, system_prompt: str | None = None) -> str:
+        async def complete(self, *, user_message: str, system_prompt: str | None = None) -> str:
             raise RuntimeError("provider down")
+
+    caplog.set_level(logging.WARNING, logger="app.services.diary_memory_extractor")
 
     result = asyncio.run(DiaryMemoryExtractor(FailingModel()).extract("Diary text"))
 
     assert result == []
+    assert "Diary memory extraction failed; skipping durable memories" in caplog.text

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import hashlib
 import json
+import logging
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
@@ -9,7 +9,11 @@ from typing import Iterable
 
 from app.models.common import new_id
 from app.models.enums import MemoryFactStatus
-from app.services.memory import utc_now_iso
+from app.utils.hash import sha256_hex
+from app.utils.time import utc_now_iso
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -74,78 +78,11 @@ class MemoryGraphStore:
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA foreign_keys = ON")
         self.graph_root = Path(graph_root) if graph_root else None
-        self._ensure_schema()
         self._kuzu = _KuzuMirror(self.graph_root) if self.graph_root is not None else None
 
     def close(self) -> None:
         if self._owns_connection:
             self.conn.close()
-
-    def _ensure_schema(self) -> None:
-        self.conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS memory_graph_facts (
-                id TEXT PRIMARY KEY,
-                fact_key TEXT NOT NULL UNIQUE,
-                conflict_key TEXT NOT NULL,
-                category TEXT NOT NULL,
-                subject TEXT NOT NULL,
-                predicate TEXT NOT NULL,
-                object TEXT NOT NULL,
-                status TEXT NOT NULL,
-                confidence REAL NOT NULL,
-                source_text TEXT NOT NULL,
-                source_type TEXT NOT NULL,
-                conversation_id TEXT,
-                user_message_id TEXT,
-                agent_run_id TEXT,
-                memory_type TEXT,
-                entity_type TEXT,
-                occurred_at TEXT,
-                expires_at TEXT,
-                metadata_json TEXT NOT NULL DEFAULT '{}',
-                importance REAL NOT NULL DEFAULT 0.5,
-                support_count INTEGER NOT NULL DEFAULT 1,
-                conflicts_with TEXT,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            )
-            """
-        )
-        self._ensure_fact_columns(
-            {
-                "memory_type": "TEXT",
-                "entity_type": "TEXT",
-                "occurred_at": "TEXT",
-                "expires_at": "TEXT",
-                "metadata_json": "TEXT NOT NULL DEFAULT '{}'",
-                "importance": "REAL NOT NULL DEFAULT 0.5",
-            }
-        )
-        self.conn.execute(
-            """
-            CREATE INDEX IF NOT EXISTS idx_memory_graph_facts_status
-            ON memory_graph_facts(status, updated_at)
-            """
-        )
-        self.conn.execute(
-            """
-            CREATE INDEX IF NOT EXISTS idx_memory_graph_facts_conflict
-            ON memory_graph_facts(conflict_key, status)
-            """
-        )
-        self.conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS memory_graph_events (
-                id TEXT PRIMARY KEY,
-                fact_id TEXT NOT NULL REFERENCES memory_graph_facts(id) ON DELETE CASCADE,
-                action TEXT NOT NULL,
-                reason TEXT,
-                created_at TEXT NOT NULL
-            )
-            """
-        )
-        self.conn.commit()
 
     def upsert_candidate(self, candidate: MemoryFactCandidate) -> MemoryGraphWriteResult:
         fact_key = _fact_key(candidate.subject, candidate.predicate, candidate.object)
@@ -191,6 +128,61 @@ class MemoryGraphStore:
                     candidate.predicate,
                     candidate.object,
                     status.value,
+                    candidate.confidence,
+                    candidate.source_text,
+                    candidate.source_type,
+                    candidate.conversation_id,
+                    candidate.user_message_id,
+                    candidate.agent_run_id,
+                    candidate.memory_type,
+                    candidate.entity_type,
+                    candidate.occurred_at,
+                    candidate.expires_at,
+                    metadata_json,
+                    importance,
+                    conflicts_with,
+                    now,
+                    now,
+                ),
+            )
+            self._record_event(fact_id, "create", reason)
+        fact = self.get(fact_id)
+        self._mirror_fact(fact)
+        return MemoryGraphWriteResult(fact=fact, inserted=True, reason=reason)
+
+    def insert_candidate(self, candidate: MemoryFactCandidate, *, reason: str = "candidate_review_required") -> MemoryGraphWriteResult:
+        fact_key = _fact_key(candidate.subject, candidate.predicate, candidate.object)
+        existing = self._get_by_fact_key(fact_key)
+        if existing is not None:
+            return MemoryGraphWriteResult(fact=existing, inserted=False, reason="already_recorded")
+
+        now = utc_now_iso()
+        fact_id = new_id()
+        conflict = self._find_active_conflict(_conflict_key(candidate.subject, candidate.predicate), candidate.object)
+        conflicts_with = conflict.id if conflict is not None else None
+        metadata_json = _normalize_metadata_json(candidate.metadata_json)
+        importance = _normalize_importance(candidate.importance)
+        with self.conn:
+            self.conn.execute(
+                """
+                INSERT INTO memory_graph_facts (
+                    id, fact_key, conflict_key, category, subject, predicate, object,
+                    status, confidence, source_text, source_type, conversation_id,
+                    user_message_id, agent_run_id, memory_type, entity_type,
+                    occurred_at, expires_at, metadata_json, importance, support_count,
+                    conflicts_with, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+                """,
+                (
+                    fact_id,
+                    fact_key,
+                    _conflict_key(candidate.subject, candidate.predicate),
+                    candidate.category,
+                    candidate.subject,
+                    candidate.predicate,
+                    candidate.object,
+                    MemoryFactStatus.CANDIDATE.value,
                     candidate.confidence,
                     candidate.source_text,
                     candidate.source_type,
@@ -290,15 +282,6 @@ class MemoryGraphStore:
         row = self.conn.execute("SELECT * FROM memory_graph_facts WHERE fact_key = ?", (fact_key,)).fetchone()
         return self._map(row) if row else None
 
-    def _ensure_fact_columns(self, columns: dict[str, str]) -> None:
-        existing = {
-            str(row["name"])
-            for row in self.conn.execute("PRAGMA table_info(memory_graph_facts)").fetchall()
-        }
-        for column, definition in columns.items():
-            if column not in existing:
-                self.conn.execute(f"ALTER TABLE memory_graph_facts ADD COLUMN {column} {definition}")
-
     def _find_active_conflict(self, conflict_key: str, object_value: str) -> MemoryGraphFact | None:
         row = self.conn.execute(
             """
@@ -378,6 +361,7 @@ class _KuzuMirror:
             import kuzu
         except ImportError:
             self._kuzu = None
+            logger.info("Kuzu mirror dependency is not installed; memory graph mirroring is disabled")
             return
         self._kuzu = kuzu
         database_path = self._database_path(root)
@@ -388,6 +372,11 @@ class _KuzuMirror:
             self._ensure_schema()
             self._ready = True
         except Exception:
+            logger.warning(
+                "Kuzu mirror initialization failed; memory graph mirroring is disabled",
+                exc_info=True,
+                extra={"graph_root": str(root)},
+            )
             self._ready = False
 
     def _database_path(self, root: Path) -> Path:
@@ -469,6 +458,11 @@ class _KuzuMirror:
                 {"id": fact.id, "source_id": fact.agent_run_id or fact.id},
             )
         except Exception:
+            logger.warning(
+                "Kuzu mirror update failed; disabling memory graph mirroring",
+                exc_info=True,
+                extra={"fact_id": fact.id, "subject": fact.subject},
+            )
             self._ready = False
 
     def _execute(self, query: str, params: dict[str, object] | None = None) -> None:
@@ -496,7 +490,7 @@ def _conflict_key(subject: str, predicate: str) -> str:
 
 def _hash_key(*parts: str) -> str:
     normalized = "\n".join(part.casefold().strip() for part in parts)
-    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+    return sha256_hex(normalized)
 
 
 def _like_pattern(query: str) -> str:

@@ -34,6 +34,13 @@ def desktop_text() -> str:
     return "\n".join(parts)
 
 
+def electron_runtime_text() -> str:
+    return "\n".join(
+        read_text(path)
+        for path in sorted((DESKTOP / "electron").glob("*.js")) + [DESKTOP / "electron" / "main.cjs"]
+    )
+
+
 def assert_matrix_row_status(content: str, row_id: str, status: str) -> None:
     pattern = rf"\|\s*{re.escape(row_id)}\s*\|[^\n]*{re.escape(status)}[^\n]*\|"
     assert re.search(pattern, content, flags=re.IGNORECASE), f"{row_id} must be marked {status}"
@@ -62,24 +69,29 @@ def test_mvp_acceptance_matrix_tracks_all_mvp_rows_and_known_gaps() -> None:
         assert text in content
 
 
-def test_reminder_runtime_is_still_documented_as_in_memory_gap() -> None:
+def test_reminder_runtime_is_documented_as_persistent_apscheduler_runtime() -> None:
     scheduler = read_text(BACKEND / "app" / "scheduler" / "reminders.py")
-    main = read_text(DESKTOP / "electron" / "main.cjs")
+    main = electron_runtime_text()
     task_tests = read_text(BACKEND / "tests" / "test_tasks_services.py")
+    scheduler_tests = read_text(BACKEND / "tests" / "test_reminder_scheduler.py")
 
-    assert "class InMemoryReminderScheduler" in scheduler
-    assert not re.search(r"APScheduler|BackgroundScheduler|AsyncIOScheduler", scheduler)
+    assert "class APSchedulerReminderScheduler" in scheduler
+    assert "AsyncIOScheduler" in scheduler
+    assert "SQLAlchemyJobStore" in scheduler
+    assert "fire_reminder_job" in scheduler
     assert re.search(r"\bNotification\b|new\s+Notification\s*\(", main)
     assert "agent-pet:show-reminder-notification" in main
     assert "test_scheduler_failure_keeps_task_and_marks_reminder_unscheduled" in task_tests
     assert "test_create_task_converts_local_times_to_utc_and_schedules_reminder" in task_tests
     assert "test_create_task_parses_chinese_absolute_reminder_time" in task_tests
-    assert "test_scheduler_trigger_marks_reminder_triggered" in task_tests
+    assert "test_reminder_job_persists_across_scheduler_restart" in scheduler_tests
+    assert "test_due_reminder_job_marks_reminder_triggered" in scheduler_tests
+    assert "test_cancelled_reminder_job_is_not_restored_after_restart" in scheduler_tests
 
 
 def test_desktop_gaps_for_live2d_and_signed_update_remain_explicit() -> None:
     text = desktop_text()
-    main = read_text(DESKTOP / "electron" / "main.cjs")
+    main = electron_runtime_text()
     package_json = read_text(DESKTOP / "package.json")
 
     assert "桌宠模型" in text

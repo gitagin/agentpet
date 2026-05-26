@@ -12,8 +12,15 @@ RESET_CONFIRMATION_TEXT = "RESET_AGENT_PET"
 
 
 SQLITE_RESET_TABLES = (
+    "apscheduler_jobs",
     "note_fts",
     "diary_memory_object_fts",
+    "agent_actions",
+    "automation_settings",
+    "companion_retrieval_reports",
+    "companion_consolidation_run_outputs",
+    "companion_consolidation_run_sources",
+    "companion_consolidation_runs",
     "wiki_workflow_page_updates",
     "wiki_ingest_reviews",
     "wiki_query_archives",

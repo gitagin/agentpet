@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import hashlib
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from app.utils.hash import sha256_hex
 
 
 FRONTMATTER_RE = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n", re.DOTALL)
@@ -95,7 +96,7 @@ def chunk_markdown(body: str, *, max_chunk_chars: int = 1200) -> list[MarkdownCh
 
 
 def sha256_text(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+    return sha256_hex(text)
 
 
 def read_markdown(path: Path) -> ParsedMarkdown:

@@ -8,6 +8,14 @@ from pydantic import BaseModel, Field
 
 from app.models.api import MemorySearchResult
 from app.models.enums import AgentIntent
+from app.models.event_payloads import (
+    AgentActionDecisionFields,
+    AgentMemoryProposalFields,
+    AgentTaskFields,
+    AgentWikiProposalFields,
+    ContextBudgetFields,
+    ContinuityProposalFields,
+)
 
 
 class AgentEventBase(BaseModel):
@@ -33,23 +41,12 @@ class AgentCitationEvent(AgentEventBase):
     citation: MemorySearchResult
 
 
-class AgentMemoryProposalEvent(AgentEventBase):
+class AgentMemoryProposalEvent(AgentMemoryProposalFields, AgentEventBase):
     event: Literal["memory_proposal"] = "memory_proposal"
-    proposal_id: str
-    status: str
-    target_path: str | None = None
 
 
-class AgentContinuityProposalEvent(AgentEventBase):
+class AgentContinuityProposalEvent(ContinuityProposalFields, AgentEventBase):
     event: Literal["continuity_proposal"] = "continuity_proposal"
-    proposal_id: str
-    kind: Literal["identity", "relationship", "mood", "energy", "open_thread"]
-    summary: str
-    evidence: str
-    confidence: float
-    source_conversation_id: str | None = None
-    source_message_id: str | None = None
-    status: str
 
 
 class AgentContinuitySignalEvent(AgentEventBase):
@@ -62,39 +59,23 @@ class AgentContinuitySignalEvent(AgentEventBase):
     source_state_keys: list[str] = Field(default_factory=list)
 
 
-class AgentWikiProposalEvent(AgentEventBase):
+class AgentContextBudgetEvent(ContextBudgetFields, AgentEventBase):
+    event: Literal["context_budget"] = "context_budget"
+
+
+class AgentActionEvent(AgentActionDecisionFields, AgentEventBase):
+    event: Literal["agent_action"] = "agent_action"
+    risk_tier: Literal["low", "medium", "high"] = "low"
+    decision: Literal["auto", "notify", "ask"] = "auto"
+    requires_confirmation: bool = False
+
+
+class AgentWikiProposalEvent(AgentWikiProposalFields, AgentEventBase):
     event: Literal["wiki_proposal"] = "wiki_proposal"
-    proposal_type: Literal["ingest", "query_archive", "synthesize", "lint"] = "ingest"
-    status: str
-    title: str
-    run_id: str | None = None
-    source_id: str | None = None
-    source_hash: str | None = None
-    review_id: str | None = None
-    review_status: str | None = None
-    summary: str = ""
-    review_summary: str = ""
-    target_paths: list[str] = Field(default_factory=list)
-    recommended_targets: list[str] = Field(default_factory=list)
-    findings: list[dict[str, object]] = Field(default_factory=list)
-    errors: list[str] = Field(default_factory=list)
-    warnings: list[str] = Field(default_factory=list)
-    lint_summary: dict[str, object] = Field(default_factory=dict)
-    write_report: bool | None = None
-    markdown_preview: str = ""
-    source_message_id: str | None = None
 
 
-class AgentTaskEvent(AgentEventBase):
+class AgentTaskEvent(AgentTaskFields, AgentEventBase):
     event: Literal["task"] = "task"
-    task_id: str
-    status: str
-    reminder_id: str | None = None
-    title: str | None = None
-    reminder_status: str | None = None
-    remind_at: str | None = None
-    timezone: str | None = None
-    timezone_label: str | None = None
 
 
 class AgentDoneEvent(AgentEventBase):
@@ -116,6 +97,8 @@ AgentEvent = Annotated[
     | AgentMemoryProposalEvent
     | AgentContinuityProposalEvent
     | AgentContinuitySignalEvent
+    | AgentContextBudgetEvent
+    | AgentActionEvent
     | AgentWikiProposalEvent
     | AgentTaskEvent
     | AgentDoneEvent

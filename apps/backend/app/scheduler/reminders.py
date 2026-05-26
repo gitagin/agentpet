@@ -1,110 +1,158 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime, timezone
-from threading import Lock, Timer
-from collections.abc import Callable
-from typing import Protocol
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any, Protocol, runtime_checkable
+
+from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.schedulers.base import SchedulerAlreadyRunningError, SchedulerNotRunningError
+from apscheduler.util import undefined
 
 
 class ReminderSchedulerError(Exception):
     pass
 
 
-class ReminderScheduler(Protocol):
-    def schedule(self, reminder_id: str, trigger_at_utc: datetime, title: str) -> str:
-        ...
-
-    def cancel(self, job_id: str) -> None:
-        ...
-
-
-@dataclass
-class ScheduledJob:
-    reminder_id: str
-    trigger_at_utc: datetime
-    title: str
-    job_id: str
-    timer: Timer | None = None
+@runtime_checkable
+class ReminderSchedulerProtocol(Protocol):
+    def start(self, *, paused: bool = False) -> None: ...
+    def pause(self) -> None: ...
+    def resume(self) -> None: ...
+    def shutdown(self) -> None: ...
+    def schedule(self, reminder_id: str, trigger_at_utc: datetime, title: str) -> str: ...
+    def cancel(self, job_id: str) -> None: ...
+    def clear(self) -> None: ...
 
 
-class InMemoryReminderScheduler:
-    def __init__(
-        self,
-        *,
-        fail_schedule: bool = False,
-        on_trigger: Callable[[str], None] | None = None,
-        on_error: Callable[[str, Exception], None] | None = None,
-    ):
+ReminderScheduler = ReminderSchedulerProtocol
+
+
+class APSchedulerReminderScheduler:
+    def __init__(self, db_path: str | Path, *, fail_schedule: bool = False):
+        self.db_path = Path(db_path)
         self.fail_schedule = fail_schedule
-        self.on_trigger = on_trigger
-        self.on_error = on_error
-        self.jobs: dict[str, ScheduledJob] = {}
-        self._lock = Lock()
+        self.scheduler = AsyncIOScheduler(
+            jobstores={
+                "default": SQLAlchemyJobStore(
+                    url=f"sqlite:///{self.db_path.resolve().as_posix()}",
+                    engine_options={"connect_args": {"timeout": 30}},
+                )
+            },
+            timezone=timezone.utc,
+            job_defaults={
+                "coalesce": True,
+                "max_instances": 1,
+                "misfire_grace_time": None,
+            },
+        )
+
+    def start(self, *, paused: bool = False) -> None:
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        if self.scheduler.running:
+            return
+        try:
+            self.scheduler.start(paused=paused)
+        except SchedulerAlreadyRunningError:
+            pass
+
+    def pause(self) -> None:
+        if not self.scheduler.running:
+            return
+        self.scheduler.pause()
+
+    def resume(self) -> None:
+        if not self.scheduler.running:
+            return
+        self.scheduler.resume()
 
     def schedule(self, reminder_id: str, trigger_at_utc: datetime, title: str) -> str:
         if self.fail_schedule:
             raise ReminderSchedulerError("提醒调度器不可用")
+        self.start(paused=False)
         job_id = f"reminder:{reminder_id}"
-        self.cancel(job_id)
-        normalized_trigger = _as_utc(trigger_at_utc)
-        job = ScheduledJob(
-            reminder_id=reminder_id,
-            trigger_at_utc=normalized_trigger,
-            title=title,
-            job_id=job_id,
+        run_at = _as_utc(trigger_at_utc)
+        if run_at <= datetime.now(timezone.utc):
+            run_at = datetime.now(timezone.utc) + timedelta(milliseconds=50)
+        self.scheduler.add_job(
+            fire_reminder_job,
+            trigger="date",
+            run_date=run_at,
+            id=job_id,
+            args=[reminder_id, str(self.db_path)],
+            replace_existing=True,
+            name=title,
+            misfire_grace_time=undefined,
         )
-        if self.on_trigger is not None:
-            delay = max(0.0, (normalized_trigger - datetime.now(timezone.utc)).total_seconds())
-            if delay == 0.0:
-                delay = 0.05
-            job.timer = Timer(delay, self._fire, args=(job_id,))
-            job.timer.daemon = True
-        with self._lock:
-            self.jobs[job_id] = job
-        if job.timer is not None:
-            job.timer.start()
         return job_id
 
     def cancel(self, job_id: str) -> None:
-        with self._lock:
-            job = self.jobs.pop(job_id, None)
-        if job is not None and job.timer is not None:
-            job.timer.cancel()
+        if not self.scheduler.running:
+            self.start(paused=True)
+        job = self.scheduler.get_job(job_id)
+        if job is not None:
+            job.remove()
 
-    def run_due(self, now_utc: datetime | None = None) -> list[str]:
-        now = _as_utc(now_utc or datetime.now(timezone.utc))
-        with self._lock:
-            due_job_ids = [
-                job_id
-                for job_id, job in self.jobs.items()
-                if job.trigger_at_utc <= now
-            ]
-        for job_id in due_job_ids:
-            self._fire(job_id)
-        return due_job_ids
+    def clear(self) -> None:
+        if not self.scheduler.running:
+            self.start(paused=True)
+        self.scheduler.remove_all_jobs()
+
+    def get_job(self, job_id: str) -> Any:
+        if not self.scheduler.running:
+            self.start(paused=True)
+        return self.scheduler.get_job(job_id)
 
     def shutdown(self) -> None:
-        with self._lock:
-            jobs = list(self.jobs.values())
-            self.jobs.clear()
-        for job in jobs:
-            if job.timer is not None:
-                job.timer.cancel()
-
-    def _fire(self, job_id: str) -> None:
-        with self._lock:
-            job = self.jobs.pop(job_id, None)
-        if job is None or self.on_trigger is None:
+        if not self.scheduler.running:
             return
         try:
-            self.on_trigger(job.reminder_id)
-        except Exception as exc:
-            if self.on_error is not None:
-                try:
-                    self.on_error(job.reminder_id, exc)
-                except Exception:
-                    pass
+            self.scheduler.shutdown(wait=False)
+        except SchedulerNotRunningError:
+            pass
+
+
+def fire_reminder_job(reminder_id: str, db_path: str) -> None:
+    from app.services.audit import AuditLogService
+    from app.services.tasks import TaskService, TaskStore
+
+    store = TaskStore(db_path)
+    try:
+        TaskService(store).mark_reminder_triggered(reminder_id)
+        _record_scheduler_audit(db_path, "reminder.triggered", "success", reminder_id)
+    except Exception as exc:
+        try:
+            TaskService(store).mark_reminder_failed(reminder_id, str(exc) or "提醒触发失败")
+        finally:
+            _record_scheduler_audit(
+                db_path,
+                "reminder.failed",
+                "failed",
+                reminder_id,
+                code=exc.__class__.__name__,
+            )
+    finally:
+        store.close()
+
+
+def _record_scheduler_audit(
+    db_path: str | Path,
+    action: str,
+    result: str,
+    reminder_id: str,
+    *,
+    code: str | None = None,
+) -> None:
+    from app.services.audit import AuditLogService
+
+    audit = AuditLogService(db_path)
+    try:
+        reason = f"reminder_id={reminder_id}"
+        if code:
+            reason = f"{reason};code={code}"
+        audit.record(actor="scheduler", action=action, result=result, reason=reason)
+    finally:
+        audit.close()
 
 
 def _as_utc(value: datetime) -> datetime:

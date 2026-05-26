@@ -13,7 +13,7 @@ from app.models.api import (
 from app.services.memory import MarkdownWriteError, SafeMarkdownWriter
 from app.services.wiki import WikiService
 from app.services.wiki_workflows import WikiWorkflowService
-from app.storage.database import Database
+from app.storage.database import Database, MigrationRunner
 
 
 class FakeRetrieval:
@@ -173,9 +173,34 @@ def test_wiki_mcp_search_reports_unavailable_when_retrieval_missing(tmp_path: Pa
     assert exc.value.tool_name == "search_wiki"
 
 
-def _workflow_service(db_path: Path, vault_root: Path) -> WikiWorkflowService:
+class _AsyncWikiWorkflowService:
+    def __init__(self, service: WikiWorkflowService) -> None:
+        self.service = service
+
+    async def preview_ingest(self, request):
+        return self.service.preview_ingest(request)
+
+    async def confirm_ingest(self, request):
+        return self.service.confirm_ingest(request)
+
+    async def review_ingest(self, request):
+        return await self.service.review_ingest(request)
+
+    async def plan_query_archive(self, request):
+        return self.service.plan_query_archive(request)
+
+    async def plan_synthesis(self, request):
+        return self.service.plan_synthesis(request)
+
+    async def plan_lint(self, request):
+        return self.service.plan_lint(request)
+
+
+def _workflow_service(db_path: Path, vault_root: Path) -> _AsyncWikiWorkflowService:
+    database = Database(db_path)
+    MigrationRunner(database).apply()
     wiki = WikiService(SafeMarkdownWriter(vault_root), index_refresh=lambda _path: "scheduled:test-vault")
-    return WikiWorkflowService(Database(db_path), wiki)
+    return _AsyncWikiWorkflowService(WikiWorkflowService(database, wiki))
 
 
 def _citation(relative_path: str) -> MemorySearchResult:

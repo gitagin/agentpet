@@ -1,4 +1,4 @@
-import type { ApiErrorBody, ConnectionSettings, HealthResponse } from "../types";
+import type { ApiErrorBody, ConnectionSettings, DesktopApiResponse, HealthResponse } from "../types";
 
 const DEFAULT_BASE_URL = "http://127.0.0.1:8765";
 
@@ -23,19 +23,16 @@ export function loadConnectionSettings(): ConnectionSettings {
   if (sidecarConfig) {
     return {
       baseUrl: normalizeBaseUrl(sidecarConfig.baseUrl),
-      sessionToken: sidecarConfig.sessionToken.trim(),
     };
   }
 
   return {
     baseUrl: sessionStorage.getItem("agent-pet.base-url") || DEFAULT_BASE_URL,
-    sessionToken: sessionStorage.getItem("agent-pet.session-token") || "",
   };
 }
 
 export function saveConnectionSettings(settings: ConnectionSettings): void {
   sessionStorage.setItem("agent-pet.base-url", normalizeBaseUrl(settings.baseUrl));
-  sessionStorage.setItem("agent-pet.session-token", settings.sessionToken.trim());
 }
 
 export function normalizeBaseUrl(baseUrl: string): string {
@@ -44,24 +41,17 @@ export function normalizeBaseUrl(baseUrl: string): string {
 
 export class ApiClient {
   private baseUrl: string;
-  private sessionToken: string;
 
   constructor(settings: ConnectionSettings) {
     this.baseUrl = normalizeBaseUrl(settings.baseUrl);
-    this.sessionToken = settings.sessionToken.trim();
   }
 
   setSettings(settings: ConnectionSettings): void {
     this.baseUrl = normalizeBaseUrl(settings.baseUrl);
-    this.sessionToken = settings.sessionToken.trim();
   }
 
   getBaseUrl(): string {
     return this.baseUrl;
-  }
-
-  getSessionToken(): string {
-    return this.sessionToken;
   }
 
   async health(signal?: AbortSignal): Promise<HealthResponse> {
@@ -100,7 +90,6 @@ export class ApiClient {
     path: string,
     init: RequestInit & { auth?: boolean } = {},
   ): Promise<T> {
-    const auth = init.auth !== false;
     const headers = new Headers(init.headers);
 
     if (init.body && !headers.has("Content-Type")) {
@@ -108,11 +97,15 @@ export class ApiClient {
     }
     headers.set("Accept", "application/json");
 
-    if (auth) {
-      if (!this.sessionToken) {
-        throw new ApiError("该请求需要会话令牌。", 401);
-      }
-      headers.set("Authorization", `Bearer ${this.sessionToken}`);
+    const bridge = window.agentDesktop?.apiRequest;
+    if (bridge) {
+      const response = await bridge(path, {
+        method: init.method,
+        headers: Object.fromEntries(headers.entries()),
+        body: typeof init.body === "string" ? init.body : undefined,
+        auth: init.auth,
+      });
+      return parseDesktopApiResponse<T>(response);
     }
 
     const response = await fetch(this.toUrl(path), {
@@ -139,15 +132,32 @@ export class ApiClient {
   }
 }
 
+function parseDesktopApiResponse<T>(response: DesktopApiResponse): T {
+  if (response.status < 200 || response.status >= 300) {
+    throw toApiErrorFromText(response.status, response.statusText, response.body);
+  }
+
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  return JSON.parse(response.body) as T;
+}
+
 async function toApiError(response: Response): Promise<ApiError> {
+  const text = await response.text();
+  return toApiErrorFromText(response.status, response.statusText, text);
+}
+
+function toApiErrorFromText(status: number, statusText: string, text: string): ApiError {
   let body: ApiErrorBody | undefined;
 
   try {
-    body = (await response.json()) as ApiErrorBody;
+    body = JSON.parse(text) as ApiErrorBody;
   } catch {
     body = undefined;
   }
 
-  const message = body?.error?.message || `${response.status} ${response.statusText}`;
-  return new ApiError(message, response.status, body);
+  const message = body?.error?.message || `${status} ${statusText}`;
+  return new ApiError(message, status, body);
 }

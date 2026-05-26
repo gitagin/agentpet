@@ -52,7 +52,7 @@ def test_health_response_contract_excludes_sensitive_runtime_state() -> None:
     )
 
     dumped = response.model_dump()
-    assert dumped == {"status": "ok", "version": "0.2.0", "database": "ok"}
+    assert dumped == {"status": "ok", "version": "0.2.0", "database": "ok", "components": {}}
     assert set(dumped).isdisjoint(forbidden_fields)
 
 

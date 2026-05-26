@@ -1,5 +1,7 @@
 # Agent Pet
 
+[![CI](https://github.com/gitagin/agentpet/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/gitagin/agentpet/actions/workflows/ci.yml)
+
 Local-first desktop Agent pet with Obsidian-backed transparent memory.
 
 The authoritative implementation spec is [`Development_Documentation.md`](Development_Documentation.md).

@@ -14,7 +14,8 @@ from ..services.continuity import (
     ContinuityProposalStateError,
     ContinuityService,
 )
-from .wiring import audit_reason, continuity_service_dependency, record_audit
+from ..services.agent_actions import AgentActionCreate
+from .wiring import audit_reason, continuity_service_dependency, record_agent_action, record_audit
 
 router = APIRouter(prefix="/continuity", tags=["continuity"])
 
@@ -73,6 +74,22 @@ async def confirm_continuity_proposal(
         result="success",
         reason=audit_reason(request, proposal_id=proposal.id, kind=proposal.kind),
     )
+    record_agent_action(
+        request,
+        AgentActionCreate(
+            action_type=f"continuity.{proposal.kind}",
+            title="已更新桌宠连续性状态",
+            summary=proposal.summary,
+            source_agent_run_id=proposal.agent_run_id,
+            source_conversation_id=proposal.source_conversation_id,
+            source_message_id=proposal.source_message_id,
+            risk_tier="medium",
+            decision="ask",
+            status="completed",
+            metadata={"proposal_id": proposal.id, "kind": proposal.kind, "confidence": proposal.confidence},
+            reversible=False,
+        ),
+    )
     return ContinuityProposalActionResponse(proposal_id=proposal.id, status=proposal.status)
 
 
@@ -98,6 +115,22 @@ async def reject_continuity_proposal(
         action="continuity.proposal.reject",
         result="success",
         reason=audit_reason(request, proposal_id=proposal.id, kind=proposal.kind),
+    )
+    record_agent_action(
+        request,
+        AgentActionCreate(
+            action_type="continuity.proposal.reject",
+            title="已取消连续性候选",
+            summary=proposal.summary,
+            source_agent_run_id=proposal.agent_run_id,
+            source_conversation_id=proposal.source_conversation_id,
+            source_message_id=proposal.source_message_id,
+            risk_tier="low",
+            decision="auto",
+            status="completed",
+            metadata={"proposal_id": proposal.id, "kind": proposal.kind},
+            reversible=False,
+        ),
     )
     return ContinuityProposalActionResponse(proposal_id=proposal.id, status=proposal.status)
 

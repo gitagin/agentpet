@@ -1,4 +1,6 @@
 import type {
+  AgentActionListResponse,
+  AgentActionRevertResponse,
   AgentModelConfigRequest,
   AgentModelConfigResponse,
   AgentModelId,
@@ -8,6 +10,9 @@ import type {
   ContinuityProposalListResponse,
   ContinuityStateResponse,
   ChatRequest,
+  CompanionConsolidationRunRequest,
+  CompanionConsolidationRunResponse,
+  CompanionRetrievalReportListResponse,
   DiagnosticsExportResponse,
   LocalStateResetResponse,
   MemoryProposalActionResponse,
@@ -28,11 +33,14 @@ import type {
   VaultStatusResponse,
   WikiIngestApplyResponse,
   WikiIngestApplyRequest,
+  WikiIngestConfirmRequest,
   WikiIngestPreviewResponse,
   WikiIngestRequest,
   WikiIngestReviewRequest,
   WikiIngestReviewResponse,
   WikiIndexResponse,
+  WikiDiagnosticQueueRequest,
+  WikiDiagnosticQueueResponse,
   WikiLintRunRequest,
   WikiLintRunResponse,
   WikiLogResponse,
@@ -53,6 +61,26 @@ export class DesktopApi {
     return this.client.post<ChatAcceptedResponse>("/api/chat", request, signal);
   }
 
+  listAgentActions(
+    limit = 50,
+    agentRunId?: string | null,
+    signal?: AbortSignal,
+  ): Promise<AgentActionListResponse> {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (agentRunId?.trim()) {
+      params.set("agent_run_id", agentRunId.trim());
+    }
+    return this.client.get<AgentActionListResponse>(`/api/agent/actions?${params.toString()}`, signal);
+  }
+
+  revertAgentAction(actionId: string, signal?: AbortSignal): Promise<AgentActionRevertResponse> {
+    return this.client.post<AgentActionRevertResponse>(
+      `/api/agent/actions/${encodeURIComponent(actionId)}/revert`,
+      {},
+      signal,
+    );
+  }
+
   searchMemory(query: string, signal?: AbortSignal): Promise<MemorySearchResponse> {
     return this.client.post<MemorySearchResponse>(
       "/api/memory/search",
@@ -70,6 +98,28 @@ export class DesktopApi {
 
   listMemoryProposals(signal?: AbortSignal): Promise<MemoryProposalListResponse> {
     return this.client.get<MemoryProposalListResponse>("/api/memory/proposals", signal);
+  }
+
+  runCompanionConsolidation(
+    request: CompanionConsolidationRunRequest = {},
+    signal?: AbortSignal,
+  ): Promise<CompanionConsolidationRunResponse> {
+    return this.client.post<CompanionConsolidationRunResponse>(
+      "/api/memory/companion/consolidation/runs",
+      request,
+      signal,
+    );
+  }
+
+  listCompanionContextReports(limit = 20, agentRunId?: string | null, signal?: AbortSignal): Promise<CompanionRetrievalReportListResponse> {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (agentRunId?.trim()) {
+      params.set("agent_run_id", agentRunId.trim());
+    }
+    return this.client.get<CompanionRetrievalReportListResponse>(
+      `/api/memory/companion/context-reports?${params.toString()}`,
+      signal,
+    );
   }
 
   confirmMemoryProposal(
@@ -227,6 +277,13 @@ export class DesktopApi {
     return this.client.post<WikiIngestApplyResponse>("/api/wiki/ingest/apply", request, signal);
   }
 
+  confirmWikiIngest(
+    request: WikiIngestConfirmRequest,
+    signal?: AbortSignal,
+  ): Promise<WikiIngestPreviewResponse> {
+    return this.client.post<WikiIngestPreviewResponse>("/api/wiki/ingest/confirm", request, signal);
+  }
+
   reviewWikiIngest(
     request: WikiIngestReviewRequest,
     signal?: AbortSignal,
@@ -282,5 +339,12 @@ export class DesktopApi {
     signal?: AbortSignal,
   ): Promise<WikiLintRunResponse> {
     return this.client.post<WikiLintRunResponse>("/api/wiki/lint", request, signal);
+  }
+
+  getWikiDiagnosticQueue(
+    request: WikiDiagnosticQueueRequest = {},
+    signal?: AbortSignal,
+  ): Promise<WikiDiagnosticQueueResponse> {
+    return this.client.post<WikiDiagnosticQueueResponse>("/api/wiki/diagnostics/queue", request, signal);
   }
 }

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import sqlite3
 from calendar import monthrange
 from dataclasses import dataclass
@@ -9,7 +8,9 @@ from typing import Callable
 from zoneinfo import ZoneInfo
 
 from app.models.common import new_id
-from app.services.memory import SafeMarkdownWriter, utc_now_iso
+from app.services.memory import SafeMarkdownWriter
+from app.utils.hash import sha256_hex
+from app.utils.time import utc_now_iso
 
 
 DEFAULT_CHAT_MEMORY_TIMEZONE = "Asia/Shanghai"
@@ -45,38 +46,10 @@ class ChatAutoMemoryStore:
         self.conn = sqlite3.connect(db) if self._owns_connection else db
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA foreign_keys = ON")
-        self._ensure_schema()
 
     def close(self) -> None:
         if self._owns_connection:
             self.conn.close()
-
-    def _ensure_schema(self) -> None:
-        self.conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS daily_chat_memory_entries (
-                id TEXT PRIMARY KEY,
-                conversation_id TEXT NOT NULL,
-                user_message_id TEXT NOT NULL,
-                assistant_message_id TEXT NOT NULL,
-                agent_run_id TEXT NOT NULL UNIQUE,
-                entry_hash TEXT NOT NULL UNIQUE,
-                memory_date TEXT NOT NULL,
-                memory_time TEXT NOT NULL,
-                timezone TEXT NOT NULL,
-                markdown_path TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            )
-            """
-        )
-        self.conn.execute(
-            """
-            CREATE INDEX IF NOT EXISTS idx_daily_chat_memory_entries_date
-            ON daily_chat_memory_entries(memory_date, created_at)
-            """
-        )
-        self.conn.commit()
 
     def get_by_agent_run_id(self, agent_run_id: str) -> ChatAutoMemoryEntry | None:
         row = self.conn.execute(
@@ -241,7 +214,7 @@ class ChatAutoMemoryService:
                 assistant_answer.strip(),
             ]
         )
-        return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+        return sha256_hex(normalized)
 
     def _local_now(self) -> datetime:
         current = self.now_provider()

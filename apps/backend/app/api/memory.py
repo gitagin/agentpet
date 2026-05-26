@@ -2,6 +2,10 @@ from fastapi import APIRouter, Depends, Request, status
 
 from ..errors import AppError
 from ..models.api import (
+    CompanionConsolidationRunRequest,
+    CompanionConsolidationRunResponse,
+    CompanionRetrievalReportListResponse,
+    CompanionRetrievalReportResponse,
     DiaryMemoryObjectResponse,
     DiaryMemorySearchRequest,
     DiaryMemorySearchResponse,
@@ -17,6 +21,7 @@ from ..models.api import (
     MemorySearchResponse,
     RejectProposalRequest,
 )
+from ..services.agent_actions import AgentActionCreate
 from ..services.diary_memory import (
     DiaryMemoryNotFoundError,
     DiaryMemorySearch,
@@ -27,12 +32,15 @@ from ..services.memory_policy import evaluate_memory_content
 from .wiring import (
     active_vault_id,
     audit_reason,
+    companion_consolidation_service,
+    companion_retrieval_report_store,
     diary_memory_service,
     map_memory_error,
     memory_service_dependency,
     memory_graph_store,
     record_audit,
-    _prepend_graph_memory_results,
+    record_agent_action,
+    prepend_graph_memory_results,
     retrieval_service,
 )
 
@@ -59,7 +67,7 @@ async def search_memory(search_request: MemorySearchRequest, request: Request) -
         mode=search_request.mode,
     )
     if search_request.source_scope in {"personal_memory", "all"}:
-        response = _prepend_graph_memory_results(
+        response = prepend_graph_memory_results(
             request,
             response,
             query=search_request.query,
@@ -182,6 +190,47 @@ async def archive_memory_graph_fact(fact_id: str, request: Request) -> MemoryGra
     return MemoryGraphFactActionResponse(fact_id=fact.id, status=fact.status.value)
 
 
+@router.post("/companion/consolidation/runs", response_model=CompanionConsolidationRunResponse)
+async def run_companion_consolidation(
+    run_request: CompanionConsolidationRunRequest,
+    request: Request,
+) -> CompanionConsolidationRunResponse:
+    service = companion_consolidation_service(request)
+    try:
+        result = service.run_once(from_=run_request.from_, to=run_request.to, limit=run_request.limit)
+    finally:
+        service.graph_store.close()
+        service.close()
+    record_audit(
+        request,
+        action="memory.companion.consolidation.run",
+        result="success",
+        reason=audit_reason(
+            request,
+            run_id=result.run_id,
+            source_count=str(result.source_count),
+            output_count=str(result.output_count),
+        ),
+    )
+    return _companion_consolidation_response(result)
+
+
+@router.get("/companion/context-reports", response_model=CompanionRetrievalReportListResponse)
+async def list_companion_context_reports(
+    request: Request,
+    agent_run_id: str | None = None,
+    limit: int = 20,
+) -> CompanionRetrievalReportListResponse:
+    store = companion_retrieval_report_store(request)
+    try:
+        reports = store.list_reports(agent_run_id=agent_run_id, limit=limit)
+    finally:
+        store.close()
+    return CompanionRetrievalReportListResponse(
+        reports=[_companion_retrieval_report_response(report) for report in reports]
+    )
+
+
 @router.post("/proposals", response_model=MemoryProposalResponse)
 async def create_memory_proposal(
     proposal_request: MemoryProposalCreateRequest,
@@ -225,6 +274,21 @@ async def create_memory_proposal(
         result="success",
         target_path=proposal.target_path,
         reason=audit_reason(request, proposal_id=proposal.id),
+    )
+    record_agent_action(
+        request,
+        AgentActionCreate(
+            action_type="memory.proposal.ask",
+            title="需要确认长期记忆",
+            summary=proposal.content[:180],
+            source_message_id=proposal.source_message_id,
+            risk_tier="medium",
+            decision="ask",
+            status="pending",
+            target_paths=(proposal.target_path,),
+            metadata={"proposal_id": proposal.id, "proposal_type": proposal.type.value},
+            reversible=False,
+        ),
     )
     return MemoryProposalResponse(
         proposal_id=proposal.id,
@@ -275,11 +339,26 @@ async def confirm_memory_proposal(
         target_path=result.written_path,
         reason=audit_reason(request, proposal_id=result.proposal_id, index_job_id=result.index_job_id),
     )
+    action = record_agent_action(
+        request,
+        AgentActionCreate(
+            action_type="memory.proposal.confirm",
+            title="已写入长期记忆",
+            summary=result.written_path or "",
+            risk_tier="medium",
+            decision="ask",
+            status="completed",
+            target_paths=tuple([result.written_path] if result.written_path else []),
+            metadata={"proposal_id": result.proposal_id, "index_job_id": result.index_job_id},
+            reversible=False,
+        ),
+    )
     return MemoryProposalActionResponse(
         proposal_id=result.proposal_id,
         status=result.status.value,
         written_path=result.written_path,
         index_job_id=result.index_job_id,
+        action_id=action.action_id,
     )
 
 
@@ -307,9 +386,24 @@ async def reject_memory_proposal(
         target_path=proposal.target_path,
         reason=audit_reason(request, proposal_id=proposal.id),
     )
+    action = record_agent_action(
+        request,
+        AgentActionCreate(
+            action_type="memory.proposal.reject",
+            title="已取消长期记忆候选",
+            summary=proposal.rejected_reason or "",
+            risk_tier="low",
+            decision="auto",
+            status="completed",
+            target_paths=(proposal.target_path,),
+            metadata={"proposal_id": proposal.id},
+            reversible=False,
+        ),
+    )
     return MemoryProposalActionResponse(
         proposal_id=proposal.id,
         status=proposal.status.value,
+        action_id=action.action_id,
     )
 
 
@@ -334,6 +428,40 @@ def _graph_fact_response(fact) -> MemoryGraphFactResponse:
         importance=fact.importance,
         created_at=fact.created_at,
         updated_at=fact.updated_at,
+    )
+
+
+def _companion_consolidation_response(result) -> CompanionConsolidationRunResponse:
+    return CompanionConsolidationRunResponse(
+        run_id=result.run_id,
+        status=result.status,
+        source_count=result.source_count,
+        output_count=result.output_count,
+        skipped_count=result.skipped_count,
+        reason=result.reason,
+        fact_ids=list(result.fact_ids),
+        started_at=result.started_at,
+        completed_at=result.completed_at,
+    )
+
+
+def _companion_retrieval_report_response(report) -> CompanionRetrievalReportResponse:
+    return CompanionRetrievalReportResponse(
+        id=report.id,
+        agent_run_id=report.agent_run_id,
+        strategy=report.strategy,
+        candidate_count=report.candidate_count,
+        selected_count=report.selected_count,
+        duplicate_drop_count=report.duplicate_drop_count,
+        per_scope_drop_count=report.per_scope_drop_count,
+        budget_drop_count=report.budget_drop_count,
+        item_budget=report.item_budget,
+        per_scope_limit=report.per_scope_limit,
+        char_budget=report.char_budget,
+        used_chars=report.used_chars,
+        source_counts=report.source_counts,
+        selected_scopes=list(report.selected_scopes),
+        created_at=report.created_at,
     )
 
 

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import inspect
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -10,6 +9,7 @@ from pydantic import BaseModel, Field
 from app.models.api import (
     MemorySearchResponse,
     QueryArchiveRequest,
+    WikiIngestConfirmRequest,
     WikiIngestPreviewRequest,
     WikiLintRequest,
     WikiQueryArchiveProposal,
@@ -24,31 +24,31 @@ ToolPayload = Mapping[str, Any] | BaseModel
 
 
 class RetrievalLike(Protocol):
-    def search(
+    async def search(
         self,
         query: str,
         top_k: int = 8,
         mode: str = "hybrid",
         source_scope: str = "knowledge_base",
-    ) -> MemorySearchResponse | Awaitable[MemorySearchResponse]: ...
+    ) -> MemorySearchResponse: ...
 
 
 class WikiWorkflowLike(Protocol):
-    def preview_ingest(
-        self, request: WikiIngestPreviewRequest
-    ) -> ToolPayload | Awaitable[ToolPayload]: ...
+    async def preview_ingest(self, request: WikiIngestPreviewRequest) -> ToolPayload: ...
 
-    def review_ingest(self, request) -> ToolPayload | Awaitable[ToolPayload]: ...
+    async def confirm_ingest(self, request: WikiIngestConfirmRequest) -> ToolPayload: ...
 
-    def plan_query_archive(
+    async def review_ingest(self, request) -> ToolPayload: ...
+
+    async def plan_query_archive(
         self, request: QueryArchiveRequest
-    ) -> WikiQueryArchiveProposal | Awaitable[WikiQueryArchiveProposal]: ...
+    ) -> WikiQueryArchiveProposal: ...
 
-    def plan_synthesis(
+    async def plan_synthesis(
         self, request: WikiSynthesizeRequest
-    ) -> WikiSynthesisProposal | Awaitable[WikiSynthesisProposal]: ...
+    ) -> WikiSynthesisProposal: ...
 
-    def plan_lint(self, request: WikiLintRequest | None = None) -> ToolPayload | Awaitable[ToolPayload]: ...
+    async def plan_lint(self, request: WikiLintRequest | None = None) -> ToolPayload: ...
 
 
 class McpToolUnavailableError(Exception):
@@ -156,13 +156,11 @@ class WikiMcpToolAdapter:
     ) -> dict[str, Any]:
         if self.retrieval is None:
             raise McpToolUnavailableError("search_wiki")
-        response = await _maybe_await(
-            self.retrieval.search(
-                query=query,
-                top_k=top_k,
-                mode=mode,
-                source_scope=source_scope,
-            )
+        response = await self.retrieval.search(
+            query=query,
+            top_k=top_k,
+            mode=mode,
+            source_scope=source_scope,
         )
         return _dump_model(MemorySearchResponse.model_validate(response))
 
@@ -199,12 +197,15 @@ class WikiMcpToolAdapter:
             max_pages=max_pages,
             source_metadata=source_metadata or {},
         )
-        preview = await _maybe_await(workflow.preview_ingest(request))
+        preview = await workflow.preview_ingest(request)
+        confirmed = await workflow.confirm_ingest(
+            WikiIngestConfirmRequest(preview_token=_preview_token(preview) or "", user_confirmed=True)
+        )
         review = None
         reviewer = getattr(workflow, "review_ingest", None)
-        if reviewer is not None and _has_run_id(preview):
-            review = await _maybe_await(reviewer(_review_request(_run_id(preview))))
-        payload = _dump_payload(preview)
+        if reviewer is not None and _has_run_id(confirmed):
+            review = await reviewer(_review_request(_run_id(confirmed)))
+        payload = _dump_payload(confirmed)
         payload["proposal_type"] = "ingest"
         if review is not None:
             payload["review"] = _dump_payload(review)
@@ -224,20 +225,18 @@ class WikiMcpToolAdapter:
         allow_mixed_sources: bool = False,
     ) -> dict[str, Any]:
         workflow = self._workflow("plan_query_archive")
-        response = await _maybe_await(
-            workflow.plan_query_archive(
-                QueryArchiveRequest(
-                    question=question,
-                    answer=answer,
-                    citations=citations or [],
-                    title=title,
-                    target_path=target_path,
-                    section=section,
-                    tags=tags or [],
-                    agent_run_id=agent_run_id,
-                    source_message_id=source_message_id,
-                    allow_mixed_sources=allow_mixed_sources,
-                )
+        response = await workflow.plan_query_archive(
+            QueryArchiveRequest(
+                question=question,
+                answer=answer,
+                citations=citations or [],
+                title=title,
+                target_path=target_path,
+                section=section,
+                tags=tags or [],
+                agent_run_id=agent_run_id,
+                source_message_id=source_message_id,
+                allow_mixed_sources=allow_mixed_sources,
             )
         )
         return _dump_payload(response)
@@ -252,23 +251,21 @@ class WikiMcpToolAdapter:
         links: list[str] | None = None,
     ) -> dict[str, Any]:
         workflow = self._workflow("plan_synthesis")
-        response = await _maybe_await(
-            workflow.plan_synthesis(
-                WikiSynthesizeRequest(
-                    title=title,
-                    content=content,
-                    source_paths=source_paths or [],
-                    target_path=target_path,
-                    tags=tags or [],
-                    links=links or [],
-                )
+        response = await workflow.plan_synthesis(
+            WikiSynthesizeRequest(
+                title=title,
+                content=content,
+                source_paths=source_paths or [],
+                target_path=target_path,
+                tags=tags or [],
+                links=links or [],
             )
         )
         return _dump_payload(response)
 
     async def plan_lint(self, write_report: bool = False) -> dict[str, Any]:
         workflow = self._workflow("plan_lint")
-        response = await _maybe_await(workflow.plan_lint(WikiLintRequest(write_report=write_report)))
+        response = await workflow.plan_lint(WikiLintRequest(write_report=write_report))
         return _dump_payload(response)
 
     async def agent_context(
@@ -306,12 +303,6 @@ def create_wiki_mcp_adapter(
     return WikiMcpToolAdapter(wiki=wiki, workflow=workflow, retrieval=retrieval)
 
 
-async def _maybe_await(value):
-    if inspect.isawaitable(value):
-        return await value
-    return value
-
-
 def _dump_model(value: BaseModel) -> dict[str, Any]:
     return value.model_dump(mode="json")
 
@@ -342,6 +333,15 @@ def _run_id(value) -> str | None:
         run_id = value.get("run_id")
         return str(run_id) if run_id is not None else None
     return getattr(value, "run_id", None)
+
+
+def _preview_token(value) -> str | None:
+    if isinstance(value, BaseModel):
+        return getattr(value, "preview_token", None)
+    if isinstance(value, Mapping):
+        preview_token = value.get("preview_token")
+        return str(preview_token) if preview_token is not None else None
+    return getattr(value, "preview_token", None)
 
 
 def _review_request(run_id: str):

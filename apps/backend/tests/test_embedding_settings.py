@@ -1,24 +1,20 @@
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.conftest import auth_headers
+
 
 @pytest.fixture()
-def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    monkeypatch.setenv("AGENT_PET_SESSION_TOKEN", "test-token")
-    monkeypatch.setenv("AGENT_PET_SQLITE_PATH", str(tmp_path / "state.sqlite3"))
-    monkeypatch.setenv("AGENT_PET_DATA_DIR", str(tmp_path / "data"))
-
-    from app.config import get_settings
-    from app.main import create_app
-
-    get_settings.cache_clear()
-    return TestClient(create_app())
+def client(client_factory, tmp_path: Path) -> Iterator[TestClient]:
+    with client_factory(data_dir=tmp_path / "data") as test_client:
+        yield test_client
 
 
 def auth() -> dict[str, str]:
-    return {"Authorization": "Bearer test-token"}
+    return auth_headers()
 
 
 def test_embedding_settings_are_persisted_separately_from_chat_model(client: TestClient) -> None:
@@ -43,7 +39,7 @@ def test_embedding_settings_are_persisted_separately_from_chat_model(client: Tes
     assert config.json()["status"] == "missing_key"
     assert key.status_code == 200
     assert key.json()["configured"] is True
-    assert key.json()["masked"] == "sk...et"
+    assert key.json()["masked"] == "****cret"
     payload = status.json()
     assert payload["embedding_base_url"] == "https://embed.example.test/v1"
     assert payload["embedding_model"] == "text-embedding-3-small"

@@ -3,7 +3,7 @@ from __future__ import annotations
 import base64
 import ctypes
 import ctypes.wintypes
-import hashlib
+import logging
 import os
 import sys
 import sqlite3
@@ -11,7 +11,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-from app.services.tasks import utc_now_iso
+from app.config import DEFAULT_CHAT_MODEL
+from app.models.api import AutomationSettingsRequest, AutomationSettingsResponse
+from app.utils.hash import sha256_hex
+from app.utils.time import utc_now_iso
 
 
 AGENT_MODEL_IDS = (
@@ -44,6 +47,15 @@ _OPENAI_COMPATIBLE_PROVIDER_ALIASES = {
     "openai 兼容协议",
 }
 SUPPORTED_MODEL_PROVIDERS = {"openai", "openai-compatible"}
+logger = logging.getLogger(__name__)
+
+
+class CredentialStoreError(RuntimeError):
+    pass
+
+
+class ConfigurationError(RuntimeError):
+    pass
 
 
 @dataclass(frozen=True)
@@ -129,15 +141,25 @@ class LocalCredentialStore:
         return cls(path.with_suffix(f"{path.suffix}.credentials"))
 
     def put(self, ref: str, secret: str) -> None:
+        if not _dpapi_available():
+            raise CredentialStoreError(
+                "当前平台不支持安全凭据存储（仅支持 Windows DPAPI）。"
+                "API Key 未被保存。如需在非 Windows 平台运行，"
+                "请通过环境变量 AGENT_PET_API_KEY 传入凭据。"
+            )
         self.root.mkdir(parents=True, exist_ok=True)
         path = self._path_for(ref)
-        data = secret.encode("utf-8")
-        protected = _dpapi_protect(data) if _dpapi_available() else data
+        protected = _dpapi_protect(secret.encode("utf-8"))
         path.write_bytes(base64.b64encode(protected))
         try:
             os.chmod(path, 0o600)
-        except OSError:
-            pass
+        except OSError as exc:
+            logger.warning(
+                "凭据文件权限收紧失败，文件可能处于宽权限状态",
+                extra={"path": str(path), "error": str(exc)},
+            )
+            path.unlink(missing_ok=True)
+            raise CredentialStoreError("凭据文件权限设置失败，API Key 未被保存。") from exc
 
     def get(self, ref: str) -> str | None:
         path = self._path_for(ref)
@@ -151,7 +173,7 @@ class LocalCredentialStore:
         return self._path_for(ref).exists()
 
     def _path_for(self, ref: str) -> Path:
-        digest = hashlib.sha256(ref.encode("utf-8")).hexdigest()
+        digest = sha256_hex(ref)
         suffix = ".dpapi" if _dpapi_available() else ".secret"
         return self.root / f"{digest}{suffix}"
 
@@ -171,138 +193,65 @@ class SettingsStore:
             self.credentials = InMemoryCredentialStore()
         else:
             self.credentials = LocalCredentialStore.for_database(db)
-        self._ensure_schema()
+        self._run_data_migrations()
 
     def close(self) -> None:
         if self._owns_connection:
             self.conn.close()
 
-    def _ensure_schema(self) -> None:
-        self._migrate_legacy_model_keys()
-        self.conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS model_keys (
-                provider TEXT PRIMARY KEY,
-                masked TEXT NOT NULL,
-                credential_ref TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            )
-            """
-        )
-        self.conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS model_config (
-                id INTEGER PRIMARY KEY CHECK (id = 1),
-                provider TEXT NOT NULL,
-                base_url TEXT NOT NULL,
-                model TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            )
-            """
-        )
-        self.conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS embedding_keys (
-                provider TEXT PRIMARY KEY,
-                masked TEXT NOT NULL,
-                credential_ref TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            )
-            """
-        )
-        self.conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS embedding_config (
-                id INTEGER PRIMARY KEY CHECK (id = 1),
-                provider TEXT NOT NULL,
-                base_url TEXT NOT NULL,
-                model TEXT NOT NULL,
-                dimensions INTEGER,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            )
-            """
-        )
-        self.conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS agent_model_configs (
-                agent_id TEXT PRIMARY KEY,
-                provider TEXT NOT NULL,
-                base_url TEXT NOT NULL,
-                model TEXT NOT NULL,
-                masked TEXT,
-                credential_ref TEXT NOT NULL,
-                enabled INTEGER NOT NULL DEFAULT 1,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            )
-            """
-        )
-        self.conn.execute(
-            """
-            CREATE VIEW IF NOT EXISTS agent_model_config AS
-            SELECT agent_id, provider, base_url, model, created_at, updated_at
-            FROM agent_model_configs
-            """
-        )
-        self.conn.execute(
-            """
-            CREATE VIEW IF NOT EXISTS agent_model_keys AS
-            SELECT agent_id, provider, masked, credential_ref, created_at, updated_at
-            FROM agent_model_configs
-            WHERE masked IS NOT NULL
-            """
-        )
-        self._migrate_legacy_retrieval_agent_configs()
-        self.conn.commit()
+    def _run_data_migrations(self) -> None:
+        if self._table_exists("agent_model_configs"):
+            self._migrate_legacy_retrieval_agent_configs()
+            self.conn.commit()
 
-    def _migrate_legacy_model_keys(self) -> None:
-        columns = self.conn.execute("PRAGMA table_info(model_keys)").fetchall()
-        if not columns or "api_key" not in {column["name"] for column in columns}:
-            return
+    def _table_exists(self, table_name: str) -> bool:
+        row = self.conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+            (table_name,),
+        ).fetchone()
+        return row is not None
 
-        rows = self.conn.execute(
-            "SELECT provider, api_key, masked, created_at, updated_at FROM model_keys"
-        ).fetchall()
-        migrated = []
-        for row in rows:
-            credential_ref = credential_ref_for_provider(row["provider"])
-            self.credentials.put(credential_ref, row["api_key"])
-            migrated.append(
-                (
-                    row["provider"],
-                    row["masked"],
-                    credential_ref,
-                    row["created_at"],
-                    row["updated_at"],
-                )
-            )
+    def get_automation_settings(self) -> AutomationSettingsResponse:
+        row = self.conn.execute("SELECT * FROM automation_settings WHERE id = 1").fetchone()
+        if row is None:
+            return AutomationSettingsResponse()
+        return AutomationSettingsResponse(
+            auto_chat_diary=bool(row["auto_chat_diary"]),
+            auto_structured_memory=bool(row["auto_structured_memory"]),
+            auto_long_term_memory=bool(row["auto_long_term_memory"]),
+            auto_wiki_organize=bool(row["auto_wiki_organize"]),
+            high_risk_confirmation_required=bool(row["high_risk_confirmation_required"]),
+            updated_at=str(row["updated_at"]),
+        )
+
+    def set_automation_settings(self, settings: AutomationSettingsRequest) -> AutomationSettingsResponse:
+        now = utc_now_iso()
         with self.conn:
-            self.conn.execute("PRAGMA secure_delete = ON")
-            self.conn.execute("ALTER TABLE model_keys RENAME TO model_keys_legacy_plaintext")
             self.conn.execute(
                 """
-                CREATE TABLE model_keys (
-                    provider TEXT PRIMARY KEY,
-                    masked TEXT NOT NULL,
-                    credential_ref TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
+                INSERT INTO automation_settings (
+                    id, auto_chat_diary, auto_structured_memory, auto_long_term_memory,
+                    auto_wiki_organize, high_risk_confirmation_required, created_at, updated_at
                 )
-                """
-            )
-            self.conn.executemany(
-                """
-                INSERT INTO model_keys (provider, masked, credential_ref, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?)
+                VALUES (1, ?, ?, ?, ?, 1, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    auto_chat_diary = excluded.auto_chat_diary,
+                    auto_structured_memory = excluded.auto_structured_memory,
+                    auto_long_term_memory = excluded.auto_long_term_memory,
+                    auto_wiki_organize = excluded.auto_wiki_organize,
+                    high_risk_confirmation_required = 1,
+                    updated_at = excluded.updated_at
                 """,
-                migrated,
+                (
+                    1 if settings.auto_chat_diary else 0,
+                    1 if settings.auto_structured_memory else 0,
+                    1 if settings.auto_long_term_memory else 0,
+                    1 if settings.auto_wiki_organize else 0,
+                    now,
+                    now,
+                ),
             )
-            self.conn.execute("DROP TABLE model_keys_legacy_plaintext")
-        self.conn.execute("VACUUM")
+        return self.get_automation_settings()
 
     def _migrate_legacy_retrieval_agent_configs(self) -> None:
         for legacy_agent_id, target_agent_ids in _LEGACY_RETRIEVAL_AGENT_MIGRATIONS:
@@ -573,7 +522,6 @@ class SettingsStore:
         now = utc_now_iso()
         masked = mask_secret(api_key)
         credential_ref = credential_ref_for_agent(normalized_agent_id)
-        self.credentials.put(credential_ref, api_key)
         current = self.conn.execute(
             "SELECT base_url, model, enabled FROM agent_model_configs WHERE agent_id = ?",
             (normalized_agent_id,),
@@ -584,14 +532,20 @@ class SettingsStore:
         base_url = (
             str(current["base_url"])
             if current is not None
-            else str(global_config["base_url"]) if global_config is not None else "https://api.openai.com/v1"
+            else str(global_config["base_url"]) if global_config is not None else ""
         )
+        if api_key and not base_url.strip():
+            raise ConfigurationError(
+                "已配置 API Key 但未配置 Base URL，无法安全路由请求。"
+                "请在设置中填写对应的 Base URL。"
+            )
         model = (
             str(current["model"])
             if current is not None
-            else str(global_config["model"]) if global_config is not None else "gpt-4o-mini"
+            else str(global_config["model"]) if global_config is not None else DEFAULT_CHAT_MODEL
         )
         enabled = int(current["enabled"]) if current is not None else 1
+        self.credentials.put(credential_ref, api_key)
         with self.conn:
             self.conn.execute(
                 """
@@ -790,13 +744,13 @@ class SettingsStore:
 
 def credential_ref_for_provider(provider: str) -> str:
     normalized = provider.strip().lower()
-    digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+    digest = sha256_hex(normalized)
     return f"model-key:{digest}"
 
 
 def credential_ref_for_embedding_provider(provider: str) -> str:
     normalized = provider.strip().lower()
-    digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+    digest = sha256_hex(normalized)
     return f"embedding-key:{digest}"
 
 
@@ -812,9 +766,9 @@ def normalize_agent_id(agent_id: str) -> str:
 
 
 def mask_secret(secret: str) -> str:
-    if len(secret) <= 4:
+    if len(secret) <= 8:
         return "****"
-    return f"{secret[:2]}...{secret[-2:]}"
+    return f"****{secret[-4:]}"
 
 
 def _dpapi_available() -> bool:

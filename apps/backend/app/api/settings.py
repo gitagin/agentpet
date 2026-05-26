@@ -4,6 +4,8 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
 
 from ..config import get_settings
 from ..models.api import (
+    AutomationSettingsRequest,
+    AutomationSettingsResponse,
     AgentModelConfigRequest,
     AgentModelConfigResponse,
     AgentModelKeyRequest,
@@ -25,6 +27,8 @@ from ..services.embeddings import LangChainEmbeddingClient
 from ..services.chat_model import ChatModelError, LangChainGraphChatClient
 from ..services.settings import (
     AGENT_MODEL_IDS,
+    ConfigurationError,
+    CredentialStoreError,
     ModelConfig,
     ModelKeyStatus,
     SettingsStore,
@@ -44,6 +48,7 @@ async def get_settings_status(
     defaults = get_settings()
     model_status = store.get_model_key_status()
     embedding_status = store.get_embedding_key_status()
+    automation = store.get_automation_settings()
     model_config = store.get_model_config(
         default_provider=model_status.provider or "openai-compatible",
         default_base_url=defaults.model_base_url,
@@ -69,7 +74,23 @@ async def get_settings_status(
         embedding_configured=embedding_status.configured,
         vault_configured=vault_configured,
         agent_models=_agent_model_responses(store),
+        automation=automation,
     )
+
+
+@router.get("/automation", response_model=AutomationSettingsResponse)
+async def get_automation_settings(
+    store: SettingsStore = Depends(settings_store_dependency),
+) -> AutomationSettingsResponse:
+    return store.get_automation_settings()
+
+
+@router.put("/automation", response_model=AutomationSettingsResponse)
+async def set_automation_settings(
+    automation: AutomationSettingsRequest,
+    store: SettingsStore = Depends(settings_store_dependency),
+) -> AutomationSettingsResponse:
+    return store.set_automation_settings(automation)
 
 
 @router.put("/model-key", response_model=ModelKeyResponse)
@@ -78,7 +99,10 @@ async def set_model_key(
     store: SettingsStore = Depends(settings_store_dependency),
 ) -> ModelKeyResponse:
     _ensure_supported_provider(model_key.provider)
-    status = store.set_model_key(model_key.provider, model_key.api_key)
+    try:
+        status = store.set_model_key(model_key.provider, model_key.api_key)
+    except CredentialStoreError as exc:
+        _raise_credential_store_error(exc)
     return ModelKeyResponse(
         provider=status.provider or model_key.provider,
         status="configured",
@@ -120,7 +144,10 @@ async def set_embedding_key(
     )
     provider = embedding_key.provider or current.provider
     _ensure_supported_provider(provider)
-    status_value = store.set_embedding_key(provider, embedding_key.api_key)
+    try:
+        status_value = store.set_embedding_key(provider, embedding_key.api_key)
+    except CredentialStoreError as exc:
+        _raise_credential_store_error(exc)
     refresh_retrieval_vector_index(request)
     return EmbeddingConfigResponse(
         provider=status_value.provider or provider,
@@ -307,11 +334,16 @@ async def set_agent_model_key(
     )
     provider = model_key.provider or (existing_config.provider if existing_config else "openai-compatible")
     _ensure_supported_provider(provider)
-    key_status = store.set_agent_model_key(
-        agent_id=normalized_agent_id,
-        provider=provider,
-        api_key=model_key.api_key,
-    )
+    try:
+        key_status = store.set_agent_model_key(
+            agent_id=normalized_agent_id,
+            provider=provider,
+            api_key=model_key.api_key,
+        )
+    except ConfigurationError as exc:
+        _raise_configuration_error(exc)
+    except CredentialStoreError as exc:
+        _raise_credential_store_error(exc)
     config = store.get_agent_model_config(
         normalized_agent_id,
         default_provider=key_status.provider or provider,
@@ -361,11 +393,16 @@ async def set_agent_model_key_legacy(
     )
     provider = model_key.provider or (existing_config.provider if existing_config else "openai-compatible")
     _ensure_supported_provider(provider)
-    status_value = store.set_agent_model_key(
-        agent_id=agent_id,
-        provider=provider,
-        api_key=model_key.api_key,
-    )
+    try:
+        status_value = store.set_agent_model_key(
+            agent_id=agent_id,
+            provider=provider,
+            api_key=model_key.api_key,
+        )
+    except ConfigurationError as exc:
+        _raise_configuration_error(exc)
+    except CredentialStoreError as exc:
+        _raise_credential_store_error(exc)
     return ModelKeyResponse(
         provider=status_value.provider or provider,
         status="configured",
@@ -485,6 +522,20 @@ def _ensure_supported_provider(provider: str) -> None:
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="当前模型提供方暂不支持，请使用 openai-compatible。",
         )
+
+
+def _raise_credential_store_error(exc: CredentialStoreError) -> None:
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail=str(exc),
+    ) from exc
+
+
+def _raise_configuration_error(exc: ConfigurationError) -> None:
+    raise HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        detail=str(exc),
+    ) from exc
 
 
 def _set_agent_config(

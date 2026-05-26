@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from apps.backend.tests._schema import migrate_db_with_vault
 from app.models.enums import MemoryFactStatus
 from app.services.diary_memory import (
     DiaryMemoryObjectSource,
@@ -60,7 +61,7 @@ async def test_diary_memory_service_archives_objects_sources_and_searches_fts(tm
         ]
     )
     service = DiaryMemoryService(
-        DiaryMemoryStore(tmp_path / "state.sqlite3"),
+        DiaryMemoryStore(migrate_db_with_vault(tmp_path / "state.sqlite3")),
         vault_id="vault-1",
         extractor=extractor,
         extraction_model="diary_memory_extractor_agent",
@@ -97,7 +98,7 @@ async def test_diary_memory_service_archives_objects_sources_and_searches_fts(tm
 
 
 def test_diary_memory_store_is_idempotent_per_source_and_hash(tmp_path):
-    store = DiaryMemoryStore(tmp_path / "state.sqlite3")
+    store = DiaryMemoryStore(migrate_db_with_vault(tmp_path / "state.sqlite3"))
     source = DiaryMemoryObjectSource(
         object_id="",
         source_type="chat_exchange",
@@ -132,7 +133,7 @@ def test_diary_memory_store_is_idempotent_per_source_and_hash(tmp_path):
 
 
 def test_diary_memory_search_filters_and_returns_synthetic_memory_results(tmp_path):
-    store = DiaryMemoryStore(tmp_path / "state.sqlite3")
+    store = DiaryMemoryStore(migrate_db_with_vault(tmp_path / "state.sqlite3"))
     source = DiaryMemoryObjectSource(object_id="", source_type="chat_exchange", source_id="run-1")
     store.insert_object(
         vault_id="vault-1",

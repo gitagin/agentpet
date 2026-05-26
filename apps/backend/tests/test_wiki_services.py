@@ -4,7 +4,7 @@ import pytest
 
 from app.models.api import WikiPageWriteRequest
 from app.services.memory import MarkdownWriteError, SafeMarkdownWriter
-from app.services.wiki import SensitiveWikiRejectedError, WikiService, resolve_wiki_path
+from app.services.wiki import SensitiveWikiRejectedError, WikiService, WIKI_PAGE_TEMPLATE_SECTIONS, resolve_wiki_path
 from app.storage.markdown import read_markdown
 
 
@@ -28,6 +28,7 @@ def test_wiki_service_writes_pages_under_wiki(tmp_path) -> None:
     parsed = read_markdown(tmp_path / "Wiki" / "Project-Architecture.md")
     assert parsed.frontmatter["title"] == "Project Architecture"
     assert parsed.frontmatter["type"] == "page"
+    assert parsed.frontmatter["revision"] == "1"
     assert parsed.frontmatter["tags"] == ["architecture"]
     assert parsed.frontmatter["sources"] == ["message:message-1"]
     assert "# Project Architecture" in text
@@ -37,6 +38,21 @@ def test_wiki_service_writes_pages_under_wiki(tmp_path) -> None:
     assert (tmp_path / "Wiki" / "AGENTS.md").exists()
     assert (tmp_path / "Wiki" / "index.md").exists()
     assert (tmp_path / "Wiki" / "log.md").exists()
+
+
+def test_wiki_default_schema_documents_seven_rules_and_template(tmp_path) -> None:
+    service = WikiService(SafeMarkdownWriter(tmp_path))
+
+    schema = service.get_schema_status().content
+
+    for section in WIKI_PAGE_TEMPLATE_SECTIONS:
+        assert section in schema
+    assert "Hard Boundaries" in schema
+    assert "Evidence And Trigger Source" in schema
+    assert "Review And Self Check" in schema
+    assert "Version And Logs" in schema
+    assert "Terminology And Format Traps" in schema
+    assert "Double-layer logs" in schema
 
 
 def test_wiki_service_refreshes_index_and_appends_log(tmp_path) -> None:
@@ -186,4 +202,20 @@ def test_wiki_service_rejects_sensitive_content(tmp_path) -> None:
             )
         )
 
+    assert not (tmp_path / "Wiki").exists()
+
+
+def test_wiki_service_rejects_sensitive_policy_metadata_before_core_files(tmp_path) -> None:
+    service = WikiService(SafeMarkdownWriter(tmp_path))
+
+    with pytest.raises(SensitiveWikiRejectedError) as exc_info:
+        service.write_page(
+            WikiPageWriteRequest(
+                title="Project Source",
+                content="Reusable project source summary.",
+                sources=["bearer secret-token-for-test-1234567890"],
+            )
+        )
+
+    assert exc_info.value.reason == "bearer_token"
     assert not (tmp_path / "Wiki").exists()

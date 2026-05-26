@@ -3,48 +3,26 @@ from __future__ import annotations
 import json
 import sqlite3
 import time
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 
 from fastapi.testclient import TestClient
 
-from app.agents.events import AgentStatusEvent
+from app.agents.events import AgentDoneEvent, AgentStatusEvent, AgentTokenEvent
+from app.models.enums import AgentIntent
+from tests.conftest import auth_headers, parse_sse_events
 
 
 @pytest.fixture()
-def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    monkeypatch.setenv("AGENT_PET_SESSION_TOKEN", "test-token")
-    monkeypatch.setenv("AGENT_PET_SQLITE_PATH", str(tmp_path / "state.sqlite3"))
-    monkeypatch.setenv("AGENT_PET_DATA_DIR", str(tmp_path / "data"))
-
-    from app.config import get_settings
-    from app.main import create_app
-
-    get_settings.cache_clear()
-    app = create_app()
-    return TestClient(app)
+def client(client_factory, tmp_path: Path) -> Iterator[TestClient]:
+    with client_factory(data_dir=tmp_path / "data") as test_client:
+        yield test_client
 
 
 def auth() -> dict[str, str]:
-    return {"Authorization": "Bearer test-token"}
-
-
-def parse_sse_events(body: str) -> list[dict[str, str]]:
-    events: list[dict[str, str]] = []
-    current: dict[str, str] = {}
-    for raw_line in body.splitlines():
-        line = raw_line.strip()
-        if not line:
-            if current:
-                events.append(current)
-                current = {}
-            continue
-        field, _, value = line.partition(":")
-        current[field] = value.lstrip()
-    if current:
-        events.append(current)
-    return events
+    return auth_headers()
 
 
 def stream_chat(client: TestClient, message: str) -> list[dict[str, str]]:
@@ -53,6 +31,27 @@ def stream_chat(client: TestClient, message: str) -> list[dict[str, str]]:
     with client.stream("GET", chat.json()["stream_url"], headers=auth()) as stream:
         body = "".join(stream.iter_text())
     return parse_sse_events(body)
+
+
+def enable_automation(
+    client: TestClient,
+    *,
+    chat_diary: bool = False,
+    structured_memory: bool = False,
+    long_term_memory: bool = False,
+    wiki_organize: bool = False,
+) -> None:
+    response = client.put(
+        "/api/settings/automation",
+        headers=auth(),
+        json={
+            "auto_chat_diary": chat_diary,
+            "auto_structured_memory": structured_memory,
+            "auto_long_term_memory": long_term_memory,
+            "auto_wiki_organize": wiki_organize,
+        },
+    )
+    assert response.status_code == 200
 
 
 def event_names(events: list[dict[str, str]]) -> list[str]:
@@ -68,6 +67,42 @@ def assert_successful_chat_events(events: list[dict[str, str]]) -> None:
     assert events[-1]["event"] == "done"
     assert "token" in event_names(events)
     assert "error" not in event_names(events)
+
+
+def test_automation_settings_api_roundtrip(client: TestClient) -> None:
+    defaults = client.get("/api/settings/automation", headers=auth())
+    assert defaults.status_code == 200
+    assert defaults.json() == {
+        "auto_chat_diary": False,
+        "auto_structured_memory": False,
+        "auto_long_term_memory": False,
+        "auto_wiki_organize": False,
+        "high_risk_confirmation_required": True,
+        "updated_at": None,
+    }
+
+    updated = client.put(
+        "/api/settings/automation",
+        headers=auth(),
+        json={
+            "auto_chat_diary": False,
+            "auto_structured_memory": True,
+            "auto_long_term_memory": False,
+            "auto_wiki_organize": False,
+        },
+    )
+    assert updated.status_code == 200
+    payload = updated.json()
+    assert payload["auto_chat_diary"] is False
+    assert payload["auto_structured_memory"] is True
+    assert payload["auto_long_term_memory"] is False
+    assert payload["auto_wiki_organize"] is False
+    assert payload["high_risk_confirmation_required"] is True
+    assert payload["updated_at"]
+
+    status = client.get("/api/settings", headers=auth())
+    assert status.status_code == 200
+    assert status.json()["automation"] == payload
 
 
 def wait_for_file(path: Path, timeout_seconds: float = 2.0) -> Path:
@@ -104,6 +139,136 @@ def test_vault_bind_index_and_search_are_wired(client: TestClient, tmp_path: Pat
     )
     assert search.status_code == 200
     assert search.json()["results"][0]["relative_path"] == "People.md"
+
+
+def test_wiki_diagnostics_queue_api_is_read_only_and_auth_required(client: TestClient, tmp_path: Path) -> None:
+    vault = tmp_path / "Vault"
+    wiki_root = vault / "Wiki"
+    wiki_root.mkdir(parents=True)
+    (wiki_root / "Inbox.md").write_text(
+        "# Inbox\n\nThis stale claim conflicts with earlier notes. See [[Missing Concept]].\n",
+        encoding="utf-8",
+    )
+    bind = client.post(
+        "/api/vaults/init",
+        headers=auth(),
+        json={"path": str(vault), "create_if_missing": False},
+    )
+    assert bind.status_code == 200
+
+    denied = client.post("/api/wiki/diagnostics/queue", json={})
+    assert denied.status_code == 401
+    response = client.post(
+        "/api/wiki/diagnostics/queue",
+        headers=auth(),
+        json={"include_repair_preview": True},
+    )
+    second = client.post(
+        "/api/wiki/diagnostics/queue",
+        headers=auth(),
+        json={"include_repair_preview": True},
+    )
+
+    assert response.status_code == 200
+    assert second.status_code == 200
+    payload = response.json()
+    assert {item["kind"] for item in payload["items"]} == {
+        "contradiction",
+        "stale_claim",
+        "missing_link",
+        "missing_concept",
+    }
+    assert [item["id"] for item in payload["items"]] == [item["id"] for item in second.json()["items"]]
+    assert payload["items"][0]["repair_proposal"] is not None
+    assert not (wiki_root / "AGENTS.md").exists()
+    assert not (wiki_root / "index.md").exists()
+    assert not (wiki_root / "log.md").exists()
+    assert not (wiki_root / "Reports").exists()
+
+
+def test_companion_consolidation_and_context_report_apis_are_wired(
+    client: TestClient,
+    tmp_path: Path,
+) -> None:
+    vault = tmp_path / "Vault"
+    vault.mkdir()
+    bind = client.post(
+        "/api/vaults/init",
+        headers=auth(),
+        json={"path": str(vault), "create_if_missing": False},
+    )
+    assert bind.status_code == 200
+    vault_id = bind.json()["vault_id"]
+    db_path = client.app.state.database.path
+    now = "2026-05-15T10:00:00+08:00"
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO diary_memory_objects (
+                id, vault_id, type, summary, topic, emotion, people_json,
+                keywords_json, importance, confidence, occurred_at, timezone,
+                status, object_hash, extraction_model, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "diary-api-1",
+                vault_id,
+                "event",
+                "Ada prefers concise status updates.",
+                "coding style",
+                "focused",
+                '["Ada"]',
+                '["style"]',
+                0.8,
+                0.95,
+                now,
+                "Asia/Shanghai",
+                "active",
+                "diary-api-hash-1",
+                "fake",
+                now,
+                now,
+            ),
+        )
+        conn.execute(
+            """
+            INSERT INTO companion_retrieval_reports (
+                id, agent_run_id, strategy, query_hash, candidate_count, selected_count,
+                duplicate_drop_count, per_scope_drop_count, budget_drop_count,
+                item_budget, per_scope_limit, char_budget, used_chars,
+                source_counts_json, selected_scopes_json, created_at
+            )
+            VALUES (
+                'report-api-1', 'run-api-1', 'deterministic_v1', 'hash-only',
+                1, 1, 0, 0, 0, 5, 2, 1200, 32,
+                '{"personal_memory":1}', '["personal_memory"]', ?
+            )
+            """,
+            (now,),
+        )
+        conn.commit()
+
+    denied = client.post("/api/memory/companion/consolidation/runs", json={})
+    assert denied.status_code == 401
+    run = client.post(
+        "/api/memory/companion/consolidation/runs",
+        headers=auth(),
+        json={"from": "2026-05-15T00:00:00+08:00", "to": "2026-05-16T00:00:00+08:00"},
+    )
+    reports = client.get("/api/memory/companion/context-reports?agent_run_id=run-api-1", headers=auth())
+
+    assert run.status_code == 200
+    run_payload = run.json()
+    assert run_payload["status"] == "completed"
+    assert run_payload["source_count"] == 1
+    assert run_payload["output_count"] == 1
+    assert reports.status_code == 200
+    report_payload = reports.json()["reports"][0]
+    assert report_payload["agent_run_id"] == "run-api-1"
+    assert report_payload["strategy"] == "deterministic_v1"
+    assert "query" not in report_payload
+    assert "hash-only" not in reports.text
 
 
 def test_vault_status_recovers_persisted_active_vault_after_restart(
@@ -228,6 +393,7 @@ def test_memory_graph_fact_api_actions_are_wired(client: TestClient, tmp_path: P
         headers=auth(),
         json={"path": str(vault), "create_if_missing": True},
     )
+    enable_automation(client, long_term_memory=True)
 
     stream_chat(client, "my favorite fruit is apple")
     wait_for_file(vault / "Memories" / "LongTerm" / "Preferences.md")
@@ -485,6 +651,159 @@ def test_chat_stream_fails_when_runtime_ends_without_terminal_event(
     assert payload["agent_run_id"] not in client.app.state.chat_runs
 
 
+def test_chat_run_lookup_removes_expired_unstreamed_runs(client: TestClient) -> None:
+    response = client.post("/api/chat", headers=auth(), json={"message": "expire this run"})
+    assert response.status_code == 200
+    payload = response.json()
+    agent_run_id = payload["agent_run_id"]
+
+    client.app.state.chat_runs_expires_at[agent_run_id] = time.monotonic() - 1
+    stream = client.get(payload["stream_url"], headers=auth())
+
+    assert stream.status_code == 404
+    assert stream.json()["error"]["code"] == "agent_run_not_found"
+    assert agent_run_id not in client.app.state.chat_runs
+    assert agent_run_id not in client.app.state.chat_runs_expires_at
+
+
+def test_chat_stream_auto_archives_daily_memory_and_records_action(
+    client: TestClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.api import chat as chat_api
+
+    vault = tmp_path / "Vault"
+    vault.mkdir()
+    bind = client.post(
+        "/api/vaults/init",
+        headers=auth(),
+        json={"path": str(vault), "create_if_missing": False},
+    )
+    assert bind.status_code == 200
+    enable_automation(client, chat_diary=True)
+
+    class SimpleRuntime:
+        async def run(self, state):
+            yield AgentStatusEvent(
+                agent_run_id=state.agent_run_id,
+                status=state.status,
+                intent=AgentIntent.CHAT,
+                message="replying",
+                stage="chat_generation",
+            )
+            yield AgentTokenEvent(agent_run_id=state.agent_run_id, text="已记下。")
+            yield AgentDoneEvent(
+                agent_run_id=state.agent_run_id,
+                intent=AgentIntent.CHAT,
+                text="已记下。",
+            )
+
+    monkeypatch.setattr(chat_api, "agent_runtime", lambda request: SimpleRuntime())
+
+    chat = client.post(
+        "/api/chat",
+        headers=auth(),
+        json={"message": "今天我完成了自动整理测试"},
+    )
+    assert chat.status_code == 200
+    chat_payload = chat.json()
+    with client.stream("GET", chat_payload["stream_url"], headers=auth()) as stream:
+        body = "".join(stream.iter_text())
+
+    events = parse_sse_events(body)
+    assert "agent_action" in event_names(events)
+    action_event = next(event for event in events if event["event"] == "agent_action")
+    action_payload = json.loads(action_event["data"])
+    assert action_payload["agent_run_id"] == chat_payload["agent_run_id"]
+    assert action_payload["action_type"] == "chat.daily_archive"
+    assert action_payload["decision"] == "auto"
+    assert action_payload["requires_confirmation"] is False
+    assert action_payload["target_paths"][0].startswith("Memories/Daily/")
+
+    listed = client.get(
+        f"/api/agent/actions?agent_run_id={chat_payload['agent_run_id']}",
+        headers=auth(),
+    )
+    assert listed.status_code == 200
+    actions = listed.json()["actions"]
+    assert [action["action_type"] for action in actions] == ["chat.daily_archive"]
+    assert (vault / actions[0]["target_paths"][0]).exists()
+
+
+def test_chat_stream_auto_summarizes_useful_answer_to_wiki(
+    client: TestClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.api import chat as chat_api
+
+    vault = tmp_path / "Vault"
+    vault.mkdir()
+    bind = client.post(
+        "/api/vaults/init",
+        headers=auth(),
+        json={"path": str(vault), "create_if_missing": False},
+    )
+    assert bind.status_code == 200
+    enable_automation(client, chat_diary=True, wiki_organize=True)
+
+    class KnowledgeRuntime:
+        async def run(self, state):
+            answer = (
+                "- 桌宠应根据用户意图检索日记、长期记忆和 Wiki。\n"
+                "- 回答完成后要写入日记，并自我总结。\n"
+                "- 有价值总结应带证据、更新日志和自检清单写入 Wiki。"
+            )
+            yield AgentStatusEvent(
+                agent_run_id=state.agent_run_id,
+                status=state.status,
+                intent=AgentIntent.CHAT,
+                message="replying",
+                stage="chat_generation",
+            )
+            yield AgentTokenEvent(agent_run_id=state.agent_run_id, text=answer)
+            yield AgentDoneEvent(
+                agent_run_id=state.agent_run_id,
+                intent=AgentIntent.CHAT,
+                text=answer,
+            )
+
+    monkeypatch.setattr(chat_api, "agent_runtime", lambda request: KnowledgeRuntime())
+
+    chat = client.post(
+        "/api/chat",
+        headers=auth(),
+        json={"message": "优化桌宠回答后日记和 Wiki 自动整理流程"},
+    )
+    assert chat.status_code == 200
+    chat_payload = chat.json()
+    with client.stream("GET", chat_payload["stream_url"], headers=auth()) as stream:
+        body = "".join(stream.iter_text())
+
+    events = parse_sse_events(body)
+    action_payloads = [
+        json.loads(event["data"])
+        for event in events
+        if event["event"] == "agent_action"
+    ]
+    action_types = [payload["action_type"] for payload in action_payloads]
+    assert "chat.daily_archive" in action_types
+    assert "wiki.answer_summary.write" in action_types
+    wiki_action = next(payload for payload in action_payloads if payload["action_type"] == "wiki.answer_summary.write")
+    assert wiki_action["decision"] == "auto"
+    assert wiki_action["reversible"] is True
+    assert wiki_action["target_paths"][0].startswith("Wiki/Companion/Summaries/")
+
+    page_path = vault.joinpath(*wiki_action["target_paths"][0].split("/"))
+    text = page_path.read_text(encoding="utf-8")
+    assert "### 核心定义" in text
+    assert "### 原文出处" in text
+    assert "### 自检清单" in text
+    assert "agent_run_id" in text
+    assert wiki_action["target_paths"][0] in (vault / "Wiki" / "log.md").read_text(encoding="utf-8")
+
+
 def test_retrieval_chat_stream_emits_citation_event(client: TestClient, tmp_path: Path) -> None:
     vault = tmp_path / "Vault"
     vault.mkdir()
@@ -538,6 +857,7 @@ def test_chat_done_auto_writes_daily_memory_file(client: TestClient, tmp_path: P
         headers=auth(),
         json={"path": str(vault), "create_if_missing": True},
     )
+    enable_automation(client, chat_diary=True)
 
     events = stream_chat(client, "auto daily memory question")
 
@@ -571,6 +891,7 @@ def test_chat_done_auto_writes_long_term_memory_for_explicit_preference(
         headers=auth(),
         json={"path": str(vault), "create_if_missing": True},
     )
+    enable_automation(client, long_term_memory=True)
 
     events = stream_chat(client, "我喜欢的水果是苹果")
 

@@ -5,61 +5,21 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 import sqlite3
-from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.conftest import FORBIDDEN_HEALTH_KEYS, assert_error_shape, auth_headers, iter_keys, parse_sse_events
+
 
 SESSION_TOKEN = "integration-test-session-token"
-AUTH_HEADERS = {"Authorization": f"Bearer {SESSION_TOKEN}"}
-FORBIDDEN_HEALTH_KEYS = {
-    "active_vault_id",
-    "vault_id",
-    "vault_path",
-    "root_path",
-    "model_provider",
-    "model_base_url",
-    "chat_model",
-    "model_config",
-    "api_key",
-    "token",
-    "authorization",
-    "username",
-}
+AUTH_HEADERS = auth_headers(SESSION_TOKEN)
 
 
 @pytest.fixture()
-def client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[TestClient]:
-    monkeypatch.setenv("AGENT_PET_SESSION_TOKEN", SESSION_TOKEN)
-    monkeypatch.setenv("AGENT_PET_SQLITE_PATH", str(tmp_path / "agent_pet.sqlite3"))
-    from app.config import get_settings
-    from app.main import create_app
-
-    get_settings.cache_clear()
-    with TestClient(create_app()) as test_client:
+def client(client_factory) -> Iterator[TestClient]:
+    with client_factory(session_token=SESSION_TOKEN, sqlite_name="agent_pet.sqlite3") as test_client:
         yield test_client
-    get_settings.cache_clear()
-
-
-def iter_keys(value: Any) -> Iterator[str]:
-    if isinstance(value, dict):
-        for key, nested in value.items():
-            yield str(key)
-            yield from iter_keys(nested)
-    elif isinstance(value, list):
-        for item in value:
-            yield from iter_keys(item)
-
-
-def assert_error_shape(payload: dict[str, Any]) -> None:
-    assert set(payload) == {"error"}
-    error = payload["error"]
-    assert {"code", "message", "request_id", "details"}.issubset(error)
-    assert isinstance(error["code"], str)
-    assert isinstance(error["message"], str)
-    assert isinstance(error["request_id"], str)
-    assert isinstance(error["details"], dict)
 
 
 def skip_if_unwired(response, capability: str) -> None:
@@ -67,26 +27,10 @@ def skip_if_unwired(response, capability: str) -> None:
         return
     payload = response.json()
     if payload.get("error", {}).get("code") == "not_implemented":
-        pytest.skip(f"{capability} API wiring is explicitly not implemented yet")
-
-
-def parse_sse_events(body: str) -> list[dict[str, str]]:
-    events: list[dict[str, str]] = []
-    current: dict[str, str] = {}
-    for raw_line in body.splitlines():
-        line = raw_line.strip()
-        if not line:
-            if current:
-                events.append(current)
-                current = {}
-            continue
-        if line.startswith(":"):
-            continue
-        field, _, value = line.partition(":")
-        current[field] = value.lstrip()
-    if current:
-        events.append(current)
-    return events
+        pytest.fail(
+            f"{capability} API returned 501, but this endpoint is marked Covered in the MVP acceptance matrix. "
+            "Implement the endpoint or change the acceptance matrix status to Partial."
+        )
 
 
 def test_health_has_no_auth_requirement_and_no_sensitive_state(client: TestClient) -> None:
@@ -95,6 +39,67 @@ def test_health_has_no_auth_requirement_and_no_sensitive_state(client: TestClien
     assert response.status_code == 200
     payload = response.json()
     assert payload["status"] == "ok"
+    assert payload["database"] == "ok"
+    assert FORBIDDEN_HEALTH_KEYS.isdisjoint({key.lower() for key in iter_keys(payload)})
+
+
+def test_health_degrades_when_database_is_unreachable(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    class BrokenDatabase:
+        def connect(self):
+            raise sqlite3.OperationalError("database is unavailable")
+
+    monkeypatch.setattr(client.app.state, "database", BrokenDatabase())
+
+    response = client.get("/api/health")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "degraded"
+    assert payload["database"] == "error"
+
+
+def test_health_reports_vector_index_initialization_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("AGENT_PET_SESSION_TOKEN", SESSION_TOKEN)
+    monkeypatch.setenv("AGENT_PET_SQLITE_PATH", str(tmp_path / "agent_pet.sqlite3"))
+
+    from app.config import get_settings
+    from app.main import create_app
+    from app.services.settings import InMemoryCredentialStore, SettingsStore
+
+    class BrokenEmbeddingClient:
+        def __init__(self, **kwargs):
+            pass
+
+        def create_embeddings(self):
+            raise RuntimeError("embedding unavailable")
+
+    get_settings.cache_clear()
+    app = create_app()
+    credential_store = InMemoryCredentialStore()
+    monkeypatch.setattr(
+        "app.services.settings.LocalCredentialStore.for_database",
+        classmethod(lambda cls, db_path: credential_store),
+    )
+    monkeypatch.setattr("app.services.retrieval_factory.LangChainEmbeddingClient", BrokenEmbeddingClient)
+    store = SettingsStore(app.state.database.path, credential_store=credential_store)
+    try:
+        store.set_embedding_key("openai-compatible", "test-embedding-key")
+    finally:
+        store.close()
+
+    with TestClient(app) as test_client:
+        response = test_client.get("/api/health")
+
+    get_settings.cache_clear()
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "degraded"
+    assert payload["database"] == "ok"
+    assert payload["components"]["vector_index"]["status"] == "unavailable"
+    assert "RuntimeError" in payload["components"]["vector_index"]["reason"]
     assert FORBIDDEN_HEALTH_KEYS.isdisjoint({key.lower() for key in iter_keys(payload)})
 
 

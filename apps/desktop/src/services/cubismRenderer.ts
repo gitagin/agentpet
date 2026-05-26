@@ -423,35 +423,6 @@ class SingleCubismModel extends CubismUserModel {
     }
   }
 
-  private async loadFirstMotion(setting: CubismModelSettingJson) {
-    if (setting.getMotionGroupCount() <= 0) {
-      return;
-    }
-
-    const group = setting.getMotionGroupName(0);
-    if (setting.getMotionCount(group) <= 0) {
-      return;
-    }
-
-    const motionFileName = setting.getMotionFileName(group, 0);
-    if (!motionFileName) {
-      return;
-    }
-
-    const motionBuffer = await fetchArrayBuffer(`${this.modelDirectoryUrl}${motionFileName}`, "idle 动作");
-    const motion = await runCubismStage("idle 动作加载", () =>
-      this.loadMotion(motionBuffer, motionBuffer.byteLength, `${group}_0`, undefined, undefined, setting, group, 0, false),
-    );
-    if (!motion) {
-      return;
-    }
-
-    this.idleMotion = motion;
-    this.motionGroup = group;
-    this.motionIndex = 0;
-    this.startLoadedMotion();
-  }
-
   private async loadExpressions(setting: CubismModelSettingJson) {
     this.expressionMap.clear();
     this.currentExpressionName = null;

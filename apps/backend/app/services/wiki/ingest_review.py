@@ -1,0 +1,57 @@
+from .common import *
+from .mapping import _map_ingest_review, _map_plan
+from .review import _complete_model, _deterministic_review_response, _parse_model_review, _review_system_prompt, _review_user_message
+from .utility import _json_list, _json_object, _preview_text
+
+from .import_handler import _import_preview_request
+from .markdown import _ingest_log_details
+from .planning import _build_ingest_page_plans
+
+class WikiIngestReviewMixin:
+
+    async def review_ingest(self, request: WikiIngestReviewRequest) -> WikiIngestReviewResponse:
+        if not request.force_refresh:
+            existing = self._latest_review(request.run_id, reviewer_agent_id=request.reviewer_agent_id)
+            if existing is not None:
+                return existing
+
+        run = self._load_ingest_run(request.run_id)
+        reviewer_agent_id, review_model = self._resolve_review_model(request.reviewer_agent_id)
+
+        if review_model is None:
+            response = _deterministic_review_response(
+                run,
+                reviewer_agent_id=reviewer_agent_id.value,
+                status="model_not_configured",
+                model_error="model_not_configured",
+            )
+            return self._insert_review(response)
+
+        try:
+            model_text = await _complete_model(
+                review_model,
+                user_message=_review_user_message(run),
+                system_prompt=_review_system_prompt(),
+            )
+            response = _parse_model_review(
+                model_text,
+                run,
+                reviewer_agent_id=reviewer_agent_id.value,
+            )
+        except ChatModelError as exc:
+            response = _deterministic_review_response(
+                run,
+                reviewer_agent_id=reviewer_agent_id.value,
+                status="failed",
+                model_error=exc.code,
+                summary=f"Model review failed: {exc.code}. Deterministic review was preserved.",
+            )
+        except Exception as exc:
+            response = _deterministic_review_response(
+                run,
+                reviewer_agent_id=reviewer_agent_id.value,
+                status="failed",
+                model_error=getattr(exc, "code", exc.__class__.__name__),
+                summary="Model review failed. Deterministic review was preserved.",
+            )
+        return self._insert_review(response)

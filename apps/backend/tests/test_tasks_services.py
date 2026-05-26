@@ -1,10 +1,35 @@
-import sqlite3
-import time
 from datetime import datetime, timedelta, timezone
 
+from apps.backend.tests._schema import migrate_db, migrated_connection
 from app.models.enums import ReminderStatus, TaskStatus
-from app.scheduler import InMemoryReminderScheduler
+from app.scheduler import ReminderSchedulerError
 from app.services.tasks import TaskService, TaskStore
+
+
+class RecordingReminderScheduler:
+    def __init__(self, *, fail_schedule: bool = False):
+        self.fail_schedule = fail_schedule
+        self.jobs = {}
+        self.cancelled_job_ids = []
+
+    def schedule(self, reminder_id: str, trigger_at_utc: datetime, title: str) -> str:
+        if self.fail_schedule:
+            raise ReminderSchedulerError("提醒调度器不可用")
+        job_id = f"reminder:{reminder_id}"
+        self.jobs[job_id] = {
+            "reminder_id": reminder_id,
+            "trigger_at_utc": trigger_at_utc,
+            "title": title,
+        }
+        return job_id
+
+    def cancel(self, job_id: str) -> None:
+        self.cancelled_job_ids.append(job_id)
+        self.jobs.pop(job_id, None)
+
+    def trigger(self, job_id: str, service: TaskService) -> None:
+        job = self.jobs.pop(job_id)
+        service.mark_reminder_triggered(job["reminder_id"])
 
 
 def fixed_now():
@@ -12,11 +37,11 @@ def fixed_now():
 
 
 def build_service(scheduler=None):
-    return TaskService(TaskStore(sqlite3.connect(":memory:")), scheduler=scheduler, now_provider=fixed_now)
+    return TaskService(TaskStore(migrated_connection()), scheduler=scheduler, now_provider=fixed_now)
 
 
 def test_create_task_converts_local_times_to_utc_and_schedules_reminder():
-    scheduler = InMemoryReminderScheduler()
+    scheduler = RecordingReminderScheduler()
     service = build_service(scheduler)
 
     result = service.create(
@@ -35,11 +60,12 @@ def test_create_task_converts_local_times_to_utc_and_schedules_reminder():
     assert result.reminder.status == ReminderStatus.SCHEDULED
     assert result.reminder.scheduler_job_id == f"reminder:{result.reminder.id}"
     assert result.reminder.scheduler_job_id in scheduler.jobs
+    assert scheduler.jobs[result.reminder.scheduler_job_id]["title"] == "Review plan"
     assert result.metadata["time_parse_status"] == "explicit"
 
 
 def test_create_task_parses_chinese_absolute_reminder_time():
-    scheduler = InMemoryReminderScheduler()
+    scheduler = RecordingReminderScheduler()
     service = build_service(scheduler)
 
     result = service.create(
@@ -58,7 +84,7 @@ def test_create_task_parses_chinese_absolute_reminder_time():
 
 
 def test_beijing_timezone_aliases_are_stored_as_canonical_china_timezone():
-    service = build_service(InMemoryReminderScheduler())
+    service = build_service(RecordingReminderScheduler())
 
     for timezone_name in ["北京时间", "北京", "Asia/Beijing", "Beijing"]:
         result = service.create(
@@ -75,7 +101,7 @@ def test_beijing_timezone_aliases_are_stored_as_canonical_china_timezone():
 
 
 def test_create_task_parses_relative_seconds_minutes_and_hours():
-    service = build_service(InMemoryReminderScheduler())
+    service = build_service(RecordingReminderScheduler())
 
     seconds = service.create(title="写笔记", source_text="5秒钟后提醒我写笔记", timezone="Asia/Shanghai")
     minutes = service.create(title="喝水", source_text="30分钟后提醒我喝水", timezone="Asia/Shanghai")
@@ -91,7 +117,7 @@ def test_create_task_parses_relative_seconds_minutes_and_hours():
 
 
 def test_create_task_without_time_expression_remains_plain_task():
-    service = build_service(InMemoryReminderScheduler())
+    service = build_service(RecordingReminderScheduler())
 
     result = service.create(title="整理知识库", source_text="提醒我整理知识库", timezone="Asia/Shanghai")
 
@@ -101,7 +127,7 @@ def test_create_task_without_time_expression_remains_plain_task():
 
 
 def test_scheduler_failure_keeps_task_and_marks_reminder_unscheduled():
-    scheduler = InMemoryReminderScheduler(fail_schedule=True)
+    scheduler = RecordingReminderScheduler(fail_schedule=True)
     service = build_service(scheduler)
 
     result = service.create(
@@ -118,14 +144,14 @@ def test_scheduler_failure_keeps_task_and_marks_reminder_unscheduled():
 
 
 def test_retry_unscheduled_schedules_existing_reminders():
-    failing = InMemoryReminderScheduler(fail_schedule=True)
-    store = TaskStore(sqlite3.connect(":memory:"))
+    failing = RecordingReminderScheduler(fail_schedule=True)
+    store = TaskStore(migrated_connection())
     service = TaskService(store, scheduler=failing)
     created = service.create(title="Stand up", remind_at="2026-04-27T09:00:00", timezone="UTC")
     assert created.reminder is not None
     assert created.reminder.status == ReminderStatus.UNSCHEDULED
 
-    working = InMemoryReminderScheduler()
+    working = RecordingReminderScheduler()
     retrying_service = TaskService(store, scheduler=working)
     reminders = retrying_service.retry_unscheduled()
 
@@ -135,9 +161,9 @@ def test_retry_unscheduled_schedules_existing_reminders():
 
 
 def test_recover_reminders_reschedules_existing_scheduled_rows(tmp_path):
-    db_path = tmp_path / "tasks.sqlite3"
+    db_path = migrate_db(tmp_path / "tasks.sqlite3")
     first_store = TaskStore(db_path)
-    first_service = TaskService(first_store, scheduler=InMemoryReminderScheduler())
+    first_service = TaskService(first_store, scheduler=RecordingReminderScheduler())
     created = first_service.create(
         title="Future reminder",
         remind_at=(datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat(),
@@ -146,7 +172,7 @@ def test_recover_reminders_reschedules_existing_scheduled_rows(tmp_path):
     assert created.reminder is not None
     first_store.close()
 
-    scheduler = InMemoryReminderScheduler()
+    scheduler = RecordingReminderScheduler()
     recovering = TaskService(TaskStore(db_path), scheduler=scheduler)
     reminders = recovering.recover_reminders()
 
@@ -156,26 +182,19 @@ def test_recover_reminders_reschedules_existing_scheduled_rows(tmp_path):
 
 
 def test_scheduler_trigger_marks_reminder_triggered(tmp_path):
-    db_path = tmp_path / "tasks.sqlite3"
-
-    def mark_triggered(reminder_id: str) -> None:
-        service = TaskService(TaskStore(db_path))
-        try:
-            service.mark_reminder_triggered(reminder_id)
-        finally:
-            service.close()
-
-    scheduler = InMemoryReminderScheduler(on_trigger=mark_triggered)
+    db_path = migrate_db(tmp_path / "tasks.sqlite3")
+    scheduler = RecordingReminderScheduler()
     service = TaskService(TaskStore(db_path), scheduler=scheduler)
     created = service.create(
         title="Soon",
-        remind_at=(datetime.now(timezone.utc) + timedelta(milliseconds=120)).isoformat(),
+        remind_at=(datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat(),
         timezone="UTC",
     )
     assert created.reminder is not None
     assert created.reminder.status == ReminderStatus.SCHEDULED
+    assert created.reminder.scheduler_job_id is not None
 
-    time.sleep(0.35)
+    scheduler.trigger(created.reminder.scheduler_job_id, service)
     reminder = service.reminder_for_task(created.task.id)
 
     assert reminder is not None
@@ -185,14 +204,14 @@ def test_scheduler_trigger_marks_reminder_triggered(tmp_path):
 
 
 def test_retry_unscheduled_cancels_reminders_for_completed_tasks():
-    store = TaskStore(sqlite3.connect(":memory:"))
+    store = TaskStore(migrated_connection())
     service = TaskService(store)
     created = service.create(title="Already done", remind_at="2026-04-27T09:00:00", timezone="UTC")
     assert created.reminder is not None
     assert created.reminder.status == ReminderStatus.UNSCHEDULED
     store.complete_task(created.task.id)
 
-    scheduler = InMemoryReminderScheduler()
+    scheduler = RecordingReminderScheduler()
     retrying_service = TaskService(store, scheduler=scheduler)
     reminders = retrying_service.retry_unscheduled()
 
@@ -203,7 +222,7 @@ def test_retry_unscheduled_cancels_reminders_for_completed_tasks():
 
 
 def test_complete_task_cancels_scheduled_reminder():
-    scheduler = InMemoryReminderScheduler()
+    scheduler = RecordingReminderScheduler()
     service = build_service(scheduler)
     created = service.create(title="Submit report", remind_at="2026-04-27T09:00:00", timezone="UTC")
     assert created.reminder is not None
@@ -220,7 +239,7 @@ def test_complete_task_cancels_scheduled_reminder():
 
 
 def test_cancel_task_cancels_scheduled_reminder():
-    scheduler = InMemoryReminderScheduler()
+    scheduler = RecordingReminderScheduler()
     service = build_service(scheduler)
     created = service.create(title="Call partner", remind_at="2026-04-27T09:00:00", timezone="UTC")
     assert created.reminder is not None

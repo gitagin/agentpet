@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -13,8 +14,8 @@ from app.models.api import (
     WikiPageWriteRequest,
     WikiResearchQuestion,
 )
-from app.services.tasks import utc_now_iso
-from app.services.wiki import WIKI_ROOT, WikiService
+from app.utils.time import utc_now_iso
+from app.services.wiki import WIKI_PAGE_TEMPLATE_SECTIONS, WIKI_ROOT, WikiService
 from app.storage.markdown import read_markdown
 
 
@@ -26,6 +27,18 @@ class _WikiPage:
     content_hash: str
     frontmatter: dict[str, str | list[str]]
     body: str
+
+
+@dataclass(frozen=True)
+class WikiDiagnosticsQueueItem:
+    diagnostic_type: str
+    severity: str
+    issue_code: str
+    title: str
+    message: str
+    path: str | None = None
+    target: str | None = None
+    repair_preview: WikiLintRepairProposal | None = None
 
 
 class WikiLintService:
@@ -58,8 +71,13 @@ class WikiLintService:
         issues.extend(self._core_file_issues(pages))
         issues.extend(_schema_frontmatter_issues(pages))
         issues.extend(_duplicate_title_issues(pages))
+        issues.extend(_template_section_issues(pages))
+        issues.extend(_evidence_source_issues(pages))
+        issues.extend(_version_log_issues(pages, self.vault_root))
         issues.extend(_orphan_page_issues(pages))
+        issues.extend(_inbound_link_count_issues(pages))
         issues.extend(_broken_link_issues(pages))
+        issues.extend(_format_trap_issues(pages))
         issues.extend(self._index_issues(pages))
         issues.extend(self._index_job_issues())
         issues.extend(self._vector_index_issues(pages))
@@ -96,6 +114,15 @@ class WikiLintService:
             repair_proposals=repair_proposals,
             report_page=report_page,
         )
+
+    def diagnostics_queue(self) -> list[WikiDiagnosticsQueueItem]:
+        pages = self._load_pages()
+        issues: list[WikiLintIssue] = []
+        issues.extend(_contradiction_marker_issues(pages))
+        issues.extend(_stale_marker_issues(pages))
+        issues.extend(_broken_link_issues(pages))
+        issues.extend(_missing_concept_issues(pages))
+        return _diagnostics_queue_items(issues, pages)
 
     def _load_pages(self) -> list[_WikiPage]:
         root = self.vault_root / WIKI_ROOT
@@ -304,6 +331,11 @@ class WikiLintService:
         )
 
 
+class WikiDiagnosticsQueueService(WikiLintService):
+    def list_items(self) -> list[WikiDiagnosticsQueueItem]:
+        return self.diagnostics_queue()
+
+
 def _duplicate_title_issues(pages: list[_WikiPage]) -> list[WikiLintIssue]:
     by_title: dict[str, list[_WikiPage]] = {}
     for page in pages:
@@ -320,6 +352,119 @@ def _duplicate_title_issues(pages: list[_WikiPage]) -> list[WikiLintIssue]:
                     code="duplicate_title",
                     message=f"多个 Wiki 页面使用相同标题“{page.title}”：{paths}",
                     path=page.relative_path,
+                )
+            )
+    return issues
+
+
+def _template_section_issues(pages: list[_WikiPage]) -> list[WikiLintIssue]:
+    issues: list[WikiLintIssue] = []
+    for page in _maintained_pages(pages):
+        missing = [section for section in WIKI_PAGE_TEMPLATE_SECTIONS if not _has_heading(page.body, section)]
+        if missing:
+            issues.append(
+                WikiLintIssue(
+                    severity="info",
+                    code="wiki_template_section_missing",
+                    message="Wiki 页面缺少固定 8 章模板章节：" + ", ".join(missing),
+                    path=page.relative_path,
+                    target=", ".join(missing),
+                )
+            )
+    return issues
+
+
+def _evidence_source_issues(pages: list[_WikiPage]) -> list[WikiLintIssue]:
+    issues: list[WikiLintIssue] = []
+    for page in _maintained_pages(pages):
+        sources = _frontmatter_list(page.frontmatter.get("sources"))
+        has_source_section = _has_heading(page.body, "原文出处")
+        has_obsidian_source = "[[Memories/" in page.body or "[[Wiki/Sources/" in page.body or any(
+            source.startswith(("Memories/", "Wiki/Sources/", "message:")) for source in sources
+        )
+        if not sources or not has_source_section or not has_obsidian_source:
+            issues.append(
+                WikiLintIssue(
+                    severity="warning",
+                    code="wiki_source_reference_missing",
+                    message="Wiki 页面应在 frontmatter 和“原文出处”中标明证据、来源路径或触发消息。",
+                    path=page.relative_path,
+                )
+            )
+        if _is_automatic_page(page) and ("触发来源" not in page.body or "agent_run_id" not in page.body):
+            issues.append(
+                WikiLintIssue(
+                    severity="warning",
+                    code="wiki_trigger_source_missing",
+                    message="自动整理页面应记录触发来源、message id 和 agent_run_id。",
+                    path=page.relative_path,
+                )
+            )
+    return issues
+
+
+def _version_log_issues(pages: list[_WikiPage], vault_root: Path) -> list[WikiLintIssue]:
+    issues: list[WikiLintIssue] = []
+    log_text = ""
+    log_path = vault_root / WIKI_ROOT / "log.md"
+    if log_path.exists():
+        log_text = log_path.read_text(encoding="utf-8")
+    for page in _maintained_pages(pages):
+        if not page.frontmatter.get("revision"):
+            issues.append(
+                WikiLintIssue(
+                    severity="info",
+                    code="wiki_revision_missing",
+                    message="Wiki 页面 frontmatter 应包含 revision，以便追踪版本演进。",
+                    path=page.relative_path,
+                )
+            )
+        if not _has_heading(page.body, "更新日志"):
+            issues.append(
+                WikiLintIssue(
+                    severity="info",
+                    code="wiki_page_update_log_missing",
+                    message="Wiki 页面应包含内嵌更新日志。",
+                    path=page.relative_path,
+                )
+            )
+        if log_text and page.relative_path not in log_text:
+            issues.append(
+                WikiLintIssue(
+                    severity="info",
+                    code="wiki_central_log_missing",
+                    message="Wiki/log.md 中没有找到该页面路径的集中日志记录。",
+                    path=page.relative_path,
+                )
+            )
+    return issues
+
+
+def _inbound_link_count_issues(pages: list[_WikiPage]) -> list[WikiLintIssue]:
+    issues: list[WikiLintIssue] = []
+    for target in _maintained_pages(pages):
+        count = 0
+        aliases = {
+            target.title.casefold(),
+            Path(target.relative_path).stem.casefold(),
+            target.relative_path.casefold(),
+        }
+        for page in pages:
+            if page.relative_path == target.relative_path:
+                continue
+            for link in page.links:
+                normalized = link.strip().replace("\\", "/").strip("/").casefold()
+                if normalized in aliases:
+                    count += 1
+                    break
+        if count < 3:
+            issues.append(
+                WikiLintIssue(
+                    severity="info",
+                    code="wiki_inbound_link_count_low",
+                    message=f"Wiki 页面入链数量为 {count}，低于 3；应从相关页面补足双向链接。",
+                    path=target.relative_path,
+                    target=str(count),
                 )
             )
     return issues
@@ -371,6 +516,7 @@ def _schema_frontmatter_issues(pages: list[_WikiPage]) -> list[WikiLintIssue]:
         f"{WIKI_ROOT}/Entities/": "entity",
         f"{WIKI_ROOT}/Concepts/": "concept",
         f"{WIKI_ROOT}/Syntheses/": "synthesis",
+        f"{WIKI_ROOT}/Companion/Summaries/": "synthesis",
         f"{WIKI_ROOT}/Comparisons/": "comparison",
     }
     for page in pages:
@@ -416,11 +562,15 @@ def _orphan_page_issues(pages: list[_WikiPage]) -> list[WikiLintIssue]:
 def _broken_link_issues(pages: list[_WikiPage]) -> list[WikiLintIssue]:
     existing_titles = {page.title.casefold() for page in pages}
     existing_slugs = {Path(page.relative_path).stem.casefold() for page in pages}
+    existing_paths = {page.relative_path.casefold() for page in pages}
     issues = []
     for page in pages:
         for link in page.links:
-            key = link.casefold()
-            if key in existing_titles or key in existing_slugs:
+            normalized = link.strip().replace("\\", "/").strip("/")
+            if normalized.startswith("Memories/"):
+                continue
+            key = normalized.casefold()
+            if key in existing_titles or key in existing_slugs or key in existing_paths:
                 continue
             issues.append(
                 WikiLintIssue(
@@ -500,6 +650,42 @@ def _missing_concept_issues(pages: list[_WikiPage]) -> list[WikiLintIssue]:
                     message=f"Wiki references concept `[[{link}]]` without a matching Wiki/Concepts page.",
                     path=page.relative_path,
                     target=link,
+                )
+            )
+    return issues
+
+
+def _format_trap_issues(pages: list[_WikiPage]) -> list[WikiLintIssue]:
+    issues: list[WikiLintIssue] = []
+    for page in _maintained_pages(pages):
+        if not page.body.strip():
+            issues.append(
+                WikiLintIssue(
+                    severity="warning",
+                    code="wiki_empty_page",
+                    message="Wiki 页面为空，可能是创建失败或重复创建留下的空文件。",
+                    path=page.relative_path,
+                )
+            )
+        for link in page.links:
+            normalized = link.strip().replace("\\", "/").strip("/")
+            if "/" in normalized and not normalized.startswith((f"{WIKI_ROOT}/", "Memories/")):
+                issues.append(
+                    WikiLintIssue(
+                        severity="info",
+                        code="wiki_link_path_outside_known_roots",
+                        message=f"Wiki 链接路径不在 Wiki/ 或 Memories/ 内：[[{link}]]",
+                        path=page.relative_path,
+                        target=link,
+                    )
+                )
+        if "TODO" in page.body or "待补" in page.body:
+            issues.append(
+                WikiLintIssue(
+                    severity="info",
+                    code="wiki_placeholder_left",
+                    message="Wiki 页面仍有占位内容，需要补全或明确标记为待研究问题。",
+                    path=page.relative_path,
                 )
             )
     return issues
@@ -641,6 +827,27 @@ def _repair_proposal(
             markdown_preview=_frontmatter_preview(title, page_type),
             related_paths=related_paths,
         )
+    if issue.code in {
+        "wiki_template_section_missing",
+        "wiki_source_reference_missing",
+        "wiki_trigger_source_missing",
+        "wiki_revision_missing",
+        "wiki_page_update_log_missing",
+        "wiki_central_log_missing",
+        "wiki_inbound_link_count_low",
+        "wiki_empty_page",
+        "wiki_link_path_outside_known_roots",
+        "wiki_placeholder_left",
+    }:
+        return WikiLintRepairProposal(
+            issue_code=issue.code,
+            title="Complete Wiki page contract",
+            target_path=issue.path,
+            operation="replace_section",
+            reason=issue.message,
+            markdown_preview="补齐固定 8 章模板、原文出处、更新日志、自检清单、集中日志和必要入链；涉及覆盖内容时先走确认。",
+            related_paths=related_paths,
+        )
     if issue.code in {"wiki_index_entry_missing", "wiki_core_file_missing", "wiki_log_entry_missing"}:
         return WikiLintRepairProposal(
             issue_code=issue.code,
@@ -652,6 +859,68 @@ def _repair_proposal(
             related_paths=related_paths,
         )
     return None
+
+
+_QUEUE_DIAGNOSTIC_TYPES = {
+    "wiki_contradiction_marker": "contradiction",
+    "wiki_stale_marker": "stale_claim",
+    "missing_wiki_link": "missing_link",
+    "missing_concept_page": "missing_concept",
+}
+
+
+_QUEUE_TITLES = {
+    "contradiction": "Review contradiction candidate",
+    "stale_claim": "Refresh stale claim",
+    "missing_link": "Resolve missing Wiki link",
+    "missing_concept": "Draft missing concept page",
+}
+
+
+_QUEUE_TYPE_RANK = {
+    "contradiction": 0,
+    "stale_claim": 1,
+    "missing_link": 2,
+    "missing_concept": 3,
+}
+
+
+def _diagnostics_queue_items(
+    issues: list[WikiLintIssue],
+    pages: list[_WikiPage],
+) -> list[WikiDiagnosticsQueueItem]:
+    page_by_path = {page.relative_path: page for page in pages}
+    items: list[WikiDiagnosticsQueueItem] = []
+    seen: set[tuple[str, str, str, str]] = set()
+    for issue in sorted(
+        issues,
+        key=lambda item: (
+            _QUEUE_TYPE_RANK.get(_QUEUE_DIAGNOSTIC_TYPES.get(item.code, ""), 99),
+            item.path or "",
+            item.target or "",
+            item.code,
+        ),
+    ):
+        diagnostic_type = _QUEUE_DIAGNOSTIC_TYPES.get(issue.code)
+        if diagnostic_type is None:
+            continue
+        key = (diagnostic_type, issue.code, issue.path or "", issue.target or "")
+        if key in seen:
+            continue
+        seen.add(key)
+        items.append(
+            WikiDiagnosticsQueueItem(
+                diagnostic_type=diagnostic_type,
+                severity=issue.severity,
+                issue_code=issue.code,
+                title=_QUEUE_TITLES[diagnostic_type],
+                message=issue.message,
+                path=issue.path,
+                target=issue.target,
+                repair_preview=_repair_proposal(issue, page_by_path),
+            )
+        )
+    return items
 
 
 def _summary(
@@ -669,6 +938,34 @@ def _summary(
         "research_questions": len(research_questions),
         "repair_proposals": len(repair_proposals),
     }
+
+
+def _maintained_pages(pages: list[_WikiPage]) -> list[_WikiPage]:
+    excluded = {f"{WIKI_ROOT}/AGENTS.md", f"{WIKI_ROOT}/index.md", f"{WIKI_ROOT}/log.md"}
+    return [
+        page
+        for page in pages
+        if page.relative_path not in excluded and not page.relative_path.startswith(f"{WIKI_ROOT}/Reports/")
+    ]
+
+
+def _has_heading(body: str, heading: str) -> bool:
+    pattern = re.compile(rf"^##+\s+{re.escape(heading)}\s*$", re.MULTILINE)
+    return bool(pattern.search(body))
+
+
+def _frontmatter_list(value: str | list[str] | object) -> list[str]:
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, str):
+        return [item.strip() for item in value.split(",") if item.strip()]
+    return []
+
+
+def _is_automatic_page(page: _WikiPage) -> bool:
+    tags = _frontmatter_list(page.frontmatter.get("tags"))
+    text = " ".join([page.relative_path, page.body, *tags]).casefold()
+    return "auto-wiki" in text or "companion/summaries" in text or "query-archive" in text
 
 
 def _report_markdown(

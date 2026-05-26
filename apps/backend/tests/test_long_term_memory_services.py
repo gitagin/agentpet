@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 
+from apps.backend.tests._schema import migrate_db
 from app.services.long_term_memory import LongTermMemoryService, extract_long_term_memory_candidate
 from app.services.memory import SafeMarkdownWriter
+from app.services.memory_graph import MemoryGraphStore
 
 
 def build_service(tmp_path, index_jobs=None):
@@ -112,6 +115,21 @@ def test_sensitive_candidate_is_rejected(tmp_path):
     assert not (tmp_path / "Memories" / "LongTerm" / "Profile.md").exists()
 
 
+def test_sensitive_life_domain_requires_review_instead_of_auto_write(tmp_path):
+    service = build_service(tmp_path)
+
+    result = service.remember_from_user_message(
+        "我的健康情况是长期失眠",
+        conversation_id="conversation-1",
+        user_message_id="message-1",
+        agent_run_id="run-1",
+    )
+
+    assert result.written is False
+    assert result.reason == "sensitive_life_domain"
+    assert not (tmp_path / "Memories" / "LongTerm" / "Profile.md").exists()
+
+
 def test_extracts_short_like_statement_as_preference():
     candidate = extract_long_term_memory_candidate("我喜欢苹果")
 
@@ -119,3 +137,31 @@ def test_extracts_short_like_statement_as_preference():
     assert candidate.target_path == "Memories/LongTerm/Preferences.md"
     assert candidate.subject == "偏好"
     assert candidate.value == "苹果"
+
+
+def test_model_extraction_failure_logs_warning_and_skips_candidates(tmp_path, caplog):
+    class FailingModel:
+        def complete(self, *, user_message: str, system_prompt: str | None = None) -> str:
+            raise RuntimeError("model down")
+
+    service = LongTermMemoryService(
+        SafeMarkdownWriter(tmp_path),
+        graph_store=MemoryGraphStore(migrate_db(tmp_path / "state.sqlite3")),
+        extraction_model=FailingModel(),
+        extraction_model_name="test-model",
+    )
+    try:
+        caplog.set_level(logging.WARNING, logger="app.services.long_term_memory")
+
+        result = service.remember_from_user_message(
+            "This is a durable work note without explicit preference syntax.",
+            conversation_id="conversation-1",
+            user_message_id="message-1",
+            agent_run_id="run-1",
+        )
+
+        assert result.written is False
+        assert result.reason == "no_explicit_memory"
+        assert "Long-term memory model extraction failed; skipping model candidates" in caplog.text
+    finally:
+        service.close()
