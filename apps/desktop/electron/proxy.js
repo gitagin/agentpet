@@ -1,5 +1,31 @@
 function createProxyManager({ baseUrl, sessionToken }) {
   const activeSseStreams = new Map();
+  const retryableMethods = new Set(["GET", "HEAD"]);
+
+  function delay(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  function isConnectionRefused(error) {
+    return error?.cause?.code === "ECONNREFUSED" || error?.code === "ECONNREFUSED";
+  }
+
+  function sidecarUnavailableResponse(error) {
+    return {
+      status: 503,
+      statusText: "Service Unavailable",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        error: {
+          code: "sidecar_starting",
+          message: "本地后端正在启动，请稍候再试。",
+          details: {
+            original_error: error instanceof Error ? error.message : String(error),
+          },
+        },
+      }),
+    };
+  }
 
   function resolveSidecarUrl(pathOrUrl) {
     if (typeof pathOrUrl !== "string") {
@@ -70,19 +96,36 @@ function createProxyManager({ baseUrl, sessionToken }) {
   async function proxyApiRequest(pathOrUrl, options) {
     const target = resolveSidecarUrl(pathOrUrl);
     const init = normalizeApiRequestOptions(options);
-    const response = await fetch(target, init);
-    const body = await response.text();
-    const headers = {};
-    response.headers.forEach((value, key) => {
-      headers[key] = value;
-    });
+    const attempts = retryableMethods.has(init.method) ? 12 : 1;
+    let lastError = null;
 
-    return {
-      status: response.status,
-      statusText: response.statusText,
-      headers,
-      body,
-    };
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      try {
+        const response = await fetch(target, init);
+        const body = await response.text();
+        const headers = {};
+        response.headers.forEach((value, key) => {
+          headers[key] = value;
+        });
+
+        return {
+          status: response.status,
+          statusText: response.statusText,
+          headers,
+          body,
+        };
+      } catch (error) {
+        if (!isConnectionRefused(error)) {
+          throw error;
+        }
+        lastError = error;
+        if (attempt < attempts - 1) {
+          await delay(250);
+        }
+      }
+    }
+
+    return sidecarUnavailableResponse(lastError);
   }
 
   function sendSseEvent(sender, channel, streamId, payload) {

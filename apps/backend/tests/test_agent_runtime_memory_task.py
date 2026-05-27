@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from types import SimpleNamespace
 
 from tests.agent_runtime_fakes import (
     FakeBadRequestTaskModel,
@@ -25,7 +26,11 @@ def test_langgraph_runtime_preserves_core_tool_agents() -> None:
         memory = FakeMemory()
         tasks = FakeTasks()
         runtime = LangGraphAgentRuntime(
-            AgentRuntimeServices(memory=memory, tasks=tasks)
+            AgentRuntimeServices(
+                memory=memory,
+                tasks=tasks,
+                automation_settings=SimpleNamespace(use_negotiation=False),
+            )
         )
 
         memory_events = [
@@ -56,6 +61,7 @@ def test_langgraph_memory_agent_defers_to_auto_background_archive_by_default() -
                 model_registry=AgentModelRegistry(
                     {AgentId.MEMORY_PROPOSAL_AGENT: memory_model}
                 ),
+                automation_settings=SimpleNamespace(use_negotiation=False),
             )
         )
 
@@ -86,7 +92,7 @@ def test_langgraph_chat_agent_maps_model_memory_tool_call_to_proposal_event_when
                 model_registry=AgentModelRegistry(
                     {AgentId.MEMORY_PROPOSAL_AGENT: memory_model}
                 ),
-                automation_settings=AutomationSettingsResponse(auto_long_term_memory=False),
+                automation_settings=AutomationSettingsResponse(auto_long_term_memory=False, use_negotiation=False),
             )
         )
 
@@ -115,6 +121,7 @@ def test_langgraph_task_agent_uses_model_for_confirmation_after_local_task_creat
             AgentRuntimeServices(
                 tasks=tasks,
                 model_registry=AgentModelRegistry({AgentId.TASK_AGENT: task_model}),
+                automation_settings=SimpleNamespace(use_negotiation=False),
             )
         )
 
@@ -142,6 +149,7 @@ def test_langgraph_task_agent_creates_task_when_provider_rejects_model_params() 
             AgentRuntimeServices(
                 tasks=tasks,
                 model_registry=AgentModelRegistry({AgentId.TASK_AGENT: task_model}),
+                automation_settings=SimpleNamespace(use_negotiation=False),
             )
         )
 
@@ -169,7 +177,7 @@ def test_langgraph_chat_agent_returns_error_when_model_tool_call_fails() -> None
                 model_registry=AgentModelRegistry(
                     {AgentId.MEMORY_PROPOSAL_AGENT: FakeFailingToolCallingChatModel()}
                 ),
-                automation_settings=AutomationSettingsResponse(auto_long_term_memory=False),
+                automation_settings=AutomationSettingsResponse(auto_long_term_memory=False, use_negotiation=False),
             )
         )
 

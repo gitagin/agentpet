@@ -11,8 +11,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-from app.config import DEFAULT_CHAT_MODEL
-from app.models.api import AutomationSettingsRequest, AutomationSettingsResponse
+from app.config import DEFAULT_CHAT_MODEL, get_settings
+from app.models.api import (
+    AgentModelHealth,
+    AutomationSettingsRequest,
+    AutomationSettingsResponse,
+    ModelHealthResponse,
+)
 from app.utils.hash import sha256_hex
 from app.utils.time import utc_now_iso
 
@@ -220,6 +225,8 @@ class SettingsStore:
             auto_structured_memory=bool(row["auto_structured_memory"]),
             auto_long_term_memory=bool(row["auto_long_term_memory"]),
             auto_wiki_organize=bool(row["auto_wiki_organize"]),
+            use_negotiation=bool(row["use_negotiation"]),
+            max_rounds=int(row["max_rounds"]),
             high_risk_confirmation_required=bool(row["high_risk_confirmation_required"]),
             updated_at=str(row["updated_at"]),
         )
@@ -231,14 +238,17 @@ class SettingsStore:
                 """
                 INSERT INTO automation_settings (
                     id, auto_chat_diary, auto_structured_memory, auto_long_term_memory,
-                    auto_wiki_organize, high_risk_confirmation_required, created_at, updated_at
+                    auto_wiki_organize, use_negotiation, max_rounds,
+                    high_risk_confirmation_required, created_at, updated_at
                 )
-                VALUES (1, ?, ?, ?, ?, 1, ?, ?)
+                VALUES (1, ?, ?, ?, ?, ?, ?, 1, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     auto_chat_diary = excluded.auto_chat_diary,
                     auto_structured_memory = excluded.auto_structured_memory,
                     auto_long_term_memory = excluded.auto_long_term_memory,
                     auto_wiki_organize = excluded.auto_wiki_organize,
+                    use_negotiation = excluded.use_negotiation,
+                    max_rounds = excluded.max_rounds,
                     high_risk_confirmation_required = 1,
                     updated_at = excluded.updated_at
                 """,
@@ -247,6 +257,8 @@ class SettingsStore:
                     1 if settings.auto_structured_memory else 0,
                     1 if settings.auto_long_term_memory else 0,
                     1 if settings.auto_wiki_organize else 0,
+                    1 if settings.use_negotiation else 0,
+                    settings.max_rounds,
                     now,
                     now,
                 ),
@@ -699,6 +711,14 @@ class SettingsStore:
             model=row["model"],
         )
 
+    def is_agent_model_enabled(self, agent_id: str) -> bool:
+        normalized_agent_id = normalize_agent_id(agent_id)
+        row = self.conn.execute(
+            "SELECT enabled FROM agent_model_configs WHERE agent_id = ?",
+            (normalized_agent_id,),
+        ).fetchone()
+        return bool(row["enabled"]) if row is not None else False
+
     def list_agent_model_settings(
         self,
         *,
@@ -740,6 +760,91 @@ class SettingsStore:
                 )
             )
         return agents
+
+    def get_model_health_status(self) -> ModelHealthResponse:
+        defaults = get_settings()
+        default_config = ModelConfig(
+            provider="openai-compatible",
+            base_url=defaults.model_base_url.rstrip("/"),
+            model=defaults.chat_model,
+        )
+        global_status = self.get_model_key_status()
+        global_config_row = self.conn.execute(
+            "SELECT provider, base_url, model FROM model_config WHERE id = 1"
+        ).fetchone()
+        global_configured = global_config_row is not None and global_status.configured
+        global_config = (
+            ModelConfig(
+                provider=global_config_row["provider"],
+                base_url=global_config_row["base_url"],
+                model=global_config_row["model"],
+            )
+            if global_config_row is not None
+            else default_config
+        )
+        agents_configured = 0
+        agents_fallback_to_global = 0
+        agents_fallback_to_default = 0
+        agent_details: list[AgentModelHealth] = []
+        for agent_id in AGENT_MODEL_IDS:
+            row = self.conn.execute(
+                """
+                SELECT provider, base_url, model, enabled
+                FROM agent_model_configs
+                WHERE agent_id = ?
+                """,
+                (agent_id,),
+            ).fetchone()
+            agent_config = (
+                ModelConfig(
+                    provider=row["provider"],
+                    base_url=row["base_url"],
+                    model=row["model"],
+                )
+                if row is not None
+                else None
+            )
+            has_agent_override = bool(
+                row is not None
+                and row["enabled"]
+                and agent_config is not None
+                and not _model_config_matches(agent_config, global_config if global_configured else default_config)
+            )
+            if has_agent_override:
+                source = "agent_specific"
+                model = agent_config.model
+                agents_configured += 1
+            elif global_configured:
+                source = "global_fallback"
+                model = global_config.model
+                agents_fallback_to_global += 1
+            else:
+                source = "hardcoded_default"
+                model = default_config.model
+                agents_fallback_to_default += 1
+            agent_details.append(
+                AgentModelHealth(
+                    agent_id=agent_id,
+                    source=source,
+                    model=model,
+                )
+            )
+        return ModelHealthResponse(
+            global_configured=global_configured,
+            agents_configured=agents_configured,
+            agents_fallback_to_global=agents_fallback_to_global,
+            agents_fallback_to_default=agents_fallback_to_default,
+            agent_details=agent_details,
+        )
+
+
+def _model_config_matches(left: ModelConfig, right: ModelConfig) -> bool:
+    return (
+        normalize_model_provider(left.provider).strip().lower()
+        == normalize_model_provider(right.provider).strip().lower()
+        and left.base_url.strip().rstrip("/") == right.base_url.strip().rstrip("/")
+        and left.model.strip() == right.model.strip()
+    )
 
 
 def credential_ref_for_provider(provider: str) -> str:

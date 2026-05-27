@@ -1,10 +1,24 @@
-import type { ChatMessage } from "../../types";
+import type { ChatMessage, ChatNegotiationAction } from "../../types";
 import { EmptyState } from "../../components/layout";
 import { formatCitationSourceLabel, formatMessageRole, formatRunStatus } from "./chatFormatters";
 
 type ChatMessageListProps = {
   messages: ChatMessage[];
 };
+
+const NEGOTIATION_ACTION_LABELS: Record<ChatNegotiationAction, string> = {
+  invoking: "调用",
+  reviewing: "复核",
+  revising: "修订",
+  synthesizing: "合成",
+};
+
+function formatConfidence(confidence: number | undefined): string {
+  if (typeof confidence !== "number" || Number.isNaN(confidence)) {
+    return "置信度未知";
+  }
+  return `置信度 ${Math.round(Math.max(0, Math.min(1, confidence)) * 100)}%`;
+}
 
 export function ChatMessageList({ messages }: ChatMessageListProps) {
   return (
@@ -36,6 +50,32 @@ export function ChatMessageList({ messages }: ChatMessageListProps) {
                   </span>
                 ))}
               </div>
+            ) : null}
+            {message.negotiation_steps?.length ? (
+              <details className="message-negotiation">
+                <summary>
+                  思考过程 · 已思考 {message.negotiation_steps.length} 步
+                  {message.negotiation_done ? ` · ${formatConfidence(message.negotiation_done.final_confidence)}` : ""}
+                </summary>
+                <ol className="message-negotiation-list">
+                  {message.negotiation_steps.map((step, index) => (
+                    <li key={`${message.id}-negotiation-${index}`}>
+                      <strong>
+                        {step.agent} · {NEGOTIATION_ACTION_LABELS[step.action]} · 第 {step.round + 1} 轮
+                      </strong>
+                      <span>{step.message || step.reasoning || "正在整理协商上下文。"}</span>
+                      {step.reasoning && step.reasoning !== step.message ? <small>{step.reasoning}</small> : null}
+                      <small>{formatConfidence(step.confidence)}</small>
+                    </li>
+                  ))}
+                </ol>
+                {message.negotiation_done ? (
+                  <span className="message-negotiation-done">
+                    调用 {message.negotiation_done.agents_invoked.length} 个子 Agent，耗时 {message.negotiation_done.total_latency_ms}ms
+                    {message.negotiation_done.fallback ? "，已使用轮次上限兜底" : ""}。
+                  </span>
+                ) : null}
+              </details>
             ) : null}
             {message.continuity_signal ? (
               <div className="continuity-presence-hint">

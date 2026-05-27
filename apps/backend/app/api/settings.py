@@ -11,17 +11,21 @@ from ..models.api import (
     AgentModelKeyRequest,
     AgentModelsRequest,
     AgentModelsResponse,
+    AgentModelHealth,
     EmbeddingConfigRequest,
     EmbeddingConfigResponse,
     EmbeddingKeyRequest,
     EmbeddingTestResponse,
     ModelConfigRequest,
     ModelConfigResponse,
+    ModelHealthResponse,
+    SettingsPatchRequest,
     ModelKeyRequest,
     ModelKeyResponse,
     ModelTestRequest,
     ModelTestResponse,
     SettingsStatusResponse,
+    SettingsUpdateResponse,
 )
 from ..services.embeddings import LangChainEmbeddingClient
 from ..services.chat_model import ChatModelError, LangChainGraphChatClient
@@ -85,6 +89,13 @@ async def get_automation_settings(
     return store.get_automation_settings()
 
 
+@router.get("/model-health", response_model=ModelHealthResponse)
+async def get_model_health(
+    store: SettingsStore = Depends(settings_store_dependency),
+) -> ModelHealthResponse:
+    return store.get_model_health_status()
+
+
 @router.put("/automation", response_model=AutomationSettingsResponse)
 async def set_automation_settings(
     automation: AutomationSettingsRequest,
@@ -107,6 +118,56 @@ async def set_model_key(
         provider=status.provider or model_key.provider,
         status="configured",
         masked=status.masked or "****",
+    )
+
+
+@router.patch("", response_model=SettingsUpdateResponse)
+async def update_settings(
+    request: SettingsPatchRequest,
+    store: SettingsStore = Depends(settings_store_dependency),
+) -> SettingsUpdateResponse:
+    defaults = get_settings()
+    current_status = store.get_model_key_status()
+    current_model = store.get_model_config(
+        default_provider=current_status.provider or "openai-compatible",
+        default_base_url=defaults.model_base_url,
+        default_model=defaults.chat_model,
+    )
+    model_updated = any(value is not None for value in (request.provider, request.base_url, request.model))
+    if model_updated:
+        provider = request.provider or current_model.provider
+        _ensure_supported_provider(provider)
+        saved = store.set_model_config(
+            provider=provider,
+            base_url=request.base_url or current_model.base_url,
+            model=request.model or current_model.model,
+        )
+    else:
+        saved = current_model
+
+    current_automation = store.get_automation_settings()
+    automation_updated = request.use_negotiation is not None or request.max_rounds is not None
+    automation = current_automation
+    if automation_updated:
+        automation = store.set_automation_settings(
+            AutomationSettingsRequest(
+                auto_chat_diary=current_automation.auto_chat_diary,
+                auto_structured_memory=current_automation.auto_structured_memory,
+                auto_long_term_memory=current_automation.auto_long_term_memory,
+                auto_wiki_organize=current_automation.auto_wiki_organize,
+                use_negotiation=current_automation.use_negotiation if request.use_negotiation is None else request.use_negotiation,
+                max_rounds=current_automation.max_rounds if request.max_rounds is None else request.max_rounds,
+            )
+        )
+
+    health = store.get_model_health_status()
+    return SettingsUpdateResponse(
+        provider=saved.provider,
+        base_url=saved.base_url,
+        model=saved.model,
+        status="configured" if current_status.configured or model_updated else "missing_key",
+        agents_using_global=health.agents_fallback_to_global,
+        automation=automation,
     )
 
 
@@ -454,17 +515,17 @@ async def test_model_connection(
             error_code="not_configured",
         )
 
-    if agent_id is None:
-        api_key = store.get_model_key(provider)
-        if not api_key and model_status.provider:
-            api_key = store.get_model_key(model_status.provider)
-    else:
+    if agent_id is not None and store.is_agent_model_enabled(agent_id):
         api_key = store.get_agent_model_key(agent_id=agent_id, provider=provider)
         if not api_key and model_status.provider:
             api_key = store.get_agent_model_key(
                 agent_id=agent_id,
                 provider=model_status.provider,
             )
+    else:
+        api_key = store.get_model_key(provider)
+        if not api_key and model_status.provider:
+            api_key = store.get_model_key(model_status.provider)
     if not api_key:
         return ModelTestResponse(
             status="failed",
@@ -558,7 +619,7 @@ def _model_settings_for_test(
     agent_id: str | None,
 ) -> tuple[ModelKeyStatus, ModelConfig]:
     defaults = get_settings()
-    if agent_id is None:
+    if agent_id is None or not store.is_agent_model_enabled(agent_id):
         model_status = store.get_model_key_status()
         model_config = store.get_model_config(
             default_provider=model_status.provider or "openai-compatible",

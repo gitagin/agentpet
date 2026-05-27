@@ -318,6 +318,12 @@ class VaultServiceContainer:
     def optional_writer(self) -> SafeMarkdownWriter | None:
         try:
             return self.writer()
+        except AppError as error:
+            if error.code == "vault_not_configured":
+                logger.info("Optional markdown writer unavailable because no active vault is configured.")
+                return None
+            logger.warning("Optional markdown writer creation failed; continuing without writer", exc_info=True)
+            return None
         except Exception:
             logger.warning("Optional markdown writer creation failed; continuing without writer", exc_info=True)
             return None
@@ -519,14 +525,8 @@ def chat_model_client(
     settings = get_settings()
     store = settings_store(request)
     try:
-        if agent_id is None:
-            status_value = store.get_model_key_status()
-            model_config = store.get_model_config(
-                default_provider=status_value.provider or "openai-compatible",
-                default_base_url=settings.model_base_url,
-                default_model=settings.chat_model,
-            )
-        else:
+        use_agent_config = agent_id is not None and store.is_agent_model_enabled(agent_id)
+        if use_agent_config:
             status_value = store.get_agent_model_key_status(agent_id)
             model_config = store.get_agent_model_config(
                 agent_id,
@@ -542,16 +542,19 @@ def chat_model_client(
             )
             if provider_status.configured:
                 status_value = provider_status
+        else:
+            status_value = store.get_model_key_status()
+            model_config = store.get_model_config(
+                default_provider=status_value.provider or "openai-compatible",
+                default_base_url=settings.model_base_url,
+                default_model=settings.chat_model,
+            )
         if not status_value.configured:
             return None
         provider = model_config.provider.strip().lower()
         if provider not in {"openai", "openai-compatible", "openai_compatible"}:
             return None
-        if agent_id is None:
-            api_key = store.get_model_key(model_config.provider)
-            if not api_key and status_value.provider:
-                api_key = store.get_model_key(status_value.provider)
-        else:
+        if use_agent_config:
             api_key = store.get_agent_model_key(
                 agent_id=agent_id,
                 provider=model_config.provider,
@@ -561,6 +564,10 @@ def chat_model_client(
                     agent_id=agent_id,
                     provider=status_value.provider,
                 )
+        else:
+            api_key = store.get_model_key(model_config.provider)
+            if not api_key and status_value.provider:
+                api_key = store.get_model_key(status_value.provider)
         if not api_key:
             return None
         return LangChainGraphChatClient(

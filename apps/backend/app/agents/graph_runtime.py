@@ -7,23 +7,29 @@ from langgraph.graph import END, START, StateGraph
 
 from app.models.api import MemorySearchResponse
 from app.models.enums import AgentIntent
+from app.services.agent_actions import AgentActionCreate
 from app.models.enums import AgentId
-from .events import AgentStatusEvent
+from .agent_runner import run_agent
+from .events import AgentStatusEvent, NegotiationDoneEvent, NegotiationStepEvent
 from .events_helpers import _agent_state, _append_status, _events
 from .intent import route_intent
 from .memory_router import route_memory
-from .services import AgentRuntimeServices, ToolCallingChatModelProtocol
+from .negotiation_graph import build_negotiation_graph
 from .nodes.chat import _chat_node
 from .nodes.finish import _finish_node
 from .nodes.memory import _memory_node
+from .nodes.orchestrator import OrchestratorNode
 from .nodes.retrieval import _knowledge_retrieval_node, _memory_retrieval_node
 from .nodes.task import _task_node
 from .nodes.wiki import _wiki_node
 from .prompts.system import _semantic_system_prompt
+from .registry import AgentRegistry, default_agent_registry
 from .retrieval.router import _select_after_memory_retrieval
 from .retrieval.scoping import _force_search_memory_source_scope, _select_retrieval_entry_node, _semantic_from_memory_route
+from .runtime_helpers import _chat_system_prompt
 from .semantic import _fallback_semantic_analysis, _parse_semantic_analysis
-from .state import AgentState, SemanticAnalysisResult
+from .services import AgentRuntimeServices, ToolCallingChatModelProtocol
+from .state import AgentState, NegotiationState, SemanticAnalysisResult
 from .tools import AgentToolResult, AgentToolSet, AgentToolName
 
 
@@ -48,6 +54,7 @@ class LangGraphAgentRuntime:
             wiki=self.services.wiki,
             wiki_workflow=self.services.wiki_workflow,
         )
+        self.agent_registry = self._build_agent_registry()
         self.graph = self._build_graph()
 
     async def run(self, state: AgentState):
@@ -65,6 +72,17 @@ class LangGraphAgentRuntime:
                 yielded = len(events)
 
     def _build_graph(self):
+        if self._should_use_negotiation():
+            return build_negotiation_graph(
+                route_node=self._route_node,
+                semantic_node=self._semantic_node,
+                select_after_semantic=self._select_after_semantic_for_negotiation,
+                orchestrator_node=self._orchestrator_node_adapter,
+                invoke_agent_node=self._invoke_agent_node_adapter,
+                synthesizer_node=self._synthesizer_node_adapter,
+                finish_node=_finish_node,
+            )
+
         graph = StateGraph(dict)
         graph.add_node("route", self._route_node)
         graph.add_node("semantic_analysis_agent", self._semantic_node)
@@ -155,6 +173,114 @@ class LangGraphAgentRuntime:
             return _select_retrieval_entry_node(graph_state)
         return "chat_agent"
 
+    def _select_after_semantic_for_negotiation(self, graph_state: dict[str, Any]) -> str:
+        state = _negotiation_state(graph_state)
+        state.max_rounds = int(getattr(self.services.automation_settings, "max_rounds", state.max_rounds))
+        state.confidence_threshold = float(
+            getattr(self.services.automation_settings, "confidence_threshold", state.confidence_threshold)
+        )
+        return "synthesizer" if self._should_use_fast_path(state) else "orchestrator"
+
+    async def _orchestrator_node_adapter(self, graph_state: dict[str, Any]) -> dict[str, Any]:
+        state = _negotiation_state(graph_state)
+        model = self._model_for(AgentId.CHAT_AGENT)
+        if model is None:
+            graph_state.update({"next": "synthesize"})
+            return graph_state
+        result = await OrchestratorNode(
+            _PromptOnlyModel(model),
+            self.agent_registry,
+            max_rounds=int(getattr(self.services.automation_settings, "max_rounds", state.max_rounds)),
+            confidence_threshold=float(
+                getattr(self.services.automation_settings, "confidence_threshold", state.confidence_threshold)
+            ),
+        )(state)
+        state.orchestrator_decisions = result.get("orchestrator_decisions", state.orchestrator_decisions)
+        state.fallback_triggered = result.get("fallback_triggered", state.fallback_triggered)
+        _append_negotiation_step_event(graph_state, state, result)
+        graph_state.update(result)
+        return graph_state
+
+    async def _invoke_agent_node_adapter(self, graph_state: dict[str, Any]) -> dict[str, Any]:
+        state = _negotiation_state(graph_state)
+        next_agent = graph_state.get("next_agent")
+        if isinstance(next_agent, str):
+            next_agent = AgentId(next_agent)
+        if not isinstance(next_agent, AgentId):
+            graph_state["next"] = "synthesize"
+            return graph_state
+
+        agent_input = graph_state.get("agent_input") or state.user_message
+        invocation = await run_agent(next_agent, agent_input, state, self.agent_registry)
+        state.invocation_history.append(invocation)
+        state.round += 1
+        state.collected_context = _append_collected_context(state.collected_context, invocation)
+        graph_state["next"] = "synthesize"
+        return graph_state
+
+    async def _synthesizer_node_adapter(self, graph_state: dict[str, Any]) -> dict[str, Any]:
+        state = _agent_state(graph_state)
+        if isinstance(state, NegotiationState):
+            if state.collected_context:
+                state.user_message = _message_with_negotiation_context(state)
+            result = await self._chat_node_adapter(graph_state)
+            if state.orchestrator_decisions or state.invocation_history or state.fallback_triggered:
+                _append_negotiation_done_event(graph_state, state)
+                self._record_negotiation_stats(state)
+            return result
+        return await self._chat_node_adapter(graph_state)
+
+    def _should_use_negotiation(self) -> bool:
+        return bool(getattr(self.services.automation_settings, "use_negotiation", True))
+
+    def _should_use_fast_path(self, state: AgentState) -> bool:
+        semantic = state.semantic_analysis
+        semantic_confidence = semantic.confidence if semantic is not None else 1.0
+        if semantic is not None and not semantic.needs_context:
+            semantic_confidence = max(semantic_confidence, 0.9)
+        return bool(
+            semantic_confidence >= 0.9
+            and state.route is not None
+            and state.route.intent == AgentIntent.CHAT
+            and getattr(state, "round", 0) == 0
+        )
+
+    def _build_agent_registry(self) -> AgentRegistry:
+        registry = AgentRegistry()
+        for capability in default_agent_registry.all_capabilities():
+            registry.register(capability, self._agent_handler_for(capability.agent_id))
+        return registry
+
+    def _agent_handler_for(self, agent_id: AgentId):
+        async def handler(input_query: str, state: NegotiationState) -> dict[str, Any]:
+            graph_state: dict[str, Any] = {"agent_state": state, "events": [], "failed": False}
+            original_message = state.user_message
+            state.user_message = input_query
+            try:
+                if agent_id == AgentId.MEMORY_RETRIEVAL_AGENT:
+                    await self._memory_retrieval_node_adapter(graph_state)
+                elif agent_id == AgentId.KNOWLEDGE_RETRIEVAL_AGENT:
+                    await self._knowledge_retrieval_node_adapter(graph_state)
+                elif agent_id == AgentId.WIKI_MANAGER_AGENT:
+                    await self._wiki_node_adapter(graph_state)
+                elif agent_id == AgentId.MEMORY_PROPOSAL_AGENT:
+                    await self._memory_node_adapter(graph_state)
+                elif agent_id == AgentId.TASK_AGENT:
+                    await self._task_node_adapter(graph_state)
+                else:
+                    await self._chat_node_adapter(graph_state)
+            finally:
+                state.user_message = original_message
+            return {
+                "result": state.response_text,
+                "citations": state.citations,
+                "proposal_id": state.proposal_id,
+                "task_id": state.task_id,
+                "confidence": 0.6,
+            }
+
+        return handler
+
     async def _run_model_agent_with_tools(
         self,
         *,
@@ -236,6 +362,134 @@ class LangGraphAgentRuntime:
 
     async def _task_node_adapter(self, graph_state: dict[str, Any]) -> dict[str, Any]:
         return await _task_node(graph_state, self.services)
+
+    def _record_negotiation_stats(self, state: NegotiationState) -> None:
+        recorder = self.services.agent_action_recorder
+        if recorder is None:
+            return
+        agents_invoked = [str(invocation.agent_id) for invocation in state.invocation_history]
+        total_latency_ms = sum(invocation.latency_ms for invocation in state.invocation_history)
+        try:
+            recorder(
+                AgentActionCreate(
+                    action_type="agent.negotiation",
+                    title="已完成多 Agent 协商",
+                    summary=f"协商 {state.round} 轮，调用 {len(agents_invoked)} 个子 Agent。",
+                    source_agent_run_id=state.agent_run_id,
+                    source_conversation_id=state.conversation_id,
+                    source_message_id=state.message_id,
+                    risk_tier="low",
+                    decision="auto",
+                    status="completed",
+                    metadata={
+                        "agents_invoked": agents_invoked,
+                        "fallback": state.fallback_triggered,
+                        "final_confidence": _latest_negotiation_confidence(state),
+                    },
+                    reversible=False,
+                    negotiation_rounds=state.round,
+                    total_tokens=0,
+                    total_latency_ms=total_latency_ms,
+                )
+            )
+        except Exception:
+            logger.warning("Failed to record negotiation stats", exc_info=True)
+
+
+def _negotiation_state(graph_state: dict[str, Any]) -> NegotiationState:
+    state = _agent_state(graph_state)
+    if isinstance(state, NegotiationState):
+        return state
+    negotiation_state = NegotiationState(**state.model_dump())
+    graph_state["agent_state"] = negotiation_state
+    return negotiation_state
+
+
+class _PromptOnlyModel:
+    def __init__(self, model: Any) -> None:
+        self.model = model
+
+    async def complete(self, prompt: str) -> Any:
+        return await self.model.complete(user_message=prompt, system_prompt="orchestrator-json-only")
+
+
+def _append_collected_context(current: str, invocation: Any) -> str:
+    output = invocation.output
+    if not isinstance(output, str):
+        output = str(output)
+    line = f"[{invocation.agent_id}] {output}"
+    return "\n".join(part for part in (current.strip(), line) if part)
+
+
+def _message_with_negotiation_context(state: NegotiationState) -> str:
+    return "\n\n".join(
+        [
+            f"用户原始问题：{state.user_message}",
+            "多 Agent 协商已收集上下文：",
+            state.collected_context,
+            "请基于以上上下文，用桌宠口吻给出简短自然回复。",
+        ]
+    )
+
+
+def _append_negotiation_step_event(
+    graph_state: dict[str, Any], state: NegotiationState, result: dict[str, Any]
+) -> None:
+    if result.get("fallback_triggered"):
+        _events(graph_state).append(
+            NegotiationStepEvent(
+                agent_run_id=state.agent_run_id,
+                round=state.round,
+                agent="orchestrator",
+                action="synthesizing",
+                reasoning="达到协商轮次上限，转入最终合成。",
+                confidence=_latest_negotiation_confidence(state),
+                message="达到轮次上限，正在整理已有结果。",
+            )
+        )
+        return
+
+    decision = state.orchestrator_decisions[-1] if state.orchestrator_decisions else None
+    if not isinstance(decision, dict):
+        return
+    next_agent = result.get("next_agent") or decision.get("agent") or "synthesizer"
+    action = "invoking" if result.get("next") == "invoke_agent" else "synthesizing"
+    message = "正在调用子 Agent 补充信息。" if action == "invoking" else "已有信息足够，正在合成回复。"
+    _events(graph_state).append(
+        NegotiationStepEvent(
+            agent_run_id=state.agent_run_id,
+            round=state.round,
+            agent=str(next_agent),
+            action=action,
+            reasoning=str(decision.get("reasoning") or ""),
+            confidence=float(decision.get("confidence") or 0.0),
+            message=message,
+        )
+    )
+
+
+def _append_negotiation_done_event(graph_state: dict[str, Any], state: NegotiationState) -> None:
+    _events(graph_state).append(
+        NegotiationDoneEvent(
+            agent_run_id=state.agent_run_id,
+            total_rounds=state.round,
+            agents_invoked=[str(invocation.agent_id) for invocation in state.invocation_history],
+            total_latency_ms=sum(invocation.latency_ms for invocation in state.invocation_history),
+            final_confidence=_latest_negotiation_confidence(state),
+            fallback=state.fallback_triggered,
+        )
+    )
+
+
+def _latest_negotiation_confidence(state: NegotiationState) -> float:
+    decision = state.orchestrator_decisions[-1] if state.orchestrator_decisions else None
+    if isinstance(decision, dict):
+        confidence = decision.get("confidence")
+        if isinstance(confidence, int | float):
+            return float(confidence)
+    if state.invocation_history:
+        return float(state.invocation_history[-1].confidence)
+    return 0.0
 
 
 def _should_call_semantic_agent(state: AgentState) -> bool:

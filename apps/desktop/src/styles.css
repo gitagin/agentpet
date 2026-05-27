@@ -292,6 +292,51 @@ dt,
   color: #1f6a45;
 }
 
+.model-health-banner {
+  border: 1px solid rgba(255, 255, 255, 0.54);
+  border-radius: 20px;
+  box-shadow: var(--shadow-card);
+  padding: 12px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.model-health-banner.warning {
+  border-color: rgba(208, 138, 77, 0.42);
+  background: rgba(255, 247, 237, 0.86);
+  color: #9a5a1f;
+}
+
+.model-health-banner.info {
+  border-color: rgba(82, 139, 190, 0.35);
+  background: rgba(239, 247, 255, 0.88);
+  color: #285f8f;
+}
+
+.model-health-banner.success {
+  border-color: rgba(79, 155, 114, 0.36);
+  background: rgba(244, 251, 247, 0.9);
+  color: #1f6a45;
+}
+
+.model-health-skeleton {
+  min-height: 48px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.42));
+  background-size: 220% 100%;
+  animation: model-health-skeleton 1.2s ease-in-out infinite;
+}
+
+@keyframes model-health-skeleton {
+  from {
+    background-position: 120% 0;
+  }
+
+  to {
+    background-position: -120% 0;
+  }
+}
+
 .dashboard-grid {
   position: relative;
   z-index: 1;
@@ -392,6 +437,7 @@ dt,
 }
 
 #settings-panel > .agent-model-section,
+#settings-panel > .advanced-agent-model-settings,
 #wiki-workflow-panel > details {
   border: 1px solid rgba(255, 255, 255, 0.54);
   border-radius: 22px;
@@ -525,6 +571,28 @@ dt,
   color: var(--muted);
   font-size: 12px;
   line-height: 1.55;
+}
+
+.advanced-agent-model-settings summary {
+  cursor: pointer;
+  display: grid;
+  gap: 5px;
+}
+
+.advanced-agent-model-settings summary strong {
+  color: #17242a;
+  font-size: 15px;
+}
+
+.advanced-agent-model-settings summary span,
+.agent-model-inherited {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.advanced-agent-model-settings .agent-model-section {
+  margin-top: 14px;
 }
 
 .agent-model-section {
@@ -1874,6 +1942,51 @@ dt,
 }
 
 .continuity-presence-hint small {
+  color: #5c6c8f;
+}
+
+.message-negotiation {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+  border: 1px solid rgba(92, 121, 196, 0.24);
+  border-radius: 14px;
+  background: rgba(245, 248, 255, 0.86);
+  padding: 10px 12px;
+  color: #3d4d73;
+  font-size: 12px;
+}
+
+.message-negotiation summary {
+  cursor: pointer;
+  color: #253943;
+  font-weight: 700;
+}
+
+.message-negotiation-list {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.message-negotiation-list li {
+  display: grid;
+  gap: 3px;
+  border-top: 1px solid rgba(92, 121, 196, 0.16);
+  padding-top: 7px;
+}
+
+.message-negotiation-list strong,
+.message-negotiation-list span,
+.message-negotiation-list small,
+.message-negotiation-done {
+  overflow-wrap: anywhere;
+}
+
+.message-negotiation-list small,
+.message-negotiation-done {
   color: #5c6c8f;
 }
 

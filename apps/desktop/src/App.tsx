@@ -164,21 +164,32 @@ function App() {
     agentModelTestResults,
     applySettingsStatus,
     bindVault,
+    globalModelDraft,
+    globalModelSaveStatus,
+    globalModelTestResult,
+    globalModelTestStatus,
     indexingVault,
     lastIndexRun,
     loadingSettingsStatus,
     loadSettingsStatus,
     loadVaultStatus,
+    negotiationSettingsDraft,
+    negotiationSettingsSaveStatus,
     rebuildIndex,
     resetSettingsState,
     saveAgentModel,
+    saveGlobalModel,
+    saveNegotiationSettings,
     savingAgentModelIds,
     selectVaultDirectory,
     setLastIndexRun,
     setVaultPath,
     testAgentModelConnection,
+    testGlobalModelConnection,
     testingAgentModelIds,
     updateAgentModelDraft,
+    updateGlobalModelDraft,
+    updateNegotiationSettingsDraft,
     vaultId,
     vaultPath,
   } = useSettings({
@@ -1432,8 +1443,15 @@ function App() {
         />
 
         <SettingsPanel
+          api={api}
           agentModelDrafts={agentModelDrafts}
           agentModelTestResults={agentModelTestResults}
+          globalModelDraft={globalModelDraft}
+          globalModelSaveStatus={globalModelSaveStatus}
+          globalModelTestResult={globalModelTestResult}
+          globalModelTestStatus={globalModelTestStatus}
+          negotiationSettingsDraft={negotiationSettingsDraft}
+          negotiationSettingsSaveStatus={negotiationSettingsSaveStatus}
           savingAgentModelIds={savingAgentModelIds}
           testingAgentModelIds={testingAgentModelIds}
           loadingSettingsStatus={loadingSettingsStatus}
@@ -1443,6 +1461,11 @@ function App() {
           indexingVault={indexingVault}
           canSelectVaultDirectory={canSelectVaultDirectory}
           onRefreshSettings={() => void loadSettingsStatus()}
+          onUpdateGlobalModelDraft={updateGlobalModelDraft}
+          onSaveGlobalModel={() => void saveGlobalModel()}
+          onTestGlobalModel={() => void testGlobalModelConnection()}
+          onUpdateNegotiationSettingsDraft={updateNegotiationSettingsDraft}
+          onSaveNegotiationSettings={() => void saveNegotiationSettings()}
           onUpdateAgentModelDraft={updateAgentModelDraft}
           onSaveAgentModel={(agentId) => void saveAgentModel(agentId)}
           onTestAgentModel={(agentId) => void testAgentModelConnection(agentId)}

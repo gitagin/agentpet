@@ -54,6 +54,15 @@ def enable_automation(
     assert response.status_code == 200
 
 
+def disable_negotiation(client: TestClient) -> None:
+    response = client.patch(
+        "/api/settings",
+        headers=auth(),
+        json={"use_negotiation": False},
+    )
+    assert response.status_code == 200
+
+
 def event_names(events: list[dict[str, str]]) -> list[str]:
     return [event["event"] for event in events]
 
@@ -77,6 +86,8 @@ def test_automation_settings_api_roundtrip(client: TestClient) -> None:
         "auto_structured_memory": False,
         "auto_long_term_memory": False,
         "auto_wiki_organize": False,
+        "use_negotiation": True,
+        "max_rounds": 5,
         "high_risk_confirmation_required": True,
         "updated_at": None,
     }
@@ -89,6 +100,8 @@ def test_automation_settings_api_roundtrip(client: TestClient) -> None:
             "auto_structured_memory": True,
             "auto_long_term_memory": False,
             "auto_wiki_organize": False,
+            "use_negotiation": False,
+            "max_rounds": 2,
         },
     )
     assert updated.status_code == 200
@@ -97,12 +110,30 @@ def test_automation_settings_api_roundtrip(client: TestClient) -> None:
     assert payload["auto_structured_memory"] is True
     assert payload["auto_long_term_memory"] is False
     assert payload["auto_wiki_organize"] is False
+    assert payload["use_negotiation"] is False
+    assert payload["max_rounds"] == 2
     assert payload["high_risk_confirmation_required"] is True
     assert payload["updated_at"]
 
+    patched = client.patch(
+        "/api/settings",
+        headers=auth(),
+        json={"use_negotiation": True, "max_rounds": 10},
+    )
+    assert patched.status_code == 200
+    assert patched.json()["automation"]["use_negotiation"] is True
+    assert patched.json()["automation"]["max_rounds"] == 10
+
+    invalid = client.patch(
+        "/api/settings",
+        headers=auth(),
+        json={"max_rounds": 11},
+    )
+    assert invalid.status_code == 422
+
     status = client.get("/api/settings", headers=auth())
     assert status.status_code == 200
-    assert status.json()["automation"] == payload
+    assert status.json()["automation"] == patched.json()["automation"]
 
 
 def wait_for_file(path: Path, timeout_seconds: float = 2.0) -> Path:
@@ -497,6 +528,7 @@ def test_tasks_and_chat_sse_are_wired(client: TestClient, tmp_path: Path) -> Non
         headers=auth(),
         json={"path": str(vault), "create_if_missing": True},
     )
+    disable_negotiation(client)
 
     task = client.post(
         "/api/tasks",
@@ -819,6 +851,7 @@ def test_retrieval_chat_stream_emits_citation_event(client: TestClient, tmp_path
     assert bind.status_code == 200
     indexed = client.post(f"/api/vaults/{bind.json()['vault_id']}/index", headers=auth())
     assert indexed.status_code == 200
+    disable_negotiation(client)
 
     events = stream_chat(client, "search memory for citation-term")
 
@@ -938,6 +971,7 @@ def test_task_chat_stream_emits_task_event(client: TestClient, tmp_path: Path) -
         headers=auth(),
         json={"path": str(vault), "create_if_missing": True},
     )
+    disable_negotiation(client)
 
     events = stream_chat(client, "remind me to review agent contracts tomorrow")
 
@@ -959,6 +993,7 @@ def test_sensitive_memory_chat_stream_rejects_without_proposal(
         headers=auth(),
         json={"path": str(vault), "create_if_missing": True},
     )
+    disable_negotiation(client)
     secret = "sk-chat-memory-secret-1234567890"
 
     events = stream_chat(client, f"remember this: my api key is {secret}")

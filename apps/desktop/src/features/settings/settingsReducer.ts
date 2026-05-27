@@ -1,15 +1,73 @@
-import type { AgentModelId, ModelTestResponse, SettingsStatusResponse } from "../../types";
+import type { AgentModelId, AutomationSettings, ModelConfigResponse, ModelTestResponse, SettingsStatusResponse } from "../../types";
 import {
   buildSavedAgentModelDraftPatch,
   defaultAgentModelDrafts,
   mergeAgentModelStatus,
   type AgentModelDraft,
 } from "../../services/agentModelDrafts";
-import type { LastIndexRun } from "./settingsTypes";
+import type { AsyncStatus, GlobalModelDraft, LastIndexRun, NegotiationSettingsDraft } from "./settingsTypes";
+
+const defaultGlobalModelDraft: GlobalModelDraft = {
+  provider: "openai-compatible",
+  base_url: "",
+  model: "",
+  api_key: "",
+  saved_provider: "openai-compatible",
+  saved_base_url: "",
+  saved_model: "",
+  configured: false,
+};
+
+const defaultNegotiationSettingsDraft: NegotiationSettingsDraft = {
+  use_negotiation: true,
+  max_rounds: 5,
+};
+
+function defaultNegotiationAutomationSettings(): AutomationSettings {
+  return {
+    auto_chat_diary: false,
+    auto_structured_memory: false,
+    auto_long_term_memory: false,
+    auto_wiki_organize: false,
+    use_negotiation: true,
+    max_rounds: 5,
+    high_risk_confirmation_required: true,
+    updated_at: null,
+  };
+}
+
+function negotiationSettingsDraftFromStatus(response: SettingsStatusResponse): NegotiationSettingsDraft {
+  return {
+    use_negotiation: response.automation.use_negotiation,
+    max_rounds: response.automation.max_rounds,
+  };
+}
+
+function globalModelDraftFromStatus(response: SettingsStatusResponse): GlobalModelDraft {
+  const provider = response.model_provider || "openai-compatible";
+  const baseUrl = response.model_base_url || "";
+  const model = response.chat_model || "";
+  return {
+    provider,
+    base_url: baseUrl,
+    model,
+    api_key: "",
+    saved_provider: provider,
+    saved_base_url: baseUrl,
+    saved_model: model,
+    configured: response.model_configured,
+  };
+}
 
 export type SettingsState = {
   agentModelDrafts: AgentModelDraft[];
   agentModelTestResults: Record<string, ModelTestResponse | undefined>;
+  globalModelDraft: GlobalModelDraft;
+  globalModelSaveStatus: AsyncStatus;
+  globalModelTestStatus: AsyncStatus;
+  globalModelTestResult?: ModelTestResponse;
+  negotiationSettingsDraft: NegotiationSettingsDraft;
+  negotiationSettingsSaveStatus: AsyncStatus;
   savingAgentModelIds: Set<string>;
   testingAgentModelIds: Set<string>;
   settingsStatus: SettingsStatusResponse | null;
@@ -23,6 +81,13 @@ export type SettingsState = {
 export type SettingsAction =
   | { type: "applySettingsStatus"; response: SettingsStatusResponse }
   | { type: "applyDiagnosticsStatus"; modelConfigured: boolean; vaultConfigured: boolean; activeVaultId?: string | null }
+  | { type: "updateGlobalModelDraft"; patch: Partial<GlobalModelDraft> }
+  | { type: "setGlobalModelSaveStatus"; status: AsyncStatus }
+  | { type: "setGlobalModelTestStatus"; status: AsyncStatus; result?: ModelTestResponse }
+  | { type: "saveGlobalModelSuccess"; config: ModelConfigResponse }
+  | { type: "updateNegotiationSettingsDraft"; patch: Partial<NegotiationSettingsDraft> }
+  | { type: "setNegotiationSettingsSaveStatus"; status: AsyncStatus }
+  | { type: "saveNegotiationSettingsSuccess"; draft: NegotiationSettingsDraft }
   | { type: "updateAgentModelDraft"; agentId: AgentModelId; patch: Partial<AgentModelDraft> }
   | { type: "startSavingAgentModel"; agentId: AgentModelId }
   | { type: "finishSavingAgentModel"; agentId: AgentModelId }
@@ -48,6 +113,12 @@ export function createInitialSettingsState(): SettingsState {
   return {
     agentModelDrafts: defaultAgentModelDrafts(),
     agentModelTestResults: {},
+    globalModelDraft: defaultGlobalModelDraft,
+    globalModelSaveStatus: "idle",
+    globalModelTestStatus: "idle",
+    globalModelTestResult: undefined,
+    negotiationSettingsDraft: defaultNegotiationSettingsDraft,
+    negotiationSettingsSaveStatus: "idle",
     savingAgentModelIds: new Set(),
     testingAgentModelIds: new Set(),
     settingsStatus: null,
@@ -65,12 +136,19 @@ export function settingsReducer(state: SettingsState, action: SettingsAction): S
       return {
         ...state,
         settingsStatus: action.response,
+        globalModelDraft: globalModelDraftFromStatus(action.response),
+        globalModelSaveStatus: "idle",
+        globalModelTestStatus: "idle",
+        globalModelTestResult: undefined,
+        negotiationSettingsDraft: negotiationSettingsDraftFromStatus(action.response),
+        negotiationSettingsSaveStatus: "idle",
         agentModelDrafts: mergeAgentModelStatus(state.agentModelDrafts, action.response.agent_models),
       };
     case "applyDiagnosticsStatus":
       return {
         ...state,
         vaultId: action.activeVaultId || null,
+        globalModelDraft: { ...state.globalModelDraft, configured: action.modelConfigured },
         settingsStatus: {
           model_provider: state.settingsStatus?.model_provider || null,
           model_base_url: state.settingsStatus?.model_base_url || null,
@@ -78,7 +156,71 @@ export function settingsReducer(state: SettingsState, action: SettingsAction): S
           model_configured: action.modelConfigured,
           vault_configured: action.vaultConfigured,
           agent_models: state.settingsStatus?.agent_models,
+          automation: state.settingsStatus?.automation || defaultNegotiationAutomationSettings(),
         },
+      };
+    case "updateGlobalModelDraft":
+      return {
+        ...state,
+        globalModelDraft: { ...state.globalModelDraft, ...action.patch },
+        globalModelSaveStatus: "idle",
+        globalModelTestStatus: "idle",
+        globalModelTestResult: undefined,
+      };
+    case "setGlobalModelSaveStatus":
+      return { ...state, globalModelSaveStatus: action.status };
+    case "setGlobalModelTestStatus":
+      return { ...state, globalModelTestStatus: action.status, globalModelTestResult: action.result };
+    case "saveGlobalModelSuccess":
+      return {
+        ...state,
+        globalModelDraft: {
+          ...state.globalModelDraft,
+          provider: action.config.provider,
+          base_url: action.config.base_url,
+          model: action.config.model,
+          api_key: "",
+          saved_provider: action.config.provider,
+          saved_base_url: action.config.base_url,
+          saved_model: action.config.model,
+          configured: true,
+        },
+        globalModelSaveStatus: "success",
+        globalModelTestStatus: "idle",
+        globalModelTestResult: undefined,
+        settingsStatus: state.settingsStatus
+          ? {
+              ...state.settingsStatus,
+              model_provider: action.config.provider,
+              model_base_url: action.config.base_url,
+              chat_model: action.config.model,
+              model_configured: true,
+            }
+          : state.settingsStatus,
+      };
+    case "updateNegotiationSettingsDraft":
+      return {
+        ...state,
+        negotiationSettingsDraft: { ...state.negotiationSettingsDraft, ...action.patch },
+        negotiationSettingsSaveStatus: "idle",
+      };
+    case "setNegotiationSettingsSaveStatus":
+      return { ...state, negotiationSettingsSaveStatus: action.status };
+    case "saveNegotiationSettingsSuccess":
+      return {
+        ...state,
+        negotiationSettingsDraft: action.draft,
+        negotiationSettingsSaveStatus: "success",
+        settingsStatus: state.settingsStatus
+          ? {
+              ...state.settingsStatus,
+              automation: {
+                ...state.settingsStatus.automation,
+                use_negotiation: action.draft.use_negotiation,
+                max_rounds: action.draft.max_rounds,
+              },
+            }
+          : state.settingsStatus,
       };
     case "updateAgentModelDraft":
       return {
@@ -115,7 +257,8 @@ export function settingsReducer(state: SettingsState, action: SettingsAction): S
                       provider: action.config.provider,
                       base_url: action.config.base_url,
                       model: action.config.model,
-                      configured: Boolean(masked),
+                      enabled: action.config.enabled,
+                      configured: Boolean(action.config.enabled && masked),
                       masked,
                     }
                   : item,

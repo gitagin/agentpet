@@ -6,8 +6,10 @@ export type AgentModelDraft = {
   base_url: string;
   model: string;
   api_key: string;
+  enabled: boolean;
   configured: boolean;
   masked: string;
+  saved_enabled: boolean;
   saved_provider: string;
   saved_base_url: string;
   saved_model: string;
@@ -34,8 +36,10 @@ export const defaultAgentModelDrafts = (): AgentModelDraft[] =>
     base_url: "",
     model: "",
     api_key: "",
+    enabled: false,
     configured: false,
     masked: "",
+    saved_enabled: false,
     saved_provider: "",
     saved_base_url: "",
     saved_model: "",
@@ -54,15 +58,18 @@ export function mergeAgentModelStatus(
     const savedProvider = status.provider ?? "";
     const savedBaseUrl = status.base_url ?? "";
     const savedModel = status.model ?? "";
+    const savedEnabled = status.enabled ?? false;
     const hasUnsavedDraft = hasUnsavedAgentModelDraft(draft);
     return {
       ...draft,
       provider: hasUnsavedDraft ? draft.provider : savedProvider,
       base_url: hasUnsavedDraft ? draft.base_url : savedBaseUrl,
       model: hasUnsavedDraft ? draft.model : savedModel,
-      configured: status.configured,
+      enabled: hasUnsavedDraft ? draft.enabled : savedEnabled,
+      configured: savedEnabled && status.configured,
       masked: status.masked || draft.masked,
       api_key: hasUnsavedDraft ? draft.api_key : "",
+      saved_enabled: savedEnabled,
       saved_provider: savedProvider,
       saved_base_url: savedBaseUrl,
       saved_model: savedModel,
@@ -97,6 +104,7 @@ export function isSupportedProviderDraft(provider: string): boolean {
 export function hasUnsavedAgentModelDraft(draft: AgentModelDraft): boolean {
   return (
     Boolean(draft.api_key.trim()) ||
+    draft.enabled !== draft.saved_enabled ||
     draft.provider !== draft.saved_provider ||
     draft.base_url !== draft.saved_base_url ||
     draft.model !== draft.saved_model
@@ -111,14 +119,17 @@ export function buildSavedAgentModelDraftPatch(
   const provider = config.provider || "";
   const baseUrl = config.base_url || "";
   const model = config.model || "";
+  const enabled = config.enabled ?? draft.enabled;
   const masked = keyStatus?.masked || config.masked || draft.masked;
   return {
     provider,
     base_url: baseUrl,
     model,
     api_key: "",
-    configured: Boolean(masked),
+    enabled,
+    configured: enabled && Boolean(masked),
     masked: masked || "",
+    saved_enabled: enabled,
     saved_provider: provider,
     saved_base_url: baseUrl,
     saved_model: model,

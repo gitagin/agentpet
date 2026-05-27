@@ -8,9 +8,11 @@ import {
   type AgentModelDraft,
 } from "../../services/agentModelDrafts";
 import { formatBooleanStatus, formatModelTestResult } from "./settingsFormatters";
+import type { GlobalModelDraft } from "./settingsTypes";
 
 type AgentConfigFormProps = {
   drafts: AgentModelDraft[];
+  globalModelDraft: GlobalModelDraft;
   testResults: Record<string, ModelTestResponse | undefined>;
   savingIds: Set<string>;
   testingIds: Set<string>;
@@ -23,6 +25,7 @@ type AgentConfigFormProps = {
 
 export function AgentConfigForm({
   drafts,
+  globalModelDraft,
   testResults,
   savingIds,
   testingIds,
@@ -49,12 +52,26 @@ export function AgentConfigForm({
           const saving = savingIds.has(draft.agent_id);
           const testing = testingIds.has(draft.agent_id);
           const hasUnsavedDraft = hasUnsavedAgentModelDraft(draft);
-          const providerUnsupported = Boolean(draft.provider.trim()) && !isSupportedProviderDraft(draft.provider);
+          const usingGlobalModel = !draft.enabled;
+          const providerUnsupported = !usingGlobalModel && Boolean(draft.provider.trim()) && !isSupportedProviderDraft(draft.provider);
           return (
             <article key={draft.agent_id} className="agent-model-row">
               <div className="agent-model-title">
                 <strong>{definition?.label || draft.agent_id}</strong>
                 <span>{definition?.description}</span>
+                <label className="checkbox-row">
+                  <input
+                    type="checkbox"
+                    checked={usingGlobalModel}
+                    onChange={(event) => onUpdateDraft(draft.agent_id, { enabled: !event.target.checked })}
+                  />
+                  使用全局模型
+                </label>
+                {usingGlobalModel ? (
+                  <span className="agent-model-inherited">
+                    继承：{globalModelDraft.provider || "未配置"} / {globalModelDraft.base_url || "未配置接口地址"} / {globalModelDraft.model || "未配置模型"}
+                  </span>
+                ) : null}
               </div>
               <label>
                 <span>提供方</span>
@@ -62,6 +79,7 @@ export function AgentConfigForm({
                   value={draft.provider}
                   onChange={(event) => onUpdateDraft(draft.agent_id, { provider: event.target.value })}
                   placeholder="openai-compatible"
+                  disabled={usingGlobalModel}
                 />
               </label>
               <label>
@@ -69,11 +87,16 @@ export function AgentConfigForm({
                 <input
                   value={draft.base_url}
                   onChange={(event) => onUpdateDraft(draft.agent_id, { base_url: event.target.value })}
+                  disabled={usingGlobalModel}
                 />
               </label>
               <label>
                 <span>模型</span>
-                <input value={draft.model} onChange={(event) => onUpdateDraft(draft.agent_id, { model: event.target.value })} />
+                <input
+                  value={draft.model}
+                  onChange={(event) => onUpdateDraft(draft.agent_id, { model: event.target.value })}
+                  disabled={usingGlobalModel}
+                />
               </label>
               <label>
                 <span>密钥</span>
@@ -82,6 +105,7 @@ export function AgentConfigForm({
                   onChange={(event) => onUpdateDraft(draft.agent_id, { api_key: event.target.value })}
                   placeholder={draft.masked || "请输入 API 密钥"}
                   type="password"
+                  disabled={usingGlobalModel}
                 />
               </label>
               <div className="agent-model-actions">
@@ -102,11 +126,11 @@ export function AgentConfigForm({
               <dl className="agent-model-status">
                 <div>
                   <dt>配置状态</dt>
-                  <dd>{formatBooleanStatus(draft.configured)}</dd>
+                  <dd>{usingGlobalModel ? "使用全局模型" : formatBooleanStatus(draft.configured)}</dd>
                 </div>
                 <div>
                   <dt>密钥状态</dt>
-                  <dd>{draft.masked || "未配置"}</dd>
+                  <dd>{usingGlobalModel ? "继承全局密钥" : draft.masked || "未配置"}</dd>
                 </div>
                 <div>
                   <dt>试连结果</dt>

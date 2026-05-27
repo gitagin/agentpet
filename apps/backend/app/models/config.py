@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from pydantic import BaseModel, Field
 
 from app.config import (
@@ -31,6 +33,14 @@ class ModelConfigRequest(BaseModel):
     provider: str = Field(default="openai-compatible", min_length=1)
     base_url: str = Field(default=DEFAULT_CHAT_BASE_URL, min_length=1)
     model: str = Field(default=DEFAULT_CHAT_MODEL, min_length=1)
+
+
+class SettingsPatchRequest(BaseModel):
+    provider: str | None = Field(default=None, min_length=1)
+    base_url: str | None = Field(default=None, min_length=1)
+    model: str | None = Field(default=None, min_length=1)
+    use_negotiation: bool | None = None
+    max_rounds: int | None = Field(default=None, ge=2, le=10)
 
 
 class AgentModelConfigRequest(ModelConfigRequest):
@@ -94,6 +104,20 @@ class AgentModelsResponse(BaseModel):
     agents: list[AgentModelConfigResponse] = Field(default_factory=list)
 
 
+class AgentModelHealth(BaseModel):
+    agent_id: AgentId
+    source: str
+    model: str
+
+
+class ModelHealthResponse(BaseModel):
+    global_configured: bool
+    agents_configured: int
+    agents_fallback_to_global: int
+    agents_fallback_to_default: int
+    agent_details: list[AgentModelHealth] = Field(default_factory=list)
+
+
 class ModelTestRequest(BaseModel):
     agent_id: AgentId | None = None
 
@@ -115,11 +139,18 @@ class AutomationSettingsRequest(BaseModel):
     auto_structured_memory: bool = False
     auto_long_term_memory: bool = False
     auto_wiki_organize: bool = False
+    use_negotiation: bool = True
+    max_rounds: int = Field(default=5, ge=2, le=10)
 
 
 class AutomationSettingsResponse(AutomationSettingsRequest):
     high_risk_confirmation_required: bool = True
     updated_at: str | None = None
+
+
+class SettingsUpdateResponse(ModelConfigResponse):
+    agents_using_global: int
+    automation: AutomationSettingsResponse | None = None
 
 
 class VaultStatusResponse(BaseModel):

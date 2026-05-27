@@ -84,6 +84,25 @@ class AgentDoneEvent(AgentEventBase):
     text: str = ""
 
 
+class NegotiationStepEvent(AgentEventBase):
+    event: Literal["negotiation_step"] = "negotiation_step"
+    round: int
+    agent: str
+    action: Literal["invoking", "reviewing", "revising", "synthesizing"]
+    reasoning: str
+    confidence: float
+    message: str
+
+
+class NegotiationDoneEvent(AgentEventBase):
+    event: Literal["negotiation_done"] = "negotiation_done"
+    total_rounds: int
+    agents_invoked: list[str] = Field(default_factory=list)
+    total_latency_ms: int
+    final_confidence: float
+    fallback: bool
+
+
 class AgentErrorEvent(AgentEventBase):
     event: Literal["error"] = "error"
     code: str
@@ -102,6 +121,8 @@ AgentEvent = Annotated[
     | AgentWikiProposalEvent
     | AgentTaskEvent
     | AgentDoneEvent
+    | NegotiationStepEvent
+    | NegotiationDoneEvent
     | AgentErrorEvent,
     Field(discriminator="event"),
 ]

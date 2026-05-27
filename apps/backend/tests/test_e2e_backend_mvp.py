@@ -236,6 +236,13 @@ def test_task_create_stores_utc_time_and_timezone(client: TestClient) -> None:
 
 
 def test_chat_task_command_creates_natural_language_reminder(client: TestClient) -> None:
+    settings_response = client.patch(
+        "/api/settings",
+        headers=AUTH_HEADERS,
+        json={"use_negotiation": False},
+    )
+    assert settings_response.status_code == 200
+
     chat_response = client.post(
         "/api/chat",
         headers=AUTH_HEADERS,

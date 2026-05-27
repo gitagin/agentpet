@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
 from app.models.api import (
+    AgentActionResponse,
     MemoryProposalActionResponse,
     MemoryProposalCreateRequest,
     MemorySearchResponse,
@@ -130,6 +131,10 @@ class ContinuityServiceProtocol(Protocol):
     def presence_signal(self) -> ContinuitySignalProtocol | None: ...
 
 
+class AgentActionRecorderProtocol(Protocol):
+    def __call__(self, action: Any) -> AgentActionResponse: ...
+
+
 @dataclass(slots=True)
 class AgentRuntimeServices:
     retrieval: RetrievalServiceProtocol | None = None
@@ -142,6 +147,7 @@ class AgentRuntimeServices:
     chat_model: ChatModelServiceProtocol | None = None
     model_registry: AgentModelRegistry | None = None
     automation_settings: Any | None = None
+    agent_action_recorder: AgentActionRecorderProtocol | None = None
 
 
 class AgentServices(Protocol):

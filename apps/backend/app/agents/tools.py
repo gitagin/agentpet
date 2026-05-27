@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+import asyncio
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 try:
@@ -42,8 +43,10 @@ from app.models.api import (
 from app.models.enums import MemoryProposalType
 from app.models.event_payloads import WikiProposalCoreFields
 from app.services.memory_policy import evaluate_memory_content
+from app.config import get_settings
 from app.utils.coerce import coerce_model
 
+from .exceptions import AgentToolTimeoutError
 from .services import (
     MemoryProposalServiceProtocol,
     RetrievalServiceProtocol,
@@ -54,6 +57,17 @@ from .services import (
 
 
 DEFAULT_MEMORY_TARGET_PATH = "Inbox/Pending Memories.md"
+
+TOOL_TIMEOUTS = {
+    "search_memory": 5,
+    "propose_memory": 10,
+    "plan_wiki_ingest": 15,
+    "plan_wiki_query_archive": 10,
+    "plan_wiki_synthesis": 15,
+    "plan_wiki_lint": 20,
+    "manage_wiki_page": 10,
+    "create_task": 10,
+}
 
 
 class AgentToolName(StrEnum):
@@ -354,9 +368,15 @@ class AgentToolSet:
         if self.retrieval is None:
             raise AgentToolUnavailableError("search_memory")
         try:
-            value = await self.retrieval.search(query, top_k=top_k, mode=mode, source_scope=source_scope)
+            value = await self._run_with_timeout(
+                "search_memory",
+                self.retrieval.search(query, top_k=top_k, mode=mode, source_scope=source_scope),
+            )
         except TypeError:
-            value = await self.retrieval.search(query, top_k=top_k, mode=mode)
+            value = await self._run_with_timeout(
+                "search_memory",
+                self.retrieval.search(query, top_k=top_k, mode=mode),
+            )
         response = _coerce_search_response(value)
         self._notify("search_memory", response)
         return response
@@ -380,7 +400,7 @@ class AgentToolSet:
             target_path=target_path,
             source_message_id=source_message_id,
         )
-        value = await self.memory.create_proposal(request)
+        value = await self._run_with_timeout("propose_memory", self.memory.create_proposal(request))
         response = _coerce_memory_response(value)
         self._notify("propose_memory", response)
         return response
@@ -405,7 +425,7 @@ class AgentToolSet:
             timezone=timezone,
             source_text=source_text,
         )
-        value = await self.tasks.create(request)
+        value = await self._run_with_timeout("create_task", self.tasks.create(request))
         response = _coerce_task_response(value)
         self._notify("create_task", response)
         return response
@@ -438,7 +458,7 @@ class AgentToolSet:
             links=links or [],
             source_message_id=source_message_id,
         )
-        value = await self.wiki.manage_page(request)
+        value = await self._run_with_timeout("manage_wiki_page", self.wiki.manage_page(request))
         response = _coerce_wiki_response(value)
         self._notify("manage_wiki_page", response)
         return response
@@ -462,20 +482,26 @@ class AgentToolSet:
             raise SensitiveMemoryRejectedError(policy.reason)
 
         preview = _coerce_wiki_ingest_preview(
-            await self.wiki_workflow.preview_ingest(
-                WikiIngestPreviewRequest(
-                    title=title,
-                    content=content,
-                    source_type=source_type,
-                    source_uri=source_uri,
-                    tags=tags or [],
-                    links=links or [],
-                    max_pages=max_pages,
-                )
+            await self._run_with_timeout(
+                "plan_wiki_ingest",
+                self.wiki_workflow.preview_ingest(
+                    WikiIngestPreviewRequest(
+                        title=title,
+                        content=content,
+                        source_type=source_type,
+                        source_uri=source_uri,
+                        tags=tags or [],
+                        links=links or [],
+                        max_pages=max_pages,
+                    )
+                ),
             )
         )
         review = _coerce_wiki_ingest_review(
-            await self.wiki_workflow.review_ingest(WikiIngestReviewRequest(run_id=preview.run_id))
+            await self._run_with_timeout(
+                "plan_wiki_ingest",
+                self.wiki_workflow.review_ingest(WikiIngestReviewRequest(run_id=preview.run_id)),
+            )
         )
         proposal = WikiIngestProposal.from_preview_review(
             title=title,
@@ -518,7 +544,12 @@ class AgentToolSet:
             source_message_id=source_message_id,
             allow_mixed_sources=allow_mixed_sources,
         )
-        response = _coerce_wiki_query_archive_proposal(await self.wiki_workflow.plan_query_archive(request))
+        response = _coerce_wiki_query_archive_proposal(
+            await self._run_with_timeout(
+                "plan_wiki_query_archive",
+                self.wiki_workflow.plan_query_archive(request),
+            )
+        )
         self._notify("plan_wiki_query_archive", response)
         return response
 
@@ -547,7 +578,9 @@ class AgentToolSet:
             tags=tags or [],
             links=links or [],
         )
-        response = _coerce_wiki_synthesis_proposal(await self.wiki_workflow.plan_synthesis(request))
+        response = _coerce_wiki_synthesis_proposal(
+            await self._run_with_timeout("plan_wiki_synthesis", self.wiki_workflow.plan_synthesis(request))
+        )
         response = response.model_copy(update={"source_message_id": source_message_id})
         self._notify("plan_wiki_synthesis", response)
         return response
@@ -561,11 +594,21 @@ class AgentToolSet:
             raise AgentToolUnavailableError("plan_wiki_lint")
 
         response = _coerce_wiki_lint_proposal(
-            await self.wiki_workflow.plan_lint(WikiLintRequest(write_report=write_report))
+            await self._run_with_timeout(
+                "plan_wiki_lint",
+                self.wiki_workflow.plan_lint(WikiLintRequest(write_report=write_report)),
+            )
         )
         response = response.model_copy(update={"source_message_id": source_message_id})
         self._notify("plan_wiki_lint", response)
         return response
+
+    async def _run_with_timeout(self, tool_name: str, awaitable: Awaitable):
+        timeout = TOOL_TIMEOUTS.get(tool_name, get_settings().model_timeout_seconds)
+        try:
+            return await asyncio.wait_for(awaitable, timeout=timeout)
+        except asyncio.TimeoutError as exc:
+            raise AgentToolTimeoutError(tool_name, timeout) from exc
 
     def _notify(
         self,

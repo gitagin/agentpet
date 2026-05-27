@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 
 import pytest
 from langchain_core.tools import StructuredTool
@@ -108,6 +109,7 @@ def test_langgraph_runtime_uses_independent_registry_models_and_allowed_tools() 
                         AgentId.TASK_AGENT: task_model,
                     }
                 ),
+                automation_settings=SimpleNamespace(use_negotiation=False),
             )
         )
 

@@ -117,10 +117,31 @@ export type ChatMessage = {
   status?: "partial" | "completed" | "failed" | "cancelled";
   citations?: Citation[];
   events?: ChatToolEvent[];
+  negotiation_steps?: ChatNegotiationStep[];
+  negotiation_done?: ChatNegotiationDone;
   wiki_proposals?: ChatWikiProposal[];
   continuity_proposals?: ChatContinuityProposal[];
   continuity_signal?: ChatContinuitySignal;
   agent_run_id?: string;
+};
+
+export type ChatNegotiationAction = "invoking" | "reviewing" | "revising" | "synthesizing";
+
+export type ChatNegotiationStep = {
+  round: number;
+  agent: string;
+  action: ChatNegotiationAction;
+  reasoning: string;
+  confidence: number;
+  message: string;
+};
+
+export type ChatNegotiationDone = {
+  total_rounds: number;
+  agents_invoked: string[];
+  total_latency_ms: number;
+  final_confidence: number;
+  fallback: boolean;
 };
 
 export type Citation = {
@@ -734,6 +755,7 @@ export type AgentModelSettings = {
   provider: string | null;
   base_url: string | null;
   model: string | null;
+  enabled?: boolean;
   configured: boolean;
   masked?: string | null;
 };
@@ -743,6 +765,21 @@ export type AgentModelConfigRequest = {
   provider: string;
   base_url: string;
   model: string;
+  enabled: boolean;
+};
+
+export type AgentModelHealth = {
+  agent_id: AgentModelId | string;
+  source: "agent_specific" | "global_fallback" | "hardcoded_default" | string;
+  model: string;
+};
+
+export type ModelHealthResponse = {
+  global_configured: boolean;
+  agents_configured: number;
+  agents_fallback_to_global: number;
+  agents_fallback_to_default: number;
+  agent_details: AgentModelHealth[];
 };
 
 export type AgentModelKeyRequest = {
@@ -756,6 +793,30 @@ export type ModelConfigResponse = {
   base_url: string;
   model: string;
   status: string;
+};
+
+export type AutomationSettings = {
+  auto_chat_diary: boolean;
+  auto_structured_memory: boolean;
+  auto_long_term_memory: boolean;
+  auto_wiki_organize: boolean;
+  use_negotiation: boolean;
+  max_rounds: number;
+  high_risk_confirmation_required: boolean;
+  updated_at?: string | null;
+};
+
+export type SettingsUpdateRequest = {
+  provider?: string;
+  base_url?: string;
+  model?: string;
+  use_negotiation?: boolean;
+  max_rounds?: number;
+};
+
+export type SettingsUpdateResponse = ModelConfigResponse & {
+  agents_using_global: number;
+  automation?: AutomationSettings | null;
 };
 
 export type AgentModelConfigResponse = ModelConfigResponse & {
@@ -823,6 +884,7 @@ export type SettingsStatusResponse = {
   embedding_configured?: boolean;
   vault_configured: boolean;
   agent_models?: AgentModelSettings[];
+  automation: AutomationSettings;
 };
 
 export type MemoryGraphFact = {

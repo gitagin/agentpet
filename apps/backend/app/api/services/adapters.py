@@ -421,5 +421,6 @@ def agent_runtime(request: Request) -> LangGraphAgentRuntime:
             companion_retrieval_reports=companion_retrieval_report_store(request),
             model_registry=registry if registry.clients else None,
             automation_settings=automation,
+            agent_action_recorder=lambda action: record_agent_action(request, action),
         )
     )

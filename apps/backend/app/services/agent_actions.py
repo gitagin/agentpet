@@ -44,6 +44,9 @@ class AgentActionCreate:
     error: str | None = None
     completed_at: str | None = None
     action_id: str | None = None
+    negotiation_rounds: int = 0
+    total_tokens: int = 0
+    total_latency_ms: int = 0
 
 
 class AgentActionNotFoundError(Exception):
@@ -163,9 +166,10 @@ class AgentActionStore:
                     id, source_agent_run_id, source_conversation_id, source_message_id,
                     action_type, risk_tier, decision, status, title, summary,
                     target_paths_json, before_snapshot_json, after_snapshot_json,
-                    metadata_json, reversible, error, created_at, updated_at, completed_at
+                    metadata_json, reversible, error, created_at, updated_at, completed_at,
+                    negotiation_rounds, total_tokens, total_latency_ms
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     action_id,
@@ -187,6 +191,9 @@ class AgentActionStore:
                     now,
                     now,
                     completed_at or (now if request.status == "completed" else None),
+                    request.negotiation_rounds,
+                    request.total_tokens,
+                    request.total_latency_ms,
                 ),
             )
         return self.get(action_id)
@@ -243,6 +250,8 @@ class AgentActionStore:
             auto_structured_memory=bool(row["auto_structured_memory"]),
             auto_long_term_memory=bool(row["auto_long_term_memory"]),
             auto_wiki_organize=bool(row["auto_wiki_organize"]),
+            use_negotiation=bool(row["use_negotiation"]),
+            max_rounds=int(row["max_rounds"]),
             high_risk_confirmation_required=bool(row["high_risk_confirmation_required"]),
             updated_at=str(row["updated_at"]),
         )
@@ -254,14 +263,17 @@ class AgentActionStore:
                 """
                 INSERT INTO automation_settings (
                     id, auto_chat_diary, auto_structured_memory, auto_long_term_memory,
-                    auto_wiki_organize, high_risk_confirmation_required, created_at, updated_at
+                    auto_wiki_organize, use_negotiation, max_rounds,
+                    high_risk_confirmation_required, created_at, updated_at
                 )
-                VALUES (1, ?, ?, ?, ?, 1, ?, ?)
+                VALUES (1, ?, ?, ?, ?, ?, ?, 1, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     auto_chat_diary = excluded.auto_chat_diary,
                     auto_structured_memory = excluded.auto_structured_memory,
                     auto_long_term_memory = excluded.auto_long_term_memory,
                     auto_wiki_organize = excluded.auto_wiki_organize,
+                    use_negotiation = excluded.use_negotiation,
+                    max_rounds = excluded.max_rounds,
                     high_risk_confirmation_required = 1,
                     updated_at = excluded.updated_at
                 """,
@@ -270,6 +282,8 @@ class AgentActionStore:
                     1 if settings.auto_structured_memory else 0,
                     1 if settings.auto_long_term_memory else 0,
                     1 if settings.auto_wiki_organize else 0,
+                    1 if settings.use_negotiation else 0,
+                    settings.max_rounds,
                     now,
                     now,
                 ),
@@ -300,6 +314,9 @@ class AgentActionStore:
             source=_action_source(row, metadata),
             diff_summary=_diff_summary(target_paths, before_snapshot, after_snapshot),
             metadata=metadata if isinstance(metadata, dict) else {},
+            negotiation_rounds=int(row["negotiation_rounds"] or 0),
+            total_tokens=int(row["total_tokens"] or 0),
+            total_latency_ms=int(row["total_latency_ms"] or 0),
             created_at=str(row["created_at"]),
             updated_at=str(row["updated_at"]),
             completed_at=_optional_str(row["completed_at"]),

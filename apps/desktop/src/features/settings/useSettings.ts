@@ -13,7 +13,7 @@ import type { DesktopApi } from "../../services/desktopApi";
 import { formatTaskStatus } from "../tasks/taskReducer";
 import { formatVaultStatus } from "./settingsFormatters";
 import { createInitialSettingsState, settingsReducer } from "./settingsReducer";
-import type { LastIndexRun } from "./settingsTypes";
+import type { GlobalModelDraft, LastIndexRun, NegotiationSettingsDraft } from "./settingsTypes";
 
 type Notice = {
   tone: "info" | "error" | "success";
@@ -60,6 +60,105 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
     }
   }, [api, applySettingsStatus, onNotice, onSettingsStatusLoaded]);
 
+  const updateGlobalModelDraft = useCallback((patch: Partial<GlobalModelDraft>) => {
+    dispatch({ type: "updateGlobalModelDraft", patch });
+  }, []);
+
+  const saveGlobalModel = useCallback(async () => {
+    const draft = state.globalModelDraft;
+    if (!draft.provider.trim() || !draft.base_url.trim() || !draft.model.trim()) {
+      onNotice({ tone: "error", message: "请填写全局模型的提供方、接口地址和模型。" });
+      return;
+    }
+    const provider = normalizeProviderDraft(draft.provider);
+    if (!isSupportedProviderDraft(provider)) {
+      onNotice({ tone: "error", message: "当前只支持 OpenAI 兼容接口；提供方请填写 openai-compatible。" });
+      return;
+    }
+
+    dispatch({ type: "setGlobalModelSaveStatus", status: "loading" });
+    onNotice(null);
+    try {
+      const config = await api.updateSettings({
+        provider,
+        base_url: draft.base_url.trim(),
+        model: draft.model.trim(),
+      });
+      if (draft.api_key.trim()) {
+        await api.saveModelKey(config.provider, draft.api_key.trim());
+      }
+      dispatch({ type: "saveGlobalModelSuccess", config });
+      onNotice({
+        tone: "success",
+        message: `全局模型已更新，${config.agents_using_global} 个智能体将使用此配置`,
+      });
+    } catch (error) {
+      dispatch({ type: "setGlobalModelSaveStatus", status: "error" });
+      onNotice({ tone: "error", message: describeError(error, "全局模型配置保存失败") });
+    }
+  }, [api, onNotice, state.globalModelDraft]);
+
+  const testGlobalModelConnection = useCallback(async () => {
+    const draft = state.globalModelDraft;
+    if (
+      draft.provider.trim() !== draft.saved_provider ||
+      draft.base_url.trim() !== draft.saved_base_url ||
+      draft.model.trim() !== draft.saved_model ||
+      draft.api_key.trim()
+    ) {
+      onNotice({ tone: "error", message: "全局模型有未保存的配置，请先保存后再测试连接。" });
+      return;
+    }
+    if (!isSupportedProviderDraft(draft.saved_provider || draft.provider)) {
+      onNotice({ tone: "error", message: "当前只支持 OpenAI 兼容接口；提供方请保存为 openai-compatible 后再测试连接。" });
+      return;
+    }
+
+    dispatch({ type: "setGlobalModelTestStatus", status: "loading" });
+    onNotice(null);
+    try {
+      const response = await api.testModelConnection();
+      dispatch({ type: "setGlobalModelTestStatus", status: response.status === "ok" ? "success" : "error", result: response });
+      onNotice({
+        tone: response.status === "ok" ? "success" : "error",
+        message: response.message || `全局模型测试连接${response.status === "ok" ? "成功" : "失败"}。`,
+      });
+    } catch (error) {
+      dispatch({ type: "setGlobalModelTestStatus", status: "error" });
+      onNotice({ tone: "error", message: describeError(error, "全局模型测试连接失败") });
+    }
+  }, [api, onNotice, state.globalModelDraft]);
+
+  const updateNegotiationSettingsDraft = useCallback((patch: Partial<NegotiationSettingsDraft>) => {
+    dispatch({ type: "updateNegotiationSettingsDraft", patch });
+  }, []);
+
+  const saveNegotiationSettings = useCallback(async () => {
+    const draft = state.negotiationSettingsDraft;
+    const maxRounds = Math.trunc(draft.max_rounds);
+    if (maxRounds < 2 || maxRounds > 10) {
+      onNotice({ tone: "error", message: "最大协商轮次需在 2 到 10 之间。" });
+      return;
+    }
+
+    dispatch({ type: "setNegotiationSettingsSaveStatus", status: "loading" });
+    onNotice(null);
+    try {
+      await api.updateSettings({
+        use_negotiation: draft.use_negotiation,
+        max_rounds: maxRounds,
+      });
+      dispatch({
+        type: "saveNegotiationSettingsSuccess",
+        draft: { use_negotiation: draft.use_negotiation, max_rounds: maxRounds },
+      });
+      onNotice({ tone: "success", message: "多轮协商设置已保存。" });
+    } catch (error) {
+      dispatch({ type: "setNegotiationSettingsSaveStatus", status: "error" });
+      onNotice({ tone: "error", message: describeError(error, "多轮协商设置保存失败") });
+    }
+  }, [api, onNotice, state.negotiationSettingsDraft]);
+
   const updateAgentModelDraft = useCallback((agentId: AgentModelId, patch: Partial<AgentModelDraft>) => {
     dispatch({ type: "updateAgentModelDraft", agentId, patch });
   }, []);
@@ -69,18 +168,23 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
     if (!draft) {
       return;
     }
-    if (!draft.provider.trim() || !draft.base_url.trim() || !draft.model.trim()) {
-      onNotice({ tone: "error", message: "请填写智能体的提供方、接口地址和模型。" });
-      return;
-    }
-    const provider = normalizeProviderDraft(draft.provider);
-    if (!isSupportedProviderDraft(provider)) {
-      onNotice({ tone: "error", message: "当前只支持 OpenAI 兼容接口；提供方请填写 openai-compatible。" });
-      return;
-    }
-    if (!draft.masked && !draft.api_key.trim()) {
-      onNotice({ tone: "error", message: "请填写智能体 API 密钥后再保存。" });
-      return;
+    const provider = normalizeProviderDraft(draft.provider || draft.saved_provider || state.globalModelDraft.provider);
+    const baseUrl = (draft.base_url || draft.saved_base_url || state.globalModelDraft.base_url).trim();
+    const model = (draft.model || draft.saved_model || state.globalModelDraft.model).trim();
+
+    if (draft.enabled) {
+      if (!draft.provider.trim() || !draft.base_url.trim() || !draft.model.trim()) {
+        onNotice({ tone: "error", message: "请填写智能体的提供方、接口地址和模型。" });
+        return;
+      }
+      if (!isSupportedProviderDraft(provider)) {
+        onNotice({ tone: "error", message: "当前只支持 OpenAI 兼容接口；提供方请填写 openai-compatible。" });
+        return;
+      }
+      if (!draft.masked && !draft.api_key.trim()) {
+        onNotice({ tone: "error", message: "请填写智能体 API 密钥后再保存。" });
+        return;
+      }
     }
 
     dispatch({ type: "startSavingAgentModel", agentId });
@@ -89,10 +193,11 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
       const config = await api.saveAgentModelConfig({
         agent_id: agentId,
         provider,
-        base_url: draft.base_url.trim(),
-        model: draft.model.trim(),
+        base_url: baseUrl,
+        model,
+        enabled: draft.enabled,
       });
-      const keyStatus = draft.api_key.trim()
+      const keyStatus = draft.enabled && draft.api_key.trim()
         ? await api.saveAgentModelKey({
             agent_id: agentId,
             provider: config.provider,
@@ -103,14 +208,16 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
       const masked = keyStatus.masked || config.masked || draft.masked || "";
       onNotice({
         tone: "success",
-        message: `${agentLabel(agentId)} 模型配置已保存${masked ? `：${masked}` : "，请继续填写密钥"}。`,
+        message: draft.enabled
+          ? `${agentLabel(agentId)} 模型配置已保存${masked ? `：${masked}` : "，请继续填写密钥"}。`
+          : `${agentLabel(agentId)} 已切换为使用全局模型。`,
       });
     } catch (error) {
       onNotice({ tone: "error", message: describeError(error, `${agentLabel(agentId)} 模型配置保存失败`) });
     } finally {
       dispatch({ type: "finishSavingAgentModel", agentId });
     }
-  }, [api, onNotice, state.agentModelDrafts]);
+  }, [api, onNotice, state.agentModelDrafts, state.globalModelDraft]);
 
   const testAgentModelConnection = useCallback(async (agentId: AgentModelId) => {
     const draft = state.agentModelDrafts.find((item) => item.agent_id === agentId);
@@ -118,7 +225,7 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
       onNotice({ tone: "error", message: `${agentLabel(agentId)} 有未保存的模型配置，请先保存后再试连。` });
       return;
     }
-    if (draft && !isSupportedProviderDraft(draft.saved_provider || draft.provider)) {
+    if (draft?.saved_enabled && !isSupportedProviderDraft(draft.saved_provider || draft.provider)) {
       onNotice({ tone: "error", message: "当前只支持 OpenAI 兼容接口；提供方请保存为 openai-compatible 后再试连。" });
       return;
     }
@@ -278,22 +385,33 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
     applyDiagnosticsStatus,
     applySettingsStatus,
     bindVault,
+    globalModelDraft: state.globalModelDraft,
+    globalModelSaveStatus: state.globalModelSaveStatus,
+    globalModelTestResult: state.globalModelTestResult,
+    globalModelTestStatus: state.globalModelTestStatus,
     indexingVault: state.indexingVault,
     lastIndexRun: state.lastIndexRun,
     loadingSettingsStatus: state.loadingSettingsStatus,
     loadSettingsStatus,
     loadVaultStatus,
+    negotiationSettingsDraft: state.negotiationSettingsDraft,
+    negotiationSettingsSaveStatus: state.negotiationSettingsSaveStatus,
     rebuildIndex,
     resetSettingsState,
     saveAgentModel,
+    saveGlobalModel,
+    saveNegotiationSettings,
     savingAgentModelIds: state.savingAgentModelIds,
     selectVaultDirectory,
     setLastIndexRun,
     setVaultPath,
     settingsStatus: state.settingsStatus,
     testAgentModelConnection,
+    testGlobalModelConnection,
     testingAgentModelIds: state.testingAgentModelIds,
     updateAgentModelDraft,
+    updateGlobalModelDraft,
+    updateNegotiationSettingsDraft,
     vaultId: state.vaultId,
     vaultPath: state.vaultPath,
   };

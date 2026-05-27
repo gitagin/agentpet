@@ -191,16 +191,21 @@ function createSidecarManager({ host, port, baseUrl, sessionToken, managedSideca
 
   function delay(ms, signal) {
     return new Promise((resolve, reject) => {
-      const timeout = setTimeout(resolve, ms);
+      if (signal.aborted) {
+        reject(new Error("Delay was aborted."));
+        return;
+      }
 
-      signal.addEventListener(
-        "abort",
-        () => {
-          clearTimeout(timeout);
-          reject(new Error("Delay was aborted."));
-        },
-        { once: true },
-      );
+      const timeout = setTimeout(() => {
+        signal.removeEventListener("abort", onAbort);
+        resolve();
+      }, ms);
+      const onAbort = () => {
+        clearTimeout(timeout);
+        reject(new Error("Delay was aborted."));
+      };
+
+      signal.addEventListener("abort", onAbort, { once: true });
     });
   }
 

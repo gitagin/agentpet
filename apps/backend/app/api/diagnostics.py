@@ -1,8 +1,11 @@
+import json
+from collections import Counter
+
 from fastapi import APIRouter, Depends, Request, status
 
 from ..config import get_settings
 from ..errors import AppError
-from ..models.api import DiagnosticsExportResponse, LocalStateResetRequest, LocalStateResetResponse
+from ..models.api import DiagnosticsExportResponse, LocalStateResetRequest, LocalStateResetResponse, NegotiationStatsResponse
 from ..scheduler import ReminderSchedulerProtocol
 from ..services.diagnostics import DiagnosticsExporter
 from ..services.local_state_reset import LocalStateResetService, RESET_CONFIRMATION_TEXT
@@ -19,6 +22,43 @@ async def export_diagnostics(
 ) -> DiagnosticsExportResponse:
     exporter = DiagnosticsExporter(database(request), get_settings())
     return exporter.export(active_vault_id=active_vault_id)
+
+
+@router.get("/negotiation-stats", response_model=NegotiationStatsResponse)
+async def negotiation_stats(request: Request) -> NegotiationStatsResponse:
+    with database(request).connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT negotiation_rounds, total_latency_ms, metadata_json
+            FROM agent_actions
+            WHERE action_type = 'agent.negotiation'
+              AND negotiation_rounds > 0
+            """
+        ).fetchall()
+    if not rows:
+        return NegotiationStatsResponse()
+
+    total = len(rows)
+    fallback_count = 0
+    agent_counter: Counter[str] = Counter()
+    total_rounds = 0
+    total_latency_ms = 0
+    for row in rows:
+        total_rounds += int(row["negotiation_rounds"] or 0)
+        total_latency_ms += int(row["total_latency_ms"] or 0)
+        metadata = _load_metadata(row["metadata_json"])
+        if metadata.get("fallback") is True:
+            fallback_count += 1
+        agents_invoked = metadata.get("agents_invoked")
+        if isinstance(agents_invoked, list):
+            agent_counter.update(str(agent) for agent in agents_invoked if isinstance(agent, str))
+
+    return NegotiationStatsResponse(
+        avg_rounds=total_rounds / total,
+        avg_latency_ms=total_latency_ms / total,
+        fallback_rate=fallback_count / total,
+        top_agents_invoked=[agent for agent, _count in agent_counter.most_common(3)],
+    )
 
 
 @router.post("/reset-local-state", response_model=LocalStateResetResponse)
@@ -52,3 +92,11 @@ async def reset_local_state(
         cleared_tables=result.cleared_tables,
         removed_paths=result.removed_paths,
     )
+
+
+def _load_metadata(value: object) -> dict[str, object]:
+    try:
+        metadata = json.loads(str(value or "{}"))
+    except json.JSONDecodeError:
+        return {}
+    return metadata if isinstance(metadata, dict) else {}

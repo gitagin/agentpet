@@ -27,6 +27,76 @@ def test_diagnostics_export_requires_authorization(client: TestClient) -> None:
     assert response.json()["error"]["code"] == "missing_authorization"
 
 
+def test_negotiation_stats_returns_aggregates(client: TestClient) -> None:
+    db_path = client.app.state.database.path
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO agent_actions(
+                id, action_type, risk_tier, decision, status, title, summary,
+                metadata_json, reversible, created_at, updated_at, completed_at,
+                negotiation_rounds, total_tokens, total_latency_ms
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "negotiation-stats-1",
+                "agent.negotiation",
+                "low",
+                "auto",
+                "completed",
+                "协商 1",
+                "",
+                '{"fallback":true,"agents_invoked":["memory_retrieval_agent","wiki_manager_agent"]}',
+                0,
+                "2026-01-01T00:00:00Z",
+                "2026-01-01T00:00:00Z",
+                "2026-01-01T00:00:00Z",
+                2,
+                0,
+                120,
+            ),
+        )
+        conn.execute(
+            """
+            INSERT INTO agent_actions(
+                id, action_type, risk_tier, decision, status, title, summary,
+                metadata_json, reversible, created_at, updated_at, completed_at,
+                negotiation_rounds, total_tokens, total_latency_ms
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "negotiation-stats-2",
+                "agent.negotiation",
+                "low",
+                "auto",
+                "completed",
+                "协商 2",
+                "",
+                '{"fallback":false,"agents_invoked":["memory_retrieval_agent"]}',
+                0,
+                "2026-01-01T00:00:01Z",
+                "2026-01-01T00:00:01Z",
+                "2026-01-01T00:00:01Z",
+                4,
+                0,
+                180,
+            ),
+        )
+        conn.commit()
+
+    response = client.get("/api/diagnostics/negotiation-stats", headers=auth())
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "avg_rounds": 3.0,
+        "avg_latency_ms": 150.0,
+        "fallback_rate": 0.5,
+        "top_agents_invoked": ["memory_retrieval_agent", "wiki_manager_agent"],
+    }
+
+
 def test_diagnostics_export_returns_redacted_runtime_summary(
     client: TestClient,
     tmp_path: Path,

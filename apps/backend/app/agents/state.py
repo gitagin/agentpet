@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -45,3 +45,24 @@ class AgentState(BaseModel):
     @property
     def intent(self) -> AgentIntent | None:
         return self.route.intent if self.route else None
+
+
+class AgentInvocationResult(BaseModel):
+    agent_id: str
+    round: int
+    input_query: str
+    output: Any
+    confidence: float = Field(ge=0.0, le=1.0)
+    latency_ms: int
+    tool_calls: list[str]
+
+
+class NegotiationState(AgentState):
+    round: int = 0
+    max_rounds: int = 5
+    confidence_threshold: float = 0.8
+    invocation_history: list[AgentInvocationResult] = Field(default_factory=list)
+    orchestrator_decisions: list[Any] = Field(default_factory=list)
+    collected_context: str = ""
+    pending_proposals: list[dict[str, Any]] = Field(default_factory=list)
+    fallback_triggered: bool = False

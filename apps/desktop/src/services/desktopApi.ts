@@ -22,8 +22,11 @@ import type {
   MemorySearchResponse,
   ModelKeyResponse,
   ModelConfigResponse,
+  ModelHealthResponse,
   ModelTestResponse,
   SettingsStatusResponse,
+  SettingsUpdateRequest,
+  SettingsUpdateResponse,
   TaskActionResponse,
   TaskCreateResponse,
   TaskDraft,
@@ -220,6 +223,14 @@ export class DesktopApi {
     );
   }
 
+  updateSettings(request: SettingsUpdateRequest, signal?: AbortSignal): Promise<SettingsUpdateResponse> {
+    return this.client.patch<SettingsUpdateResponse>("/api/settings", request, signal);
+  }
+
+  getModelHealth(signal?: AbortSignal): Promise<ModelHealthResponse> {
+    return this.client.get<ModelHealthResponse>("/api/settings/model-health", signal);
+  }
+
   testModelConnection(signal?: AbortSignal): Promise<ModelTestResponse> {
     return this.client.post<ModelTestResponse>("/api/settings/model-test", {}, signal);
   }
@@ -230,7 +241,7 @@ export class DesktopApi {
   ): Promise<AgentModelConfigResponse> {
     return this.client.put<AgentModelConfigResponse>(
       `/api/settings/agent-models/${encodeURIComponent(request.agent_id)}/config`,
-      { provider: request.provider, base_url: request.base_url, model: request.model },
+      { provider: request.provider, base_url: request.base_url, model: request.model, enabled: request.enabled },
       signal,
     );
   }

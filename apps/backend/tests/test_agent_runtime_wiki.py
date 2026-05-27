@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 
 from tests.agent_runtime_fakes import (
     FakeRegistryChatModel,
@@ -27,6 +28,7 @@ def test_langgraph_wiki_manager_archives_query_by_default() -> None:
                 wiki=wiki,
                 wiki_workflow=wiki_workflow,
                 model_registry=AgentModelRegistry({AgentId.WIKI_MANAGER_AGENT: wiki_model}),
+                automation_settings=SimpleNamespace(use_negotiation=False),
             )
         )
         state = make_state("archive to wiki query archive: Runtime answer")
@@ -56,6 +58,7 @@ def test_langgraph_wiki_manager_synthesizes_by_default() -> None:
                 wiki=wiki,
                 wiki_workflow=wiki_workflow,
                 model_registry=AgentModelRegistry({AgentId.WIKI_MANAGER_AGENT: wiki_model}),
+                automation_settings=SimpleNamespace(use_negotiation=False),
             )
         )
 
@@ -82,6 +85,7 @@ def test_langgraph_wiki_manager_runs_lint_report_by_default() -> None:
                 wiki=wiki,
                 wiki_workflow=wiki_workflow,
                 model_registry=AgentModelRegistry({AgentId.WIKI_MANAGER_AGENT: wiki_model}),
+                automation_settings=SimpleNamespace(use_negotiation=False),
             )
         )
 
@@ -108,7 +112,7 @@ def test_langgraph_wiki_manager_falls_back_to_proposal_flow_when_auto_organize_d
                 wiki=wiki,
                 wiki_workflow=wiki_workflow,
                 model_registry=AgentModelRegistry({AgentId.WIKI_MANAGER_AGENT: wiki_model}),
-                automation_settings=AutomationSettingsResponse(auto_wiki_organize=False),
+                automation_settings=AutomationSettingsResponse(auto_wiki_organize=False, use_negotiation=False),
             )
         )
         state = make_state("archive to wiki query archive: Runtime answer")

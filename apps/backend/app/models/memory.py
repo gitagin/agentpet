@@ -75,7 +75,7 @@ class ContinuityProposalActionResponse(MemoryProposalActionFields):
 
 
 class AgentActionResponse(AgentActionDecisionFields):
-    source_agent_run_id: str | None = None; source_conversation_id: str | None = None; source_message_id: str | None = None; reverted_by: str | None = None; reverts_action_id: str | None = None; error: str | None = None; source: dict[str, str] = Field(default_factory=dict); diff_summary: str = ""; created_at: str; updated_at: str; completed_at: str | None = None
+    source_agent_run_id: str | None = None; source_conversation_id: str | None = None; source_message_id: str | None = None; reverted_by: str | None = None; reverts_action_id: str | None = None; error: str | None = None; source: dict[str, str] = Field(default_factory=dict); diff_summary: str = ""; negotiation_rounds: int = 0; total_tokens: int = 0; total_latency_ms: int = 0; created_at: str; updated_at: str; completed_at: str | None = None
 
 
 class AgentActionListResponse(BaseModel):

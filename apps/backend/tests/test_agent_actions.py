@@ -51,6 +51,8 @@ def test_agent_action_settings_default_to_opt_in_memory(tmp_path: Path) -> None:
             auto_structured_memory=True,
             auto_long_term_memory=False,
             auto_wiki_organize=False,
+            use_negotiation=False,
+            max_rounds=2,
         )
     )
     loaded = store.get_automation_settings()
@@ -59,11 +61,15 @@ def test_agent_action_settings_default_to_opt_in_memory(tmp_path: Path) -> None:
     assert defaults.auto_structured_memory is False
     assert defaults.auto_long_term_memory is False
     assert defaults.auto_wiki_organize is False
+    assert defaults.use_negotiation is True
+    assert defaults.max_rounds == 5
     assert defaults.high_risk_confirmation_required is True
     assert saved.auto_chat_diary is False
     assert saved.auto_structured_memory is True
     assert saved.auto_long_term_memory is False
     assert saved.auto_wiki_organize is False
+    assert saved.use_negotiation is False
+    assert saved.max_rounds == 2
     assert saved.high_risk_confirmation_required is True
     assert loaded == saved
 

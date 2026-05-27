@@ -4,6 +4,9 @@ import type {
   ChatContinuityProposal,
   ChatContinuitySignal,
   ChatMessage,
+  ChatNegotiationAction,
+  ChatNegotiationDone,
+  ChatNegotiationStep,
   ChatWikiProposal,
   ContinuityProposal,
   ContinuityProposalKind,
@@ -75,6 +78,16 @@ export function applyStreamEvent(messageId: string, sseEvent: SseEvent, context:
     return;
   }
 
+  if (sseEvent.event === "negotiation_step") {
+    negotiationStepHandler(input);
+    return;
+  }
+
+  if (sseEvent.event === "negotiation_done") {
+    negotiationDoneHandler(input);
+    return;
+  }
+
   if (sseEvent.event === "continuity_signal") {
     continuitySignalHandler(input);
     return;
@@ -103,6 +116,70 @@ export function applyStreamEvent(messageId: string, sseEvent: SseEvent, context:
   }
 
   applyTextOrCitationEvent(input);
+}
+
+function negotiationStepHandler({ messageId, payload, context }: StreamHandlerInput) {
+  const step = normalizeNegotiationStep(payload);
+  if (!step) {
+    return;
+  }
+  context.setMessages((current) =>
+    current.map((message) =>
+      message.id === messageId
+        ? {
+            ...message,
+            negotiation_steps: [...(message.negotiation_steps || []), step],
+          }
+        : message,
+    ),
+  );
+}
+
+function negotiationDoneHandler({ messageId, payload, context }: StreamHandlerInput) {
+  const done = normalizeNegotiationDone(payload);
+  if (!done) {
+    return;
+  }
+  context.setMessages((current) =>
+    current.map((message) => (message.id === messageId ? { ...message, negotiation_done: done } : message)),
+  );
+}
+
+function normalizeNegotiationStep(payload: Record<string, unknown> | null): ChatNegotiationStep | null {
+  if (!payload) {
+    return null;
+  }
+  const action = payload.action;
+  if (!isNegotiationAction(action)) {
+    return null;
+  }
+  return {
+    round: typeof payload.round === "number" ? payload.round : 0,
+    agent: typeof payload.agent === "string" ? payload.agent : "orchestrator",
+    action,
+    reasoning: typeof payload.reasoning === "string" ? payload.reasoning : "",
+    confidence: typeof payload.confidence === "number" ? payload.confidence : 0,
+    message: typeof payload.message === "string" ? payload.message : "",
+  };
+}
+
+function normalizeNegotiationDone(payload: Record<string, unknown> | null): ChatNegotiationDone | null {
+  if (!payload) {
+    return null;
+  }
+  return {
+    total_rounds: typeof payload.total_rounds === "number" ? payload.total_rounds : 0,
+    agents_invoked: Array.isArray(payload.agents_invoked)
+      ? payload.agents_invoked.filter((agent): agent is string => typeof agent === "string")
+      : [],
+    total_latency_ms: typeof payload.total_latency_ms === "number" ? payload.total_latency_ms : 0,
+    final_confidence: typeof payload.final_confidence === "number" ? payload.final_confidence : 0,
+    fallback: payload.fallback === true,
+  };
+}
+
+function isNegotiationAction(action: unknown): action is ChatNegotiationAction {
+  return action === "invoking" || action === "reviewing" || action === "revising" || action === "synthesizing";
 }
 
 function applyTextOrCitationEvent({ messageId, sseEvent, payload, context }: StreamHandlerInput) {

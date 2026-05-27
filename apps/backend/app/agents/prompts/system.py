@@ -33,26 +33,33 @@ def _knowledge_retrieval_system_prompt(semantic: SemanticAnalysisResult) -> str:
     )
 
 
-def _memory_system_prompt() -> str:
-    return (
+def _memory_system_prompt(revision_notes: str | None = None) -> str:
+    prompt = (
         "你是 memory_proposal_agent，只能使用 propose_memory 工具创建待确认记忆提案。"
         "不要直接声称已经写入长期记忆。"
     )
+    if revision_notes:
+        prompt += f"请根据以下审查意见修正草案后再创建提案：{revision_notes}"
+    return prompt
 
 
-def _wiki_system_prompt(*, auto_organize: bool = True) -> str:
+def _wiki_system_prompt(*, auto_organize: bool = True, revision_issues: list[str] | None = None) -> str:
     if not auto_organize:
-        return (
+        prompt = (
             "You are wiki_manager_agent. Use plan_wiki_ingest, plan_wiki_query_archive, "
             "plan_wiki_synthesis, or plan_wiki_lint to prepare a confirmation-first review plan. "
             "Do not write Markdown unless a later confirmed apply step is explicitly requested."
         )
-    return (
-        "You are wiki_manager_agent. Use manage_wiki_page for ordinary Wiki整理, report writes, "
-        "or concise page updates. Only ask for confirmation when the action is destructive, "
-        "overwrites important content, or the user explicitly asks for a review flow. "
-        "Do not claim that the Vault changed unless a tool event confirms it."
-    )
+    else:
+        prompt = (
+            "You are wiki_manager_agent. Use manage_wiki_page for ordinary Wiki整理, report writes, "
+            "or concise page updates. Only ask for confirmation when the action is destructive, "
+            "overwrites important content, or the user explicitly asks for a review flow. "
+            "Do not claim that the Vault changed unless a tool event confirms it."
+        )
+    if revision_issues:
+        prompt += " Please revise the draft by addressing these review issues one by one: " + "; ".join(revision_issues)
+    return prompt
 
 
 def _task_system_prompt() -> str:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 
 from tests.agent_runtime_fakes import (
     FakeChatModel,
@@ -129,7 +130,11 @@ def test_langgraph_runtime_uses_chat_model_to_answer_search_intent() -> None:
         retrieval = FakeRetrieval()
         chat_model = FakeChatModel("我翻到 Ada 喜欢简洁的状态更新。")
         runtime = LangGraphAgentRuntime(
-            AgentRuntimeServices(retrieval=retrieval, chat_model=chat_model)
+            AgentRuntimeServices(
+                retrieval=retrieval,
+                chat_model=chat_model,
+                automation_settings=SimpleNamespace(use_negotiation=False),
+            )
         )
 
         events = [event async for event in runtime.run(make_state("search memory for Ada"))]
@@ -153,7 +158,11 @@ def test_langgraph_chat_agent_maps_model_search_tool_call_to_citation_event() ->
         retrieval = FakeRetrieval()
         chat_model = FakeNonToolCallingChatModel("已根据记忆回答。")
         runtime = LangGraphAgentRuntime(
-            AgentRuntimeServices(retrieval=retrieval, chat_model=chat_model)
+            AgentRuntimeServices(
+                retrieval=retrieval,
+                chat_model=chat_model,
+                automation_settings=SimpleNamespace(use_negotiation=False),
+            )
         )
 
         events = [event async for event in runtime.run(make_state("search memory for Ada"))]
@@ -177,7 +186,11 @@ def test_langgraph_chat_agent_does_not_search_for_plain_question_when_model_skip
         retrieval = FakeRetrieval()
         chat_model = FakeNonToolCallingChatModel("model-only answer")
         runtime = LangGraphAgentRuntime(
-            AgentRuntimeServices(retrieval=retrieval, chat_model=chat_model)
+            AgentRuntimeServices(
+                retrieval=retrieval,
+                chat_model=chat_model,
+                automation_settings=SimpleNamespace(use_negotiation=False),
+            )
         )
 
         events = [event async for event in runtime.run(make_state("What does Ada prefer?"))]
@@ -231,7 +244,11 @@ def test_langgraph_chat_agent_executes_text_search_tool_call_instead_of_echoing(
             "<tool_call><function=search_notes> <parameter=query>5月3号</parameter> </function> </tool_call>"
         )
         runtime = LangGraphAgentRuntime(
-            AgentRuntimeServices(retrieval=retrieval, chat_model=chat_model)
+            AgentRuntimeServices(
+                retrieval=retrieval,
+                chat_model=chat_model,
+                automation_settings=SimpleNamespace(use_negotiation=False),
+            )
         )
 
         events = [event async for event in runtime.run(make_state("tell me about that day"))]
@@ -255,7 +272,11 @@ def test_langgraph_chat_agent_answers_naturally_when_search_is_empty() -> None:
         retrieval = FakeEmptyRetrieval()
         chat_model = FakeNonToolCallingChatModel("我翻了下记忆本，暂时没有找到能引用的记录。")
         runtime = LangGraphAgentRuntime(
-            AgentRuntimeServices(retrieval=retrieval, chat_model=chat_model)
+            AgentRuntimeServices(
+                retrieval=retrieval,
+                chat_model=chat_model,
+                automation_settings=SimpleNamespace(use_negotiation=False),
+            )
         )
 
         events = [event async for event in runtime.run(make_state("你记得我喜欢什么吗"))]

@@ -26,6 +26,16 @@ function settingsStatus(overrides: Partial<SettingsStatusResponse> = {}): Settin
     model_configured: true,
     vault_configured: true,
     agent_models: [modelSettings()],
+    automation: {
+      auto_chat_diary: false,
+      auto_structured_memory: false,
+      auto_long_term_memory: false,
+      auto_wiki_organize: false,
+      use_negotiation: true,
+      max_rounds: 5,
+      high_risk_confirmation_required: true,
+      updated_at: null,
+    },
     ...overrides,
   };
 }

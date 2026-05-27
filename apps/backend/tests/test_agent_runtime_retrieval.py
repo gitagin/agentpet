@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 
 from tests.agent_runtime_fakes import (
     FakeCompanionReportStore,
@@ -22,7 +23,12 @@ from app.services.chat_model import AgentId, AgentModelRegistry
 def test_langgraph_runtime_preserves_core_search_event_contract() -> None:
     async def run_case():
         retrieval = FakeRetrieval()
-        runtime = LangGraphAgentRuntime(AgentRuntimeServices(retrieval=retrieval))
+        runtime = LangGraphAgentRuntime(
+            AgentRuntimeServices(
+                retrieval=retrieval,
+                automation_settings=SimpleNamespace(use_negotiation=False),
+            )
+        )
 
         events = [event async for event in runtime.run(make_state("search memory for Ada"))]
 
@@ -71,6 +77,7 @@ def test_langgraph_semantic_agent_drives_memory_retrieval_before_chat() -> None:
                         AgentId.MEMORY_PROPOSAL_AGENT: memory_model,
                     }
                 ),
+                automation_settings=SimpleNamespace(use_negotiation=False),
             )
         )
 
@@ -114,6 +121,7 @@ def test_langgraph_semantic_agent_drives_knowledge_retrieval_before_chat() -> No
                         AgentId.CHAT_AGENT: chat_model,
                     }
                 ),
+                automation_settings=SimpleNamespace(use_negotiation=False),
             )
         )
 
@@ -153,6 +161,7 @@ def test_langgraph_falls_back_to_daily_chat_as_weak_evidence_when_personal_memor
                         AgentId.CHAT_AGENT: chat_model,
                     }
                 ),
+                automation_settings=SimpleNamespace(use_negotiation=False),
             )
         )
 
@@ -197,6 +206,7 @@ def test_langgraph_forces_date_recall_to_daily_chat_even_when_semantic_model_mis
                         AgentId.CHAT_AGENT: chat_model,
                     }
                 ),
+                automation_settings=SimpleNamespace(use_negotiation=False),
             )
         )
 
@@ -225,6 +235,7 @@ def test_langgraph_aggregates_and_compresses_companion_memory_route_scopes() -> 
                         AgentId.CHAT_AGENT: chat_model,
                     }
                 ),
+                automation_settings=SimpleNamespace(use_negotiation=False),
             )
         )
 

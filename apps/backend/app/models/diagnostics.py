@@ -63,6 +63,13 @@ class DiagnosticsExportResponse(BaseModel):
     recent_audit_logs: list[DiagnosticsAuditLogSummary] = Field(default_factory=list)
 
 
+class NegotiationStatsResponse(BaseModel):
+    avg_rounds: float = 0.0
+    avg_latency_ms: float = 0.0
+    fallback_rate: float = 0.0
+    top_agents_invoked: list[str] = Field(default_factory=list)
+
+
 class LocalStateResetRequest(BaseModel):
     confirmation: str
 
