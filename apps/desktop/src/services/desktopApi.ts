@@ -27,10 +27,14 @@ import type {
   SettingsStatusResponse,
   SettingsUpdateRequest,
   SettingsUpdateResponse,
+  CurrentTaskResponse,
   TaskActionResponse,
+  TaskApprovalResponse,
   TaskCreateResponse,
   TaskDraft,
   TaskListResponse,
+  TaskLogsResponse,
+  TaskStepsResponse,
   VaultIndexResponse,
   VaultInitResponse,
   VaultStatusResponse,
@@ -193,6 +197,26 @@ export class DesktopApi {
 
   cancelTask(taskId: string, signal?: AbortSignal): Promise<TaskActionResponse> {
     return this.client.post<TaskActionResponse>(`/api/tasks/${encodeURIComponent(taskId)}/cancel`, {}, signal);
+  }
+
+  fetchCurrentTask(signal?: AbortSignal): Promise<CurrentTaskResponse> {
+    return this.client.get<CurrentTaskResponse>("/api/tasks/current", signal);
+  }
+
+  fetchTaskSteps(taskId: string, signal?: AbortSignal): Promise<TaskStepsResponse> {
+    return this.client.get<TaskStepsResponse>(`/api/tasks/${encodeURIComponent(taskId)}/steps`, signal);
+  }
+
+  fetchTaskLogs(taskId: string, signal?: AbortSignal): Promise<TaskLogsResponse> {
+    return this.client.get<TaskLogsResponse>(`/api/tasks/${encodeURIComponent(taskId)}/logs`, signal);
+  }
+
+  approveTask(taskId: string, signal?: AbortSignal): Promise<TaskApprovalResponse> {
+    return this.client.post<TaskApprovalResponse>(`/api/tasks/${encodeURIComponent(taskId)}/approve`, {}, signal);
+  }
+
+  rejectTask(taskId: string, signal?: AbortSignal): Promise<TaskApprovalResponse> {
+    return this.client.post<TaskApprovalResponse>(`/api/tasks/${encodeURIComponent(taskId)}/reject`, {}, signal);
   }
 
   exportDiagnostics(signal?: AbortSignal): Promise<DiagnosticsExportResponse> {

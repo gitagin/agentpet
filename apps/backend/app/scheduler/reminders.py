@@ -107,7 +107,7 @@ class APSchedulerReminderScheduler:
         if not self.scheduler.running:
             return
         try:
-            self.scheduler.shutdown(wait=False)
+            self.scheduler.shutdown(wait=True)
         except SchedulerNotRunningError:
             pass
 

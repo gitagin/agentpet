@@ -1,0 +1,30 @@
+:root {
+  /* 背景 */
+  --bg-stage: linear-gradient(135deg, #fdf6f0 0%, #fce8e8 50%, #f0e8fd 100%);
+  --bg-companion: transparent;
+  --bg-agent: #f8f5ff;
+
+  /* 卡片 */
+  --card-bg: rgba(255, 255, 255, 0.65);
+  --card-blur: blur(16px);
+  --card-radius: 20px;
+  --card-border: 1px solid rgba(255, 255, 255, 0.8);
+  --card-shadow: 0 8px 32px rgba(180, 140, 160, 0.12);
+
+  /* 主色 */
+  --color-primary: #f4a0b5;      /* 粉色：陪伴 */
+  --color-success: #7ec8a0;      /* 绿色：运行/通过 */
+  --color-active: #f4a96a;       /* 橙色：活力/进行中 */
+  --color-text: #3d2c35;
+  --color-text-soft: #8a7080;
+
+  /* 间距 */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 40px;
+
+  /* 字体 */
+  --font-sans: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", system-ui, sans-serif;
+}

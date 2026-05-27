@@ -1,4 +1,5 @@
 const { app, BrowserWindow, Menu, shell, screen } = require("electron");
+const fs = require("node:fs");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const petHitboxConfig = require("../pet-hitbox.json");
@@ -16,10 +17,16 @@ const PET_INPUT_DOCK_HIT_BOTTOM = petHitboxConfig.hitboxes.inputDock.bottom;
 const PET_CHAT_BUBBLE_HIT_WIDTH = petHitboxConfig.hitboxes.chatBubble.width;
 const PET_CHAT_BUBBLE_HIT_HEIGHT = petHitboxConfig.hitboxes.chatBubble.height;
 const PET_CHAT_BUBBLE_HIT_BOTTOM = petHitboxConfig.hitboxes.chatBubble.bottom;
+const COMPANION_WINDOW_WIDTH = 200;
+const COMPANION_WINDOW_HEIGHT = 320;
+const COMPANION_POSITION_FILE = "companion-window-state.json";
 
 function createWindowManager({ devServerUrl, state, quitApp }) {
   let petWindow = null;
   let controlWindow = null;
+  let stageWindow = null;
+  let agentWindow = null;
+  let companionWindow = null;
   let petAlwaysOnTop = true;
   let petDragState = null;
   let petDragTimer = null;
@@ -222,6 +229,59 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     };
   }
 
+  function getCompanionPositionFilePath() {
+    return path.join(app.getPath("userData"), COMPANION_POSITION_FILE);
+  }
+
+  function getDefaultCompanionBounds() {
+    const workArea = screen.getPrimaryDisplay().workArea;
+    return {
+      x: workArea.x + workArea.width - COMPANION_WINDOW_WIDTH - 24,
+      y: workArea.y + workArea.height - COMPANION_WINDOW_HEIGHT - 24,
+      width: COMPANION_WINDOW_WIDTH,
+      height: COMPANION_WINDOW_HEIGHT,
+    };
+  }
+
+  function clampCompanionWindowToWorkArea(x, y) {
+    const display = screen.getDisplayNearestPoint({ x, y }) || screen.getPrimaryDisplay();
+    const workArea = display.workArea;
+    return {
+      x: clampNumber(x, workArea.x, workArea.x + workArea.width - COMPANION_WINDOW_WIDTH),
+      y: clampNumber(y, workArea.y, workArea.y + workArea.height - COMPANION_WINDOW_HEIGHT),
+    };
+  }
+
+  function readCompanionWindowBounds() {
+    try {
+      const raw = fs.readFileSync(getCompanionPositionFilePath(), "utf8");
+      const parsed = JSON.parse(raw);
+      if (!Number.isFinite(parsed?.x) || !Number.isFinite(parsed?.y)) {
+        return getDefaultCompanionBounds();
+      }
+      const clamped = clampCompanionWindowToWorkArea(Math.round(parsed.x), Math.round(parsed.y));
+      return {
+        ...clamped,
+        width: COMPANION_WINDOW_WIDTH,
+        height: COMPANION_WINDOW_HEIGHT,
+      };
+    } catch {
+      return getDefaultCompanionBounds();
+    }
+  }
+
+  function saveCompanionWindowPosition() {
+    if (!companionWindow || companionWindow.isDestroyed()) {
+      return;
+    }
+    const { x, y } = companionWindow.getBounds();
+    try {
+      fs.writeFileSync(getCompanionPositionFilePath(), JSON.stringify({ x, y }, null, 2));
+    } catch (error) {
+      console.warn("[Window] companion position save failed.", error);
+    }
+  }
+
   function movePetWindowFromCursor() {
     if (!petWindow || petWindow.isDestroyed() || !petDragState?.active) {
       return;
@@ -385,6 +445,132 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     return controlWindow;
   }
 
+  function createStageWindow() {
+    if (stageWindow && !stageWindow.isDestroyed()) {
+      return stageWindow;
+    }
+
+    stageWindow = new BrowserWindow({
+      width: 1100,
+      height: 720,
+      minWidth: 900,
+      minHeight: 600,
+      title: "桌面记忆助手主舞台",
+      backgroundColor: "#f7f7f2",
+      webPreferences: {
+        preload: path.join(__dirname, "preload.cjs"),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+        webSecurity: true,
+      },
+    });
+
+    configureCommonWindow(stageWindow);
+    stageWindow.on("closed", () => {
+      stageWindow = null;
+    });
+    loadAppWindow(stageWindow, "/stage");
+    return stageWindow;
+  }
+
+  function createAgentWindow() {
+    if (agentWindow && !agentWindow.isDestroyed()) {
+      return agentWindow;
+    }
+
+    agentWindow = new BrowserWindow({
+      width: 420,
+      height: 680,
+      title: "Agent 工作空间",
+      alwaysOnTop: false,
+      show: false,
+      webPreferences: {
+        preload: path.join(__dirname, "preload.cjs"),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+        webSecurity: true,
+      },
+    });
+
+    configureCommonWindow(agentWindow);
+    agentWindow.on("close", (event) => {
+      if (!state.isQuitting) {
+        event.preventDefault();
+        agentWindow?.hide();
+      }
+    });
+    agentWindow.on("closed", () => {
+      agentWindow = null;
+    });
+    loadAppWindow(agentWindow, "/agent");
+    return agentWindow;
+  }
+
+  function createCompanionWindow() {
+    if (companionWindow && !companionWindow.isDestroyed()) {
+      return companionWindow;
+    }
+
+    companionWindow = new BrowserWindow({
+      ...readCompanionWindowBounds(),
+      title: "桌面陪伴体",
+      frame: false,
+      transparent: true,
+      backgroundColor: "#00000000",
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      resizable: false,
+      webPreferences: {
+        preload: path.join(__dirname, "preload.cjs"),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+        webSecurity: true,
+      },
+    });
+
+    configureCommonWindow(companionWindow);
+    companionWindow.setIgnoreMouseEvents(true, { forward: true });
+    companionWindow.on("moved", saveCompanionWindowPosition);
+    companionWindow.on("closed", () => {
+      companionWindow = null;
+    });
+    loadAppWindow(companionWindow, "/companion");
+    return companionWindow;
+  }
+
+  function showAgentWindow() {
+    const window = createAgentWindow();
+    if (window.isMinimized()) {
+      window.restore();
+    }
+    window.show();
+    window.focus();
+  }
+
+  function hideAgentWindow() {
+    agentWindow?.hide();
+  }
+
+  function showStageWindow() {
+    const window = createStageWindow();
+    if (window.isMinimized()) {
+      window.restore();
+    }
+    window.show();
+    window.focus();
+  }
+
+  function setCompanionMousePassthrough(ignore) {
+    if (!companionWindow || companionWindow.isDestroyed()) {
+      return false;
+    }
+    companionWindow.setIgnoreMouseEvents(Boolean(ignore), { forward: true });
+    return true;
+  }
+
   function showControlWindow(targetId) {
     const normalizedTargetId = normalizeControlTargetId(targetId);
     if (normalizedTargetId) {
@@ -496,7 +682,14 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
   return {
     createPetWindow,
     createControlWindow,
+    createStageWindow,
+    createAgentWindow,
+    createCompanionWindow,
     showControlWindow,
+    showAgentWindow,
+    hideAgentWindow,
+    showStageWindow,
+    setCompanionMousePassthrough,
     clearPetWindowDrag,
     getPetMousePassthroughStatus,
     updatePetMousePassthroughFromCursor,

@@ -67,6 +67,20 @@ function registerIpcHandlers({ baseUrl, rendererUiState, sidecar, proxy, windows
     windows.showControlWindow(targetId);
   });
 
+  ipcMain.handle("window:open-agent", () => {
+    windows.showAgentWindow();
+  });
+
+  ipcMain.handle("window:close-agent", () => {
+    windows.hideAgentWindow();
+  });
+
+  ipcMain.handle("window:open-stage", () => {
+    windows.showStageWindow();
+  });
+
+  ipcMain.handle("companion:set-ignore-mouse", (_event, ignore) => windows.setCompanionMousePassthrough(ignore));
+
   ipcMain.handle("agent-pet:get-pet-mouse-passthrough-status", (event) => {
     const petWindow = windows.getPetWindow();
     if (!petWindow || event.sender !== petWindow.webContents) {

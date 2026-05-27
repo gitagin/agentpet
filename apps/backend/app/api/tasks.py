@@ -1,6 +1,15 @@
 from fastapi import APIRouter, Depends, Request
 
-from ..models.api import TaskCreateRequest, TaskCreateResponse, TaskListResponse
+from ..models.api import (
+    CurrentTaskResponse,
+    TaskApprovalResponse,
+    TaskCreateRequest,
+    TaskCreateResponse,
+    TaskListResponse,
+    TaskLogsResponse,
+    TaskStepsResponse,
+    TaskWorkspaceItem,
+)
 from ..services.tasks import TaskService, display_timezone_name
 from .wiring import audit_reason, map_task_error, record_audit, task_service_dependency
 
@@ -19,6 +28,36 @@ async def list_today_tasks(
 ) -> TaskListResponse:
     try:
         return TaskListResponse(tasks=[_task_item(service, task.id) for task in service.list_today(timezone)])
+    except Exception as exc:
+        raise map_task_error(exc) from exc
+
+
+@router.get("/current", response_model=CurrentTaskResponse)
+async def get_current_task(service: TaskService = Depends(task_service_dependency)) -> CurrentTaskResponse:
+    task = service.current()
+    if task is None:
+        return CurrentTaskResponse(task=None)
+    return CurrentTaskResponse(task=_workspace_task_item(task))
+
+
+@router.get("/{task_id}/steps", response_model=TaskStepsResponse)
+async def list_task_steps(
+    task_id: str,
+    service: TaskService = Depends(task_service_dependency),
+) -> TaskStepsResponse:
+    try:
+        return TaskStepsResponse(steps=service.steps_for_task(task_id))
+    except Exception as exc:
+        raise map_task_error(exc) from exc
+
+
+@router.get("/{task_id}/logs", response_model=TaskLogsResponse)
+async def list_task_logs(
+    task_id: str,
+    service: TaskService = Depends(task_service_dependency),
+) -> TaskLogsResponse:
+    try:
+        return TaskLogsResponse(logs=service.logs_for_task(task_id))
     except Exception as exc:
         raise map_task_error(exc) from exc
 
@@ -96,6 +135,56 @@ async def complete_task(
     return {"task_id": task.id, "status": task.status.value}
 
 
+@router.post("/{task_id}/approve", response_model=TaskApprovalResponse)
+async def approve_task(
+    task_id: str,
+    request: Request,
+    service: TaskService = Depends(task_service_dependency),
+) -> TaskApprovalResponse:
+    try:
+        task = service.approve(task_id)
+    except Exception as exc:
+        record_audit(
+            request,
+            action="task.approve",
+            result="failed",
+            reason=audit_reason(request, task_id=task_id, code=exc.__class__.__name__),
+        )
+        raise map_task_error(exc) from exc
+    record_audit(
+        request,
+        action="task.approve",
+        result="success",
+        reason=audit_reason(request, task_id=task.id),
+    )
+    return TaskApprovalResponse(task_id=task.id, status=task.status.value, approved=True)
+
+
+@router.post("/{task_id}/reject", response_model=TaskApprovalResponse)
+async def reject_task(
+    task_id: str,
+    request: Request,
+    service: TaskService = Depends(task_service_dependency),
+) -> TaskApprovalResponse:
+    try:
+        task = service.reject(task_id)
+    except Exception as exc:
+        record_audit(
+            request,
+            action="task.reject",
+            result="failed",
+            reason=audit_reason(request, task_id=task_id, code=exc.__class__.__name__),
+        )
+        raise map_task_error(exc) from exc
+    record_audit(
+        request,
+        action="task.reject",
+        result="success",
+        reason=audit_reason(request, task_id=task.id),
+    )
+    return TaskApprovalResponse(task_id=task.id, status=task.status.value, rejected=True)
+
+
 @router.post("/{task_id}/cancel")
 async def cancel_task(
     task_id: str,
@@ -160,3 +249,14 @@ def _task_item(service, task_id: str) -> dict[str, str]:
         if reminder.triggered_at:
             item["triggered_at"] = reminder.triggered_at
     return item
+
+
+def _workspace_task_item(task) -> TaskWorkspaceItem:
+    return TaskWorkspaceItem(
+        task_id=task.id,
+        title=task.title,
+        description=task.description,
+        status=task.status.value,
+        due_at=task.due_at_utc or "",
+        source_text=task.source_text or "",
+    )

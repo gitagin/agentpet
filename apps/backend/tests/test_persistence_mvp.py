@@ -742,6 +742,50 @@ def test_task_list_today_complete_and_cancel_are_persisted(client: TestClient) -
     assert cancel.json()["status"] == "cancelled"
 
 
+def test_task_workspace_endpoints_are_persisted(client: TestClient) -> None:
+    created = client.post(
+        "/api/tasks",
+        headers=auth(),
+        json={"title": "Workspace task", "description": "Show in Agent workspace"},
+    )
+    assert created.status_code == 200
+    task_id = created.json()["task_id"]
+
+    current = client.get("/api/tasks/current", headers=auth())
+    assert current.status_code == 200
+    assert current.json()["task"]["task_id"] == task_id
+    assert current.json()["task"]["needs_approval"] is False
+
+    steps = client.get(f"/api/tasks/{task_id}/steps", headers=auth())
+    assert steps.status_code == 200
+    assert steps.json()["steps"] == [{"index": 1, "tool_name": "task", "status": "pending", "duration_ms": 0}]
+
+    logs = client.get(f"/api/tasks/{task_id}/logs", headers=auth())
+    assert logs.status_code == 200
+    assert len(logs.json()["logs"]) == 2
+    assert "Workspace task" in logs.json()["logs"][0]["content"]
+
+    approve = client.post(f"/api/tasks/{task_id}/approve", headers=auth())
+    assert approve.status_code == 200
+    assert approve.json() == {"task_id": task_id, "status": "pending", "approved": True, "rejected": False}
+
+    reject = client.post(f"/api/tasks/{task_id}/reject", headers=auth())
+    assert reject.status_code == 200
+    assert reject.json() == {"task_id": task_id, "status": "cancelled", "approved": False, "rejected": True}
+
+
+def test_task_workspace_endpoints_return_not_found_for_missing_task(client: TestClient) -> None:
+    for method, path in [
+        (client.get, "/api/tasks/missing-task/steps"),
+        (client.get, "/api/tasks/missing-task/logs"),
+        (client.post, "/api/tasks/missing-task/approve"),
+        (client.post, "/api/tasks/missing-task/reject"),
+    ]:
+        response = method(path, headers=auth())
+        assert response.status_code == 404
+        assert response.json()["error"]["code"] == "task_not_found"
+
+
 def test_startup_restores_unscheduled_reminders(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

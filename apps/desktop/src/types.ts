@@ -96,6 +96,10 @@ declare global {
       ) => Promise<DesktopReminderNotificationResult>;
       getWindowMode?: () => Promise<"pet" | "control">;
       openControlWindow?: (targetId?: string) => Promise<void>;
+      openAgent?: () => Promise<void>;
+      closeAgent?: () => Promise<void>;
+      openStage?: () => Promise<void>;
+      setCompanionIgnoreMouse?: (ignore: boolean) => Promise<boolean>;
       getPetMousePassthroughStatus?: () => Promise<DesktopPetMousePassthroughStatus>;
       beginPetWindowDrag?: () => void;
       activatePetWindowDrag?: () => void;
@@ -677,6 +681,48 @@ export type TaskListResponse = {
 export type TaskActionResponse = {
   task_id: string;
   status: string;
+};
+
+export type TaskWorkspaceItem = {
+  task_id: string;
+  title: string;
+  description: string;
+  status: string;
+  due_at: string;
+  source_text: string;
+  needs_approval: boolean;
+  approval_action: string;
+};
+
+export type CurrentTaskResponse = {
+  task: TaskWorkspaceItem | null;
+};
+
+export type TaskStepItem = {
+  index: number;
+  tool_name: string;
+  status: string;
+  duration_ms: number;
+};
+
+export type TaskStepsResponse = {
+  steps: TaskStepItem[];
+};
+
+export type TaskLogItem = {
+  timestamp: string;
+  content: string;
+};
+
+export type TaskLogsResponse = {
+  logs: TaskLogItem[];
+};
+
+export type TaskApprovalResponse = {
+  task_id: string;
+  status: string;
+  approved: boolean;
+  rejected: boolean;
 };
 
 export type DiagnosticsDatabaseStatus = {

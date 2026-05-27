@@ -45,6 +45,9 @@ import { WikiWorkflowPanel } from "./features/wiki/WikiWorkflowPanel";
 import { wikiArchiveCandidateStorageKey } from "./features/wiki/wikiConstants";
 import { useWiki } from "./features/wiki/useWiki";
 import { Live2DStage } from "./components/Live2DStage";
+import StageView from "./views/StageView";
+import AgentWorkspaceView from "./views/AgentWorkspaceView";
+import CompanionView from "./views/CompanionView";
 import { EmptyState, Panel } from "./components/layout";
 import { ChatMessageList } from "./features/chat/ChatMessageList";
 import { PetChatOverlay } from "./features/chat/PetChatOverlay";
@@ -76,7 +79,7 @@ type Notice = {
   message: string;
 };
 
-type DesktopWindowMode = "pet" | "control";
+type DesktopWindowMode = "pet" | "control" | "stage" | "agent" | "companion";
 type AsyncStatus = "idle" | "loading" | "success" | "empty" | "error";
 
 type CoreWorkflowItem = {
@@ -87,7 +90,8 @@ type CoreWorkflowItem = {
 };
 
 function detectDesktopWindowMode(): DesktopWindowMode {
-  return window.location.hash.replace("#", "") === "pet" ? "pet" : "control";
+  const mode = window.location.hash.replace("#/", "").replace("#", "") || "stage";
+  return mode === "pet" || mode === "stage" || mode === "agent" || mode === "companion" ? mode : "control";
 }
 
 const petHitboxStyle = {
@@ -312,6 +316,11 @@ function App() {
   useEffect(() => {
     let cancelled = false;
     void window.agentDesktop?.getWindowMode?.().then((mode) => {
+      const detectedMode = detectDesktopWindowMode();
+      if (!cancelled && detectedMode !== "control") {
+        setWindowMode(detectedMode);
+        return;
+      }
       if (!cancelled && (mode === "pet" || mode === "control")) {
         setWindowMode(mode);
       }
@@ -1129,6 +1138,35 @@ function App() {
   live2dTaskStageRef.current = triggerLive2DTaskStage;
   const petHitboxDebug =
     windowMode === "pet" && new URLSearchParams(window.location.search).get("hitbox") === "1";
+  if (windowMode === "stage") {
+    return (
+      <StageView
+        live2dStage={live2dStage}
+        live2dAsset={live2dAsset}
+        live2dRuntime={live2dRuntime}
+        live2dCanvasRef={live2dCanvasRef}
+        connected={hasConnection}
+        streaming={streaming}
+        onSendChat={sendChatText}
+      />
+    );
+  }
+
+  if (windowMode === "agent") {
+    return <AgentWorkspaceView api={api} />;
+  }
+
+  if (windowMode === "companion") {
+    return (
+      <CompanionView
+        live2dStage={live2dStage}
+        live2dAsset={live2dAsset}
+        live2dRuntime={live2dRuntime}
+        live2dCanvasRef={live2dCanvasRef}
+      />
+    );
+  }
+
   if (windowMode === "pet") {
     return (
       <main

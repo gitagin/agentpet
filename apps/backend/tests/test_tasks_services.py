@@ -253,3 +253,79 @@ def test_cancel_task_cancels_scheduled_reminder():
     assert reminder.status == ReminderStatus.CANCELLED
     assert reminder.scheduler_job_id is None
     assert scheduler.jobs == {}
+
+
+def test_current_prefers_pending_task():
+    service = build_service()
+    service.create(title="Completed first")
+    completed = service.current()
+    assert completed is not None
+    service.complete(completed.id)
+    pending = service.create(title="Pending second")
+
+    current = service.current()
+
+    assert current is not None
+    assert current.id == pending.task.id
+
+
+def test_current_returns_most_recent_task_when_no_pending_tasks():
+    service = build_service()
+    older = service.create(title="Older task")
+    service.complete(older.task.id)
+    newer = service.create(title="Newer task")
+    service.cancel(newer.task.id)
+    service.store.conn.execute("UPDATE tasks SET updated_at = ? WHERE id = ?", ("2026-05-01T01:00:00Z", older.task.id))
+    service.store.conn.execute("UPDATE tasks SET updated_at = ? WHERE id = ?", ("2026-05-01T01:01:00Z", newer.task.id))
+    service.store.conn.commit()
+
+    current = service.current()
+
+    assert current is not None
+    assert current.id == newer.task.id
+
+
+def test_current_returns_none_when_no_tasks():
+    service = build_service()
+
+    assert service.current() is None
+
+
+def test_steps_and_logs_for_task_are_synthesized():
+    service = build_service()
+    created = service.create(title="Write workspace task")
+
+    steps = service.steps_for_task(created.task.id)
+    logs = service.logs_for_task(created.task.id)
+
+    assert steps == [{"index": 1, "tool_name": "task", "status": "pending", "duration_ms": 0}]
+    assert logs[0]["timestamp"] == created.task.created_at
+    assert "任务已创建" in logs[0]["content"]
+    assert logs[1]["timestamp"] == created.task.updated_at
+    assert "pending" in logs[1]["content"]
+
+
+def test_approve_keeps_task_status():
+    service = build_service()
+    created = service.create(title="Approve no-op")
+
+    approved = service.approve(created.task.id)
+
+    assert approved.id == created.task.id
+    assert approved.status == TaskStatus.PENDING
+
+
+def test_reject_cancels_task_and_reminder():
+    scheduler = RecordingReminderScheduler()
+    service = build_service(scheduler)
+    created = service.create(title="Reject task", remind_at="2026-04-27T09:00:00", timezone="UTC")
+    assert created.reminder is not None
+    assert created.reminder.scheduler_job_id in scheduler.jobs
+
+    rejected = service.reject(created.task.id)
+    reminder = service.reminder_for_task(created.task.id)
+
+    assert rejected.status == TaskStatus.CANCELLED
+    assert reminder is not None
+    assert reminder.status == ReminderStatus.CANCELLED
+    assert scheduler.jobs == {}

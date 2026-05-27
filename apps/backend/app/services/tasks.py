@@ -400,6 +400,30 @@ class TaskStore:
         ).fetchall()
         return [self._map_task(row) for row in rows]
 
+    def get_current_task(self) -> Task | None:
+        row = self.conn.execute(
+            """
+            SELECT *
+            FROM tasks
+            ORDER BY CASE WHEN status = ? THEN 0 ELSE 1 END,
+                     CASE WHEN status = ? THEN COALESCE(due_at_utc, created_at) END,
+                     CASE WHEN status = ? THEN created_at END,
+                     CASE WHEN status != ? THEN updated_at END DESC,
+                     CASE WHEN status != ? THEN created_at END DESC,
+                     CASE WHEN status != ? THEN id END DESC
+            LIMIT 1
+            """,
+            (
+                TaskStatus.PENDING.value,
+                TaskStatus.PENDING.value,
+                TaskStatus.PENDING.value,
+                TaskStatus.PENDING.value,
+                TaskStatus.PENDING.value,
+                TaskStatus.PENDING.value,
+            ),
+        ).fetchone()
+        return self._map_task(row) if row is not None else None
+
     def list_tasks_between(self, start_utc: str, end_utc: str) -> list[Task]:
         rows = self.conn.execute(
             """
@@ -600,6 +624,33 @@ class TaskService:
         task = self.store.cancel_task(task_id)
         self._cancel_reminders_for_task(task_id)
         return task
+
+    def current(self) -> Task | None:
+        return self.store.get_current_task()
+
+    def steps_for_task(self, task_id: str) -> list[dict[str, int | str]]:
+        task = self.store.get_task(task_id)
+        return [
+            {
+                "index": 1,
+                "tool_name": "task",
+                "status": task.status.value,
+                "duration_ms": 0,
+            }
+        ]
+
+    def logs_for_task(self, task_id: str) -> list[dict[str, str]]:
+        task = self.store.get_task(task_id)
+        return [
+            {"timestamp": task.created_at, "content": f"任务已创建：{task.title}"},
+            {"timestamp": task.updated_at, "content": f"当前状态：{task.status.value}"},
+        ]
+
+    def approve(self, task_id: str) -> Task:
+        return self.store.get_task(task_id)
+
+    def reject(self, task_id: str) -> Task:
+        return self.cancel(task_id)
 
     def list(self) -> list[Task]:
         return self.store.list_tasks()

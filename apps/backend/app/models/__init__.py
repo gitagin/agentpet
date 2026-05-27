@@ -70,7 +70,17 @@ from .memory import (
     MemorySearchResult,
     RejectProposalRequest,
 )
-from .tasks import TaskCreateRequest, TaskCreateResponse, TaskListResponse
+from .tasks import (
+    CurrentTaskResponse,
+    TaskApprovalResponse,
+    TaskCreateRequest,
+    TaskCreateResponse,
+    TaskListResponse,
+    TaskLogsResponse,
+    TaskStepItem,
+    TaskStepsResponse,
+    TaskWorkspaceItem,
+)
 from .wiki import (
     QueryArchiveDetailResponse,
     QueryArchiveHistoryItem,
