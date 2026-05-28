@@ -14,13 +14,13 @@ type StageViewProps = {
   onSendChat: (text: string, clearInput: () => void) => void | Promise<void>;
 };
 
-const companionProfile = {
+const stageProfile = {
   name: "小艾",
   mood: "开心 😊",
   status: "在线",
 }; // TODO: 接真实接口
 
-const companionStats = {
+const stageStats = {
   greeting: "今天也想陪你把重要的小事记下来。",
   energy: 80,
   mood: 90,
@@ -79,7 +79,7 @@ const stageStyles: Record<string, CSSProperties> = {
     flex: 1,
     display: "flex",
     justifyContent: "center",
-    alignItems: "flex-end",
+    alignItems: "center",
     overflow: "hidden",
   },
   metricGrid: {
@@ -201,9 +201,9 @@ export default function StageView({
     <main style={stageStyles.shell} aria-label="桌面记忆助手主舞台">
       <header className="glass-card" style={stageStyles.topBar}>
         <div style={stageStyles.topBarIdentity}>
-          <strong>{companionProfile.name}</strong>
-          <span className="glass-pill">{companionProfile.mood}</span>
-          <span className="glass-pill">{connected ? companionProfile.status : "离线"}</span>
+          <strong>{stageProfile.name}</strong>
+          <span className="glass-pill">{stageProfile.mood}</span>
+          <span className="glass-pill">{connected ? stageProfile.status : "离线"}</span>
         </div>
         <time className="glass-pill">{currentTime}</time>
       </header>
@@ -212,24 +212,24 @@ export default function StageView({
         <aside className="glass-card" style={stageStyles.card}>
           <div>
             <p style={{ margin: 0, color: "var(--color-text-soft)" }}>今日陪伴</p>
-            <h2 style={{ margin: "6px 0 0", fontSize: 22 }}>{companionStats.greeting}</h2>
+            <h2 style={{ margin: "6px 0 0", fontSize: 22 }}>{stageStats.greeting}</h2>
           </div>
           <div style={stageStyles.metricGrid}>
             <div style={stageStyles.metric}>
               <small>能量</small>
-              <strong>{companionStats.energy}%</strong>
+              <strong>{stageStats.energy}%</strong>
             </div>
             <div style={stageStyles.metric}>
               <small>心情</small>
-              <strong>{companionStats.mood}%</strong>
+              <strong>{stageStats.mood}%</strong>
             </div>
             <div style={stageStyles.metric}>
               <small>记忆</small>
-              <strong>{companionStats.memoryCount}</strong>
+              <strong>{stageStats.memoryCount}</strong>
             </div>
             <div style={stageStyles.metric}>
               <small>互动</small>
-              <strong>{companionStats.interactions}</strong>
+              <strong>{stageStats.interactions}</strong>
             </div>
           </div>
         </aside>
@@ -241,6 +241,7 @@ export default function StageView({
             asset={live2dAsset}
             runtime={live2dRuntime}
             canvasRef={live2dCanvasRef}
+            variant="stage"
           />
         </section>
 

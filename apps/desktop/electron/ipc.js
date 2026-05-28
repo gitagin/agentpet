@@ -79,7 +79,9 @@ function registerIpcHandlers({ baseUrl, rendererUiState, sidecar, proxy, windows
     windows.showStageWindow();
   });
 
-  ipcMain.handle("companion:set-ignore-mouse", (_event, ignore) => windows.setCompanionMousePassthrough(ignore));
+  ipcMain.handle("app:quit", () => {
+    windows.quitApp();
+  });
 
   ipcMain.handle("agent-pet:get-pet-mouse-passthrough-status", (event) => {
     const petWindow = windows.getPetWindow();

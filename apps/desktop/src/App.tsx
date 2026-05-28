@@ -47,7 +47,6 @@ import { useWiki } from "./features/wiki/useWiki";
 import { Live2DStage } from "./components/Live2DStage";
 import StageView from "./views/StageView";
 import AgentWorkspaceView from "./views/AgentWorkspaceView";
-import CompanionView from "./views/CompanionView";
 import { EmptyState, Panel } from "./components/layout";
 import { ChatMessageList } from "./features/chat/ChatMessageList";
 import { PetChatOverlay } from "./features/chat/PetChatOverlay";
@@ -79,7 +78,7 @@ type Notice = {
   message: string;
 };
 
-type DesktopWindowMode = "pet" | "control" | "stage" | "agent" | "companion";
+type DesktopWindowMode = "pet" | "control" | "stage" | "agent";
 type AsyncStatus = "idle" | "loading" | "success" | "empty" | "error";
 
 type CoreWorkflowItem = {
@@ -91,7 +90,7 @@ type CoreWorkflowItem = {
 
 function detectDesktopWindowMode(): DesktopWindowMode {
   const mode = window.location.hash.replace("#/", "").replace("#", "") || "stage";
-  return mode === "pet" || mode === "stage" || mode === "agent" || mode === "companion" ? mode : "control";
+  return mode === "pet" || mode === "stage" || mode === "agent" ? mode : "control";
 }
 
 const petHitboxStyle = {
@@ -104,6 +103,10 @@ const petHitboxStyle = {
   "--pet-chat-bubble-hit-width": `${petHitboxConfig.hitboxes.chatBubble.width}px`,
   "--pet-chat-bubble-hit-height": `${petHitboxConfig.hitboxes.chatBubble.height}px`,
   "--pet-chat-bubble-hit-bottom": `${petHitboxConfig.hitboxes.chatBubble.bottom}px`,
+  "--pet-shortcut-bar-width": `${petHitboxConfig.hitboxes.shortcutBar.width}px`,
+  "--pet-shortcut-bar-height": `${petHitboxConfig.hitboxes.shortcutBar.height}px`,
+  "--pet-shortcut-bar-right": `${petHitboxConfig.hitboxes.shortcutBar.right}px`,
+  "--pet-shortcut-bar-bottom": `${petHitboxConfig.hitboxes.shortcutBar.bottom}px`,
 } as CSSProperties;
 
 function App() {
@@ -1156,17 +1159,6 @@ function App() {
     return <AgentWorkspaceView api={api} />;
   }
 
-  if (windowMode === "companion") {
-    return (
-      <CompanionView
-        live2dStage={live2dStage}
-        live2dAsset={live2dAsset}
-        live2dRuntime={live2dRuntime}
-        live2dCanvasRef={live2dCanvasRef}
-      />
-    );
-  }
-
   if (windowMode === "pet") {
     return (
       <main
@@ -1214,6 +1206,23 @@ function App() {
           onSubmit={sendPetMessage}
           onStopStreaming={stopStreaming}
         />
+        <nav className="pet-shortcut-bar" aria-label="桌宠快捷操作">
+          <button type="button" className="pet-shortcut-button" aria-label="打开主舞台" onClick={() => void window.agentDesktop?.openStage?.()}>
+            舞台
+          </button>
+          <button type="button" className="pet-shortcut-button" aria-label="互动或对话" onClick={() => petChat.showInput()}>
+            对话
+          </button>
+          <button type="button" className="pet-shortcut-button" aria-label="打开 Agent 工作空间" onClick={() => void window.agentDesktop?.openAgent?.()}>
+            Agent
+          </button>
+          <button type="button" className="pet-shortcut-button" aria-label="更多或设置" onClick={() => void window.agentDesktop?.openControlWindow?.("settings-panel")}>
+            设置
+          </button>
+          <button type="button" className="pet-shortcut-button danger" aria-label="退出应用" onClick={() => void window.agentDesktop?.quitApp?.()}>
+            退出
+          </button>
+        </nav>
       </main>
     );
   }

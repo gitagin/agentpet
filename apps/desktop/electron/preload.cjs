@@ -40,7 +40,7 @@ contextBridge.exposeInMainWorld("agentDesktop", {
   openAgent: () => ipcRenderer.invoke("window:open-agent"),
   closeAgent: () => ipcRenderer.invoke("window:close-agent"),
   openStage: () => ipcRenderer.invoke("window:open-stage"),
-  setCompanionIgnoreMouse: (ignore) => ipcRenderer.invoke("companion:set-ignore-mouse", ignore),
+  quitApp: () => ipcRenderer.invoke("app:quit"),
   getPetMousePassthroughStatus: () => ipcRenderer.invoke("agent-pet:get-pet-mouse-passthrough-status"),
   beginPetWindowDrag: () => ipcRenderer.send("agent-pet:begin-pet-window-drag"),
   activatePetWindowDrag: () => ipcRenderer.send("agent-pet:activate-pet-window-drag"),

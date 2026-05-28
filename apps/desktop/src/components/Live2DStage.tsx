@@ -43,7 +43,7 @@ function getLive2DRenderLifecycleText(status: Live2DRenderLifecycleStatus): stri
 }
 
 function getInitialLive2DRenderStatus(
-  variant: "panel" | "pet" | undefined,
+  variant: "panel" | "pet" | "stage" | undefined,
   shouldMountRenderer: boolean,
 ): Live2DRenderLifecycleStatus {
   if (shouldMountRenderer) {
@@ -53,7 +53,7 @@ function getInitialLive2DRenderStatus(
 }
 
 function getInactiveLive2DRenderStatus(
-  variant: "panel" | "pet" | undefined,
+  variant: "panel" | "pet" | "stage" | undefined,
   runtimeStatus: Live2DRuntimeBoundary["status"],
 ): Live2DRenderLifecycleStatus {
   if (runtimeStatus === "loading-assets") {
@@ -71,9 +71,9 @@ function getLive2DRenderModeText(mode: Live2DRendererMode): string {
   return labels[mode];
 }
 
-function getLive2DStaticPreviewMessage(variant: "panel" | "pet" | undefined, fallback: string): string {
+function getLive2DStaticPreviewMessage(variant: "panel" | "pet" | "stage" | undefined, fallback: string): string {
   if (variant === "panel") {
-    return "控制台使用静态预览；真实模型渲染只在桌宠窗口运行。";
+    return "控制台使用静态预览；真实模型渲染只在主舞台和桌宠窗口运行。";
   }
   return fallback || "模型资源暂未就绪。";
 }
@@ -204,7 +204,7 @@ export function Live2DStage({
   asset: Live2DAssetInfo;
   runtime: Live2DRuntimeBoundary;
   canvasRef: RefObject<HTMLCanvasElement>;
-  variant?: "panel" | "pet";
+  variant?: "panel" | "pet" | "stage";
   petInteractions?: {
     onPointerDown: (event: PointerEvent<HTMLElement>) => void;
     onPointerMove: (event: PointerEvent<HTMLElement>) => void;
@@ -218,7 +218,7 @@ export function Live2DStage({
   const assetStatusText = getLive2DAssetStatusText(asset);
   const resourceCountText = formatLive2DResourceCount(asset);
   const coverStatusText = getLive2DCoverStatusText(asset);
-  const shouldMountRenderer = variant === "pet" && runtime.canMountRenderer;
+  const shouldMountRenderer = (variant === "pet" || variant === "stage") && runtime.canMountRenderer;
   const [renderLifecycle, setRenderLifecycle] = useState<{
     status: Live2DRenderLifecycleStatus;
     message: string;
@@ -555,6 +555,79 @@ export function Live2DStage({
             </>
           ) : null}
         </div>
+      </section>
+    );
+  }
+
+  if (variant === "stage") {
+    return (
+      <section
+        className={`panel live2d-panel live2d-panel-stage live2d-${stage.state} live2d-runtime-${runtime.status} live2d-render-${renderLifecycle.status} live2d-render-mode-${renderLifecycle.renderMode || "unknown"}`}
+        aria-label="主舞台 Live2D 模型"
+      >
+        <div
+          className="live2d-stage"
+          role="img"
+          aria-label={`主舞台模型状态：${stage.label}`}
+          data-live2d-render={renderLifecycle.status}
+          data-live2d-render-mode={renderLifecycle.renderMode || "unknown"}
+        >
+          <div className="live2d-runtime-host" aria-label="Live2D runtime canvas 宿主区域">
+            <canvas
+              ref={canvasRef}
+              id={runtime.mountTargetId}
+              className="live2d-runtime-canvas"
+              width={560}
+              height={720}
+            />
+            {renderLifecycle.status !== "mounted" ? (
+              <div className="live2d-runtime-placeholder">
+                <strong>{lifecycleText}</strong>
+                <span>{renderLifecycle.message}</span>
+              </div>
+            ) : null}
+          </div>
+          <div className="live2d-scanline" />
+          {asset.hasIcon ? (
+            <figure className="live2d-cover">
+              <img src={asset.iconPath} alt={`${asset.modelLabel} 桌宠模型资源封面`} />
+              <figcaption>{assetStatusText.title}</figcaption>
+            </figure>
+          ) : (
+            <div className="live2d-model" aria-label="CSS 回退展示壳">
+              <div className="live2d-hair back" />
+              <div className="live2d-head">
+                <div className="live2d-bangs">
+                  <span />
+                  <span />
+                  <span />
+                </div>
+                <div className="live2d-eye left" />
+                <div className="live2d-eye right" />
+                <div className="live2d-blush left" />
+                <div className="live2d-blush right" />
+                <div className="live2d-mouth" />
+              </div>
+              <div className="live2d-neck" />
+              <div className="live2d-body">
+                <div className="live2d-collar" />
+                <div className="live2d-ribbon" />
+              </div>
+              <div className="live2d-arm left" />
+              <div className="live2d-arm right" />
+            </div>
+          )}
+          <div className="live2d-status-card">
+            <strong>{stage.mood}</strong>
+            <span>{stage.hint} · {lifecycleText}</span>
+          </div>
+        </div>
+        {layoutWarning ? (
+          <div className="live2d-layout-warning" role="status" aria-live="polite">
+            <strong>Live2D 布局提示</strong>
+            <span>{layoutWarning}</span>
+          </div>
+        ) : null}
       </section>
     );
   }

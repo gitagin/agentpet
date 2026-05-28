@@ -47,7 +47,7 @@ const runtime: Live2DRuntimeBoundary = {
   canMountRenderer: false,
 };
 
-function renderStage(variant: "panel" | "pet" = "panel", petInteractions?: Parameters<typeof Live2DStage>[0]["petInteractions"]) {
+function renderStage(variant: "panel" | "pet" | "stage" = "panel", petInteractions?: Parameters<typeof Live2DStage>[0]["petInteractions"]) {
   return render(
     <Live2DStage
       stage={stage}
@@ -106,6 +106,17 @@ describe("Live2DStage", () => {
     expect(petInteractions.onLostPointerCapture).toHaveBeenCalledTimes(1);
     expect(petInteractions.onContextMenu).toHaveBeenCalledTimes(1);
     expect(petInteractions.onDoubleClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders the stage model without the control diagnostics lists", () => {
+    renderStage("stage");
+
+    expect(screen.getByLabelText("主舞台 Live2D 模型")).toBeInTheDocument();
+    expect(screen.getByLabelText("主舞台模型状态：待命陪伴")).toBeInTheDocument();
+    expect(screen.getByLabelText("Live2D runtime canvas 宿主区域")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Live2D runtime 边界状态")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Live2D runtime 诊断摘要")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("模型资源状态")).not.toBeInTheDocument();
   });
 
   it("describes missing assets with the manifest path", () => {

@@ -99,7 +99,7 @@ declare global {
       openAgent?: () => Promise<void>;
       closeAgent?: () => Promise<void>;
       openStage?: () => Promise<void>;
-      setCompanionIgnoreMouse?: (ignore: boolean) => Promise<boolean>;
+      quitApp?: () => Promise<void>;
       getPetMousePassthroughStatus?: () => Promise<DesktopPetMousePassthroughStatus>;
       beginPetWindowDrag?: () => void;
       activatePetWindowDrag?: () => void;

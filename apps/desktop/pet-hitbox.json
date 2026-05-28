@@ -20,6 +20,12 @@
       "width": 214,
       "height": 58,
       "bottom": 304
+    },
+    "shortcutBar": {
+      "width": 42,
+      "height": 234,
+      "right": 8,
+      "bottom": 38
     }
   }
 }
