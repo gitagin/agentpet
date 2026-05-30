@@ -12,7 +12,7 @@
   X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import type { CSSProperties, FormEvent, PointerEvent } from "react";
+import type { AnimationEvent, CSSProperties, FormEvent, PointerEvent } from "react";
 import type {
   AgentAction,
   ChatMessage,
@@ -85,6 +85,7 @@ type Notice = {
 
 type DesktopWindowMode = "pet" | "control" | "stage" | "agent" | DesktopFeatureWindowMode;
 type AsyncStatus = "idle" | "loading" | "success" | "empty" | "error";
+type PetShortcutMotion = "idle" | "opening" | "closing";
 
 type CoreWorkflowItem = {
   label: string;
@@ -93,8 +94,13 @@ type CoreWorkflowItem = {
   targetId?: string;
 };
 
+const petShortcutButtonSize = 38;
+const petShortcutButtonGap = 8;
+const petShortcutButtonCount = 5;
+const petShortcutButtonStyles = buildPetShortcutButtonStyles();
+
 function detectDesktopWindowMode(): DesktopWindowMode {
-  const mode = window.location.hash.replace("#/", "").replace("#", "") || "stage";
+  const mode = window.location.hash.replace("#/", "").replace("#", "") || "control";
   if (
     mode === "pet" ||
     mode === "stage" ||
@@ -125,6 +131,39 @@ const petHitboxStyle = {
   "--pet-shortcut-bar-bottom": `${petHitboxConfig.hitboxes.shortcutBar.bottom}px`,
 } as CSSProperties;
 
+function buildPetShortcutButtonStyles(): CSSProperties[] {
+  const modelCenter = {
+    x: petHitboxConfig.window.width / 2,
+    y:
+      petHitboxConfig.window.height -
+      petHitboxConfig.hitboxes.model.bottom -
+      petHitboxConfig.hitboxes.model.height / 2,
+  };
+  const shortcutBarLeft =
+    petHitboxConfig.window.width -
+    petHitboxConfig.hitboxes.shortcutBar.right -
+    petHitboxConfig.hitboxes.shortcutBar.width;
+  const shortcutBarTop =
+    petHitboxConfig.window.height -
+    petHitboxConfig.hitboxes.shortcutBar.bottom -
+    petHitboxConfig.hitboxes.shortcutBar.height;
+  const stackHeight =
+    petShortcutButtonCount * petShortcutButtonSize +
+    (petShortcutButtonCount - 1) * petShortcutButtonGap;
+  const stackTop = shortcutBarTop + (petHitboxConfig.hitboxes.shortcutBar.height - stackHeight) / 2;
+
+  return Array.from({ length: petShortcutButtonCount }, (_, index) => {
+    const buttonCenter = {
+      x: shortcutBarLeft + petHitboxConfig.hitboxes.shortcutBar.width / 2,
+      y: stackTop + petShortcutButtonSize / 2 + index * (petShortcutButtonSize + petShortcutButtonGap),
+    };
+    return {
+      "--pet-shortcut-origin-x": `${Math.round(modelCenter.x - buttonCenter.x)}px`,
+      "--pet-shortcut-origin-y": `${Math.round(modelCenter.y - buttonCenter.y)}px`,
+    } as CSSProperties;
+  });
+}
+
 function App() {
   const [notice, setNotice] = useState<Notice | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -144,6 +183,8 @@ function App() {
   const [continuityActionIds, setContinuityActionIds] = useState<Set<string>>(() => new Set());
   const [resettingLocalState, setResettingLocalState] = useState(false);
   const [windowMode, setWindowMode] = useState<DesktopWindowMode>(() => detectDesktopWindowMode());
+  const [petShortcutsVisible, setPetShortcutsVisible] = useState(false);
+  const [petShortcutMotion, setPetShortcutMotion] = useState<PetShortcutMotion>("idle");
   const streamAbort = useRef<AbortController | null>(null);
   const live2dTaskStageRef = useRef<() => void>(() => undefined);
   const petDragRef = useRef<{
@@ -331,6 +372,14 @@ function App() {
       delete document.body.dataset.windowMode;
     };
   }, [windowMode]);
+
+  useEffect(() => {
+    const visible = windowMode === "pet" && petShortcutsVisible;
+    window.agentDesktop?.setPetShortcutBarVisible?.(visible);
+    return () => {
+      window.agentDesktop?.setPetShortcutBarVisible?.(false);
+    };
+  }, [petShortcutsVisible, windowMode]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1039,6 +1088,19 @@ function App() {
     }
   }
 
+  function togglePetShortcuts() {
+    setPetShortcutsVisible((visible) => {
+      setPetShortcutMotion(visible ? "closing" : "opening");
+      return !visible;
+    });
+  }
+
+  function finishPetShortcutMotion(event: AnimationEvent<HTMLElement>) {
+    if (event.animationName === "pet-shortcut-roll-out" || event.animationName === "pet-shortcut-roll-in") {
+      setPetShortcutMotion("idle");
+    }
+  }
+
   function scrollToWorkflowTarget(targetId?: string) {
     if (!targetId) {
       return;
@@ -1375,8 +1437,10 @@ function App() {
             onPointerUp: endPetDrag,
             onPointerCancel: endPetDrag,
             onLostPointerCapture: endPetDrag,
-            onContextMenu: () => {
+            onContextMenu: (event) => {
+              event.preventDefault();
               endPetDrag();
+              togglePetShortcuts();
             },
             onBubbleContextMenu: (event) => {
               event.preventDefault();
@@ -1403,20 +1467,27 @@ function App() {
           onSubmit={sendPetMessage}
           onStopStreaming={stopStreaming}
         />
-        <nav className="pet-shortcut-bar" aria-label="桌宠快捷操作">
-          <button type="button" className="pet-shortcut-button" aria-label="打开桌宠主舞台" onClick={() => void window.agentDesktop?.openStage?.()}>
+        <nav
+          className={`pet-shortcut-bar${petShortcutsVisible ? " is-visible" : ""}`}
+          data-shortcut-motion={petShortcutMotion}
+          aria-label="桌宠快捷操作"
+          aria-hidden={!petShortcutsVisible}
+          onContextMenu={(event) => event.preventDefault()}
+          onAnimationEnd={finishPetShortcutMotion}
+        >
+          <button type="button" className="pet-shortcut-button" style={petShortcutButtonStyles[0]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="打开桌宠主舞台" onClick={() => void window.agentDesktop?.openStage?.()}>
             桌宠
           </button>
-          <button type="button" className="pet-shortcut-button" aria-label="开始聊天" onClick={() => petChat.showInput()}>
+          <button type="button" className="pet-shortcut-button" style={petShortcutButtonStyles[1]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="开始聊天" onClick={() => petChat.showInput()}>
             聊天
           </button>
-          <button type="button" className="pet-shortcut-button" aria-label="打开任务工作台" onClick={() => void window.agentDesktop?.openAgent?.()}>
+          <button type="button" className="pet-shortcut-button" style={petShortcutButtonStyles[2]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="打开任务工作台" onClick={() => void window.agentDesktop?.openAgent?.()}>
             任务
           </button>
-          <button type="button" className="pet-shortcut-button" aria-label="打开配置" onClick={() => void window.agentDesktop?.openFeatureWindow?.("settings")}>
+          <button type="button" className="pet-shortcut-button" style={petShortcutButtonStyles[3]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="打开配置" onClick={() => void window.agentDesktop?.openFeatureWindow?.("settings")}>
             配置
           </button>
-          <button type="button" className="pet-shortcut-button danger" aria-label="退出应用" onClick={() => void window.agentDesktop?.quitApp?.()}>
+          <button type="button" className="pet-shortcut-button danger" style={petShortcutButtonStyles[4]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="退出应用" onClick={() => void window.agentDesktop?.quitApp?.()}>
             退出
           </button>
         </nav>

@@ -1,5 +1,6 @@
 import { createRef } from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import type { MouseEvent } from "react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import App from "./App";
@@ -7,8 +8,17 @@ import type { DesktopSidecarStatus } from "./types";
 import type { Live2DAssetInfo, Live2DRuntimeBoundary } from "./services/live2dRuntime";
 
 vi.mock("./components/Live2DStage", () => ({
-  Live2DStage: ({ variant = "panel" }: { variant?: "panel" | "pet" }) => (
-    <section aria-label={variant === "pet" ? "mock pet stage" : "mock panel stage"} />
+  Live2DStage: ({
+    variant = "panel",
+    petInteractions,
+  }: {
+    variant?: "panel" | "pet";
+    petInteractions?: { onContextMenu?: (event: MouseEvent<HTMLElement>) => void };
+  }) => (
+    <section
+      aria-label={variant === "pet" ? "mock pet stage" : "mock panel stage"}
+      onContextMenu={petInteractions?.onContextMenu}
+    />
   ),
 }));
 
@@ -306,6 +316,53 @@ describe("App", () => {
     expect(screen.getByLabelText("mock pet stage")).toBeInTheDocument();
     expect(screen.getByLabelText("mock pet chat overlay")).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "桌面记忆助手" })).not.toBeInTheDocument();
+  });
+
+  it("toggles pet shortcut buttons from the Live2D right-click menu gesture", async () => {
+    window.location.hash = "#pet";
+    window.agentDesktop = {
+      platform: "win32",
+      versions: {},
+      setPetShortcutBarVisible: vi.fn().mockResolvedValue({ enabled: false, reason: "test", changed: false }),
+      onPetDragCancelled: vi.fn().mockReturnValue(() => undefined),
+    };
+
+    render(<App />);
+
+    const petStage = await screen.findByLabelText("mock pet stage");
+    const shortcutBar = screen.getByLabelText("桌宠快捷操作");
+    expect(shortcutBar).toHaveAttribute("aria-hidden", "true");
+    expect(shortcutBar).toHaveAttribute("data-shortcut-motion", "idle");
+    expect(shortcutBar).not.toHaveClass("is-visible");
+    expect(screen.getByLabelText("打开桌宠主舞台")).toHaveAttribute("tabindex", "-1");
+
+    const finishShortcutAnimation = (animationName: string) => {
+      const event = new Event("animationend", { bubbles: true });
+      Object.defineProperty(event, "animationName", { value: animationName });
+      fireEvent(shortcutBar, event);
+    };
+
+    fireEvent.contextMenu(petStage);
+
+    expect(shortcutBar).toHaveAttribute("aria-hidden", "false");
+    expect(shortcutBar).toHaveAttribute("data-shortcut-motion", "opening");
+    expect(shortcutBar).toHaveClass("is-visible");
+    expect(screen.getByLabelText("打开桌宠主舞台")).toHaveAttribute("tabindex", "0");
+    expect(window.agentDesktop.setPetShortcutBarVisible).toHaveBeenLastCalledWith(true);
+
+    finishShortcutAnimation("pet-shortcut-roll-out");
+    expect(shortcutBar).toHaveAttribute("data-shortcut-motion", "idle");
+
+    fireEvent.contextMenu(petStage);
+
+    expect(shortcutBar).toHaveAttribute("aria-hidden", "true");
+    expect(shortcutBar).toHaveAttribute("data-shortcut-motion", "closing");
+    expect(shortcutBar).not.toHaveClass("is-visible");
+    expect(screen.getByLabelText("打开桌宠主舞台")).toHaveAttribute("tabindex", "-1");
+    expect(window.agentDesktop.setPetShortcutBarVisible).toHaveBeenLastCalledWith(false);
+
+    finishShortcutAnimation("pet-shortcut-roll-in");
+    expect(shortcutBar).toHaveAttribute("data-shortcut-motion", "idle");
   });
 
   it("uses the desktop bridge window mode when available", async () => {

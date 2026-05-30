@@ -53,7 +53,7 @@ describe("agentActivity", () => {
       risk_tier: "low",
       decision: "ask",
       status: "running",
-      title: "已整理 Wiki 页面",
+      title: "已整理资料库页面",
       target_paths: ["Wiki/A.md"],
       source: { label: "Wiki review", source_message_id: "message-1" },
       diff_summary: "更新 1 个文件",
@@ -61,7 +61,7 @@ describe("agentActivity", () => {
   });
 
   it("formats activity labels", () => {
-    expect(formatAgentActionType("wiki.page.write")).toBe("已整理 Wiki 页面");
+    expect(formatAgentActionType("wiki.page.write")).toBe("已整理资料库页面");
     expect(formatAgentActionType("custom.action")).toBe("custom / action");
     expect(formatAgentActionRiskTier("high")).toBe("高风险");
     expect(formatAgentActionDecision("ask")).toBe("需确认");

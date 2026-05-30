@@ -108,6 +108,10 @@ function registerIpcHandlers({ baseUrl, rendererUiState, sidecar, proxy, windows
     return windows.updatePetMousePassthroughFromCursor();
   });
 
+  ipcMain.handle("agent-pet:set-pet-shortcut-bar-visible", (event, visible) => {
+    return windows.setPetShortcutBarVisible?.(event.sender, visible);
+  });
+
   ipcMain.on("agent-pet:begin-pet-window-drag", (event) => {
     windows.beginPetWindowDrag(event.sender);
   });

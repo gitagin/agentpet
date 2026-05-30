@@ -58,7 +58,7 @@ export function mergeAgentModelStatus(
     const savedProvider = status.provider ?? "";
     const savedBaseUrl = status.base_url ?? "";
     const savedModel = status.model ?? "";
-    const savedEnabled = status.enabled ?? false;
+    const savedEnabled = status.enabled ?? true;
     const hasUnsavedDraft = hasUnsavedAgentModelDraft(draft);
     return {
       ...draft,
@@ -66,7 +66,7 @@ export function mergeAgentModelStatus(
       base_url: hasUnsavedDraft ? draft.base_url : savedBaseUrl,
       model: hasUnsavedDraft ? draft.model : savedModel,
       enabled: hasUnsavedDraft ? draft.enabled : savedEnabled,
-      configured: savedEnabled && status.configured,
+      configured: status.configured,
       masked: status.masked || draft.masked,
       api_key: hasUnsavedDraft ? draft.api_key : "",
       saved_enabled: savedEnabled,
@@ -119,7 +119,7 @@ export function buildSavedAgentModelDraftPatch(
   const provider = config.provider || "";
   const baseUrl = config.base_url || "";
   const model = config.model || "";
-  const enabled = config.enabled ?? draft.enabled;
+  const enabled = config.enabled ?? true;
   const masked = keyStatus?.masked || config.masked || draft.masked;
   return {
     provider,
@@ -127,7 +127,7 @@ export function buildSavedAgentModelDraftPatch(
     model,
     api_key: "",
     enabled,
-    configured: enabled && Boolean(masked),
+    configured: config.configured,
     masked: masked || "",
     saved_enabled: enabled,
     saved_provider: provider,

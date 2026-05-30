@@ -257,8 +257,8 @@ export function settingsReducer(state: SettingsState, action: SettingsAction): S
                       provider: action.config.provider,
                       base_url: action.config.base_url,
                       model: action.config.model,
-                      enabled: action.config.enabled,
-                      configured: Boolean(action.config.enabled && masked),
+                      enabled: action.config.enabled ?? true,
+                      configured: action.config.configured,
                       masked,
                     }
                   : item,

@@ -104,6 +104,7 @@ declare global {
       openFeatureWindow?: (mode: DesktopFeatureWindowMode) => Promise<void>;
       quitApp?: () => Promise<void>;
       getPetMousePassthroughStatus?: () => Promise<DesktopPetMousePassthroughStatus>;
+      setPetShortcutBarVisible?: (visible: boolean) => Promise<DesktopPetMousePassthroughStatus>;
       beginPetWindowDrag?: () => void;
       activatePetWindowDrag?: () => void;
       endPetWindowDrag?: () => void;

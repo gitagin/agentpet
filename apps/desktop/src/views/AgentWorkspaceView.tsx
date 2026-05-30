@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { CSSProperties } from "react";
+import { Check, ListChecks, Loader2, MessageSquareText, ShieldCheck, X } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { EmptyState, Panel } from "../components/layout";
 import type { DesktopApi } from "../services/desktopApi";
 import { describeError } from "../services/apiErrorMessages";
 import type { TaskLogItem, TaskStepItem, TaskWorkspaceItem } from "../types";
-import { BottomNav } from "./BottomNav";
+import { FeatureWindowShell } from "./FeatureWindowShell";
 
 type AgentTaskStatus = "running" | "approval" | "completed" | "failed";
 type AgentStepStatus = "done" | "running" | "failed" | "pending";
@@ -40,159 +41,11 @@ const statusLabels: Record<AgentTaskStatus, string> = {
   failed: "失败",
 };
 
-const statusColors: Record<AgentTaskStatus, string> = {
-  running: "var(--color-active)",
-  approval: "var(--color-primary)",
-  completed: "var(--color-success)",
-  failed: "#d9534f",
-};
-
-const stepIcons: Record<AgentStepStatus, string> = {
-  done: "✓",
-  running: "⏳",
-  failed: "✕",
-  pending: "○",
-};
-
-const workspaceStyles: Record<string, CSSProperties> = {
-  shell: {
-    minHeight: "100vh",
-    width: "100%",
-    maxWidth: 420,
-    margin: "0 auto",
-    padding: "var(--space-md)",
-    boxSizing: "border-box",
-    display: "grid",
-    gridTemplateRows: "56px auto minmax(0, 1fr) auto 160px auto",
-    gap: "var(--space-md)",
-    color: "var(--color-text)",
-    background: "var(--bg-agent)",
-    fontFamily: "var(--font-sans)",
-  },
-  header: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: "0 16px",
-  },
-  headerTitle: {
-    minWidth: 0,
-    display: "grid",
-    gap: 2,
-  },
-  eyebrow: {
-    margin: 0,
-    color: "var(--color-text-soft)",
-    fontSize: 12,
-  },
-  title: {
-    margin: 0,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-    fontSize: 18,
-  },
-  card: {
-    padding: 16,
-    display: "grid",
-    gap: "var(--space-sm)",
-  },
-  statusBadge: {
-    borderRadius: 999,
-    padding: "4px 10px",
-    color: "white",
-    fontSize: 12,
-    fontWeight: 700,
-    whiteSpace: "nowrap",
-  },
-  taskDescription: {
-    margin: 0,
-    color: "var(--color-text-soft)",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
-  stepList: {
-    minHeight: 0,
-    overflowY: "auto",
-    display: "grid",
-    alignContent: "start",
-    gap: "var(--space-sm)",
-    paddingRight: 2,
-  },
-  stepItem: {
-    display: "grid",
-    gridTemplateColumns: "28px minmax(0, 1fr) auto auto",
-    gap: "var(--space-sm)",
-    alignItems: "center",
-    padding: "10px 12px",
-    borderRadius: 16,
-    background: "rgba(255, 255, 255, 0.62)",
-  },
-  stepIndex: {
-    color: "var(--color-text-soft)",
-    fontSize: 12,
-  },
-  stepTool: {
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-    fontWeight: 700,
-  },
-  stepDuration: {
-    color: "var(--color-text-soft)",
-    fontSize: 12,
-  },
-  approvalBar: {
-    padding: 14,
-    display: "grid",
-    gap: "var(--space-sm)",
-  },
-  approvalText: {
-    margin: 0,
-    color: "var(--color-text-soft)",
-    fontSize: 13,
-  },
-  buttonRow: {
-    display: "flex",
-    justifyContent: "flex-end",
-    gap: "var(--space-sm)",
-  },
-  rejectButton: {
-    border: "1px solid #d9534f",
-    borderRadius: 999,
-    padding: "8px 14px",
-    color: "#d9534f",
-    background: "transparent",
-    cursor: "pointer",
-  },
-  approveButton: {
-    border: "none",
-    borderRadius: 999,
-    padding: "8px 14px",
-    color: "white",
-    background: "var(--color-success)",
-    cursor: "pointer",
-    fontWeight: 700,
-  },
-  logPanel: {
-    height: 160,
-    overflowY: "auto",
-    padding: 12,
-    borderRadius: 16,
-    background: "rgba(0, 0, 0, 0.04)",
-    fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-    fontSize: 12,
-    boxSizing: "border-box",
-  },
-  logLine: {
-    margin: "0 0 6px",
-    color: "var(--color-text)",
-  },
-  logTime: {
-    color: "var(--color-text-soft)",
-    marginRight: 8,
-  },
+const stepStatusLabels: Record<AgentStepStatus, string> = {
+  done: "已完成",
+  running: "执行中",
+  failed: "失败",
+  pending: "等待中",
 };
 
 const pollIntervalMs = 5000;
@@ -265,6 +118,18 @@ function toExecutionLog(log: TaskLogItem): ExecutionLog {
   };
 }
 
+function renderStepStatus(status: AgentStepStatus) {
+  const label = stepStatusLabels[status];
+  return (
+    <span className={`task-step-status ${status}`} aria-label={label} title={label}>
+      {status === "done" ? <Check size={14} /> : null}
+      {status === "running" ? <Loader2 className="spin" size={14} /> : null}
+      {status === "failed" ? <X size={14} /> : null}
+      {status === "pending" ? <span aria-hidden="true" className="task-step-pending-dot" /> : null}
+    </span>
+  );
+}
+
 export default function AgentWorkspaceView({ api }: AgentWorkspaceViewProps) {
   const [currentTask, setCurrentTask] = useState<WorkspaceTask | null>(null);
   const [agentSteps, setAgentSteps] = useState<AgentStep[]>([]);
@@ -320,11 +185,6 @@ export default function AgentWorkspaceView({ api }: AgentWorkspaceViewProps) {
     };
   }, [loadWorkspace]);
 
-  const taskStatusColor = useMemo(
-    () => statusColors[currentTask?.status || "running"],
-    [currentTask?.status],
-  );
-
   async function actOnTask(action: "approve" | "reject") {
     if (!currentTask) {
       return;
@@ -347,85 +207,99 @@ export default function AgentWorkspaceView({ api }: AgentWorkspaceViewProps) {
 
   const title = loading && !currentTask ? "正在加载任务" : currentTask?.name || "暂无当前任务";
   const statusLabel = currentTask ? statusLabels[currentTask.status] : loading ? "进行中" : "完成";
+  const statusTone = currentTask?.status || (loading ? "running" : "completed");
+  const description = currentTask?.description || (loading ? "正在从后端读取任务状态。" : "当前没有待展示的任务。");
 
   return (
-    <main style={workspaceStyles.shell} aria-label="任务工作台">
-      <header className="glass-card" style={workspaceStyles.header}>
-        <div style={workspaceStyles.headerTitle}>
-          <p style={workspaceStyles.eyebrow}>当前任务</p>
-          <h1 style={workspaceStyles.title}>{title}</h1>
-        </div>
-        <span style={{ ...workspaceStyles.statusBadge, background: taskStatusColor }}>
-          {statusLabel}
-        </span>
-      </header>
-
-      <section className="glass-card" style={workspaceStyles.card} aria-label="当前任务详情">
-        <strong>{title}</strong>
-        <p style={workspaceStyles.taskDescription}>
-          {error || currentTask?.description || (loading ? "正在从后端读取任务状态。" : "当前没有待展示的任务。")}
-        </p>
-        {currentTask ? (
-          <span style={{ ...workspaceStyles.statusBadge, width: "fit-content", background: taskStatusColor }}>
-            {statusLabels[currentTask.status]}
-          </span>
-        ) : null}
-      </section>
-
-      <section style={workspaceStyles.stepList} aria-label="工具步骤列表">
-        {agentSteps.length > 0 ? (
-          agentSteps.map((step) => (
-            <article key={`${step.tool}-${step.index}`} className="glass-card" style={workspaceStyles.stepItem}>
-              <span style={workspaceStyles.stepIndex}>{String(step.index).padStart(2, "0")}</span>
-              <span style={workspaceStyles.stepTool}>{step.tool}</span>
-              <span aria-label={step.status}>{stepIcons[step.status]}</span>
-              <span style={workspaceStyles.stepDuration}>{step.duration}</span>
-            </article>
-          ))
-        ) : (
-          <article className="glass-card" style={workspaceStyles.card}>
-            <p style={workspaceStyles.taskDescription}>{loading ? "正在加载执行步骤。" : "暂无执行步骤。"}</p>
-          </article>
-        )}
-      </section>
-
-      {currentTask?.needsApproval ? (
-        <section className="glass-card" style={workspaceStyles.approvalBar} aria-label="审批操作栏">
-          <p style={workspaceStyles.approvalText}>即将执行：{currentTask.pendingAction}</p>
-          <div style={workspaceStyles.buttonRow}>
-            <button
-              type="button"
-              style={workspaceStyles.rejectButton}
-              disabled={actionBusy !== null}
-              onClick={() => void actOnTask("reject")}
-            >
-              {actionBusy === "reject" ? "正在拒绝" : "拒绝"}
-            </button>
-            <button
-              type="button"
-              style={workspaceStyles.approveButton}
-              disabled={actionBusy !== null}
-              onClick={() => void actOnTask("approve")}
-            >
-              {actionBusy === "approve" ? "正在批准" : "批准"}
-            </button>
+    <FeatureWindowShell
+      eyebrow="本地执行"
+      title="任务"
+      description="查看当前任务、执行步骤、审批动作和运行日志。"
+      activeTab="任务"
+    >
+      <div className="task-workspace-grid" aria-label="任务工作台">
+        <Panel icon={<ListChecks size={18} />} title="当前任务" className="feature-window-panel task-current-panel">
+          <div className="task-current-header">
+            <div className="section-heading">
+              <strong>{title}</strong>
+              <span>{error || description}</span>
+            </div>
+            <span className={`task-status-badge ${statusTone}`}>{statusLabel}</span>
           </div>
-        </section>
-      ) : null}
+          {error ? <p className="field-note error">{error}</p> : null}
+          {currentTask ? (
+            <dl className="details task-details">
+              <div>
+                <dt>状态</dt>
+                <dd>{statusLabels[currentTask.status]}</dd>
+              </div>
+              <div>
+                <dt>审批</dt>
+                <dd>{currentTask.needsApproval ? currentTask.pendingAction : "无需人工确认"}</dd>
+              </div>
+            </dl>
+          ) : (
+            <EmptyState text={loading ? "正在加载当前任务。" : "暂无当前任务。"} />
+          )}
+        </Panel>
 
-      <section style={workspaceStyles.logPanel} aria-label="执行日志">
-        {executionLogs.length > 0 ? (
-          executionLogs.map((log) => (
-            <p key={`${log.time}-${log.content}`} style={workspaceStyles.logLine}>
-              <span style={workspaceStyles.logTime}>{log.time}</span>
-              {log.content}
-            </p>
-          ))
-        ) : (
-          <p style={workspaceStyles.logLine}>{loading ? "正在加载执行日志。" : "暂无执行日志。"}</p>
-        )}
-      </section>
-      <BottomNav activeTab="任务" />
-    </main>
+        {currentTask?.needsApproval ? (
+          <Panel icon={<ShieldCheck size={18} />} title="审批操作" className="feature-window-panel task-approval-panel">
+            <p className="field-note">即将执行：{currentTask.pendingAction}</p>
+            <div className="button-row task-button-row">
+              <button
+                type="button"
+                className="secondary"
+                disabled={actionBusy !== null}
+                onClick={() => void actOnTask("reject")}
+              >
+                {actionBusy === "reject" ? <Loader2 className="spin" size={16} /> : <X size={16} />}
+                {actionBusy === "reject" ? "正在拒绝" : "拒绝"}
+              </button>
+              <button
+                type="button"
+                disabled={actionBusy !== null}
+                onClick={() => void actOnTask("approve")}
+              >
+                {actionBusy === "approve" ? <Loader2 className="spin" size={16} /> : <ShieldCheck size={16} />}
+                {actionBusy === "approve" ? "正在批准" : "批准"}
+              </button>
+            </div>
+          </Panel>
+        ) : null}
+
+        <Panel icon={<ListChecks size={18} />} title="执行步骤" className="feature-window-panel task-steps-panel">
+          <div className="task-step-list" aria-label="工具步骤列表">
+            {agentSteps.length > 0 ? (
+              agentSteps.map((step) => (
+                <article key={`${step.tool}-${step.index}`} className="task-step-row">
+                  <span className="task-step-index">{String(step.index).padStart(2, "0")}</span>
+                  <strong>{step.tool}</strong>
+                  {renderStepStatus(step.status)}
+                  <span className="task-step-duration">{step.duration}</span>
+                </article>
+              ))
+            ) : (
+              <EmptyState text={loading ? "正在加载执行步骤。" : "暂无执行步骤。"} />
+            )}
+          </div>
+        </Panel>
+
+        <Panel icon={<MessageSquareText size={18} />} title="执行日志" className="feature-window-panel task-log-panel">
+          <div className="task-log-list" aria-label="执行日志">
+            {executionLogs.length > 0 ? (
+              executionLogs.map((log) => (
+                <p key={`${log.time}-${log.content}`} className="task-log-line">
+                  <span>{log.time}</span>
+                  {log.content}
+                </p>
+              ))
+            ) : (
+              <EmptyState text={loading ? "正在加载执行日志。" : "暂无执行日志。"} />
+            )}
+          </div>
+        </Panel>
+      </div>
+    </FeatureWindowShell>
   );
 }

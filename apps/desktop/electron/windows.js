@@ -33,6 +33,7 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
   let petDragWatchdog = null;
   let petMouseHitTestTimer = null;
   let petMousePassthrough = false;
+  let petShortcutBarVisible = false;
   let pendingControlTargetId = null;
 
   function isDevelopment() {
@@ -185,17 +186,19 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
       PET_CHAT_BUBBLE_HIT_HEIGHT,
       PET_CHAT_BUBBLE_HIT_BOTTOM,
     );
-    const shortcutBarRect = {
-      x: PET_WINDOW_WIDTH - PET_SHORTCUT_BAR_HIT_RIGHT - PET_SHORTCUT_BAR_HIT_WIDTH,
-      y: PET_WINDOW_HEIGHT - PET_SHORTCUT_BAR_HIT_BOTTOM - PET_SHORTCUT_BAR_HIT_HEIGHT,
-      width: PET_SHORTCUT_BAR_HIT_WIDTH,
-      height: PET_SHORTCUT_BAR_HIT_HEIGHT,
-    };
     return (
       isPointInRect(localPoint, modelRect)
       || isPointInRect(localPoint, inputDockRect)
       || isPointInRect(localPoint, chatBubbleRect)
-      || isPointInRect(localPoint, shortcutBarRect)
+      || (
+        petShortcutBarVisible
+        && isPointInRect(localPoint, {
+          x: PET_WINDOW_WIDTH - PET_SHORTCUT_BAR_HIT_RIGHT - PET_SHORTCUT_BAR_HIT_WIDTH,
+          y: PET_WINDOW_HEIGHT - PET_SHORTCUT_BAR_HIT_BOTTOM - PET_SHORTCUT_BAR_HIT_HEIGHT,
+          width: PET_SHORTCUT_BAR_HIT_WIDTH,
+          height: PET_SHORTCUT_BAR_HIT_HEIGHT,
+        })
+      )
     );
   }
 
@@ -277,6 +280,7 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
       return petWindow;
     }
 
+    petShortcutBarVisible = false;
     petWindow = new BrowserWindow({
       width: PET_WINDOW_WIDTH,
       height: PET_WINDOW_HEIGHT,
@@ -327,6 +331,7 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
       clearPetWindowDrag();
       stopPetMouseHitTest();
       petMousePassthrough = false;
+      petShortcutBarVisible = false;
       petWindow = null;
     });
     petWindow.webContents.on("context-menu", (event) => {
@@ -447,10 +452,13 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     }
 
     agentWindow = new BrowserWindow({
-      width: 420,
-      height: 680,
-      title: "任务工作台",
+      width: 980,
+      height: 740,
+      minWidth: 760,
+      minHeight: 560,
+      title: "桌面记忆助手 - 任务",
       alwaysOnTop: false,
+      backgroundColor: "#f7f7f2",
       show: false,
       webPreferences: {
         preload: path.join(__dirname, "preload.cjs"),
@@ -581,6 +589,15 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     petWindow?.setAlwaysOnTop(petAlwaysOnTop, "floating");
   }
 
+  function setPetShortcutBarVisible(sender, visible) {
+    if (!petWindow || sender !== petWindow.webContents) {
+      return getPetMousePassthroughStatus("ignored_sender", false);
+    }
+
+    petShortcutBarVisible = Boolean(visible);
+    return updatePetMousePassthroughFromCursor();
+  }
+
   function beginPetWindowDrag(sender) {
     if (!petWindow || sender !== petWindow.webContents) {
       return;
@@ -645,6 +662,7 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     clearPetWindowDrag,
     getPetMousePassthroughStatus,
     updatePetMousePassthroughFromCursor,
+    setPetShortcutBarVisible,
     beginPetWindowDrag,
     activatePetWindowDrag,
     endPetWindowDrag,

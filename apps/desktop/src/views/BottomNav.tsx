@@ -7,7 +7,11 @@ export function BottomNav({ activeTab }: { activeTab: PrimaryNavigationTab }) {
   const buttonRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   useEffect(() => {
-    buttonRefs.current[activeIndex]?.scrollIntoView({
+    const activeButton = buttonRefs.current[activeIndex];
+    if (!activeButton?.scrollIntoView) {
+      return;
+    }
+    activeButton.scrollIntoView({
       behavior: "smooth",
       block: "nearest",
       inline: "center",
