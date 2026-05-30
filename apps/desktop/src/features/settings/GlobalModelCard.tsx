@@ -1,7 +1,7 @@
 import { Bot, Loader2, ShieldCheck } from "lucide-react";
 import type { ModelTestResponse } from "../../types";
 import { isSupportedProviderDraft } from "../../services/agentModelDrafts";
-import { formatBooleanStatus, formatModelTestResult } from "./settingsFormatters";
+import { formatModelTestResult } from "./settingsFormatters";
 import type { AsyncStatus, GlobalModelDraft } from "./settingsTypes";
 
 type GlobalModelCardProps = {
@@ -37,17 +37,29 @@ export function GlobalModelCard({
   const providerUnsupported = Boolean(draft.provider.trim()) && !isSupportedProviderDraft(draft.provider);
   const hasUnsavedDraft = hasUnsavedGlobalModelDraft(draft);
 
+  const statusText = providerUnsupported
+    ? "提供方只支持 openai-compatible。"
+    : hasUnsavedDraft
+      ? "有未保存改动，请先保存后测试。"
+      : testStatus === "success" && testResult
+        ? formatModelTestResult(testResult)
+        : testStatus === "error" && testResult
+          ? formatModelTestResult(testResult)
+          : saveStatus === "success"
+            ? "已保存，可以测试连接。"
+            : saveStatus === "error"
+              ? "保存失败，请检查后重试。"
+              : draft.configured
+                ? "已配置。"
+                : "未配置。";
+
   return (
-    <section className="agent-model-section" aria-label="全局模型配置">
+    <section className="agent-model-section settings-card" aria-label="AI 模型配置">
       <div className="section-heading">
-        <strong>全局模型</strong>
-        <span>未配置独立模型的智能体将使用此配置。</span>
+        <strong>AI 模型</strong>
+        <span>填写一个 OpenAI 兼容接口，桌宠就能开始对话。</span>
       </div>
-      <article className="agent-model-row">
-        <div className="agent-model-title">
-          <strong>默认模型配置</strong>
-          <span>保存提供方、接口地址、模型和密钥后，可用于全局聊天与智能体回退。</span>
-        </div>
+      <div className="settings-form-grid">
         <label>
           <span>提供方</span>
           <input
@@ -69,11 +81,13 @@ export function GlobalModelCard({
           <input
             value={draft.api_key}
             onChange={(event) => onUpdateDraft({ api_key: event.target.value })}
-            placeholder="留空则仅保存模型参数"
+            placeholder="API 密钥"
             type="password"
           />
         </label>
-        <div className="agent-model-actions">
+      </div>
+      <div className="settings-action-row">
+        <div className="button-row">
           <button type="button" onClick={onSave} disabled={saving}>
             {saving ? <Loader2 className="spin" size={16} /> : <ShieldCheck size={16} />}
             保存
@@ -88,31 +102,10 @@ export function GlobalModelCard({
             测试连接
           </button>
         </div>
-        <dl className="agent-model-status">
-          <div>
-            <dt>配置状态</dt>
-            <dd>{formatBooleanStatus(draft.configured)}</dd>
-          </div>
-          <div>
-            <dt>保存状态</dt>
-            <dd>{saveStatus === "success" ? "已保存" : saveStatus === "error" ? "保存失败" : "待保存"}</dd>
-          </div>
-          <div>
-            <dt>测试结果</dt>
-            <dd>
-              {providerUnsupported
-                ? "提供方只支持 openai-compatible。"
-                : hasUnsavedDraft
-                  ? "有未保存改动，请先保存。"
-                  : testStatus === "success" && testResult
-                    ? formatModelTestResult(testResult)
-                    : testStatus === "error" && testResult
-                      ? formatModelTestResult(testResult)
-                      : "尚未测试"}
-            </dd>
-          </div>
-        </dl>
-      </article>
+        <p className={`field-note ${saveStatus === "error" || testStatus === "error" || providerUnsupported ? "error" : ""}`}>
+          {statusText}
+        </p>
+      </div>
     </section>
   );
 }

@@ -144,7 +144,7 @@ class LangGraphAgentRuntime:
         route_semantic = _semantic_from_memory_route(state.memory_route, state)
         state.semantic_analysis = route_semantic
         if not _should_call_semantic_agent(state):
-            _append_status(graph_state, "memory router selected context scope", stage="memory_router")
+            _append_status(graph_state, "已选择上下文范围。", stage="memory_router")
             return graph_state
         _append_status(graph_state, "正在调用语义分析 Agent。", stage="semantic_analysis")
         try:

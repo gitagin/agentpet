@@ -299,10 +299,10 @@ export function formatChatWikiApplyNotice(response: ChatWikiApplyResponse): stri
     return `查询归档已写入：${response.page.relative_path}，引用 ${response.lint.normalized_citations.length} 条。`;
   }
   if ("page" in response) {
-    return `Wiki 综合整理已写入：${response.page.relative_path}。`;
+    return `资料库综合整理已写入：${response.page.relative_path}。`;
   }
   const issueCount = response.summary.issues ?? response.issues.length;
-  return `Wiki lint 已完成：${issueCount} 个问题${response.report_page ? `，报告 ${response.report_page.relative_path}` : ""}。`;
+  return `资料库检查已完成：${issueCount} 个问题${response.report_page ? `，报告 ${response.report_page.relative_path}` : ""}。`;
 }
 
 export function formatChatWikiProposalResultPaths(result: ChatWikiProposal["apply_result"]): string {

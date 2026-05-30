@@ -59,8 +59,6 @@ app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
   sidecar.startSidecar();
   windows.createPetWindow();
-  windows.createStageWindow();
-  windows.createAgentWindow();
   tray.createTray();
   globalShortcut.register("CommandOrControl+Shift+A", windows.showControlWindow);
 

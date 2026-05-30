@@ -132,7 +132,7 @@ def test_ingest_preview_adds_cross_page_maintenance_plans(tmp_path: Path) -> Non
 
     comparison = next(plan for plan in response.page_plans if plan.target_path.startswith("Wiki/Comparisons/"))
     assert "comparison" in comparison.tags
-    assert "[[Agent Runtime]] and [[Control Panel]]" in comparison.content
+    assert "[[Agent Runtime]] 和 [[Control Panel]]" in comparison.content
     maintenance = next(plan for plan in response.page_plans if plan.target_path.startswith("Wiki/Reports/"))
     assert "conflict-review" in maintenance.tags
     assert "conflict" in maintenance.content.casefold()
@@ -1117,7 +1117,7 @@ def test_wiki_workflow_api_writes_and_audits(api_client: tuple[TestClient, Path]
     schema = client.get("/api/wiki/schema", headers=AUTH_HEADERS)
     assert schema.status_code == 200
     assert schema.json()["path"] == "Wiki/AGENTS.md"
-    assert "LLM Wiki Schema" in schema.json()["content"]
+    assert "LLM Wiki 规范" in schema.json()["content"]
 
     index = client.get("/api/wiki/index", headers=AUTH_HEADERS)
     assert index.status_code == 200

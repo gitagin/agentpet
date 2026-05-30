@@ -119,7 +119,7 @@ def _webpage_text_import_preview_request(request: WikiSourceImportPreviewRequest
     content = _supplied_web_content(request)
     if not content:
         raise WikiSourceImportRejectedError("webpage_text_required")
-    title = request.title or (request.url and _title_from_url(request.url)) or "Imported Webpage"
+    title = request.title or (request.url and _title_from_url(request.url)) or "导入的网页"
     metadata = _base_import_metadata(request, source_uri=request.url)
     if request.url:
         metadata["url"] = request.url

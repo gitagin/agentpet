@@ -79,7 +79,7 @@ async def _aggregate_memory_retrieval_node(
         return graph_state
 
     query = _retrieval_query(state, semantic)
-    _append_status(graph_state, "retrieving multi-source companion memory", stage="multi_source_memory_retrieval")
+    _append_status(graph_state, "正在检索多源陪伴记忆。", stage="multi_source_memory_retrieval")
     observed_toolset = AgentToolSet(retrieval=services.retrieval)
     collected = []
     searched_scopes: list[str] = []
@@ -178,7 +178,7 @@ async def _split_retrieval_node(
         scoped_semantic = semantic.model_copy(update={"source_scope": source_scope, "query": _retrieval_query(state, semantic)})
         if update_state_scope:
             state.semantic_analysis = scoped_semantic
-        _append_status(graph_state, f"retrieving {_source_scope_label(source_scope)}", stage=stage)
+        _append_status(graph_state, f"正在检索{_source_scope_label(source_scope)}。", stage=stage)
         if _model_for_retrieval(services, agent_id) is not None:
             response, tool_results = await run_model_agent_with_tools(
                 agent_id=agent_id,
@@ -238,7 +238,7 @@ async def _maybe_emit_daily_chat_fallback(
         update_state_scope=update_state_scope,
     )
     if fallback_daily_results:
-        _append_status(graph_state, "personal memory missed; checking daily chat", stage="daily_chat_fallback")
+        _append_status(graph_state, "长期记忆未命中，正在补查聊天日记。", stage="daily_chat_fallback")
         _emit_tool_results(graph_state, fallback_daily_results)
 
 

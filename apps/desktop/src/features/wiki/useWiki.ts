@@ -107,11 +107,11 @@ export function useWiki({
       if (!options.silent) {
         onNotice({
           tone: "success",
-          message: `Wiki 查询归档历史已刷新：${response.archives.length} 条。`,
+          message: `资料库查询归档历史已刷新：${response.archives.length} 条。`,
         });
       }
     } catch (error) {
-      const message = describeError(error, "Wiki 查询归档历史刷新失败");
+      const message = describeError(error, "资料库查询归档历史刷新失败");
       dispatch({ type: "archiveHistoryError", message });
       if (!options.silent) {
         onNotice({ tone: "error", message });
@@ -134,11 +134,11 @@ export function useWiki({
       if (!options.silent) {
         onNotice({
           tone: "success",
-          message: `Wiki 核心状态已刷新：${index.entries.length} 条索引，${log.entries.length} 条日志。`,
+          message: `资料库核心状态已刷新：${index.entries.length} 条索引，${log.entries.length} 条日志。`,
         });
       }
     } catch (error) {
-      const message = describeError(error, "Wiki 核心状态刷新失败");
+      const message = describeError(error, "资料库核心状态刷新失败");
       dispatch({ type: "coreStatusError", message });
       if (!options.silent) {
         onNotice({ tone: "error", message });
@@ -188,7 +188,7 @@ export function useWiki({
   }, []);
 
   useEffect(() => {
-    if (windowMode !== "control") {
+    if (windowMode !== "control" && windowMode !== "world") {
       return;
     }
     void loadArchiveHistory({ silent: true });
@@ -298,7 +298,7 @@ export function useWiki({
     if (proposal.proposal_type === "query_archive") {
       const citations = sourceMessage?.citations?.filter(isKnowledgeBaseCitation).map(toMemorySearchResultCitation) || [];
       return api.archiveWikiQuery({
-        question: findQuestionForAssistantMessage(messages, sourceMessage?.id || "") || "已归档的 Wiki 查询",
+        question: findQuestionForAssistantMessage(messages, sourceMessage?.id || "") || "已归档的资料库查询",
         answer: sourceMessage?.content.trim() || proposal.markdown_preview || proposal.summary || proposal.title,
         citations,
         title: proposal.title,
@@ -398,7 +398,7 @@ export function useWiki({
   const openArchive = useCallback(async (archiveId: string) => {
     const normalizedArchiveId = archiveId.trim();
     if (!normalizedArchiveId) {
-      onNotice({ tone: "error", message: "缺少 Wiki 查询归档 ID。" });
+      onNotice({ tone: "error", message: "缺少资料库查询归档 ID。" });
       return;
     }
 
@@ -411,10 +411,10 @@ export function useWiki({
       dispatch({ type: "openArchiveSuccess", detail, archiveId: detailArchiveId, citationLinks });
       onNotice({
         tone: "success",
-        message: `已打开 Wiki 查询归档：${detailArchiveId}。`,
+        message: `已打开资料库查询归档：${detailArchiveId}。`,
       });
     } catch (error) {
-      onNotice({ tone: "error", message: describeError(error, "Wiki 查询归档打开失败") });
+      onNotice({ tone: "error", message: describeError(error, "资料库查询归档打开失败") });
     } finally {
       dispatch({ type: "openArchiveFinish" });
     }
@@ -424,7 +424,7 @@ export function useWiki({
     const title = draft.title.trim();
     const content = draft.content.trim();
     if (!title || !content) {
-      onNotice({ tone: "error", message: "写入 Wiki 前需要同时填写标题和内容。" });
+      onNotice({ tone: "error", message: "写入资料库 前需要同时填写标题和内容。" });
       return null;
     }
 
@@ -453,10 +453,10 @@ export function useWiki({
       dispatch({ type: "previewIngestSuccess", preview: response });
       onNotice({
         tone: "success",
-        message: `Wiki 写入预览 ${formatTaskStatus(response.status)}：计划更新 ${response.page_plans.length} 个页面。`,
+        message: `资料库写入预览 ${formatTaskStatus(response.status)}：计划更新 ${response.page_plans.length} 个页面。`,
       });
     } catch (error) {
-      onNotice({ tone: "error", message: describeError(error, "Wiki 写入预览失败") });
+      onNotice({ tone: "error", message: describeError(error, "资料库写入预览失败") });
     } finally {
       dispatch({ type: "workflowFinish" });
     }
@@ -464,7 +464,7 @@ export function useWiki({
 
   const applyIngest = useCallback(async () => {
     if (!preview) {
-      onNotice({ tone: "error", message: "请先运行 Wiki 写入预览，再应用页面更新。" });
+      onNotice({ tone: "error", message: "请先运行 资料库写入预览，再应用页面更新。" });
       return;
     }
     if (!preview.preview_token && preview.status !== "planned") {
@@ -490,7 +490,7 @@ export function useWiki({
       const firstIndexedPage = response.page_results.find((page) => page.index_job_id);
       onNotice({
         tone: response.status === "applied" ? "success" : "info",
-        message: `Wiki 写入${formatTaskStatus(response.status)}：已写入 ${response.pages_written}/${response.page_results.length} 个页面。`,
+        message: `资料库写入${formatTaskStatus(response.status)}：已写入 ${response.pages_written}/${response.page_results.length} 个页面。`,
       });
       if (firstIndexedPage?.index_job_id) {
         onLastIndexRun({
@@ -501,7 +501,7 @@ export function useWiki({
       }
       onAgentActionsRefresh();
     } catch (error) {
-      onNotice({ tone: "error", message: describeError(error, "Wiki 写入应用失败") });
+      onNotice({ tone: "error", message: describeError(error, "资料库写入应用失败") });
     } finally {
       dispatch({ type: "workflowFinish" });
     }
@@ -509,7 +509,7 @@ export function useWiki({
 
   const reviewIngest = useCallback(async () => {
     if (!preview) {
-      onNotice({ tone: "error", message: "请先运行 Wiki 写入预览，再运行审查。" });
+      onNotice({ tone: "error", message: "请先运行 资料库写入预览，再运行审查。" });
       return;
     }
     if (!preview.preview_token && preview.status !== "planned") {
@@ -531,10 +531,10 @@ export function useWiki({
       dispatch({ type: "reviewIngestSuccess", preview: confirmedPreview, response });
       onNotice({
         tone: response.status === "failed" ? "error" : response.status === "model_not_configured" ? "info" : "success",
-        message: `Wiki 审查${formatTaskStatus(response.status)}：${response.findings.length} 个发现，${response.recommended_targets.length} 个推荐目标。`,
+        message: `资料库审查${formatTaskStatus(response.status)}：${response.findings.length} 个发现，${response.recommended_targets.length} 个推荐目标。`,
       });
     } catch (error) {
-      onNotice({ tone: "error", message: describeError(error, "Wiki 写入审查失败") });
+      onNotice({ tone: "error", message: describeError(error, "资料库写入审查失败") });
     } finally {
       dispatch({ type: "workflowFinish" });
     }
@@ -579,7 +579,7 @@ export function useWiki({
         question:
           candidate?.question ||
           findQuestionForAssistantMessage(messages, message.id) ||
-          "已归档的 Wiki 查询",
+          "已归档的资料库查询",
         answer: message.content,
         citations: archiveCitations,
         title: draft.title.trim() || buildWikiArchiveTitle(citations),
@@ -606,7 +606,7 @@ export function useWiki({
       await loadArchiveHistory({ silent: true });
       onAgentActionsRefresh();
     } catch (error) {
-      onNotice({ tone: "error", message: describeError(error, "Wiki 查询归档失败") });
+      onNotice({ tone: "error", message: describeError(error, "资料库查询归档失败") });
     } finally {
       dispatch({ type: "workflowFinish" });
     }
@@ -616,7 +616,7 @@ export function useWiki({
     const title = draft.title.trim();
     const content = draft.content.trim();
     if (!title || !content) {
-      onNotice({ tone: "error", message: "综合整理 Wiki 前需要同时填写标题和内容。" });
+      onNotice({ tone: "error", message: "综合整理资料库 前需要同时填写标题和内容。" });
       return;
     }
 
@@ -636,7 +636,7 @@ export function useWiki({
       void loadCoreStatus({ silent: true });
       onNotice({
         tone: "success",
-        message: `Wiki 综合整理已写入：${response.page.relative_path}。`,
+        message: `资料库综合整理已写入：${response.page.relative_path}。`,
       });
       if (response.page.index_job_id) {
         onLastIndexRun({
@@ -647,7 +647,7 @@ export function useWiki({
       }
       onAgentActionsRefresh();
     } catch (error) {
-      onNotice({ tone: "error", message: describeError(error, "Wiki 综合整理失败") });
+      onNotice({ tone: "error", message: describeError(error, "资料库综合整理失败") });
     } finally {
       dispatch({ type: "workflowFinish" });
     }
@@ -662,11 +662,11 @@ export function useWiki({
       void loadCoreStatus({ silent: true });
       onNotice({
         tone: response.issues.length > 0 ? "info" : "success",
-        message: `Wiki 检查完成：${response.summary.pages ?? 0} 个页面，${response.issues.length} 个问题。`,
+        message: `资料库检查完成：${response.summary.pages ?? 0} 个页面，${response.issues.length} 个问题。`,
       });
       onAgentActionsRefresh();
     } catch (error) {
-      onNotice({ tone: "error", message: describeError(error, "Wiki 检查运行失败") });
+      onNotice({ tone: "error", message: describeError(error, "资料库检查运行失败") });
     } finally {
       dispatch({ type: "workflowFinish" });
     }
@@ -683,7 +683,7 @@ export function useWiki({
       dispatch({ type: "diagnosticsSuccess", queue, reports: reports.reports });
       onNotice({
         tone: "success",
-        message: `只读诊断已刷新：${queue.items.length} 个 Wiki 待诊断项，${reports.reports.length} 条 Companion 上下文报告。`,
+        message: `只读诊断已刷新：${queue.items.length} 个 资料库待诊断项，${reports.reports.length} 条 陪伴上下文报告。`,
       });
     } catch (error) {
       const message = describeError(error, "只读诊断刷新失败");

@@ -13,7 +13,7 @@ function createProxyManager({ baseUrl, sessionToken }) {
   function sidecarUnavailableResponse(error) {
     return {
       status: 503,
-      statusText: "Service Unavailable",
+      statusText: "服务暂不可用",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         error: {
@@ -29,12 +29,12 @@ function createProxyManager({ baseUrl, sessionToken }) {
 
   function resolveSidecarUrl(pathOrUrl) {
     if (typeof pathOrUrl !== "string") {
-      throw new Error("API path must be a string.");
+      throw new Error("接口路径必须是字符串。");
     }
 
     const trimmed = pathOrUrl.trim();
     if (!trimmed) {
-      throw new Error("API path is required.");
+      throw new Error("接口路径不能为空。");
     }
 
     const base = new URL(baseUrl);
@@ -43,10 +43,10 @@ function createProxyManager({ baseUrl, sessionToken }) {
       : new URL(trimmed, base);
 
     if (target.origin !== base.origin) {
-      throw new Error("Only sidecar API requests are allowed.");
+      throw new Error("只允许请求本地后端接口。");
     }
     if (!target.pathname.startsWith("/api/")) {
-      throw new Error("Only /api requests are allowed.");
+      throw new Error("只允许请求 /api 接口。");
     }
 
     return target;
@@ -78,7 +78,7 @@ function createProxyManager({ baseUrl, sessionToken }) {
     const method = typeof options?.method === "string" ? options.method.toUpperCase() : "GET";
     const allowedMethods = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"]);
     if (!allowedMethods.has(method)) {
-      throw new Error("Unsupported API request method.");
+      throw new Error("不支持的接口请求方法。");
     }
 
     const headers = sanitizeRendererHeaders(options?.headers);
@@ -137,10 +137,10 @@ function createProxyManager({ baseUrl, sessionToken }) {
 
   async function startSseStream(sender, streamId, pathOrUrl) {
     if (typeof streamId !== "string" || !/^[A-Za-z0-9_-]{8,80}$/.test(streamId)) {
-      throw new Error("Invalid SSE stream id.");
+      throw new Error("实时回复流 ID 无效。");
     }
     if (activeSseStreams.has(streamId)) {
-      throw new Error("SSE stream already exists.");
+      throw new Error("实时回复流已存在。");
     }
 
     const controller = new AbortController();

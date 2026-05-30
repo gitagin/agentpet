@@ -67,7 +67,7 @@ describe("Live2DStage", () => {
     expect(screen.getByLabelText("桌宠模型展示区")).toBeInTheDocument();
     expect(screen.getByText("待命陪伴")).toBeInTheDocument();
     expect(screen.getByText("模型资源已识别")).toBeInTheDocument();
-    expect(screen.getByLabelText("Live2D runtime 边界状态")).toBeInTheDocument();
+    expect(screen.getByLabelText("Live2D 运行时边界状态")).toBeInTheDocument();
     expect(screen.getByLabelText("模型资源状态")).toHaveTextContent("ugofficial.model3.json");
     expect(screen.getByAltText("UG 桌宠模型资源封面")).toBeInTheDocument();
   });
@@ -80,6 +80,7 @@ describe("Live2DStage", () => {
       onPointerCancel: vi.fn(),
       onLostPointerCapture: vi.fn(),
       onContextMenu: vi.fn(),
+      onBubbleContextMenu: vi.fn(),
       onDoubleClick: vi.fn(),
     };
 
@@ -88,7 +89,7 @@ describe("Live2DStage", () => {
     const hitRegion = screen.getByLabelText("桌宠模型交互区");
     expect(screen.getByLabelText("桌宠模型")).toBeInTheDocument();
     expect(screen.getByLabelText("桌宠模型状态：待命陪伴")).toBeInTheDocument();
-    expect(screen.getByLabelText("Live2D runtime canvas 宿主区域")).toBeInTheDocument();
+    expect(screen.getByLabelText("Live2D 运行时画布区域")).toBeInTheDocument();
     expect(screen.getByLabelText("Live2D 静态回退封面")).toBeInTheDocument();
 
     fireEvent.pointerDown(hitRegion);
@@ -111,11 +112,11 @@ describe("Live2DStage", () => {
   it("renders the stage model without the control diagnostics lists", () => {
     renderStage("stage");
 
-    expect(screen.getByLabelText("主舞台 Live2D 模型")).toBeInTheDocument();
-    expect(screen.getByLabelText("主舞台模型状态：待命陪伴")).toBeInTheDocument();
-    expect(screen.getByLabelText("Live2D runtime canvas 宿主区域")).toBeInTheDocument();
-    expect(screen.queryByLabelText("Live2D runtime 边界状态")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Live2D runtime 诊断摘要")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("陪伴 Live2D 模型")).toBeInTheDocument();
+    expect(screen.getByLabelText("陪伴模型状态：待命陪伴")).toBeInTheDocument();
+    expect(screen.getByLabelText("Live2D 运行时画布区域")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Live2D 运行时边界状态")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Live2D 运行时诊断摘要")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("模型资源状态")).not.toBeInTheDocument();
   });
 

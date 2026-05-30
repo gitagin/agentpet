@@ -594,7 +594,7 @@ def _contradiction_marker_issues(pages: list[_WikiPage]) -> list[WikiLintIssue]:
                 WikiLintIssue(
                     severity="warning",
                     code="wiki_contradiction_marker",
-                    message="Wiki page contains contradiction or conflict markers that need human review.",
+                    message="Wiki 页面包含需要人工审查的矛盾或冲突标记。",
                     path=page.relative_path,
                 )
             )
@@ -611,7 +611,7 @@ def _stale_marker_issues(pages: list[_WikiPage]) -> list[WikiLintIssue]:
                 WikiLintIssue(
                     severity="info",
                     code="wiki_stale_marker",
-                    message="Wiki page contains stale or outdated markers that should be refreshed or confirmed.",
+                    message="Wiki 页面包含应刷新或确认的过时标记。",
                     path=page.relative_path,
                 )
             )
@@ -647,7 +647,7 @@ def _missing_concept_issues(pages: list[_WikiPage]) -> list[WikiLintIssue]:
                 WikiLintIssue(
                     severity="info",
                     code="missing_concept_page",
-                    message=f"Wiki references concept `[[{link}]]` without a matching Wiki/Concepts page.",
+                    message=f"Wiki 引用了概念 `[[{link}]]`，但没有对应的 Wiki/Concepts 页面。",
                     path=page.relative_path,
                     target=link,
                 )
@@ -705,7 +705,7 @@ def _research_questions(issues: list[WikiLintIssue]) -> list[WikiResearchQuestio
         elif issue.code == "graph_conflict_candidate":
             questions.append(
                 WikiResearchQuestion(
-                    question="Which structured memory fact should be treated as current truth?",
+                    question="哪个结构化记忆事实应被视为当前事实？",
                     reason="graph_conflict_candidate",
                     related_paths=[],
                 )
@@ -747,7 +747,7 @@ def _repair_proposal(
             target_path=issue.path,
             operation="reindex",
             reason=issue.message,
-            markdown_preview=f"Rebuild index records for `{issue.path}` before trusting search or vector mirrors.",
+            markdown_preview=f"在信任搜索或向量镜像之前，为 `{issue.path}` 重建索引记录。",
             related_paths=related_paths,
         )
     if issue.code == "wiki_index_missing_file":
@@ -757,7 +757,7 @@ def _repair_proposal(
             target_path=issue.path,
             operation="delete_index_record",
             reason=issue.message,
-            markdown_preview=f"Confirm `{issue.path}` is intentionally gone, then remove or tombstone the stale index row.",
+            markdown_preview=f"确认 `{issue.path}` 已被有意删除，然后移除或标记该过期索引条目。",
             related_paths=related_paths,
         )
     if issue.code in {"missing_wiki_link", "missing_concept_page"} and issue.target:
@@ -780,7 +780,7 @@ def _repair_proposal(
             target_path=f"{WIKI_ROOT}/index.md",
             operation="append",
             reason=issue.message,
-            markdown_preview=f"- [[{link_text}]] - add this page to a relevant index section after review.",
+            markdown_preview=f"- [[{link_text}]] - 审查后将此页面添加到相关的索引部分。",
             related_paths=related_paths,
         )
     if issue.code in {"duplicate_title", "duplicate_entity_candidate"}:
@@ -791,7 +791,7 @@ def _repair_proposal(
             target_path=issue.path,
             operation="review",
             reason=issue.message,
-            markdown_preview="Review duplicate candidates and choose one canonical page; add redirects, aliases, or disambiguating titles in a confirmed write.",
+            markdown_preview="审查重复候选项并选择一个规范页面；在确认写入中添加重定向、别名或消歧标题。",
             related_paths=[path for path in [issue.path, *paths] if path],
         )
     if issue.code in {"wiki_contradiction_marker", "graph_conflict_candidate"}:
@@ -801,7 +801,7 @@ def _repair_proposal(
             target_path=issue.path,
             operation="review",
             reason=issue.message,
-            markdown_preview="Compare the conflicting claims, pick current truth with citations, and draft a replacement section only after confirmation.",
+            markdown_preview="比较冲突声明，选取当前有引用依据的事实，仅在确认后撰写替换部分。",
             related_paths=related_paths,
         )
     if issue.code == "wiki_stale_marker":
@@ -811,7 +811,7 @@ def _repair_proposal(
             target_path=issue.path,
             operation="replace_section",
             reason=issue.message,
-            markdown_preview="Draft an updated section with current citations; do not overwrite the page until the replacement text is reviewed.",
+            markdown_preview="撰写带有当前引用的更新部分；在替换文本被审查之前不要覆盖页面。",
             related_paths=related_paths,
         )
     if issue.code == "wiki_schema_frontmatter_missing" and issue.path:
@@ -855,7 +855,7 @@ def _repair_proposal(
             target_path=issue.path,
             operation="append" if issue.code != "wiki_core_file_missing" else "create",
             reason=issue.message,
-            markdown_preview=f"Repair `{issue.path}` through the Wiki service so index and log conventions stay consistent.",
+            markdown_preview=f"通过 Wiki 服务修复 `{issue.path}`，使索引和日志规范保持一致。",
             related_paths=related_paths,
         )
     return None
@@ -870,10 +870,10 @@ _QUEUE_DIAGNOSTIC_TYPES = {
 
 
 _QUEUE_TITLES = {
-    "contradiction": "Review contradiction candidate",
-    "stale_claim": "Refresh stale claim",
-    "missing_link": "Resolve missing Wiki link",
-    "missing_concept": "Draft missing concept page",
+    "contradiction": "审查矛盾候选项",
+    "stale_claim": "刷新过时声明",
+    "missing_link": "解决缺失的 Wiki 链接",
+    "missing_concept": "起草缺失的概念页面",
 }
 
 
@@ -999,13 +999,13 @@ def _report_markdown(
             lines.append(f"- {question.question} ({question.reason})")
     else:
         lines.append("- 未生成待研究问题。")
-    lines.extend(["", "### Repair Proposals", ""])
+    lines.extend(["", "### 修复建议", ""])
     if repair_proposals:
         for proposal in repair_proposals:
             target = f" `{proposal.target_path}`" if proposal.target_path else ""
             lines.append(f"- **{proposal.issue_code}** ({proposal.operation}){target}: {proposal.title}")
     else:
-        lines.append("- No non-writing repair proposals generated.")
+        lines.append("- 未生成非写入修复建议。")
     return "\n".join(lines)
 
 
@@ -1023,7 +1023,7 @@ def _concept_page_preview(title: str, source_path: str | None) -> str:
             "",
             "## Summary",
             "",
-            "Draft a concise definition with citations before applying this proposal.",
+            "在应用此建议之前，撰写带有引用的简洁定义。",
             source,
         ]
     ).strip()

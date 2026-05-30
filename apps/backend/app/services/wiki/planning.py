@@ -110,7 +110,7 @@ def _source_page_plan(
         title=request.title,
         target_path=source_path,
         operation="replace_section",
-        section="Source Summary",
+        section="来源摘要",
         content=_source_summary_markdown(request, source_hash, source_links),
         tags=_unique([*request.tags, *parse_markdown(request.content, fallback_title=request.title).tags, "source"]),
         links=source_links,

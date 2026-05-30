@@ -3,7 +3,7 @@ import type { StreamHandlerInput } from "../streamDispatcher";
 export function statusHandler({ messageId, payload, context }: StreamHandlerInput) {
   const { petChat, appendChatEvent } = context;
   const stageLabel = formatAgentStage(payload?.stage);
-  const statusMessage = typeof payload?.message === "string" && payload.message ? payload.message : "智能体正在处理请求。";
+  const statusMessage = formatAgentStatusMessage(payload?.message);
   if (!petChat.replyStartedRef.current) {
     petChat.showBubble({
       title: stageLabel || "智能体状态",
@@ -30,14 +30,36 @@ function formatAgentStage(stage: unknown): string | null {
   }
   const labels: Record<string, string> = {
     route: "路由",
+    memory_router: "记忆路由",
     semantic_analysis: "语义分析",
     personal_memory_retrieval: "翻记忆本",
+    diary_object_retrieval: "查结构化聊天日记",
     daily_chat_retrieval: "查聊天日记",
     daily_chat_fallback: "补查聊天日记",
     knowledge_base_retrieval: "查资料库",
     multi_source_retrieval: "查记忆和资料",
+    multi_source_memory_retrieval: "查多源陪伴记忆",
     chat_generation: "生成回复",
     background_memory: "后台保存记忆",
   };
-  return labels[stage] || stage;
+  return labels[stage] || stage.split("_").join(" ");
+}
+
+function formatAgentStatusMessage(message: unknown): string {
+  if (typeof message !== "string" || !message) {
+    return "智能体正在处理请求。";
+  }
+  const normalized = message.trim();
+  const exactLabels: Record<string, string> = {
+    "memory router selected context scope": "已选择上下文范围。",
+    "retrieving multi-source companion memory": "正在检索多源陪伴记忆。",
+    "personal memory missed; checking daily chat": "长期记忆未命中，正在补查聊天日记。",
+  };
+  if (exactLabels[normalized]) {
+    return exactLabels[normalized];
+  }
+  if (normalized.startsWith("retrieving ")) {
+    return `正在检索${normalized.slice("retrieving ".length)}。`;
+  }
+  return normalized;
 }

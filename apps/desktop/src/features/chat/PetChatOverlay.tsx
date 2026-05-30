@@ -1,5 +1,4 @@
 import type { FormEvent, RefObject } from "react";
-import { Send, X } from "lucide-react";
 import type { PetBubbleState } from "./chatTypes";
 
 type PetChatOverlayProps = {
@@ -69,34 +68,32 @@ export function PetChatOverlay({
       {inputVisible ? (
         <form
           className="pet-input-dock"
-          aria-label="桌宠输入框"
           onSubmit={onSubmit}
           onPointerDown={(event) => event.stopPropagation()}
           onPointerMove={(event) => event.stopPropagation()}
           onPointerUp={(event) => event.stopPropagation()}
+          onClick={(event) => event.stopPropagation()}
           onDoubleClick={(event) => event.stopPropagation()}
         >
           <input
             ref={inputRef}
             value={input}
             onChange={(event) => onInputChange(event.target.value)}
-            placeholder={connected ? "和桌宠聊天..." : "等待本地后端连接..."}
-            disabled={streaming}
-            onKeyDown={(event) => {
-              if (event.key === "Escape" && !streaming) {
-                onInputClose();
-              }
-            }}
+            placeholder={connected ? "和桌宠说点什么..." : "正在等待本地助手连接..."}
+            disabled={!connected}
           />
           {streaming ? (
-            <button type="button" className="danger" onClick={onStopStreaming} title="停止生成">
-              <X size={14} />
+            <button type="button" className="danger" aria-label="停止回复" onClick={onStopStreaming}>
+              停
             </button>
           ) : (
-            <button type="submit" title="发送给桌宠" disabled={!input.trim()}>
-              <Send size={14} />
+            <button type="submit" aria-label="发送消息" disabled={!input.trim() || !connected}>
+              发
             </button>
           )}
+          <button type="button" aria-label="关闭输入框" onClick={onInputClose}>
+            ×
+          </button>
         </form>
       ) : null}
     </>

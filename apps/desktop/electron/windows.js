@@ -434,7 +434,7 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     agentWindow = new BrowserWindow({
       width: 420,
       height: 680,
-      title: "Agent 工作空间",
+      title: "任务工作台",
       alwaysOnTop: false,
       show: false,
       webPreferences: {
@@ -467,6 +467,11 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     }
     window.show();
     window.focus();
+  }
+
+  function showFeatureWindow(_mode) {
+    // Stub: 功能窗口待后续具体实现，当前先打开控制台
+    showControlWindow();
   }
 
   function hideAgentWindow() {
@@ -572,6 +577,7 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     showAgentWindow,
     hideAgentWindow,
     showStageWindow,
+    showFeatureWindow,
     clearPetWindowDrag,
     getPetMousePassthroughStatus,
     updatePetMousePassthroughFromCursor,

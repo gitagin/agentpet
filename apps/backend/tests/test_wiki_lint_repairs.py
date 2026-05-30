@@ -107,7 +107,7 @@ def test_wiki_lint_report_write_includes_repair_proposals(tmp_path: Path) -> Non
     report_path = vault_root.joinpath(*written.report_page.relative_path.split("/"))
     assert report_path.exists()
     report_text = report_path.read_text(encoding="utf-8")
-    assert "Repair Proposals" in report_text
+    assert "修复建议" in report_text
     assert "wiki_stale_marker" in report_text
 
 

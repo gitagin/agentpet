@@ -1,6 +1,12 @@
 {
   "models": [
     {
+      "id": "hiyori",
+      "label": "Hiyori",
+      "directory": "/live2d/hiyori_pro_zh/runtime/",
+      "model": "hiyori_pro_t11.model3.json"
+    },
+    {
       "id": "UG",
       "label": "UG",
       "directory": "/live2d/UG/",

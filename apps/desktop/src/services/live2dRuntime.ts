@@ -60,6 +60,7 @@ export type Live2DRuntimeBoundary = {
 export type Live2DRendererMountContext = {
   canvas: HTMLCanvasElement;
   asset: Live2DAssetInfo;
+  variant: "pet" | "stage";
 };
 
 export type Live2DRuntimeHandle = CubismRendererHandle & {
@@ -94,11 +95,10 @@ export type Live2DModelCatalog = {
 
 export const live2dModelCatalogPath = "/live2d/models.json";
 export const defaultLive2DModelOption: Live2DModelOption = {
-  id: "UG",
-  label: "UG",
-  directory: "/live2d/UG/",
-  model: "ugofficial.model3.json",
-  icon: "icon.png",
+  id: "hiyori",
+  label: "Hiyori",
+  directory: "/live2d/hiyori_pro_zh/runtime/",
+  model: "hiyori_pro_t11.model3.json",
 };
 export const live2dRuntimeMountTargetId = "live2d-runtime-canvas";
 
@@ -248,12 +248,13 @@ export function createLive2DRuntimeBoundary(asset: Live2DAssetInfo): Live2DRunti
 export function createRendererMountContext(
   canvas: HTMLCanvasElement | null,
   asset: Live2DAssetInfo,
+  variant: "pet" | "stage",
 ): Live2DRendererMountContext | null {
   if (!canvas || asset.status !== "recognized") {
     return null;
   }
 
-  return { canvas, asset };
+  return { canvas, asset, variant };
 }
 
 export async function mountLive2DRendererBoundary(
@@ -272,6 +273,7 @@ export async function mountLive2DRendererBoundary(
       canvas: context.canvas,
       modelDirectoryUrl: context.asset.modelDirectoryUrl,
       modelFileName: context.asset.modelFileName,
+      variant: context.variant,
     });
     return {
       status: "mounted",
@@ -281,7 +283,7 @@ export async function mountLive2DRendererBoundary(
       handle,
     };
   } catch (error) {
-    console.warn("[Live2D] renderer mount failed.", error);
+    console.warn("[Live2D] 渲染器挂载失败。", error);
     return {
       status: "failed",
       renderMode: "failed",

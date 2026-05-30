@@ -90,13 +90,12 @@ async def extract_diary_memories(
 
 
 DIARY_EXTRACTION_SYSTEM_PROMPT = (
-    "You are a pure diary memory extraction model. Return JSON only: either an array of objects "
-    "or {\"objects\":[...]}. Return at most 5 objects. Each object must use these keys: "
-    "summary, topic, emotion, people, keywords, source_text, importance, confidence. "
-    "people and keywords must be arrays of short strings. importance and confidence must be "
-    "numbers from 0 to 1. source_text must be a short diary excerpt supporting the object. "
-    "Return [] when the diary has no durable memory objects. Do not include markdown, prose, "
-    "comments, secrets, credentials, or fields outside the JSON payload."
+    "你是日记记忆提取模型。只返回 JSON：对象数组或 {\"objects\":[...]}。"
+    "最多返回 5 个对象。每个对象必须包含以下键："
+    "summary, topic, emotion, people, keywords, source_text, importance, confidence。"
+    "people 和 keywords 必须是短字符串数组。importance 和 confidence 必须是 0 到 1 之间的数字。"
+    "source_text 必须是支撑该对象的简短日记摘录。"
+    "当日记没有持久化记忆对象时返回 []。不要包含 markdown、散文、注释、密钥、凭据或 JSON 负载之外的字段。"
 )
 
 
@@ -108,10 +107,9 @@ def _user_prompt(diary_text: str, *, memory_date: str | None, source_path: str |
         metadata.append(f"source_path: {source_path}")
     metadata_block = "\n".join(metadata) if metadata else "date: unknown"
     return (
-        "Extract durable memory objects from this diary entry. Use only information present in "
-        "the entry and return JSON only.\n\n"
+        "从此日记条目中提取持久化记忆对象。只使用条目中的信息，只返回 JSON。\n\n"
         f"{metadata_block}\n\n"
-        f"diary_text:\n{_truncate(diary_text, 4000)}"
+        f"日记内容：\n{_truncate(diary_text, 4000)}"
     )
 
 

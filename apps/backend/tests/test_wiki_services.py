@@ -47,12 +47,12 @@ def test_wiki_default_schema_documents_seven_rules_and_template(tmp_path) -> Non
 
     for section in WIKI_PAGE_TEMPLATE_SECTIONS:
         assert section in schema
-    assert "Hard Boundaries" in schema
-    assert "Evidence And Trigger Source" in schema
-    assert "Review And Self Check" in schema
-    assert "Version And Logs" in schema
-    assert "Terminology And Format Traps" in schema
-    assert "Double-layer logs" in schema
+    assert "硬边界" in schema
+    assert "证据与触发来源" in schema
+    assert "审查与自检" in schema
+    assert "版本与日志" in schema
+    assert "术语与格式陷阱" in schema
+    assert "双层日志" in schema
 
 
 def test_wiki_service_refreshes_index_and_appends_log(tmp_path) -> None:

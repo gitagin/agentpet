@@ -135,7 +135,7 @@ export function WikiWorkflowPanel({
       <details className="stack advanced-vault-maintenance" aria-label="高级 Vault 维护工具">
         <summary>
           <strong>展开资料库页面维护工具</strong>
-          <span>这些按钮调用现有 Wiki API（内部/历史命名），保留给手工预览、审查、归档、综合整理和检查；主流程优先使用上方对话。</span>
+          <span>这些按钮调用现有资料库接口（内部保留历史命名），用于手工预览、审查、归档、综合整理和检查；主流程优先使用上方对话。</span>
         </summary>
         <form className="stack" onSubmit={onPreview}>
           <div className="section-heading">
@@ -207,17 +207,17 @@ export function WikiWorkflowPanel({
             <textarea
               value={draft.content}
               onChange={(event) => onDraftChange({ content: event.target.value })}
-              placeholder="要写入 Vault/Wiki/... 的 Markdown 内容"
+              placeholder="要写入资料库归档目录的 Markdown 内容"
             />
           </label>
           <div className="split">
             <label>
               <span>标签</span>
-              <input value={tagInput} onChange={(event) => onTagInputChange(event.target.value)} placeholder="desktop,wiki" />
+              <input value={tagInput} onChange={(event) => onTagInputChange(event.target.value)} placeholder="桌面助手,资料库" />
             </label>
             <label>
               <span>关联链接</span>
-              <input value={linkInput} onChange={(event) => onLinkInputChange(event.target.value)} placeholder="Wiki/Runtime.md, Wiki/API.md" />
+              <input value={linkInput} onChange={(event) => onLinkInputChange(event.target.value)} placeholder="资料库/运行时.md, 资料库/接口.md" />
             </label>
           </div>
           <div className="split">
@@ -331,7 +331,7 @@ export function WikiWorkflowPanel({
           {coreError ? <p className="field-note error">{coreError}</p> : null}
           {preview ? <pre className="diff-preview">{formatWikiPreview(preview)}</pre> : null}
           {reviewResult ? (
-            <section className="wiki-review-result" aria-label="Wiki ingest review result">
+            <section className="wiki-review-result" aria-label="资料库导入审查结果">
               <div className="section-heading">
                 <strong>审查结果</strong>
                 <span>{formatTaskStatus(reviewResult.status)} / {reviewResult.review_id}</span>
@@ -364,7 +364,7 @@ export function WikiWorkflowPanel({
             </section>
           ) : null}
           {lintResult?.issues.length ? (
-            <div className="message-events" aria-label="Wiki 检查问题">
+            <div className="message-events" aria-label="资料库检查问题">
               {lintResult.issues.slice(0, 6).map((issue, index) => (
                 <span key={`${issue.code}-${issue.path || "wiki"}-${issue.target || index}`} className={issue.severity === "error" ? "error" : undefined}>
                   <strong>{formatIssueSeverity(issue.severity)}</strong>
@@ -375,7 +375,7 @@ export function WikiWorkflowPanel({
             </div>
           ) : null}
           {diagnosticsQueue?.items.length ? (
-            <section className="wiki-review-result" aria-label="Wiki 只读诊断队列">
+            <section className="wiki-review-result" aria-label="资料库只读诊断队列">
               <div className="section-heading">
                 <strong>只读诊断队列</strong>
                 <span>{diagnosticsQueue.items.length} 项，不写入 Vault</span>
@@ -394,9 +394,9 @@ export function WikiWorkflowPanel({
           ) : null}
           {companionContextReportError ? <p className="field-note error">{companionContextReportError}</p> : null}
           {companionContextReports.length ? (
-            <section className="wiki-review-result" aria-label="Companion 上下文报告">
+            <section className="wiki-review-result" aria-label="陪伴上下文报告">
               <div className="section-heading">
-                <strong>Companion 上下文报告</strong>
+                <strong>陪伴上下文报告</strong>
                 <span>最近 {companionContextReports.length} 条，只读</span>
               </div>
               <div className="message-events">
@@ -409,10 +409,10 @@ export function WikiWorkflowPanel({
               </div>
             </section>
           ) : companionContextReportStatus === "empty" ? (
-            <p className="field-note">还没有 Companion 上下文报告。</p>
+            <p className="field-note">还没有 陪伴上下文报告。</p>
           ) : null}
           {openedArchive ? <pre className="diff-preview wiki-opened-archive">{formatWikiArchiveDetail(openedArchive)}</pre> : null}
-          <section className="wiki-archive-history" aria-label="Wiki 查询归档历史">
+          <section className="wiki-archive-history" aria-label="资料库查询归档历史">
             <div className="section-heading">
               <strong>查询归档历史</strong>
               <span>{archiveHistorySummary}</span>

@@ -42,13 +42,13 @@ def _entity_update_markdown(
     source_path: str,
 ) -> str:
     lines = [
-        f"## Source: {request.title}",
+        f"## 来源：{request.title}",
         "",
-        f"- Entity type: `{candidate.kind}`",
-        f"- Source page: `{source_path}`",
+        f"- 实体类型：`{candidate.kind}`",
+        f"- 来源页面：`{source_path}`",
     ]
     if candidate.evidence:
-        lines.append(f"- Extraction signal: {candidate.evidence}")
+        lines.append(f"- 提取信号：{candidate.evidence}")
     lines.extend(["", _summary_from_source(request.content, max_lines=4)])
     return "\n".join(lines).strip()
 
@@ -59,11 +59,11 @@ def _comparison_update_markdown(
     source_path: str,
 ) -> str:
     lines = [
-        f"## Source: {request.title}",
+        f"## 来源：{request.title}",
         "",
-        f"- Source page: `{source_path}`",
-        f"- Compared pages: [[{candidate.left}]] and [[{candidate.right}]]",
-        f"- Extraction signal: {candidate.reason or 'comparison'}",
+        f"- 来源页面：`{source_path}`",
+        f"- 对比页面：[[{candidate.left}]] 和 [[{candidate.right}]]",
+        f"- 提取信号：{candidate.reason or '对比'}",
         "",
         _summary_from_source(request.content, max_lines=4),
     ]
@@ -79,12 +79,12 @@ def _ingest_synthesis_markdown(
     comparison_candidates: list,
 ) -> str:
     lines = [
-        f"## Synthesis: {request.title}",
+        f"## 综合：{request.title}",
         "",
-        f"- Source page: `{source_path}`",
-        f"- Related concepts: {', '.join(related_titles) if related_titles else 'none'}",
-        f"- Entities: {', '.join(candidate.title for candidate in entity_candidates) if entity_candidates else 'none'}",
-        f"- Comparisons: {', '.join(_comparison_title(candidate) for candidate in comparison_candidates) if comparison_candidates else 'none'}",
+        f"- 来源页面：`{source_path}`",
+        f"- 关联概念：{', '.join(related_titles) if related_titles else '无'}",
+        f"- 实体：{', '.join(candidate.title for candidate in entity_candidates) if entity_candidates else '无'}",
+        f"- 对比：{', '.join(_comparison_title(candidate) for candidate in comparison_candidates) if comparison_candidates else '无'}",
         "",
         _summary_from_source(request.content, max_lines=5),
     ]
@@ -94,11 +94,11 @@ def _ingest_synthesis_markdown(
 def _maintenance_markdown(request: WikiIngestPreviewRequest, *, source_path: str) -> str:
     signals = _maintenance_signals(request.content)
     lines = [
-        f"## Maintenance: {request.title}",
+        f"## 维护：{request.title}",
         "",
-        f"- Source page: `{source_path}`",
-        f"- Signals: {', '.join(signals) if signals else 'review'}",
-        "- Action: review conflicts, stale claims, duplicates, and missing follow-up pages before applying as durable truth.",
+        f"- 来源页面：`{source_path}`",
+        f"- 信号：{', '.join(signals) if signals else '审查'}",
+        "- 操作：在应用为持久化事实之前，审查冲突、过时声明、重复项和缺失的跟进页面。",
         "",
         _summary_from_source(request.content, max_lines=5),
     ]

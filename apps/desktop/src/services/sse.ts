@@ -88,7 +88,7 @@ function fetchDesktopSseStream(
     };
     const onAbort = () => {
       void window.agentDesktop?.cancelSseStream?.(streamId);
-      finish(() => reject(new DOMException("The operation was aborted.", "AbortError")));
+      finish(() => reject(new DOMException("操作已取消。", "AbortError")));
     };
 
     cleanupCallbacks.push(window.agentDesktop?.onSseChunk?.((incomingStreamId, chunk) => {
@@ -152,7 +152,7 @@ function emitFinalSseChunk(buffer: string, handlers: StreamHandlers): void {
 }
 
 function toSseApiError(error: DesktopSseError): ApiError {
-  let message = error.message || `${error.status ?? 0} ${error.statusText ?? "SSE stream failed"}`;
+  let message = error.message || `${error.status ?? 0} ${error.statusText ?? "实时回复流连接失败"}`;
   if (error.body) {
     try {
       const body = JSON.parse(error.body) as { error?: { message?: string } };

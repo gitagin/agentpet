@@ -297,7 +297,7 @@ export default function AgentWorkspaceView({ api }: AgentWorkspaceViewProps) {
         if (requestError instanceof DOMException && requestError.name === "AbortError") {
           return;
         }
-        setError(describeError(requestError, "Agent 任务加载失败"));
+        setError(describeError(requestError, "任务加载失败"));
       } finally {
         if (!options.silent) {
           setLoading(false);
@@ -348,7 +348,7 @@ export default function AgentWorkspaceView({ api }: AgentWorkspaceViewProps) {
   const statusLabel = currentTask ? statusLabels[currentTask.status] : loading ? "进行中" : "完成";
 
   return (
-    <main style={workspaceStyles.shell} aria-label="Agent 工作空间">
+    <main style={workspaceStyles.shell} aria-label="任务工作台">
       <header className="glass-card" style={workspaceStyles.header}>
         <div style={workspaceStyles.headerTitle}>
           <p style={workspaceStyles.eyebrow}>当前任务</p>
@@ -362,7 +362,7 @@ export default function AgentWorkspaceView({ api }: AgentWorkspaceViewProps) {
       <section className="glass-card" style={workspaceStyles.card} aria-label="当前任务详情">
         <strong>{title}</strong>
         <p style={workspaceStyles.taskDescription}>
-          {error || currentTask?.description || (loading ? "正在从后端读取 Agent 任务状态。" : "当前没有待展示的 Agent 任务。")}
+          {error || currentTask?.description || (loading ? "正在从后端读取任务状态。" : "当前没有待展示的任务。")}
         </p>
         {currentTask ? (
           <span style={{ ...workspaceStyles.statusBadge, width: "fit-content", background: taskStatusColor }}>

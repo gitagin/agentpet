@@ -40,6 +40,7 @@ contextBridge.exposeInMainWorld("agentDesktop", {
   openAgent: () => ipcRenderer.invoke("window:open-agent"),
   closeAgent: () => ipcRenderer.invoke("window:close-agent"),
   openStage: () => ipcRenderer.invoke("window:open-stage"),
+  openFeatureWindow: (mode) => ipcRenderer.invoke("window:open-feature", mode),
   quitApp: () => ipcRenderer.invoke("app:quit"),
   getPetMousePassthroughStatus: () => ipcRenderer.invoke("agent-pet:get-pet-mouse-passthrough-status"),
   beginPetWindowDrag: () => ipcRenderer.send("agent-pet:begin-pet-window-drag"),

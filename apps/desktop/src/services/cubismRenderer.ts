@@ -12,10 +12,13 @@ import { CubismBlendMode } from "@cubism-framework/rendering/cubismrenderer";
 import { CubismShaderManager_WebGL } from "@cubism-framework/rendering/cubismshader_webgl";
 import { loadCubismCore } from "./cubismCoreLoader";
 
+export type CubismRendererVariant = "pet" | "stage";
+
 export type CubismRendererOptions = {
   canvas: HTMLCanvasElement;
   modelDirectoryUrl: string;
   modelFileName: string;
+  variant?: CubismRendererVariant;
 };
 
 export type CubismRenderMode = "official" | "fallback" | "failed";
@@ -55,22 +58,33 @@ export type CubismRendererHandle = {
   getRenderMode(): CubismRenderMode;
   getDiagnostics(): CubismRendererDiagnostics;
   hasVisiblePixels(): boolean;
+  isPointOnVisiblePixel(clientX: number, clientY: number): boolean;
 };
 
 const shaderPath = "/live2d/CubismSdkForWeb-5-r.5/Framework/Shaders/WebGL/";
 const firstFrameTimeoutMs = 5000;
 const shaderReadyTimeoutMs = 5000;
-const firstFrameNoVisiblePixelMessage = "Live2D first frame rendered, but visible pixel sampling did not hit an opaque area.";
+const firstFrameNoVisiblePixelMessage = "Live2D 首帧已渲染，但像素采样未命中不透明区域。";
 const visiblePixelColorThreshold = 18;
 const visiblePixelAlphaThreshold = 8;
 const visiblePixelSampleIntervalMs = 2000;
 const initialVisiblePixelSamples = 2;
+const visibleHitTestAlphaPadding = 8;
 const enableIdleMotion = true;
 const enablePhysics = true;
 const enableBasicMeshFallback = false;
-const petModelVisibleScale = 0.82;
-const petModelTargetCenterX = 0;
-const petModelTargetCenterY = -0.06;
+const modelProfiles = {
+  pet: {
+    visibleScale: 1.08,
+    targetCenterX: 0,
+    targetCenterY: -0.02,
+  },
+  stage: {
+    visibleScale: 0.82,
+    targetCenterX: 0,
+    targetCenterY: -0.06,
+  },
+} satisfies Record<CubismRendererVariant, { visibleScale: number; targetCenterX: number; targetCenterY: number }>;
 
 let frameworkStarted = false;
 
@@ -97,13 +111,18 @@ export async function createCubismRenderer(options: CubismRendererOptions): Prom
   await loadCubismCore();
   ensureCubismFrameworkStarted();
 
-  const gl = options.canvas.getContext("webgl2", { alpha: true, premultipliedAlpha: true })
-    || options.canvas.getContext("webgl", { alpha: true, premultipliedAlpha: true });
+  const webglContextAttributes: WebGLContextAttributes = {
+    alpha: true,
+    premultipliedAlpha: true,
+    preserveDrawingBuffer: options.variant === "pet",
+  };
+  const gl = (options.canvas.getContext("webgl2", webglContextAttributes) as WebGL2RenderingContext | null)
+    || (options.canvas.getContext("webgl", webglContextAttributes) as WebGLRenderingContext | null);
   if (!gl) {
-    throw new Error("WebGL context is not available for Live2D rendering.");
+    throw new Error("当前设备不支持 Live2D 渲染所需的 WebGL 上下文。");
   }
 
-  const model = new SingleCubismModel(options.modelDirectoryUrl);
+  const model = new SingleCubismModel(options.modelDirectoryUrl, options.variant || "stage");
   const manifestBuffer = await fetchArrayBuffer(`${options.modelDirectoryUrl}${options.modelFileName}`, "模型清单");
   await runCubismStage("模型初始化", () => model.loadFromManifest(manifestBuffer, gl, options.canvas));
 
@@ -127,11 +146,11 @@ export async function createCubismRenderer(options: CubismRendererOptions): Prom
 
   const failFirstFrame = (error: unknown) => {
     if (firstFrameSettled) {
-      console.error("[Cubism] runtime render failed after mount.", error);
+      console.error("[Cubism] 挂载后运行时渲染失败。", error);
       return;
     }
     firstFrameSettled = true;
-    rejectFirstFrame?.(error instanceof Error ? error : new Error("Cubism first frame render failed."));
+    rejectFirstFrame?.(error instanceof Error ? error : new Error("Cubism 首帧渲染失败。"));
   };
 
   const handle: CubismRendererHandle = {
@@ -162,6 +181,7 @@ export async function createCubismRenderer(options: CubismRendererOptions): Prom
     },
     resize(size) {
       resizeCanvas(options.canvas, size);
+      clearCanvasTransparent(gl, options.canvas);
       model.resize(options.canvas);
     },
     dispose() {
@@ -185,6 +205,9 @@ export async function createCubismRenderer(options: CubismRendererOptions): Prom
       }
       return model.getCachedVisiblePixels();
     },
+    isPointOnVisiblePixel(clientX, clientY) {
+      return model.isPointNearVisibleDrawable(options.canvas, clientX, clientY);
+    },
     setExpression(name) {
       model.setExpression(name);
     },
@@ -196,7 +219,7 @@ export async function createCubismRenderer(options: CubismRendererOptions): Prom
   handle.resize();
   handle.start();
   try {
-    await waitForFirstFrame(firstFrame);
+    await waitForFirstFrame(firstFrame, options.canvas);
   } catch (error) {
     handle.dispose();
     throw error;
@@ -222,6 +245,7 @@ function ensureCubismFrameworkStarted() {
 class SingleCubismModel extends CubismUserModel {
   public readonly startedAt = performance.now();
   private readonly modelDirectoryUrl: string;
+  private readonly modelProfile: (typeof modelProfiles)[CubismRendererVariant];
   private textureIds: WebGLTexture[] = [];
   private ready = false;
   private motionGroup = "";
@@ -246,9 +270,10 @@ class SingleCubismModel extends CubismUserModel {
   private lastOfficialRenderError: string | undefined;
   private lastFallbackRenderError: string | undefined;
 
-  constructor(modelDirectoryUrl: string) {
+  constructor(modelDirectoryUrl: string, variant: CubismRendererVariant) {
     super();
     this.modelDirectoryUrl = modelDirectoryUrl;
+    this.modelProfile = modelProfiles[variant];
   }
 
   async loadFromManifest(manifestBuffer: ArrayBuffer, gl: WebGLRenderingContext | WebGL2RenderingContext, canvas: HTMLCanvasElement) {
@@ -258,13 +283,13 @@ class SingleCubismModel extends CubismUserModel {
     );
     const modelFileName = setting.getModelFileName();
     if (!modelFileName) {
-      throw new Error("model3.json does not declare a Moc file.");
+      throw new Error("模型清单 model3.json 未声明 Moc 文件。");
     }
 
     const mocBuffer = await fetchArrayBuffer(`${this.modelDirectoryUrl}${modelFileName}`, "Moc 模型");
     await runCubismStage("Moc 模型解析", () => this.loadModel(mocBuffer, false));
     if (!this.getModel()) {
-      throw new Error("Moc parsing failed; Cubism did not create a drawable model.");
+      throw new Error("Moc 文件解析失败，Cubism 未能创建可绘制模型。");
     }
     this.setInitialized(true);
     this.setUpdating(false);
@@ -301,7 +326,7 @@ class SingleCubismModel extends CubismUserModel {
     this.shaderReady = true;
     assertRendererReady(this.getRenderer());
     if (this.textureIds.length <= 0) {
-      throw new Error("Model has no bound textures; Live2D cannot render.");
+      throw new Error("模型没有绑定贴图，Cubism 无法渲染。");
     }
     assertNoWebGLError(gl, "Live2D model resource initialization");
     this.ready = true;
@@ -324,6 +349,9 @@ class SingleCubismModel extends CubismUserModel {
     this.lastFrameTime = now;
 
     gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.disable(gl.SCISSOR_TEST);
+    gl.disable(gl.DEPTH_TEST);
+    gl.colorMask(true, true, true, true);
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.enable(gl.BLEND);
@@ -349,10 +377,14 @@ class SingleCubismModel extends CubismUserModel {
       this.getRenderer().setMvpMatrix(projection);
       const frameBuffer = gl.getParameter(gl.FRAMEBUFFER_BINDING) as WebGLFramebuffer | null;
       const viewport = [0, 0, canvas.width, canvas.height];
-      runCubismStageSync("官方模型绘制", () => {
-        this.getRenderer().setRenderState(frameBuffer as WebGLFramebuffer, viewport);
-        this.getRenderer().drawModel(shaderPath);
-      });
+      try {
+        runCubismStageSync("官方模型绘制", () => {
+          this.getRenderer().setRenderState(frameBuffer as WebGLFramebuffer, viewport);
+          this.getRenderer().drawModel(shaderPath);
+        });
+      } finally {
+        restoreTransparentCanvasCompositeState(gl, canvas);
+      }
       if (this.shouldSampleVisiblePixels(now) && !this.sampleVisiblePixels(gl, canvas)) {
         this.lastOfficialRenderError = "官方 Cubism 渲染完成但画布没有可见模型像素。";
         if (performance.now() - this.startedAt >= firstFrameTimeoutMs) {
@@ -365,7 +397,7 @@ class SingleCubismModel extends CubismUserModel {
       }
     } catch (error) {
       this.lastOfficialRenderError = formatUnknownError(error);
-      console.warn("[Cubism] official renderer failed.", error);
+      console.warn("[Cubism] 官方渲染器失败。", error);
       if (!enableBasicMeshFallback) {
         this.renderMode = "failed";
         throw wrapCubismError("Live2D 官方渲染", error);
@@ -696,15 +728,15 @@ class SingleCubismModel extends CubismUserModel {
       return modelMatrix;
     }
 
-    modelMatrix.scaleRelative(petModelVisibleScale, petModelVisibleScale);
+    modelMatrix.scaleRelative(this.modelProfile.visibleScale, this.modelProfile.visibleScale);
 
     const centerX = (bounds.minX + bounds.maxX) / 2;
     const centerY = (bounds.minY + bounds.maxY) / 2;
     const currentCenterX = modelMatrix.transformX(centerX);
     const currentCenterY = modelMatrix.transformY(centerY);
 
-    modelMatrix.translateX(modelMatrix.getTranslateX() - currentCenterX + petModelTargetCenterX);
-    modelMatrix.translateY(modelMatrix.getTranslateY() - currentCenterY + petModelTargetCenterY);
+    modelMatrix.translateX(modelMatrix.getTranslateX() - currentCenterX + this.modelProfile.targetCenterX);
+    modelMatrix.translateY(modelMatrix.getTranslateY() - currentCenterY + this.modelProfile.targetCenterY);
     return modelMatrix;
   }
 
@@ -749,6 +781,43 @@ class SingleCubismModel extends CubismUserModel {
 
     this.cachedDrawableBounds = { minX, maxX, minY, maxY };
     return this.cachedDrawableBounds;
+  }
+
+  isPointNearVisibleDrawable(canvas: HTMLCanvasElement, clientX: number, clientY: number): boolean {
+    const canvasBounds = canvas.getBoundingClientRect();
+    if (canvasBounds.width <= 0 || canvasBounds.height <= 0) {
+      return false;
+    }
+    if (clientX < canvasBounds.left || clientX > canvasBounds.right || clientY < canvasBounds.top || clientY > canvasBounds.bottom) {
+      return false;
+    }
+
+    const drawableBounds = this.measureDrawableBounds();
+    if (!drawableBounds) {
+      return true;
+    }
+
+    const projection = this.createProjectionMatrix(canvas);
+    const corners = [
+      [drawableBounds.minX, drawableBounds.minY],
+      [drawableBounds.minX, drawableBounds.maxY],
+      [drawableBounds.maxX, drawableBounds.minY],
+      [drawableBounds.maxX, drawableBounds.maxY],
+    ];
+    const projected = corners.map(([x, y]) => ({
+      x: projection.transformX(x),
+      y: projection.transformY(y),
+    }));
+    const minX = Math.min(...projected.map((point) => point.x));
+    const maxX = Math.max(...projected.map((point) => point.x));
+    const minY = Math.min(...projected.map((point) => point.y));
+    const maxY = Math.max(...projected.map((point) => point.y));
+    const pointX = ((clientX - canvasBounds.left) / canvasBounds.width) * 2 - 1;
+    const pointY = 1 - ((clientY - canvasBounds.top) / canvasBounds.height) * 2;
+    const paddingX = (visibleHitTestAlphaPadding / canvasBounds.width) * 2;
+    const paddingY = (visibleHitTestAlphaPadding / canvasBounds.height) * 2;
+
+    return pointX >= minX - paddingX && pointX <= maxX + paddingX && pointY >= minY - paddingY && pointY <= maxY + paddingY;
   }
 
   private drawDrawableOnly(frameBuffer: WebGLFramebuffer | null, viewport: number[]) {
@@ -907,7 +976,7 @@ class SingleCubismModel extends CubismUserModel {
     const indexBuffer = gl.createBuffer();
 
     if (!matrixLocation || !textureLocation || !opacityLocation || !positionBuffer || !uvBuffer || !indexBuffer) {
-      throw new Error("Basic WebGL mesh renderer initialization failed.");
+      throw new Error("基础 WebGL 网格渲染器初始化失败。");
     }
 
     this.basicMeshProgram = {
@@ -962,7 +1031,7 @@ function formatUnknownError(error: unknown): string {
 async function fetchArrayBuffer(url: string, label: string): Promise<ArrayBuffer> {
   const response = await fetch(url);
   if (!response.ok) {
-    throw new Error(`${label} load failed: ${response.status} ${url}`);
+    throw new Error(`${label} 加载失败：HTTP ${response.status} ${url}`);
   }
   return response.arrayBuffer();
 }
@@ -985,12 +1054,14 @@ function runCubismStageSync<T>(stage: string, action: () => T): T {
 
 function wrapCubismError(stage: string, error: unknown): Error {
   if (error instanceof Error) {
-    if (error.message.startsWith(`Live2D ${stage} failed`) || /^Live2D .+ failed:/.test(error.message)) {
+    const prefix = `Live2D ${stage} 渲染失败`;
+    const oldPrefix = `Live2D ${stage} failed`;
+    if (error.message.startsWith(prefix) || error.message.startsWith(oldPrefix) || /^Live2D .+ 渲染失败:/.test(error.message) || /^Live2D .+ failed:/.test(error.message)) {
       return error;
     }
-    return new Error(`Live2D ${stage} failed: ${error.message}`);
+    return new Error(`Live2D ${stage} 渲染失败：${error.message}`);
   }
-  return new Error(`Live2D ${stage} failed: unknown Cubism error.`);
+  return new Error(`Live2D ${stage} 渲染失败：未知 Cubism 错误。`);
 }
 
 function createTextureFromImage(
@@ -1003,7 +1074,7 @@ function createTextureFromImage(
     image.onload = () => {
       const texture = gl.createTexture();
       if (!texture) {
-        reject(new Error(`Texture object creation failed: ${url}`));
+        reject(new Error(`贴图对象创建失败：${url}`));
         return;
       }
 
@@ -1024,7 +1095,7 @@ function createTextureFromImage(
       gl.bindTexture(gl.TEXTURE_2D, null);
       resolve(texture);
     };
-    image.onerror = () => reject(new Error(`Texture load failed: ${url}`));
+    image.onerror = () => reject(new Error(`贴图加载失败：${url}`));
     image.src = url;
   });
 }
@@ -1036,7 +1107,7 @@ function compileShader(
 ): WebGLShader {
   const shader = gl.createShader(type);
   if (!shader) {
-    throw new Error("Basic WebGL shader creation failed.");
+    throw new Error("基础 WebGL 着色器创建失败。");
   }
 
   gl.shaderSource(shader, source);
@@ -1044,7 +1115,7 @@ function compileShader(
   if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
     const message = gl.getShaderInfoLog(shader) || "Unknown shader compile error.";
     gl.deleteShader(shader);
-    throw new Error(`Basic WebGL shader compile failed: ${message}`);
+    throw new Error(`基础 WebGL 着色器编译失败：${message}`);
   }
   return shader;
 }
@@ -1056,7 +1127,7 @@ function linkProgram(
 ): WebGLProgram {
   const program = gl.createProgram();
   if (!program) {
-    throw new Error("Basic WebGL program creation failed.");
+    throw new Error("基础 WebGL 渲染程序创建失败。");
   }
 
   gl.attachShader(program, vertexShader);
@@ -1065,22 +1136,42 @@ function linkProgram(
   if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
     const message = gl.getProgramInfoLog(program) || "Unknown program link error.";
     gl.deleteProgram(program);
-    throw new Error(`Basic WebGL program link failed: ${message}`);
+    throw new Error(`基础 WebGL 渲染程序链接失败：${message}`);
   }
   return program;
 }
 
-function waitForFirstFrame(firstFrame: Promise<void>): Promise<void> {
+function waitForFirstFrame(firstFrame: Promise<void>, canvas: HTMLCanvasElement): Promise<void> {
   let timeoutId: number | null = null;
+  let readinessFrameId: number | null = null;
+  let settled = false;
+
   const timeout = new Promise<never>((_, reject) => {
-    timeoutId = window.setTimeout(() => {
-      reject(new Error("Live2D Cubism WebGL first frame render timed out; shader, texture, or draw may not have completed."));
-    }, firstFrameTimeoutMs);
+    const startTimeoutWhenReady = () => {
+      if (settled) {
+        return;
+      }
+      const bounds = canvas.getBoundingClientRect();
+      const ready = document.visibilityState !== "hidden" && bounds.width >= 24 && bounds.height >= 24 && canvas.width >= 24 && canvas.height >= 24;
+      if (!ready) {
+        readinessFrameId = window.requestAnimationFrame(startTimeoutWhenReady);
+        return;
+      }
+      timeoutId = window.setTimeout(() => {
+        reject(new Error("Live2D Cubism WebGL 首帧渲染超时，着色器、贴图或绘制可能未完成。"));
+      }, firstFrameTimeoutMs);
+    };
+
+    startTimeoutWhenReady();
   });
 
   return Promise.race([firstFrame, timeout]).finally(() => {
+    settled = true;
     if (timeoutId !== null) {
       window.clearTimeout(timeoutId);
+    }
+    if (readinessFrameId !== null) {
+      window.cancelAnimationFrame(readinessFrameId);
     }
   });
 }
@@ -1096,7 +1187,7 @@ function waitForShaderReady(gl: WebGLRenderingContext | WebGL2RenderingContext):
       }
 
       if (performance.now() - startedAt >= shaderReadyTimeoutMs) {
-        reject(new Error("Live2D shader load timed out; check that Cubism SDK shader static assets exist and return 200."));
+        reject(new Error("Live2D 着色器加载超时；请检查 Cubism SDK 着色器静态资源是否存在并返回 200。"));
         return;
       }
 
@@ -1114,7 +1205,7 @@ function assertRendererReady(renderer: unknown) {
   };
 
   if (!renderer || !internalRenderer.gl || !internalRenderer._model) {
-    throw new Error("Live2D renderer has not completed WebGL or model binding.");
+    throw new Error("Live2D 渲染器尚未完成 WebGL 或模型绑定。");
   }
 }
 
@@ -1154,7 +1245,7 @@ function canvasHasVisiblePixels(gl: WebGLRenderingContext | WebGL2RenderingConte
 
     return false;
   } catch (error) {
-    console.info("[Cubism] Live2D pixel sampling diagnostics failed; keeping render status degraded.", error);
+    console.info("[Cubism] Live2D 像素采样诊断失败，保持渲染状态降级。", error);
     return false;
   }
 }
@@ -1172,8 +1263,31 @@ function isVisibleModelPixel(sample: Uint8Array): boolean {
 function assertNoWebGLError(gl: WebGLRenderingContext | WebGL2RenderingContext, label: string) {
   const error = gl.getError();
   if (error !== gl.NO_ERROR) {
-    throw new Error(`${label} WebGL error: 0x${error.toString(16)}`);
+    throw new Error(`${label} WebGL 错误：0x${error.toString(16)}`);
   }
+}
+
+function restoreTransparentCanvasCompositeState(gl: WebGLRenderingContext | WebGL2RenderingContext, canvas: HTMLCanvasElement) {
+  if (gl.isContextLost() || canvas.width <= 0 || canvas.height <= 0) {
+    return;
+  }
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.disable(gl.SCISSOR_TEST);
+  gl.disable(gl.DEPTH_TEST);
+  gl.colorMask(true, true, true, true);
+  gl.clearColor(0, 0, 0, 0);
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+}
+
+function clearCanvasTransparent(gl: WebGLRenderingContext | WebGL2RenderingContext, canvas: HTMLCanvasElement) {
+  restoreTransparentCanvasCompositeState(gl, canvas);
+  if (gl.isContextLost() || canvas.width <= 0 || canvas.height <= 0) {
+    return;
+  }
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 }
 
 function isPowerOfTwo(value: number): boolean {

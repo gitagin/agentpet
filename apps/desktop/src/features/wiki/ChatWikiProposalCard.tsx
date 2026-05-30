@@ -53,11 +53,11 @@ export function ChatWikiProposalCard({
       {proposal.summary || proposal.review_summary ? <p>{proposal.review_summary || proposal.summary}</p> : null}
       <dl className="details wiki-chat-proposal-meta">
         <div>
-          <dt>run_id</dt>
+          <dt>运行 ID</dt>
           <dd>{proposal.run_id || "无"}</dd>
         </div>
         <div>
-          <dt>review_id</dt>
+          <dt>审查 ID</dt>
           <dd>{proposal.review_id || "无"}</dd>
         </div>
         <div>
@@ -69,7 +69,7 @@ export function ChatWikiProposalCard({
           <dd>{proposal.source_hash ? proposal.source_hash.slice(0, 12) : proposal.source_id || "未知"}</dd>
         </div>
       </dl>
-      <div className="wiki-chat-proposal-targets" aria-label="Wiki proposal targets">
+      <div className="wiki-chat-proposal-targets" aria-label="资料库确认项目标">
         <strong>目标页面</strong>
         {targetOptions.length > 0 ? (
           targetOptions.map((targetPath) => (

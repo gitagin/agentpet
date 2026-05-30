@@ -5,11 +5,17 @@ export function formatCitationSourceLabel(citations: Citation[]): string {
   if (sourceScope === "personal_memory") {
     return "记忆";
   }
+  if (sourceScope === "diary_objects") {
+    return "结构化日记";
+  }
   if (sourceScope === "daily_chat") {
     return "聊天日记";
   }
   if (sourceScope === "knowledge_base") {
     return "资料";
+  }
+  if (sourceScope === "pending_memory") {
+    return "待确认记忆";
   }
   return "记忆/资料";
 }

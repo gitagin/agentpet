@@ -33,8 +33,8 @@ def test_continuity_proposals_are_pending_until_confirmed_and_do_not_write_markd
         confirmed = service.confirm_proposal(proposals[0].id)
 
         assert confirmed.status == "confirmed"
-        assert "Confirmed continuity context" in service.context_block()
-        assert "Companion presence behavior" in service.presence_context_block()
+        assert "已确认的连续性上下文" in service.context_block()
+        assert "陪伴在场行为" in service.presence_context_block()
         assert service.get_state_items()
         assert not list(tmp_path.rglob("*.md"))
     finally:

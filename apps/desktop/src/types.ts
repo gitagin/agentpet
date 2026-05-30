@@ -73,6 +73,8 @@ export type DesktopReminderNotificationResult = {
   reason?: string;
 };
 
+export type DesktopFeatureWindowMode = "chat" | "memory" | "world" | "settings";
+
 declare global {
   interface Window {
     agentDesktop?: {
@@ -99,6 +101,7 @@ declare global {
       openAgent?: () => Promise<void>;
       closeAgent?: () => Promise<void>;
       openStage?: () => Promise<void>;
+      openFeatureWindow?: (mode: string) => Promise<void>;
       quitApp?: () => Promise<void>;
       getPetMousePassthroughStatus?: () => Promise<DesktopPetMousePassthroughStatus>;
       beginPetWindowDrag?: () => void;

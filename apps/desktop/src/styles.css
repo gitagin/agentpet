@@ -1037,20 +1037,23 @@ dt,
 }
 
 .live2d-panel-stage .live2d-status-card {
-  left: 50%;
-  right: auto;
-  bottom: 22px;
-  width: min(420px, calc(100% - 48px));
-  transform: translateX(-50%);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.84);
-  text-align: center;
+  display: none;
 }
 
-.live2d-panel-stage.live2d-render-mounted .live2d-status-card {
-  visibility: visible;
+/* ── Stage window bubble ── */
+.stage-bubble {
   opacity: 1;
-  pointer-events: none;
+  pointer-events: auto;
+}
+
+.stage-bubble--error {
+  border-color: rgba(180, 76, 95, 0.28) !important;
+  background: rgba(255, 246, 244, 0.94) !important;
+}
+
+.stage-bubble--info {
+  border-color: rgba(79, 155, 114, 0.28) !important;
+  background: rgba(244, 251, 247, 0.94) !important;
 }
 
 .live2d-panel-stage .live2d-runtime-placeholder {

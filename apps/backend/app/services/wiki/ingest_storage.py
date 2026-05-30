@@ -66,7 +66,7 @@ class WikiIngestStorageMixin:
         return _StoredIngestRun(
             id=str(run["id"]),
             source_id=str(run["source_id"]) if run["source_id"] is not None else None,
-            source_title=str(run["title"] or "Untitled Source"),
+            source_title=str(run["title"] or "未命名来源"),
             source_type=str(run["source_type"] or "manual"),
             source_uri=str(run["source_uri"]) if run["source_uri"] is not None else None,
             raw_content=str(run["raw_content"] or run["content_preview"] or ""),

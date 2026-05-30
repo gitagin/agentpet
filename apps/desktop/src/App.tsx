@@ -1083,7 +1083,7 @@ function App() {
           : "先选择并初始化 Obsidian/Markdown Vault。",
     },
     {
-      label: "Agent 对话事件",
+      label: "助手运行事件",
       status: hasAgentEventSignal ? "done" : streaming ? "active" : "blocked",
       detail: latestChatEvent
         ? `${latestChatEvent.label}：${latestChatEvent.detail}`
@@ -1091,7 +1091,7 @@ function App() {
           ? `引用：${latestCitation.relative_path}`
           : streaming
             ? "正在等待 SSE 工具事件。"
-            : "向 Agent 提问后显示检索、记忆、任务或引用事件。",
+            : "向桌宠提问后显示检索、记忆、任务或引用事件。",
       targetId: latestCitationTargetId,
     },
     {
@@ -1104,7 +1104,7 @@ function App() {
             ? `${automaticActivityCount} 条普通自动整理已记录，可在活动流中查看或撤销可逆项。`
             : hasMemoryConfirmed
               ? "已有确认写入的记忆整理记录。"
-              : "Agent 自动整理会进入最近活动，高风险写入仍需确认。",
+              : "桌宠自动整理会进入最近活动，高风险写入仍需确认。",
       targetId: "agent-activity-log",
     },
     {
@@ -1150,7 +1150,12 @@ function App() {
         live2dCanvasRef={live2dCanvasRef}
         connected={hasConnection}
         streaming={streaming}
+        bubble={petChat.bubble}
         onSendChat={sendChatText}
+        onStopStreaming={stopStreaming}
+        onAdvancePage={petChat.advancePageManually}
+        onPausePaging={petChat.pausePaging}
+        onResumePaging={petChat.resumePaging}
       />
     );
   }
@@ -1185,6 +1190,10 @@ function App() {
             onContextMenu: () => {
               endPetDrag();
             },
+            onBubbleContextMenu: (event) => {
+              event.preventDefault();
+              endPetDrag();
+            },
             onDoubleClick: () => {
               endPetDrag();
               petChat.showInput();
@@ -1207,17 +1216,17 @@ function App() {
           onStopStreaming={stopStreaming}
         />
         <nav className="pet-shortcut-bar" aria-label="桌宠快捷操作">
-          <button type="button" className="pet-shortcut-button" aria-label="打开主舞台" onClick={() => void window.agentDesktop?.openStage?.()}>
-            舞台
+          <button type="button" className="pet-shortcut-button" aria-label="打开桌宠主舞台" onClick={() => void window.agentDesktop?.openStage?.()}>
+            桌宠
           </button>
-          <button type="button" className="pet-shortcut-button" aria-label="互动或对话" onClick={() => petChat.showInput()}>
-            对话
+          <button type="button" className="pet-shortcut-button" aria-label="开始聊天" onClick={() => petChat.showInput()}>
+            聊天
           </button>
-          <button type="button" className="pet-shortcut-button" aria-label="打开 Agent 工作空间" onClick={() => void window.agentDesktop?.openAgent?.()}>
-            Agent
+          <button type="button" className="pet-shortcut-button" aria-label="打开任务工作台" onClick={() => void window.agentDesktop?.openAgent?.()}>
+            任务
           </button>
-          <button type="button" className="pet-shortcut-button" aria-label="更多或设置" onClick={() => void window.agentDesktop?.openControlWindow?.("settings-panel")}>
-            设置
+          <button type="button" className="pet-shortcut-button" aria-label="打开配置" onClick={() => void window.agentDesktop?.openControlWindow?.("settings-panel")}>
+            配置
           </button>
           <button type="button" className="pet-shortcut-button danger" aria-label="退出应用" onClick={() => void window.agentDesktop?.quitApp?.()}>
             退出
@@ -1254,7 +1263,7 @@ function App() {
         />
 
         <Panel id="agent-workspace-panel" icon={<MessageSquareText size={18} />} title="记忆陪伴工作区" className="chat-panel">
-          <section className="stack" aria-label="Agent 对话和 Obsidian 记忆工作流">
+          <section className="stack" aria-label="聊天和 Obsidian 记忆工作流">
             <div className="section-heading">
               <strong>和桌宠对话</strong>
               <span>日常聊天会优先引用资料库；自动记忆功能默认关闭，可在设置中开启，高风险写入仍会打断你确认。</span>
@@ -1328,7 +1337,7 @@ function App() {
               </div>
             </section>
             <ChatMessageList messages={recentControlMessages} />
-            <div className="workflow-grid" aria-label="Agent + Obsidian 工作流状态">
+            <div className="workflow-grid" aria-label="助手与 Obsidian 工作流状态">
               {coreWorkflowItems.map((item) => (
                 <article key={item.label} className={`workflow-card ${item.status}`}>
                   <span className="workflow-state">{formatWorkflowStatus(item.status)}</span>

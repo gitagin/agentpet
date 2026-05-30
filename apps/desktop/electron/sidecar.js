@@ -140,7 +140,7 @@ function createSidecarManager({ host, port, baseUrl, sessionToken, managedSideca
 
     while (Date.now() < deadline) {
       if (signal.aborted) {
-        throw new Error("Sidecar readiness wait was aborted.");
+        throw new Error("后端就绪等待被取消。");
       }
 
       try {
@@ -156,7 +156,7 @@ function createSidecarManager({ host, port, baseUrl, sessionToken, managedSideca
     }
 
     const message = lastError?.message ? ` Last error: ${lastError.message}` : "";
-    throw new Error(`Timed out waiting for sidecar health readiness.${message}`);
+    throw new Error(`等待后端健康就绪超时。${message}`);
   }
 
   function requestJson(url, signal) {
@@ -170,7 +170,7 @@ function createSidecarManager({ host, port, baseUrl, sessionToken, managedSideca
         });
         response.on("end", () => {
           if (response.statusCode < 200 || response.statusCode >= 300) {
-            reject(new Error(`Health check returned HTTP ${response.statusCode}.`));
+            reject(new Error(`健康检查返回 HTTP ${response.statusCode}。`));
             return;
           }
 
@@ -183,7 +183,7 @@ function createSidecarManager({ host, port, baseUrl, sessionToken, managedSideca
       });
 
       request.on("timeout", () => {
-        request.destroy(new Error("Health check timed out."));
+        request.destroy(new Error("健康检查超时。"));
       });
       request.on("error", reject);
     });
@@ -192,7 +192,7 @@ function createSidecarManager({ host, port, baseUrl, sessionToken, managedSideca
   function delay(ms, signal) {
     return new Promise((resolve, reject) => {
       if (signal.aborted) {
-        reject(new Error("Delay was aborted."));
+        reject(new Error("延迟被取消。"));
         return;
       }
 
@@ -202,7 +202,7 @@ function createSidecarManager({ host, port, baseUrl, sessionToken, managedSideca
       }, ms);
       const onAbort = () => {
         clearTimeout(timeout);
-        reject(new Error("Delay was aborted."));
+        reject(new Error("延迟被取消。"));
       };
 
       signal.addEventListener("abort", onAbort, { once: true });
@@ -226,7 +226,7 @@ function createSidecarManager({ host, port, baseUrl, sessionToken, managedSideca
     try {
       portAvailable = await isPortAvailable();
     } catch (error) {
-      console.error("Unable to check FastAPI sidecar port.", error);
+      console.error("无法检查 FastAPI 后端端口。", error);
       setSidecarStatus({
         state: "error",
         health: null,
@@ -268,7 +268,7 @@ function createSidecarManager({ host, port, baseUrl, sessionToken, managedSideca
 
     const backendDirectory = findBackendDirectory();
     if (!backendDirectory) {
-      console.error("Unable to locate FastAPI sidecar directory.");
+      console.error("无法定位 FastAPI 后端目录。");
       setSidecarStatus({
         state: "error",
         health: null,
@@ -331,7 +331,7 @@ function createSidecarManager({ host, port, baseUrl, sessionToken, managedSideca
           return;
         }
 
-        console.error("FastAPI sidecar did not become ready.", error);
+        console.error("FastAPI 后端未能就绪。", error);
         const readinessError = {
           code: "READINESS_FAILED",
           message: `后端进程已启动但健康检查未通过。请检查 Python 依赖、数据库配置和控制台日志。原始错误：${error.message}`,
@@ -351,9 +351,9 @@ function createSidecarManager({ host, port, baseUrl, sessionToken, managedSideca
       sidecarReadinessAbort?.abort();
       sidecarReadinessAbort = null;
       if (code && code !== 0) {
-        console.error(`FastAPI sidecar exited with code ${code}.`);
+        console.error(`FastAPI 后端退出，返回码 ${code}。`);
       } else if (signal) {
-        console.error(`FastAPI sidecar exited after signal ${signal}.`);
+        console.error(`FastAPI 后端收到信号 ${signal} 后退出。`);
       }
       sidecarProcess = null;
       const exitErrorOverride = sidecarExitErrorOverride;
@@ -375,7 +375,7 @@ function createSidecarManager({ host, port, baseUrl, sessionToken, managedSideca
     });
 
     sidecarProcess.on("error", (error) => {
-      console.error("Failed to start FastAPI sidecar.", error);
+      console.error("启动 FastAPI 后端失败。", error);
       sidecarReadinessAbort?.abort();
       sidecarReadinessAbort = null;
       sidecarProcess = null;

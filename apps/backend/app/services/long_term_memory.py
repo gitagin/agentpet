@@ -258,8 +258,8 @@ class LongTermMemoryService:
 
     def _header_for(self, target_path: str) -> str:
         if target_path == PREFERENCES_PATH:
-            return "# Long-Term Preferences"
-        return "# Long-Term Profile"
+            return "# 长期偏好"
+        return "# 长期档案"
 
     def _already_recorded(self, candidate: LongTermMemoryCandidate) -> bool:
         target = self.writer.resolve_markdown_path(candidate.target_path)
@@ -401,11 +401,10 @@ def _sensitive_field_reason(subject: str) -> str | None:
 
 
 LONG_TERM_EXTRACTION_SYSTEM_PROMPT = (
-    "You extract durable long-term user memory facts. Return JSON only as an array or "
-    "{\"facts\":[...]}. At most 5 facts. Each fact must include category, subject, "
-    "predicate, object, source_text, confidence, memory_type, entity_type, importance. "
-    "Use short strings. Return [] when the message has no durable preference, profile, "
-    "goal, habit, relationship, event, or emotional continuity fact."
+    "你提取持久化用户长期记忆事实。只返回 JSON 数组或 {\"facts\":[...]}。"
+    "最多 5 个事实。每个事实必须包含：category, subject, predicate, object, "
+    "source_text, confidence, memory_type, entity_type, importance。"
+    "使用短字符串。当消息中没有持久化偏好、资料、目标、习惯、关系、事件或情感连续性事实时返回 []。"
 )
 
 
@@ -418,8 +417,8 @@ def _extract_model_long_term_candidates(
     try:
         response = model.complete(
             user_message=(
-                "Extract long-term memory facts from this user message. JSON only.\n\n"
-                f"user_message:\n{user_message}"
+                "从此用户消息中提取长期记忆事实。只返回 JSON。\n\n"
+                f"用户消息：\n{user_message}"
             ),
             system_prompt=LONG_TERM_EXTRACTION_SYSTEM_PROMPT,
         )

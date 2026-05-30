@@ -44,7 +44,7 @@ def _deterministic_review_response(
         run_id=run.id,
         status=status,  # type: ignore[arg-type]
         summary=summary
-        or f"Deterministic review prepared {len(run.page_plans)} page plans for source '{run.source_title}'.",
+        or f"确定性审查为来源 '{run.source_title}' 准备了 {len(run.page_plans)} 个页面计划。",
         findings=findings,
         recommended_targets=targets,
         reviewer_agent_id=reviewer_agent_id,
@@ -65,7 +65,7 @@ def _parse_model_review(
             reviewer_agent_id=reviewer_agent_id,
             status="failed",
             model_error="invalid_review_json",
-            summary=_plain_text_summary(text) or "Model review was not valid JSON. Deterministic review was preserved.",
+            summary=_plain_text_summary(text) or "模型审查返回的不是有效 JSON。已保留确定性审查。",
         )
         return base
 
@@ -78,7 +78,7 @@ def _parse_model_review(
         review_id=new_id(),
         run_id=run.id,
         status="reviewed",
-        summary=summary or f"Model review prepared {len(recommended)} recommended targets.",
+        summary=summary or f"模型审查准备了 {len(recommended)} 个推荐目标。",
         findings=findings,
         recommended_targets=recommended,
         reviewer_agent_id=reviewer_agent_id,
@@ -94,10 +94,10 @@ async def _complete_model(model: WikiReviewModelProtocol, *, user_message: str, 
 
 def _review_system_prompt() -> str:
     return (
-        "You are reviewing a local-first LLM wiki ingest plan. "
-        "Return only JSON with keys summary, findings, recommended_targets. "
-        "findings is an array of objects with severity info|warning|error, code, message, target_path. "
-        "Do not ask to write files and do not include secrets."
+        "你正在审查本地优先的 LLM Wiki 导入计划。"
+        "只返回 JSON，包含 summary, findings, recommended_targets 键。"
+        "findings 是对象数组，含 severity(info|warning|error)、code、message、target_path。"
+        "不要要求写文件，不要包含密钥。"
     )
 
 

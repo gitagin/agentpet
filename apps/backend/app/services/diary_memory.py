@@ -392,7 +392,7 @@ def diary_records_to_search_results(records: Iterable[DiaryMemoryObjectRecord]):
             note_id=record.id,
             chunk_id=record.id,
             relative_path=f"DiaryMemory/{record.id}",
-            title="Structured Diary Memory",
+            title="结构化日记记忆",
             heading=record.topic or record.type,
             snippet=_record_snippet(record),
             score=record.importance + record.confidence,

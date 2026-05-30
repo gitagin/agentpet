@@ -29,9 +29,13 @@ export function VaultBindingSection({
   onRebuildIndex,
 }: VaultBindingSectionProps) {
   return (
-    <form className="stack separated" onSubmit={onBindVault}>
+    <form className="stack separated settings-card" onSubmit={onBindVault}>
+      <div className="section-heading">
+        <strong>记忆库位置</strong>
+        <span>选择一个 Markdown/Obsidian 文件夹，用来保存长期记忆。</span>
+      </div>
       <label>
-        <span>Obsidian/Markdown Vault 路径</span>
+        <span>文件夹路径</span>
         <div className="path-picker">
           <input
             value={vaultPath}
@@ -44,46 +48,49 @@ export function VaultBindingSection({
             className="secondary"
             onClick={onSelectVaultDirectory}
             disabled={!canSelectVaultDirectory}
-            title={canSelectVaultDirectory ? "选择 Vault 文件夹" : "浏览器模式请手动填写路径"}
+            title={canSelectVaultDirectory ? "选择记忆库文件夹" : "浏览器模式请手动填写路径"}
           >
             <FolderOpen size={16} />
             选择文件夹
           </button>
         </div>
         <p id="vault-path-help" className="field-note">
-          {canSelectVaultDirectory
-            ? "选择后只会填入路径，仍需点击初始化；不要选择 .tmp 或 smoke 工作目录。"
-            : "浏览器模式无法打开系统文件夹选择器，请手动填写路径后点击初始化。"}
+          {canSelectVaultDirectory ? "选择后点击保存位置。" : "浏览器模式无法打开系统文件夹选择器，请手动填写路径。"}
         </p>
       </label>
       <div className="button-row">
         <button type="submit" disabled={indexingVault}>
           {indexingVault ? <Loader2 className="spin" size={16} /> : <Database size={16} />}
-          {indexingVault ? "处理中" : "初始化"}
-        </button>
-        <button type="button" className="secondary" onClick={onLoadVaultStatus}>
-          <ShieldCheck size={16} />
-          状态
-        </button>
-        <button type="button" className="secondary" onClick={onRebuildIndex} disabled={indexingVault}>
-          {indexingVault ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />}
-          索引
+          {indexingVault ? "处理中" : "保存位置"}
         </button>
       </div>
-      <dl className="details single">
-        <div>
-          <dt>当前 Vault</dt>
-          <dd>{vaultId || "未知"}</dd>
+      <details className="settings-advanced-actions">
+        <summary>高级操作</summary>
+        <div className="button-row">
+          <button type="button" className="secondary" onClick={onLoadVaultStatus}>
+            <ShieldCheck size={16} />
+            查看状态
+          </button>
+          <button type="button" className="secondary" onClick={onRebuildIndex} disabled={indexingVault}>
+            {indexingVault ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />}
+            重建索引
+          </button>
         </div>
-        <div>
-          <dt>最近索引</dt>
-          <dd>
-            {lastIndexRun
-              ? `${lastIndexRun.vaultId} / ${lastIndexRun.jobId} / ${formatTaskStatus(lastIndexRun.status)} / 已索引 ${lastIndexRun.filesIndexed ?? 0}/${lastIndexRun.filesSeen ?? 0} 个文件`
-              : "尚未在本页启动索引"}
-          </dd>
-        </div>
-      </dl>
+        <dl className="details single">
+          <div>
+            <dt>当前 Vault</dt>
+            <dd>{vaultId || "未知"}</dd>
+          </div>
+          <div>
+            <dt>最近索引</dt>
+            <dd>
+              {lastIndexRun
+                ? `${lastIndexRun.vaultId} / ${lastIndexRun.jobId} / ${formatTaskStatus(lastIndexRun.status)} / 已索引 ${lastIndexRun.filesIndexed ?? 0}/${lastIndexRun.filesSeen ?? 0} 个文件`
+                : "尚未在本页启动索引"}
+            </dd>
+          </div>
+        </dl>
+      </details>
     </form>
   );
 }

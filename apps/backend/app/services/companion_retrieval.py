@@ -349,7 +349,7 @@ def _rerank_and_dedupe(
 def _context_block(items: tuple[CompanionRetrievedItem, ...], *, budget: CompanionRetrievalBudget) -> str:
     if not items:
         return ""
-    lines = ["Companion retrieval context:"]
+    lines = ["陪伴检索上下文："]
     remaining = max(0, budget.max_context_chars - len(lines[0]))
     for item in items:
         line = f"- [{item.source_scope}] {item.text}"
@@ -361,7 +361,7 @@ def _context_block(items: tuple[CompanionRetrievedItem, ...], *, budget: Compani
         remaining -= len(line) + 1
         if remaining <= 0:
             break
-    lines.append("Use this context only when relevant; candidate graph facts are not confirmed memory.")
+    lines.append("仅在相关时使用此上下文；候选图谱事实不是已确认的记忆。")
     block = "\n".join(lines)
     return block[: budget.max_context_chars]
 

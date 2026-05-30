@@ -79,6 +79,10 @@ function registerIpcHandlers({ baseUrl, rendererUiState, sidecar, proxy, windows
     windows.showStageWindow();
   });
 
+  ipcMain.handle("window:open-feature", (_event, mode) => {
+    windows.showFeatureWindow?.(mode);
+  });
+
   ipcMain.handle("app:quit", () => {
     windows.quitApp();
   });

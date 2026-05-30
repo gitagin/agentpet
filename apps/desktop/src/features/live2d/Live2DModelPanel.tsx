@@ -38,7 +38,7 @@ export function Live2DModelPanel({
         </label>
         <dl className="details single">
           <div>
-            <dt>Manifest</dt>
+            <dt>模型清单</dt>
             <dd>{asset.manifestPath}</dd>
           </div>
           <div>

@@ -116,14 +116,14 @@ export function formatAgentActionType(actionType: string): string {
     "sqlite.schema_change": "SQLite 结构变更",
     "vault.bind": "绑定 Vault",
     "vault.switch": "切换 Vault",
-    "wiki.ingest.apply": "Wiki 页面应用",
-    "wiki.lint.repair": "Wiki 检查修复",
-    "wiki.lint.report": "已生成 Wiki 检查报告",
-    "wiki.answer_summary.write": "已自动总结到 Wiki",
-    "wiki.page.write": "已整理 Wiki 页面",
-    "wiki.page.replace_section": "Wiki 章节替换",
-    "wiki.query_archive.write": "已归档 Wiki 查询",
-    "wiki.synthesize.write": "已综合整理 Wiki",
+    "wiki.ingest.apply": "资料库页面应用",
+    "wiki.lint.repair": "资料库检查修复",
+    "wiki.lint.report": "已生成资料库检查报告",
+    "wiki.answer_summary.write": "已自动总结到资料库",
+    "wiki.page.write": "已整理资料库页面",
+    "wiki.page.replace_section": "资料库章节替换",
+    "wiki.query_archive.write": "已归档资料库查询",
+    "wiki.synthesize.write": "已综合整理资料库",
   };
   return labels[actionType] || actionType.split(".").join(" / ");
 }

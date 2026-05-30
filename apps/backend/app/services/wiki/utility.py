@@ -76,22 +76,22 @@ def _title_from_url(url: str) -> str:
     cleaned = re.sub(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", "", url).strip("/")
     tail = cleaned.rsplit("/", 1)[-1] or cleaned
     title = re.sub(r"[-_]+", " ", tail).strip()
-    return title.title() if title else "Imported URL"
+    return title.title() if title else "导入的 URL"
 
 
 def _asset_markdown(path: Path | None, *, title: str) -> str:
     lines = [
         f"# {title}",
         "",
-        "Asset import preview.",
+        "资源导入预览。",
     ]
     if path is not None:
         lines.extend(
             [
                 "",
-                f"- File name: `{path.name}`",
-                f"- File size bytes: `{path.stat().st_size}`",
-                f"- Extension: `{path.suffix.casefold()}`",
+                f"- 文件名：`{path.name}`",
+                f"- 文件大小（字节）：`{path.stat().st_size}`",
+                f"- 扩展名：`{path.suffix.casefold()}`",
             ]
         )
     return "\n".join(lines).strip()

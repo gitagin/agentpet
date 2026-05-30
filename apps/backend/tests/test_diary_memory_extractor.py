@@ -85,7 +85,7 @@ def test_extracts_wrapper_json_and_classifies_status_by_confidence() -> None:
     assert result[1].people == ("Lin", "Mei")
     assert result[1].keywords == ("pairing", "backend")
     assert model.calls
-    assert "Return JSON only" in str(model.calls[0]["system_prompt"])
+    assert "只返回 JSON" in str(model.calls[0]["system_prompt"])
     assert "2026-05-13" in str(model.calls[0]["user_message"])
 
 

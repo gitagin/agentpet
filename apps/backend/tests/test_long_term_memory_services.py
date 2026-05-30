@@ -34,7 +34,7 @@ def test_explicit_preference_writes_long_term_preferences(tmp_path):
     assert result.target_path == "Memories/LongTerm/Preferences.md"
     assert jobs == ["Memories/LongTerm/Preferences.md"]
     content = target.read_text(encoding="utf-8")
-    assert "# Long-Term Preferences" in content
+    assert "# 长期偏好" in content
     assert "## 2026-05-04 18:11:12" in content
     assert "- 类型：preference" in content
     assert "- 主题：水果" in content
