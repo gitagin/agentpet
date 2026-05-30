@@ -69,6 +69,9 @@ class MigrationRunner:
                         (version,),
                     )
                 applied.append(version)
+            if applied:
+                conn.execute("PRAGMA secure_delete = ON")
+                conn.execute("VACUUM")
         return applied
 
     def _apply_script_allowing_duplicate_columns(self, conn: sqlite3.Connection, script: str) -> None:

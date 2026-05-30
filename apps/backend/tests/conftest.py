@@ -100,6 +100,8 @@ def client_factory(
     ) -> Iterator[TestClient]:
         monkeypatch.setenv("AGENT_PET_SESSION_TOKEN", session_token)
         monkeypatch.setenv("AGENT_PET_SQLITE_PATH", str(tmp_path / sqlite_name))
+        if session_token != "hardening-token":
+            monkeypatch.setenv("AGENT_PET_ALLOW_INSECURE_FILE_CREDENTIALS", "1")
         if data_dir is not None:
             monkeypatch.setenv("AGENT_PET_DATA_DIR", str(data_dir))
 

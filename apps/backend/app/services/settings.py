@@ -146,7 +146,7 @@ class LocalCredentialStore:
         return cls(path.with_suffix(f"{path.suffix}.credentials"))
 
     def put(self, ref: str, secret: str) -> None:
-        if not _dpapi_available():
+        if not _dpapi_available() and not _allow_insecure_file_credentials():
             raise CredentialStoreError(
                 "当前平台不支持安全凭据存储（仅支持 Windows DPAPI）。"
                 "API Key 未被保存。如需在非 Windows 平台运行，"
@@ -154,7 +154,8 @@ class LocalCredentialStore:
             )
         self.root.mkdir(parents=True, exist_ok=True)
         path = self._path_for(ref)
-        protected = _dpapi_protect(secret.encode("utf-8"))
+        data = secret.encode("utf-8")
+        protected = _dpapi_protect(data) if _dpapi_available() else data
         path.write_bytes(base64.b64encode(protected))
         try:
             os.chmod(path, 0o600)
@@ -878,6 +879,10 @@ def mask_secret(secret: str) -> str:
 
 def _dpapi_available() -> bool:
     return sys.platform == "win32"
+
+
+def _allow_insecure_file_credentials() -> bool:
+    return os.environ.get("AGENT_PET_ALLOW_INSECURE_FILE_CREDENTIALS") == "1"
 
 
 class _DataBlob(ctypes.Structure):
