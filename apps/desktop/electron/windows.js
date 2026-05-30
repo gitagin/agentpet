@@ -25,6 +25,8 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
   let controlWindow = null;
   let stageWindow = null;
   let agentWindow = null;
+  let featureWindow = null;
+  let featureWindowMode = "chat";
   let petAlwaysOnTop = true;
   let petDragState = null;
   let petDragTimer = null;
@@ -35,6 +37,19 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
 
   function isDevelopment() {
     return !app.isPackaged;
+  }
+
+  function normalizeFeatureWindowMode(mode) {
+    return ["chat", "memory", "world", "settings"].includes(mode) ? mode : "chat";
+  }
+
+  function getFeatureWindowTitle(mode) {
+    return {
+      chat: "聊天",
+      memory: "整理",
+      world: "知识库",
+      settings: "配置",
+    }[normalizeFeatureWindowMode(mode)];
   }
 
   function getAppEntryUrl(mode) {
@@ -460,6 +475,50 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     return agentWindow;
   }
 
+  function createFeatureWindow(mode) {
+    const normalizedMode = normalizeFeatureWindowMode(mode);
+    featureWindowMode = normalizedMode;
+
+    if (featureWindow && !featureWindow.isDestroyed()) {
+      featureWindow.setTitle(`桌面记忆助手 - ${getFeatureWindowTitle(normalizedMode)}`);
+      loadAppWindow(featureWindow, normalizedMode);
+      return featureWindow;
+    }
+
+    featureWindow = new BrowserWindow({
+      width: 980,
+      height: 740,
+      minWidth: 760,
+      minHeight: 560,
+      title: `桌面记忆助手 - ${getFeatureWindowTitle(normalizedMode)}`,
+      backgroundColor: "#f7f7f2",
+      show: false,
+      webPreferences: {
+        preload: path.join(__dirname, "preload.cjs"),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+        webSecurity: true,
+      },
+    });
+
+    configureCommonWindow(featureWindow);
+    featureWindow.once("ready-to-show", () => {
+      featureWindow?.show();
+    });
+    featureWindow.on("close", (event) => {
+      if (!state.isQuitting) {
+        event.preventDefault();
+        featureWindow?.hide();
+      }
+    });
+    featureWindow.on("closed", () => {
+      featureWindow = null;
+    });
+    loadAppWindow(featureWindow, normalizedMode);
+    return featureWindow;
+  }
+
   function showAgentWindow() {
     const window = createAgentWindow();
     if (window.isMinimized()) {
@@ -469,9 +528,13 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     window.focus();
   }
 
-  function showFeatureWindow(_mode) {
-    // Stub: 功能窗口待后续具体实现，当前先打开控制台
-    showControlWindow();
+  function showFeatureWindow(mode) {
+    const window = createFeatureWindow(mode);
+    if (window.isMinimized()) {
+      window.restore();
+    }
+    window.show();
+    window.focus();
   }
 
   function hideAgentWindow() {
@@ -573,6 +636,7 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     createControlWindow,
     createStageWindow,
     createAgentWindow,
+    createFeatureWindow,
     showControlWindow,
     showAgentWindow,
     hideAgentWindow,
@@ -586,6 +650,14 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     endPetWindowDrag,
     quitApp,
     getPetWindow: () => petWindow,
+    getStageWindow: () => stageWindow,
+    getAgentWindow: () => agentWindow,
+    getFeatureWindowMode: (sender) => {
+      if (featureWindow && sender === featureWindow.webContents) {
+        return featureWindowMode;
+      }
+      return null;
+    },
   };
 }
 

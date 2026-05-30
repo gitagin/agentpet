@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import type { DesktopApi } from "../services/desktopApi";
 import { describeError } from "../services/apiErrorMessages";
 import type { TaskLogItem, TaskStepItem, TaskWorkspaceItem } from "../types";
+import { BottomNav } from "./BottomNav";
 
 type AgentTaskStatus = "running" | "approval" | "completed" | "failed";
 type AgentStepStatus = "done" | "running" | "failed" | "pending";
@@ -62,7 +63,7 @@ const workspaceStyles: Record<string, CSSProperties> = {
     padding: "var(--space-md)",
     boxSizing: "border-box",
     display: "grid",
-    gridTemplateRows: "56px auto minmax(0, 1fr) auto 160px",
+    gridTemplateRows: "56px auto minmax(0, 1fr) auto 160px auto",
     gap: "var(--space-md)",
     color: "var(--color-text)",
     background: "var(--bg-agent)",
@@ -424,6 +425,7 @@ export default function AgentWorkspaceView({ api }: AgentWorkspaceViewProps) {
           <p style={workspaceStyles.logLine}>{loading ? "正在加载执行日志。" : "暂无执行日志。"}</p>
         )}
       </section>
+      <BottomNav activeTab="任务" />
     </main>
   );
 }

@@ -15,7 +15,12 @@ export default function MemoryWindowView({
   onRefresh: () => void;
 }) {
   return (
-    <FeatureWindowShell eyebrow="自动整理" title="整理" description="查看自动写入、撤销记录，以及需要你确认的长期记忆和状态更新。">
+    <FeatureWindowShell
+      eyebrow="自动整理"
+      title="整理"
+      description="查看自动写入、撤销记录，以及需要你确认的长期记忆和状态更新。"
+      activeTab="整理"
+    >
       <section className="panel feature-window-panel" aria-label="最近整理活动">
         <div className="section-heading">
           <strong>最近整理活动</strong>

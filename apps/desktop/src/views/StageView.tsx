@@ -4,7 +4,7 @@ import { Live2DStage } from "../components/Live2DStage";
 import type { Live2DStageView } from "../components/Live2DStage";
 import type { Live2DAssetInfo, Live2DRuntimeBoundary } from "../services/live2dRuntime";
 import type { PetBubbleState } from "../features/chat/chatTypes";
-import { openPrimaryNavigationTab, primaryNavigationTabs } from "./navigation";
+import { BottomNav } from "./BottomNav";
 
 type StageViewProps = {
   live2dStage: Live2DStageView;
@@ -131,25 +131,7 @@ export default function StageView({
           )}
         </form>
 
-        <nav style={S.bottomNav} aria-label="主导航">
-          {primaryNavigationTabs.map((tab) => {
-            const active = tab === "桌宠";
-            return (
-              <button
-                key={tab}
-                type="button"
-                style={{ ...S.navBtn, ...(active ? S.navBtnActive : {}) }}
-                onClick={() => {
-                  if (!active) {
-                    openPrimaryNavigationTab(tab);
-                  }
-                }}
-              >
-                {tab}
-              </button>
-            );
-          })}
-        </nav>
+        <BottomNav activeTab="桌宠" />
       </footer>
     </main>
   );
@@ -338,29 +320,4 @@ const S: Record<string, CSSProperties> = {
     whiteSpace: "nowrap",
   },
 
-  /* Bottom nav */
-  bottomNav: {
-    height: 48,
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 2,
-    padding: "4px 0 6px",
-  },
-  navBtn: {
-    border: "none",
-    borderRadius: 999,
-    padding: "7px 16px",
-    color: "var(--muted, #7a6670)",
-    background: "transparent",
-    cursor: "pointer",
-    fontSize: 13,
-    fontWeight: 600,
-    transition: "background 0.15s ease, color 0.15s ease",
-  },
-  navBtnActive: {
-    color: "var(--brand, #c05f87)",
-    background: "rgba(192,95,135,0.1)",
-    fontWeight: 700,
-  },
 };

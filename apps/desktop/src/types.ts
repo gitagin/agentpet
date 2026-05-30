@@ -96,12 +96,12 @@ declare global {
       showReminderNotification?: (
         payload: DesktopReminderNotificationRequest,
       ) => Promise<DesktopReminderNotificationResult>;
-      getWindowMode?: () => Promise<"pet" | "control">;
+      getWindowMode?: () => Promise<"pet" | "control" | "stage" | "agent" | DesktopFeatureWindowMode>;
       openControlWindow?: (targetId?: string) => Promise<void>;
       openAgent?: () => Promise<void>;
       closeAgent?: () => Promise<void>;
       openStage?: () => Promise<void>;
-      openFeatureWindow?: (mode: string) => Promise<void>;
+      openFeatureWindow?: (mode: DesktopFeatureWindowMode) => Promise<void>;
       quitApp?: () => Promise<void>;
       getPetMousePassthroughStatus?: () => Promise<DesktopPetMousePassthroughStatus>;
       beginPetWindowDrag?: () => void;

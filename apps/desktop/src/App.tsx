@@ -25,6 +25,7 @@ import type {
   ContinuityProposalStatus,
   ContinuityStateResponse,
   DiagnosticsExportResponse,
+  DesktopFeatureWindowMode,
   SettingsStatusResponse,
 } from "./types";
 import { describeError } from "./services/apiErrorMessages";
@@ -47,6 +48,10 @@ import { useWiki } from "./features/wiki/useWiki";
 import { Live2DStage } from "./components/Live2DStage";
 import StageView from "./views/StageView";
 import AgentWorkspaceView from "./views/AgentWorkspaceView";
+import ChatWindowView from "./views/ChatWindowView";
+import MemoryWindowView from "./views/MemoryWindowView";
+import SettingsWindowView from "./views/SettingsWindowView";
+import WorldWindowView from "./views/WorldWindowView";
 import { EmptyState, Panel } from "./components/layout";
 import { ChatMessageList } from "./features/chat/ChatMessageList";
 import { PetChatOverlay } from "./features/chat/PetChatOverlay";
@@ -78,7 +83,7 @@ type Notice = {
   message: string;
 };
 
-type DesktopWindowMode = "pet" | "control" | "stage" | "agent";
+type DesktopWindowMode = "pet" | "control" | "stage" | "agent" | DesktopFeatureWindowMode;
 type AsyncStatus = "idle" | "loading" | "success" | "empty" | "error";
 
 type CoreWorkflowItem = {
@@ -90,7 +95,18 @@ type CoreWorkflowItem = {
 
 function detectDesktopWindowMode(): DesktopWindowMode {
   const mode = window.location.hash.replace("#/", "").replace("#", "") || "stage";
-  return mode === "pet" || mode === "stage" || mode === "agent" ? mode : "control";
+  if (
+    mode === "pet" ||
+    mode === "stage" ||
+    mode === "agent" ||
+    mode === "chat" ||
+    mode === "memory" ||
+    mode === "world" ||
+    mode === "settings"
+  ) {
+    return mode;
+  }
+  return "control";
 }
 
 const petHitboxStyle = {
@@ -1139,6 +1155,135 @@ function App() {
     continuitySignal: activeContinuitySignal,
   });
   live2dTaskStageRef.current = triggerLive2DTaskStage;
+
+  const refreshActivity = () => {
+    void loadAgentActions();
+    void loadPendingProposals({ silent: true });
+    void loadContinuity({ silent: true });
+  };
+  const memoryActivityEntries = recentAgentActivityEntries.map((entry) => renderAgentActivityEntry(entry));
+  const connectionPanel = (
+    <Panel id="connection-panel" icon={<Settings size={18} />} title="本地连接">
+      <ConnectionPanel
+        settings={settings}
+        onSettingsChange={setSettings}
+        onSaveSettings={persistSettings}
+        onCheckHealth={() => void checkHealth()}
+        checkingHealth={checkingHealth}
+        isElectronRuntime={isElectronRuntime}
+        health={health}
+        businessAuthStatus={businessAuthStatus}
+        businessAuthMessage={businessAuthMessage}
+      />
+      <section className="danger-zone" aria-label="本机状态重置">
+        <div className="section-heading">
+          <strong>重置桌宠初始化状态</strong>
+          <span>清空本机聊天、记忆、任务、Vault 绑定、索引缓存和模型配置，让应用回到首次启动状态。</span>
+        </div>
+        <div className="button-row">
+          <button
+            type="button"
+            className="danger"
+            onClick={() => void resetLocalState()}
+            disabled={resettingLocalState}
+          >
+            {resettingLocalState ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />}
+            {resettingLocalState ? "正在重置" : "重置桌宠"}
+          </button>
+        </div>
+        <p className="field-note error">
+          仅清理本机应用状态和本地凭据引用，不删除 Vault 目录中的 Markdown 文件。打包发版前可用它确认客户首次启动不会带开发测试记录。
+        </p>
+      </section>
+    </Panel>
+  );
+  const wikiWorkflowPanel = (
+    <WikiWorkflowPanel
+      draft={wikiDraft}
+      tagInput={wikiTagInput}
+      linkInput={wikiLinkInput}
+      approvedTargetsInput={wikiApprovedTargetsInput}
+      reviewForceRefresh={wikiReviewForceRefresh}
+      preview={wikiPreview}
+      reviewResult={wikiReviewResult}
+      applyResult={wikiApplyResult}
+      lintResult={wikiLintResult}
+      diagnosticsQueue={wikiDiagnosticsQueue}
+      schemaStatus={wikiSchemaStatus}
+      indexStatus={wikiIndexStatus}
+      logStatus={wikiLogStatus}
+      coreStatus={wikiCoreStatus}
+      coreError={wikiCoreError}
+      archiveHistory={wikiArchiveHistory}
+      archiveHistoryStatus={wikiArchiveHistoryStatus}
+      archiveHistoryError={wikiArchiveHistoryError}
+      openedArchive={wikiOpenedArchive}
+      openingArchiveId={wikiOpeningArchiveId}
+      companionContextReports={companionContextReports}
+      companionContextReportStatus={companionContextReportStatus}
+      companionContextReportError={companionContextReportError}
+      lastWikiArchiveId={lastWikiArchiveId}
+      workflowAction={wikiWorkflowAction}
+      latestArchiveMessage={latestArchiveMessage}
+      latestKnowledgeCitationCount={latestKnowledgeCitationCount}
+      archiveHistorySummary={wikiArchiveHistorySummary}
+      archiveHistoryLoading={wikiArchiveHistoryLoading}
+      lintIssueCount={wikiLintIssueCount}
+      formatIssueSeverity={formatIssueSeverity}
+      onDraftChange={onWikiDraftChange}
+      onTagInputChange={setWikiTagInput}
+      onLinkInputChange={setWikiLinkInput}
+      onApprovedTargetsInputChange={setWikiApprovedTargetsInput}
+      onReviewForceRefreshChange={setWikiReviewForceRefresh}
+      onPreview={(event) => void previewWikiIngest(event)}
+      onReview={() => void reviewWikiIngest()}
+      onApply={() => void applyWikiIngest()}
+      onArchiveLatestQuery={() => void archiveLatestWikiQuery()}
+      onSynthesize={() => void synthesizeWiki()}
+      onRunLint={() => void runWikiLint()}
+      onLoadDiagnosticsQueue={() => void loadWikiDiagnosticsQueue()}
+      onLoadArchiveHistory={() => void loadWikiArchiveHistory()}
+      onLoadCoreStatus={() => void loadWikiCoreStatus()}
+      onUseReviewRecommendedTargets={useWikiReviewRecommendedTargets}
+      onOpenArchive={(archiveId) => void openWikiQueryArchive(archiveId)}
+    />
+  );
+  const settingsPanel = (
+    <SettingsPanel
+      api={api}
+      agentModelDrafts={agentModelDrafts}
+      agentModelTestResults={agentModelTestResults}
+      globalModelDraft={globalModelDraft}
+      globalModelSaveStatus={globalModelSaveStatus}
+      globalModelTestResult={globalModelTestResult}
+      globalModelTestStatus={globalModelTestStatus}
+      negotiationSettingsDraft={negotiationSettingsDraft}
+      negotiationSettingsSaveStatus={negotiationSettingsSaveStatus}
+      savingAgentModelIds={savingAgentModelIds}
+      testingAgentModelIds={testingAgentModelIds}
+      loadingSettingsStatus={loadingSettingsStatus}
+      vaultId={vaultId}
+      vaultPath={vaultPath}
+      lastIndexRun={lastIndexRun}
+      indexingVault={indexingVault}
+      canSelectVaultDirectory={canSelectVaultDirectory}
+      onRefreshSettings={() => void loadSettingsStatus()}
+      onUpdateGlobalModelDraft={updateGlobalModelDraft}
+      onSaveGlobalModel={() => void saveGlobalModel()}
+      onTestGlobalModel={() => void testGlobalModelConnection()}
+      onUpdateNegotiationSettingsDraft={updateNegotiationSettingsDraft}
+      onSaveNegotiationSettings={() => void saveNegotiationSettings()}
+      onUpdateAgentModelDraft={updateAgentModelDraft}
+      onSaveAgentModel={(agentId) => void saveAgentModel(agentId)}
+      onTestAgentModel={(agentId) => void testAgentModelConnection(agentId)}
+      onVaultPathChange={setVaultPath}
+      onSelectVaultDirectory={() => void selectVaultDirectory()}
+      onBindVault={bindVault}
+      onLoadVaultStatus={() => void loadVaultStatus()}
+      onRebuildIndex={() => void rebuildIndex()}
+    />
+  );
+
   const petHitboxDebug =
     windowMode === "pet" && new URLSearchParams(window.location.search).get("hitbox") === "1";
   if (windowMode === "stage") {
@@ -1162,6 +1307,49 @@ function App() {
 
   if (windowMode === "agent") {
     return <AgentWorkspaceView api={api} />;
+  }
+
+  if (windowMode === "chat") {
+    return (
+      <ChatWindowView
+        input={controlInput}
+        messages={messages}
+        connected={hasConnection}
+        streaming={streaming}
+        onInputChange={setControlInput}
+        onSend={(event) => {
+          event.preventDefault();
+          void sendChatText(controlInput, () => setControlInput(""));
+        }}
+        onStopStreaming={stopStreaming}
+      />
+    );
+  }
+
+  if (windowMode === "memory") {
+    return (
+      <MemoryWindowView
+        loading={agentActionsStatus === "loading" || loadingProposals || loadingContinuity}
+        error={agentActionsError}
+        entries={memoryActivityEntries}
+        onRefresh={refreshActivity}
+      />
+    );
+  }
+
+  if (windowMode === "world") {
+    return <WorldWindowView>{wikiWorkflowPanel}</WorldWindowView>;
+  }
+
+  if (windowMode === "settings") {
+    return (
+      <SettingsWindowView>
+        <div className="feature-page-stack">
+          {connectionPanel}
+          {settingsPanel}
+        </div>
+      </SettingsWindowView>
+    );
   }
 
   if (windowMode === "pet") {
@@ -1225,7 +1413,7 @@ function App() {
           <button type="button" className="pet-shortcut-button" aria-label="打开任务工作台" onClick={() => void window.agentDesktop?.openAgent?.()}>
             任务
           </button>
-          <button type="button" className="pet-shortcut-button" aria-label="打开配置" onClick={() => void window.agentDesktop?.openControlWindow?.("settings-panel")}>
+          <button type="button" className="pet-shortcut-button" aria-label="打开配置" onClick={() => void window.agentDesktop?.openFeatureWindow?.("settings")}>
             配置
           </button>
           <button type="button" className="pet-shortcut-button danger" aria-label="退出应用" onClick={() => void window.agentDesktop?.quitApp?.()}>
@@ -1310,11 +1498,7 @@ function App() {
                 <button
                   type="button"
                   className="secondary"
-                  onClick={() => {
-                    void loadAgentActions();
-                    void loadPendingProposals({ silent: true });
-                    void loadContinuity({ silent: true });
-                  }}
+                  onClick={refreshActivity}
                   disabled={agentActionsStatus === "loading" || loadingProposals || loadingContinuity}
                 >
                   {agentActionsStatus === "loading" || loadingProposals || loadingContinuity ? (
@@ -1366,39 +1550,7 @@ function App() {
           onSelectModel={selectLive2DModel}
         />
 
-        <Panel id="connection-panel" icon={<Settings size={18} />} title="本地连接">
-          <ConnectionPanel
-            settings={settings}
-            onSettingsChange={setSettings}
-            onSaveSettings={persistSettings}
-            onCheckHealth={() => void checkHealth()}
-            checkingHealth={checkingHealth}
-            isElectronRuntime={isElectronRuntime}
-            health={health}
-            businessAuthStatus={businessAuthStatus}
-            businessAuthMessage={businessAuthMessage}
-          />
-          <section className="danger-zone" aria-label="本机状态重置">
-            <div className="section-heading">
-              <strong>重置桌宠初始化状态</strong>
-              <span>清空本机聊天、记忆、任务、Vault 绑定、索引缓存和模型配置，让应用回到首次启动状态。</span>
-            </div>
-            <div className="button-row">
-              <button
-                type="button"
-                className="danger"
-                onClick={() => void resetLocalState()}
-                disabled={resettingLocalState}
-              >
-                {resettingLocalState ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />}
-                {resettingLocalState ? "正在重置" : "重置桌宠"}
-              </button>
-            </div>
-            <p className="field-note error">
-              仅清理本机应用状态和本地凭据引用，不删除 Vault 目录中的 Markdown 文件。打包发版前可用它确认客户首次启动不会带开发测试记录。
-            </p>
-          </section>
-        </Panel>
+        {connectionPanel}
 
         <Panel id="continuity-panel" icon={<HeartPulse size={18} />} title="陪伴状态">
           <section className="stack" aria-label="连续性状态">
@@ -1448,89 +1600,9 @@ function App() {
           </section>
         </Panel>
 
-        <WikiWorkflowPanel
-          draft={wikiDraft}
-          tagInput={wikiTagInput}
-          linkInput={wikiLinkInput}
-          approvedTargetsInput={wikiApprovedTargetsInput}
-          reviewForceRefresh={wikiReviewForceRefresh}
-          preview={wikiPreview}
-          reviewResult={wikiReviewResult}
-          applyResult={wikiApplyResult}
-          lintResult={wikiLintResult}
-          diagnosticsQueue={wikiDiagnosticsQueue}
-          schemaStatus={wikiSchemaStatus}
-          indexStatus={wikiIndexStatus}
-          logStatus={wikiLogStatus}
-          coreStatus={wikiCoreStatus}
-          coreError={wikiCoreError}
-          archiveHistory={wikiArchiveHistory}
-          archiveHistoryStatus={wikiArchiveHistoryStatus}
-          archiveHistoryError={wikiArchiveHistoryError}
-          openedArchive={wikiOpenedArchive}
-          openingArchiveId={wikiOpeningArchiveId}
-          companionContextReports={companionContextReports}
-          companionContextReportStatus={companionContextReportStatus}
-          companionContextReportError={companionContextReportError}
-          lastWikiArchiveId={lastWikiArchiveId}
-          workflowAction={wikiWorkflowAction}
-          latestArchiveMessage={latestArchiveMessage}
-          latestKnowledgeCitationCount={latestKnowledgeCitationCount}
-          archiveHistorySummary={wikiArchiveHistorySummary}
-          archiveHistoryLoading={wikiArchiveHistoryLoading}
-          lintIssueCount={wikiLintIssueCount}
-          formatIssueSeverity={formatIssueSeverity}
-          onDraftChange={onWikiDraftChange}
-          onTagInputChange={setWikiTagInput}
-          onLinkInputChange={setWikiLinkInput}
-          onApprovedTargetsInputChange={setWikiApprovedTargetsInput}
-          onReviewForceRefreshChange={setWikiReviewForceRefresh}
-          onPreview={(event) => void previewWikiIngest(event)}
-          onReview={() => void reviewWikiIngest()}
-          onApply={() => void applyWikiIngest()}
-          onArchiveLatestQuery={() => void archiveLatestWikiQuery()}
-          onSynthesize={() => void synthesizeWiki()}
-          onRunLint={() => void runWikiLint()}
-          onLoadDiagnosticsQueue={() => void loadWikiDiagnosticsQueue()}
-          onLoadArchiveHistory={() => void loadWikiArchiveHistory()}
-          onLoadCoreStatus={() => void loadWikiCoreStatus()}
-          onUseReviewRecommendedTargets={useWikiReviewRecommendedTargets}
-          onOpenArchive={(archiveId) => void openWikiQueryArchive(archiveId)}
-        />
+        {wikiWorkflowPanel}
 
-        <SettingsPanel
-          api={api}
-          agentModelDrafts={agentModelDrafts}
-          agentModelTestResults={agentModelTestResults}
-          globalModelDraft={globalModelDraft}
-          globalModelSaveStatus={globalModelSaveStatus}
-          globalModelTestResult={globalModelTestResult}
-          globalModelTestStatus={globalModelTestStatus}
-          negotiationSettingsDraft={negotiationSettingsDraft}
-          negotiationSettingsSaveStatus={negotiationSettingsSaveStatus}
-          savingAgentModelIds={savingAgentModelIds}
-          testingAgentModelIds={testingAgentModelIds}
-          loadingSettingsStatus={loadingSettingsStatus}
-          vaultId={vaultId}
-          vaultPath={vaultPath}
-          lastIndexRun={lastIndexRun}
-          indexingVault={indexingVault}
-          canSelectVaultDirectory={canSelectVaultDirectory}
-          onRefreshSettings={() => void loadSettingsStatus()}
-          onUpdateGlobalModelDraft={updateGlobalModelDraft}
-          onSaveGlobalModel={() => void saveGlobalModel()}
-          onTestGlobalModel={() => void testGlobalModelConnection()}
-          onUpdateNegotiationSettingsDraft={updateNegotiationSettingsDraft}
-          onSaveNegotiationSettings={() => void saveNegotiationSettings()}
-          onUpdateAgentModelDraft={updateAgentModelDraft}
-          onSaveAgentModel={(agentId) => void saveAgentModel(agentId)}
-          onTestAgentModel={(agentId) => void testAgentModelConnection(agentId)}
-          onVaultPathChange={setVaultPath}
-          onSelectVaultDirectory={() => void selectVaultDirectory()}
-          onBindVault={bindVault}
-          onLoadVaultStatus={() => void loadVaultStatus()}
-          onRebuildIndex={() => void rebuildIndex()}
-        />
+        {settingsPanel}
 
       </section>
     </main>

@@ -23,7 +23,12 @@ export default function ChatWindowView({
   onStopStreaming: () => void;
 }) {
   return (
-    <FeatureWindowShell eyebrow="本地助手" title="聊天" description="和桌宠聊天、检索记忆库和知识库，并把高价值内容交给自动整理。">
+    <FeatureWindowShell
+      eyebrow="本地助手"
+      title="聊天"
+      description="和桌宠聊天、检索记忆库和知识库，并把高价值内容交给自动整理。"
+      activeTab="聊天"
+    >
       <Panel icon={<MessageSquareText size={18} />} title="聊天与检索" className="feature-window-panel chat-panel">
         <form className="chat-form" onSubmit={onSend}>
           <input

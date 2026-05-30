@@ -60,6 +60,18 @@ function registerIpcHandlers({ baseUrl, rendererUiState, sidecar, proxy, windows
     if (petWindow && event.sender === petWindow.webContents) {
       return "pet";
     }
+    const stageWindow = windows.getStageWindow?.();
+    if (stageWindow && event.sender === stageWindow.webContents) {
+      return "stage";
+    }
+    const agentWindow = windows.getAgentWindow?.();
+    if (agentWindow && event.sender === agentWindow.webContents) {
+      return "agent";
+    }
+    const featureWindowMode = windows.getFeatureWindowMode?.(event.sender);
+    if (featureWindowMode) {
+      return featureWindowMode;
+    }
     return "control";
   });
 

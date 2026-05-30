@@ -259,6 +259,158 @@ dt,
   color: #b53939;
 }
 
+.feature-shell {
+  min-height: 100vh;
+  height: 100vh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 12% 8%, rgba(255, 208, 219, 0.66), transparent 26%),
+    radial-gradient(circle at 86% 10%, rgba(224, 203, 255, 0.68), transparent 28%),
+    linear-gradient(135deg, #fff7f2 0%, #ffeef5 44%, #f2ecff 100%);
+  padding: 24px 24px 0;
+  color: var(--text);
+}
+
+.feature-window-header {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 1180px);
+  margin: 0 auto 18px;
+}
+
+.feature-window-header h1 {
+  margin: 6px 0 8px;
+  color: #332333;
+  font-size: 30px;
+  line-height: 1.05;
+}
+
+.feature-window-header p:last-child {
+  max-width: 720px;
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.feature-window-content {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 1180px);
+  min-height: 0;
+  margin: 0 auto;
+  overflow: auto;
+  padding: 0 4px 18px;
+}
+
+.feature-page-stack {
+  display: grid;
+  gap: 18px;
+}
+
+.feature-window-content > .panel,
+.feature-page-stack > .panel {
+  grid-column: auto;
+  min-height: auto;
+}
+
+.feature-window-content > #wiki-workflow-panel,
+.feature-page-stack > #settings-panel {
+  grid-column: auto;
+}
+
+.feature-window-panel {
+  width: 100%;
+}
+
+.bottom-nav {
+  --bottom-nav-item-width: 72px;
+  --bottom-nav-item-height: 36px;
+  --bottom-nav-gap: 6px;
+  --bottom-nav-padding: 4px;
+  position: relative;
+  z-index: 10;
+  width: 100%;
+  min-height: 58px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 8px 12px calc(10px + env(safe-area-inset-bottom));
+  scroll-behavior: smooth;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+}
+
+.bottom-nav::-webkit-scrollbar {
+  display: none;
+}
+
+.bottom-nav {
+  scrollbar-width: none;
+}
+
+.bottom-nav-track {
+  position: relative;
+  width: max-content;
+  min-width: max-content;
+  display: flex;
+  gap: var(--bottom-nav-gap);
+  margin: 0 auto;
+  padding: var(--bottom-nav-padding);
+  border: 1px solid rgba(255, 255, 255, 0.58);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.64);
+  box-shadow: 0 12px 30px rgba(119, 77, 104, 0.12);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.bottom-nav-indicator {
+  position: absolute;
+  top: var(--bottom-nav-padding);
+  left: var(--bottom-nav-padding);
+  width: var(--bottom-nav-item-width);
+  height: var(--bottom-nav-item-height);
+  border-radius: 999px;
+  background: rgba(192, 95, 135, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(192, 95, 135, 0.18);
+  transform: translateX(
+    calc(var(--bottom-nav-active-index) * (var(--bottom-nav-item-width) + var(--bottom-nav-gap)))
+  );
+  transition: transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.bottom-nav-button {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 var(--bottom-nav-item-width);
+  width: var(--bottom-nav-item-width);
+  height: var(--bottom-nav-item-height);
+  min-height: var(--bottom-nav-item-height);
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--muted);
+  padding: 0;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  scroll-snap-align: center;
+  transition: color 0.18s ease;
+}
+
+.bottom-nav-button:hover {
+  background: transparent;
+  box-shadow: none;
+  color: var(--brand-strong);
+  transform: none;
+}
+
+.bottom-nav-button.active {
+  color: var(--brand);
+}
+
 .topbar {
   position: relative;
   z-index: 1;
@@ -2589,6 +2741,22 @@ dt,
 @media (max-width: 760px) {
   .app-shell {
     padding: 16px;
+  }
+
+  .feature-shell {
+    padding: 18px 14px 0;
+  }
+
+  .feature-window-header h1 {
+    font-size: 26px;
+  }
+
+  .bottom-nav {
+    padding-inline: 8px;
+  }
+
+  .bottom-nav-track {
+    margin: 0;
   }
 
   .topbar,
