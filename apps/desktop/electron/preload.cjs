@@ -44,6 +44,7 @@ contextBridge.exposeInMainWorld("agentDesktop", {
   quitApp: () => ipcRenderer.invoke("app:quit"),
   getPetMousePassthroughStatus: () => ipcRenderer.invoke("agent-pet:get-pet-mouse-passthrough-status"),
   setPetShortcutBarVisible: (visible) => ipcRenderer.invoke("agent-pet:set-pet-shortcut-bar-visible", visible),
+  setPetInputVisible: (visible) => ipcRenderer.invoke("agent-pet:set-pet-input-visible", visible),
   beginPetWindowDrag: () => ipcRenderer.send("agent-pet:begin-pet-window-drag"),
   activatePetWindowDrag: () => ipcRenderer.send("agent-pet:activate-pet-window-drag"),
   endPetWindowDrag: () => ipcRenderer.send("agent-pet:end-pet-window-drag"),

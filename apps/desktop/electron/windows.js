@@ -1,8 +1,10 @@
-const { app, BrowserWindow, shell, screen } = require("electron");
+const { app, BrowserWindow, Menu, shell, screen } = require("electron");
+const fs = require("node:fs");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const petHitboxConfig = require("../pet-hitbox.json");
 
+const DESKTOP_WINDOW_STATE_FILE = "desktop-window-state.json";
 const PET_WINDOW_WIDTH = petHitboxConfig.window.width;
 const PET_WINDOW_HEIGHT = petHitboxConfig.window.height;
 const PET_MIN_VISIBLE_WIDTH = petHitboxConfig.window.minVisibleWidth;
@@ -34,6 +36,7 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
   let petMouseHitTestTimer = null;
   let petMousePassthrough = false;
   let petShortcutBarVisible = false;
+  let petInputDockVisible = false;
   let pendingControlTargetId = null;
 
   function isDevelopment() {
@@ -188,7 +191,7 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     );
     return (
       isPointInRect(localPoint, modelRect)
-      || isPointInRect(localPoint, inputDockRect)
+      || (petInputDockVisible && isPointInRect(localPoint, inputDockRect))
       || isPointInRect(localPoint, chatBubbleRect)
       || (
         petShortcutBarVisible
@@ -200,6 +203,76 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
         })
       )
     );
+  }
+
+  function getDesktopWindowStatePath() {
+    return path.join(app.getPath("userData"), DESKTOP_WINDOW_STATE_FILE);
+  }
+
+  function readDesktopWindowState() {
+    try {
+      const text = fs.readFileSync(getDesktopWindowStatePath(), "utf8");
+      const parsed = JSON.parse(text);
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function writeDesktopWindowState(patch) {
+    try {
+      const statePath = getDesktopWindowStatePath();
+      fs.mkdirSync(path.dirname(statePath), { recursive: true });
+      fs.writeFileSync(
+        statePath,
+        `${JSON.stringify({ ...readDesktopWindowState(), ...patch }, null, 2)}\n`,
+        "utf8",
+      );
+    } catch {
+      // Window state persistence must never block the pet window.
+    }
+  }
+
+  function isFiniteWindowCoordinate(value) {
+    return typeof value === "number" && Number.isFinite(value);
+  }
+
+  function getInitialPetWindowBounds() {
+    const savedBounds = readDesktopWindowState().petWindowBounds;
+    if (
+      savedBounds
+      && isFiniteWindowCoordinate(savedBounds.x)
+      && isFiniteWindowCoordinate(savedBounds.y)
+    ) {
+      const cursor = {
+        x: savedBounds.x + Math.round(PET_WINDOW_WIDTH / 2),
+        y: savedBounds.y + Math.round(PET_WINDOW_HEIGHT / 2),
+      };
+      return clampPetWindowToWorkArea(savedBounds.x, savedBounds.y, cursor);
+    }
+
+    const workArea = screen.getPrimaryDisplay().workArea;
+    return clampPetWindowToWorkArea(
+      workArea.x + workArea.width - PET_WINDOW_WIDTH - 24,
+      workArea.y + workArea.height - PET_WINDOW_HEIGHT - 24,
+      {
+        x: workArea.x + workArea.width,
+        y: workArea.y + workArea.height,
+      },
+    );
+  }
+
+  function persistPetWindowBounds() {
+    if (!petWindow || petWindow.isDestroyed()) {
+      return;
+    }
+    const bounds = petWindow.getBounds();
+    writeDesktopWindowState({
+      petWindowBounds: {
+        x: bounds.x,
+        y: bounds.y,
+      },
+    });
   }
 
   function updatePetMousePassthroughFromCursor() {
@@ -281,7 +354,10 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     }
 
     petShortcutBarVisible = false;
+    const initialBounds = getInitialPetWindowBounds();
     petWindow = new BrowserWindow({
+      x: initialBounds.x,
+      y: initialBounds.y,
       width: PET_WINDOW_WIDTH,
       height: PET_WINDOW_HEIGHT,
       minWidth: PET_WINDOW_WIDTH,
@@ -327,15 +403,18 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
       petWindow?.webContents.send("agent-pet:cancel-pet-drag");
       updatePetMousePassthroughFromCursor();
     });
+    petWindow.on("close", persistPetWindowBounds);
     petWindow.on("closed", () => {
       clearPetWindowDrag();
       stopPetMouseHitTest();
       petMousePassthrough = false;
       petShortcutBarVisible = false;
+      petInputDockVisible = false;
       petWindow = null;
     });
     petWindow.webContents.on("context-menu", (event) => {
       event.preventDefault();
+      showPetContextMenu();
     });
     petWindow.webContents.on("did-finish-load", () => {
       updatePetMousePassthroughFromCursor();
@@ -483,6 +562,30 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     return agentWindow;
   }
 
+  function showPetContextMenu() {
+    if (!petWindow || petWindow.isDestroyed()) {
+      return;
+    }
+    Menu.buildFromTemplate([
+      { label: "打开主舞台", click: showStageWindow },
+      { label: "打开聊天窗口", click: () => showFeatureWindow("chat") },
+      { label: "打开任务工作台", click: showAgentWindow },
+      { label: "打开记忆整理", click: () => showFeatureWindow("memory") },
+      { label: "打开知识库", click: () => showFeatureWindow("world") },
+      { label: "打开设置", click: () => showFeatureWindow("settings") },
+      { type: "separator" },
+      {
+        label: "桌宠置顶",
+        type: "checkbox",
+        checked: petAlwaysOnTop,
+        click: (menuItem) => setPetAlwaysOnTop(menuItem.checked),
+      },
+      { label: "重载桌宠", click: reloadPetWindow },
+      { type: "separator" },
+      { label: "退出应用", click: quitApp },
+    ]).popup({ window: petWindow });
+  }
+
   function createFeatureWindow(mode) {
     const normalizedMode = normalizeFeatureWindowMode(mode);
     featureWindowMode = normalizedMode;
@@ -598,6 +701,15 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     return updatePetMousePassthroughFromCursor();
   }
 
+  function setPetInputDockVisible(sender, visible) {
+    if (!petWindow || sender !== petWindow.webContents) {
+      return getPetMousePassthroughStatus("ignored_sender", false);
+    }
+
+    petInputDockVisible = Boolean(visible);
+    return updatePetMousePassthroughFromCursor();
+  }
+
   function beginPetWindowDrag(sender) {
     if (!petWindow || sender !== petWindow.webContents) {
       return;
@@ -645,6 +757,7 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
 
     clearPetWindowDrag();
     enforcePetWindowSize();
+    persistPetWindowBounds();
     updatePetMousePassthroughFromCursor();
   }
 
@@ -663,6 +776,7 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     getPetMousePassthroughStatus,
     updatePetMousePassthroughFromCursor,
     setPetShortcutBarVisible,
+    setPetInputDockVisible,
     beginPetWindowDrag,
     activatePetWindowDrag,
     endPetWindowDrag,

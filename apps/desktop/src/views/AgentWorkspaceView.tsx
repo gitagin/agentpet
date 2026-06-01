@@ -1,9 +1,10 @@
-import { Check, ListChecks, Loader2, MessageSquareText, ShieldCheck, X } from "lucide-react";
+import { BellRing, CalendarDays, Check, CircleAlert, ListChecks, Loader2, MessageSquareText, ShieldCheck, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { EmptyState, Panel } from "../components/layout";
 import type { DesktopApi } from "../services/desktopApi";
 import { describeError } from "../services/apiErrorMessages";
-import type { TaskLogItem, TaskStepItem, TaskWorkspaceItem } from "../types";
+import type { TaskItem, TaskLogItem, TaskStepItem, TaskWorkspaceItem } from "../types";
+import { formatTaskStatus } from "../features/tasks/taskReducer";
 import { FeatureWindowShell } from "./FeatureWindowShell";
 
 type AgentTaskStatus = "running" | "approval" | "completed" | "failed";
@@ -130,13 +131,117 @@ function renderStepStatus(status: AgentStepStatus) {
   );
 }
 
+function dateValue(value?: string | null): number {
+  if (!value) {
+    return 0;
+  }
+  const time = Date.parse(value);
+  return Number.isNaN(time) ? 0 : time;
+}
+
+function formatTaskDateTime(value?: string | null): string {
+  const time = dateValue(value);
+  if (!time) {
+    return "无时间";
+  }
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date(time));
+}
+
+function localDateKey(value: string | null | undefined, timezone: string): string {
+  const time = dateValue(value);
+  if (!time) {
+    return "";
+  }
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(time));
+}
+
+function mergeTodayTasks(todayTasks: TaskItem[], allTasks: TaskItem[], timezone: string): TaskItem[] {
+  const todayKey = localDateKey(new Date().toISOString(), timezone);
+  const byId = new Map<string, TaskItem>();
+  todayTasks.forEach((task) => byId.set(task.task_id, task));
+  allTasks.forEach((task) => {
+    if (localDateKey(task.due_at, timezone) === todayKey || localDateKey(task.remind_at, timezone) === todayKey) {
+      byId.set(task.task_id, task);
+    }
+  });
+  return Array.from(byId.values()).sort(
+    (left, right) => (dateValue(left.due_at) || dateValue(left.remind_at)) - (dateValue(right.due_at) || dateValue(right.remind_at)),
+  );
+}
+
+function upcomingReminderTasks(tasks: TaskItem[]): TaskItem[] {
+  const now = Date.now();
+  return tasks
+    .filter((task) => task.reminder_status === "scheduled" && dateValue(task.remind_at) >= now)
+    .sort((left, right) => dateValue(left.remind_at) - dateValue(right.remind_at))
+    .slice(0, 5);
+}
+
+function triggeredReminderTasks(tasks: TaskItem[]): TaskItem[] {
+  return tasks
+    .filter((task) => task.reminder_status === "triggered")
+    .sort((left, right) => (dateValue(right.triggered_at) || dateValue(right.remind_at)) - (dateValue(left.triggered_at) || dateValue(left.remind_at)))
+    .slice(0, 5);
+}
+
+function reminderProblemTasks(tasks: TaskItem[]): TaskItem[] {
+  return tasks
+    .filter((task) => task.reminder_status === "unscheduled" || task.reminder_status === "failed")
+    .sort((left, right) => dateValue(left.remind_at) - dateValue(right.remind_at))
+    .slice(0, 5);
+}
+
+function formatReminderStatus(status?: string | null): string {
+  const labels: Record<string, string> = {
+    scheduled: "已安排",
+    triggered: "已触发",
+    unscheduled: "未安排",
+    failed: "失败",
+    cancelled: "已取消",
+  };
+  return status ? labels[status] || status : "无提醒";
+}
+
+function TaskDigestCard({ task, tone = "normal" }: { task: TaskItem; tone?: "normal" | "warning" | "success" }) {
+  const primaryTime = task.due_at || task.remind_at;
+  return (
+    <article id={`task-${task.task_id}`} className={`task-digest-card ${tone}`}>
+      <div className="task-digest-head">
+        <strong>{task.title}</strong>
+        <span>{formatTaskStatus(task.status)}</span>
+      </div>
+      {task.description || task.source_text ? <p>{task.description || task.source_text}</p> : null}
+      <div className="task-digest-meta">
+        <small>时间：{formatTaskDateTime(primaryTime)}</small>
+        {task.remind_at ? <small>提醒：{formatTaskDateTime(task.remind_at)} / {formatReminderStatus(task.reminder_status)}</small> : null}
+        {task.triggered_at ? <small>触发：{formatTaskDateTime(task.triggered_at)}</small> : null}
+        {task.timezone_label || task.timezone ? <small>时区：{task.timezone_label || task.timezone}</small> : null}
+      </div>
+    </article>
+  );
+}
+
 export default function AgentWorkspaceView({ api }: AgentWorkspaceViewProps) {
   const [currentTask, setCurrentTask] = useState<WorkspaceTask | null>(null);
+  const [tasks, setTasks] = useState<TaskItem[]>([]);
+  const [todayTasks, setTodayTasks] = useState<TaskItem[]>([]);
   const [agentSteps, setAgentSteps] = useState<AgentStep[]>([]);
   const [executionLogs, setExecutionLogs] = useState<ExecutionLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [actionBusy, setActionBusy] = useState<"approve" | "reject" | null>(null);
+  const localTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 
   const loadWorkspace = useCallback(
     async (options: { silent?: boolean; signal?: AbortSignal } = {}) => {
@@ -145,7 +250,13 @@ export default function AgentWorkspaceView({ api }: AgentWorkspaceViewProps) {
       }
       setError("");
       try {
-        const current = await api.fetchCurrentTask(options.signal);
+        const [current, allTasks, today] = await Promise.all([
+          api.fetchCurrentTask(options.signal),
+          api.listTasks(options.signal),
+          api.listTodayTasks(localTimezone, options.signal),
+        ]);
+        setTasks(allTasks.tasks);
+        setTodayTasks(today.tasks);
         if (!current.task) {
           setCurrentTask(null);
           setAgentSteps([]);
@@ -170,7 +281,7 @@ export default function AgentWorkspaceView({ api }: AgentWorkspaceViewProps) {
         }
       }
     },
-    [api],
+    [api, localTimezone],
   );
 
   useEffect(() => {
@@ -209,6 +320,10 @@ export default function AgentWorkspaceView({ api }: AgentWorkspaceViewProps) {
   const statusLabel = currentTask ? statusLabels[currentTask.status] : loading ? "进行中" : "完成";
   const statusTone = currentTask?.status || (loading ? "running" : "completed");
   const description = currentTask?.description || (loading ? "正在从后端读取任务状态。" : "当前没有待展示的任务。");
+  const mergedTodayTasks = mergeTodayTasks(todayTasks, tasks, localTimezone);
+  const upcomingReminders = upcomingReminderTasks(tasks);
+  const triggeredReminders = triggeredReminderTasks(tasks);
+  const reminderProblems = reminderProblemTasks(tasks);
 
   return (
     <FeatureWindowShell
@@ -267,6 +382,60 @@ export default function AgentWorkspaceView({ api }: AgentWorkspaceViewProps) {
             </div>
           </Panel>
         ) : null}
+
+        <Panel icon={<CalendarDays size={18} />} title="今天任务" className="feature-window-panel task-daily-panel">
+          <div className="task-digest-list" aria-label="今天任务列表">
+            {mergedTodayTasks.length > 0 ? (
+              mergedTodayTasks.map((task) => <TaskDigestCard key={`today-${task.task_id}`} task={task} />)
+            ) : (
+              <EmptyState text={loading ? "正在加载今天任务。" : "今天没有到期任务或提醒。"} />
+            )}
+          </div>
+        </Panel>
+
+        <Panel icon={<BellRing size={18} />} title="即将提醒" className="feature-window-panel task-reminder-panel">
+          <div className="task-digest-list" aria-label="即将提醒列表">
+            {upcomingReminders.length > 0 ? (
+              upcomingReminders.map((task) => <TaskDigestCard key={`upcoming-${task.task_id}`} task={task} />)
+            ) : (
+              <EmptyState text={loading ? "正在加载即将提醒。" : "暂无已安排的即将提醒。"} />
+            )}
+          </div>
+        </Panel>
+
+        <Panel icon={<Check size={18} />} title="已触发提醒" className="feature-window-panel task-triggered-panel">
+          <div className="task-digest-list" aria-label="已触发提醒状态">
+            {triggeredReminders.length > 0 ? (
+              triggeredReminders.map((task) => (
+                <TaskDigestCard key={`triggered-${task.task_id}`} task={task} tone="success" />
+              ))
+            ) : (
+              <EmptyState text={loading ? "正在加载已触发提醒。" : "还没有已触发提醒。"} />
+            )}
+          </div>
+        </Panel>
+
+        <Panel icon={<CircleAlert size={18} />} title="需要处理" className="feature-window-panel task-reminder-alert-panel">
+          <div className="task-reminder-alert">
+            <strong>
+              {reminderProblems.length > 0
+                ? `${reminderProblems.length} 条提醒未安排或失败`
+                : "没有未调度或失败提醒"}
+            </strong>
+            <span>
+              {reminderProblems.length > 0
+                ? "这些任务仍保留在本地列表中，但提醒未进入可靠调度。"
+                : "调度器当前没有报告需要人工处理的提醒。"}
+            </span>
+          </div>
+          <div className="task-digest-list" aria-label="未调度或失败提醒">
+            {reminderProblems.length > 0 ? (
+              reminderProblems.map((task) => (
+                <TaskDigestCard key={`problem-${task.task_id}`} task={task} tone="warning" />
+              ))
+            ) : null}
+          </div>
+        </Panel>
 
         <Panel icon={<ListChecks size={18} />} title="执行步骤" className="feature-window-panel task-steps-panel">
           <div className="task-step-list" aria-label="工具步骤列表">

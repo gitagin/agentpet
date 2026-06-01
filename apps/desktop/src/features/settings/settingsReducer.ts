@@ -5,7 +5,7 @@ import {
   mergeAgentModelStatus,
   type AgentModelDraft,
 } from "../../services/agentModelDrafts";
-import type { AsyncStatus, GlobalModelDraft, LastIndexRun, NegotiationSettingsDraft } from "./settingsTypes";
+import type { AsyncStatus, AutomationSettingsDraft, GlobalModelDraft, LastIndexRun, NegotiationSettingsDraft } from "./settingsTypes";
 
 const defaultGlobalModelDraft: GlobalModelDraft = {
   provider: "openai-compatible",
@@ -23,7 +23,7 @@ const defaultNegotiationSettingsDraft: NegotiationSettingsDraft = {
   max_rounds: 5,
 };
 
-function defaultNegotiationAutomationSettings(): AutomationSettings {
+function defaultAutomationSettings(): AutomationSettings {
   return {
     auto_chat_diary: false,
     auto_structured_memory: false,
@@ -34,6 +34,10 @@ function defaultNegotiationAutomationSettings(): AutomationSettings {
     high_risk_confirmation_required: true,
     updated_at: null,
   };
+}
+
+function automationSettingsDraftFromStatus(response: SettingsStatusResponse): AutomationSettingsDraft {
+  return { ...response.automation, high_risk_confirmation_required: true };
 }
 
 function negotiationSettingsDraftFromStatus(response: SettingsStatusResponse): NegotiationSettingsDraft {
@@ -66,6 +70,8 @@ export type SettingsState = {
   globalModelSaveStatus: AsyncStatus;
   globalModelTestStatus: AsyncStatus;
   globalModelTestResult?: ModelTestResponse;
+  automationSettingsDraft: AutomationSettingsDraft;
+  automationSettingsSaveStatus: AsyncStatus;
   negotiationSettingsDraft: NegotiationSettingsDraft;
   negotiationSettingsSaveStatus: AsyncStatus;
   savingAgentModelIds: Set<string>;
@@ -85,6 +91,9 @@ export type SettingsAction =
   | { type: "setGlobalModelSaveStatus"; status: AsyncStatus }
   | { type: "setGlobalModelTestStatus"; status: AsyncStatus; result?: ModelTestResponse }
   | { type: "saveGlobalModelSuccess"; config: ModelConfigResponse }
+  | { type: "updateAutomationSettingsDraft"; patch: Partial<AutomationSettingsDraft> }
+  | { type: "setAutomationSettingsSaveStatus"; status: AsyncStatus }
+  | { type: "saveAutomationSettingsSuccess"; settings: AutomationSettings }
   | { type: "updateNegotiationSettingsDraft"; patch: Partial<NegotiationSettingsDraft> }
   | { type: "setNegotiationSettingsSaveStatus"; status: AsyncStatus }
   | { type: "saveNegotiationSettingsSuccess"; draft: NegotiationSettingsDraft }
@@ -117,6 +126,8 @@ export function createInitialSettingsState(): SettingsState {
     globalModelSaveStatus: "idle",
     globalModelTestStatus: "idle",
     globalModelTestResult: undefined,
+    automationSettingsDraft: defaultAutomationSettings(),
+    automationSettingsSaveStatus: "idle",
     negotiationSettingsDraft: defaultNegotiationSettingsDraft,
     negotiationSettingsSaveStatus: "idle",
     savingAgentModelIds: new Set(),
@@ -140,6 +151,8 @@ export function settingsReducer(state: SettingsState, action: SettingsAction): S
         globalModelSaveStatus: "idle",
         globalModelTestStatus: "idle",
         globalModelTestResult: undefined,
+        automationSettingsDraft: automationSettingsDraftFromStatus(action.response),
+        automationSettingsSaveStatus: "idle",
         negotiationSettingsDraft: negotiationSettingsDraftFromStatus(action.response),
         negotiationSettingsSaveStatus: "idle",
         agentModelDrafts: mergeAgentModelStatus(state.agentModelDrafts, action.response.agent_models),
@@ -156,7 +169,7 @@ export function settingsReducer(state: SettingsState, action: SettingsAction): S
           model_configured: action.modelConfigured,
           vault_configured: action.vaultConfigured,
           agent_models: state.settingsStatus?.agent_models,
-          automation: state.settingsStatus?.automation || defaultNegotiationAutomationSettings(),
+          automation: state.settingsStatus?.automation || defaultAutomationSettings(),
         },
       };
     case "updateGlobalModelDraft":
@@ -198,10 +211,50 @@ export function settingsReducer(state: SettingsState, action: SettingsAction): S
             }
           : state.settingsStatus,
       };
+    case "updateAutomationSettingsDraft":
+      return {
+        ...state,
+        automationSettingsDraft: {
+          ...state.automationSettingsDraft,
+          ...action.patch,
+          high_risk_confirmation_required: true,
+        },
+        automationSettingsSaveStatus: "idle",
+      };
+    case "setAutomationSettingsSaveStatus":
+      return { ...state, automationSettingsSaveStatus: action.status };
+    case "saveAutomationSettingsSuccess":
+      return {
+        ...state,
+        automationSettingsDraft: {
+          ...action.settings,
+          high_risk_confirmation_required: true,
+        },
+        automationSettingsSaveStatus: "success",
+        negotiationSettingsDraft: {
+          use_negotiation: action.settings.use_negotiation,
+          max_rounds: action.settings.max_rounds,
+        },
+        settingsStatus: state.settingsStatus
+          ? {
+              ...state.settingsStatus,
+              automation: {
+                ...action.settings,
+                high_risk_confirmation_required: true,
+              },
+            }
+          : state.settingsStatus,
+      };
     case "updateNegotiationSettingsDraft":
       return {
         ...state,
         negotiationSettingsDraft: { ...state.negotiationSettingsDraft, ...action.patch },
+        automationSettingsDraft: {
+          ...state.automationSettingsDraft,
+          use_negotiation: action.patch.use_negotiation ?? state.automationSettingsDraft.use_negotiation,
+          max_rounds: action.patch.max_rounds ?? state.automationSettingsDraft.max_rounds,
+          high_risk_confirmation_required: true,
+        },
         negotiationSettingsSaveStatus: "idle",
       };
     case "setNegotiationSettingsSaveStatus":
@@ -211,6 +264,12 @@ export function settingsReducer(state: SettingsState, action: SettingsAction): S
         ...state,
         negotiationSettingsDraft: action.draft,
         negotiationSettingsSaveStatus: "success",
+        automationSettingsDraft: {
+          ...state.automationSettingsDraft,
+          use_negotiation: action.draft.use_negotiation,
+          max_rounds: action.draft.max_rounds,
+          high_risk_confirmation_required: true,
+        },
         settingsStatus: state.settingsStatus
           ? {
               ...state.settingsStatus,

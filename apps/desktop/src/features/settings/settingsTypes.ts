@@ -1,3 +1,5 @@
+import type { AutomationSettings } from "../../types";
+
 export type LastIndexRun = {
   vaultId: string;
   jobId: string;
@@ -23,3 +25,5 @@ export type NegotiationSettingsDraft = {
   use_negotiation: boolean;
   max_rounds: number;
 };
+
+export type AutomationSettingsDraft = AutomationSettings;

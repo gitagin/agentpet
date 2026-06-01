@@ -5,7 +5,6 @@
   Loader2,
   MessageSquareText,
   RefreshCw,
-  RotateCcw,
   Send,
   Settings,
   ShieldCheck,
@@ -39,9 +38,11 @@ import { SettingsPanel } from "./features/settings/SettingsPanel";
 import { formatModelTestResult } from "./features/settings/settingsFormatters";
 import type { LastIndexRun } from "./features/settings/settingsTypes";
 import { useSettings } from "./features/settings/useSettings";
+import { AgentActionActivityCard } from "./features/memory/AgentActionActivityCard";
 import { MemoryProposalActivityCard } from "./features/memory/MemoryProposalActivityCard";
 import { useMemory } from "./features/memory/useMemory";
 import { ChatWikiProposalCard } from "./features/wiki/ChatWikiProposalCard";
+import { WikiBrowserPanel } from "./features/wiki/WikiBrowserPanel";
 import { WikiWorkflowPanel } from "./features/wiki/WikiWorkflowPanel";
 import { wikiArchiveCandidateStorageKey } from "./features/wiki/wikiConstants";
 import { useWiki } from "./features/wiki/useWiki";
@@ -66,12 +67,6 @@ import { agentLabel } from "./services/agentModelDrafts";
 import {
   agentActivitySortKey,
   buildAgentActivityEntries,
-  canRevertAgentAction,
-  formatAgentActionDecision,
-  formatAgentActionRiskTier,
-  formatAgentActionStatus,
-  formatAgentActionType,
-  formatAgentActivityTimestamp,
   isAttentionAgentAction,
   type AgentActivityLogEntry,
 } from "./services/agentActivity";
@@ -227,6 +222,8 @@ function App() {
     agentModelDrafts,
     agentModelTestResults,
     applySettingsStatus,
+    automationSettingsDraft,
+    automationSettingsSaveStatus,
     bindVault,
     globalModelDraft,
     globalModelSaveStatus,
@@ -242,6 +239,7 @@ function App() {
     rebuildIndex,
     resetSettingsState,
     saveAgentModel,
+    saveAutomationSettings,
     saveGlobalModel,
     saveNegotiationSettings,
     savingAgentModelIds,
@@ -252,6 +250,7 @@ function App() {
     testGlobalModelConnection,
     testingAgentModelIds,
     updateAgentModelDraft,
+    updateAutomationSettingsDraft,
     updateGlobalModelDraft,
     updateNegotiationSettingsDraft,
     vaultId,
@@ -380,6 +379,14 @@ function App() {
       window.agentDesktop?.setPetShortcutBarVisible?.(false);
     };
   }, [petShortcutsVisible, windowMode]);
+
+  useEffect(() => {
+    const visible = windowMode === "pet" && petChat.inputVisible;
+    window.agentDesktop?.setPetInputVisible?.(visible);
+    return () => {
+      window.agentDesktop?.setPetInputVisible?.(false);
+    };
+  }, [petChat.inputVisible, windowMode]);
 
   useEffect(() => {
     let cancelled = false;
@@ -736,6 +743,23 @@ function App() {
           )
           .slice(0, 50);
       });
+      setMessages((current) =>
+        current.map((message) => {
+          const existing = message.agent_actions || [];
+          if (!existing.some((item) => item.action_id === response.action.action_id)) {
+            return message;
+          }
+          const updated = existing.map((item) =>
+            item.action_id === response.action.action_id ? response.action : item,
+          );
+          return {
+            ...message,
+            agent_actions: updated.some((item) => item.action_id === response.reverted.action_id)
+              ? updated
+              : [...updated, response.reverted],
+          };
+        }),
+      );
       setNotice({ tone: "success", message: `已撤销自动整理活动：${response.action.title}。` });
       void loadAgentActions({ silent: true });
     } catch (error) {
@@ -783,7 +807,14 @@ function App() {
 
   function renderAgentActivityEntry(entry: AgentActivityLogEntry) {
     if (entry.kind === "agent_action") {
-      return renderAgentActionActivity(entry);
+      return (
+        <AgentActionActivityCard
+          key={entry.id}
+          entry={entry}
+          reverting={revertingAgentActionIds.has(entry.action.action_id)}
+          onRevert={(action) => void revertAgentAction(action)}
+        />
+      );
     }
     if (entry.kind === "memory_proposal") {
       return (
@@ -809,60 +840,6 @@ function App() {
         onToggleTarget={toggleChatWikiProposalTarget}
         onApply={(messageId, proposalId) => void applyChatWikiProposal(messageId, proposalId)}
       />
-    );
-  }
-
-  function renderAgentActionActivity(entry: Extract<AgentActivityLogEntry, { kind: "agent_action" }>) {
-    const action = entry.action;
-    const reverting = revertingAgentActionIds.has(action.action_id);
-    const attention = isAttentionAgentAction(action);
-    const canRevert = canRevertAgentAction(action);
-    const sourceEntries = Object.entries(action.source).filter(([, value]) => value);
-    return (
-      <article
-        key={entry.id}
-        className={`proposal agent-activity-item ${attention ? "pending" : "confirmed"}`}
-      >
-        <div className="continuity-proposal-head">
-          <div>
-            <strong>{action.title || formatAgentActionType(action.action_type)}</strong>
-            <small>
-              {formatAgentActionType(action.action_type)} / {formatAgentActionRiskTier(action.risk_tier)} / {formatAgentActionDecision(action.decision)} / {formatAgentActionStatus(action.status)}
-            </small>
-          </div>
-          <span>{formatAgentActivityTimestamp(entry.sortAt)}</span>
-        </div>
-        {action.summary ? <p>{action.summary}</p> : null}
-        {action.target_paths.length > 0 ? (
-          <small>目标：{action.target_paths.join(", ")}</small>
-        ) : null}
-        {action.diff_summary ? <small>差异：{action.diff_summary}</small> : null}
-        {sourceEntries.length > 0 ? (
-          <small>来源：{sourceEntries.map(([key, value]) => `${key}=${value}`).join(" / ")}</small>
-        ) : null}
-        {action.error ? <p className="field-note error">{action.error}</p> : null}
-        {action.reverted_by ? <p className="field-note">已由 {action.reverted_by} 撤销。</p> : null}
-        {action.reverts_action_id ? <p className="field-note">这是撤销记录，来源活动：{action.reverts_action_id}。</p> : null}
-        {!canRevert && action.reversible && action.status !== "reverted" ? (
-          <p className="field-note">当前状态不可自动撤销。</p>
-        ) : null}
-        {action.decision === "ask" && action.status === "pending" ? (
-          <p className="field-note error">该活动需要人工确认；请处理下方对应的高风险确认项。</p>
-        ) : null}
-        {canRevert ? (
-          <div className="button-row">
-            <button
-              type="button"
-              className="secondary"
-              onClick={() => void revertAgentAction(action)}
-              disabled={reverting}
-            >
-              {reverting ? <Loader2 className="spin" size={16} /> : <RotateCcw size={16} />}
-              撤销
-            </button>
-          </div>
-        ) : null}
-      </article>
     );
   }
 
@@ -1223,7 +1200,6 @@ function App() {
     void loadPendingProposals({ silent: true });
     void loadContinuity({ silent: true });
   };
-  const memoryActivityEntries = recentAgentActivityEntries.map((entry) => renderAgentActivityEntry(entry));
   const connectionPanel = (
     <Panel id="connection-panel" icon={<Settings size={18} />} title="本地连接">
       <ConnectionPanel
@@ -1258,6 +1234,28 @@ function App() {
         </p>
       </section>
     </Panel>
+  );
+  const wikiBrowserPanel = (
+    <WikiBrowserPanel
+      schemaStatus={wikiSchemaStatus}
+      indexStatus={wikiIndexStatus}
+      logStatus={wikiLogStatus}
+      lintResult={wikiLintResult}
+      diagnosticsQueue={wikiDiagnosticsQueue}
+      archiveHistory={wikiArchiveHistory}
+      archiveHistoryStatus={wikiArchiveHistoryStatus}
+      archiveHistoryError={wikiArchiveHistoryError}
+      archiveHistoryLoading={wikiArchiveHistoryLoading}
+      coreStatus={wikiCoreStatus}
+      coreError={wikiCoreError}
+      workflowAction={wikiWorkflowAction}
+      openingArchiveId={wikiOpeningArchiveId}
+      formatIssueSeverity={formatIssueSeverity}
+      onLoadCoreStatus={() => void loadWikiCoreStatus()}
+      onLoadArchiveHistory={() => void loadWikiArchiveHistory()}
+      onLoadDiagnosticsQueue={() => void loadWikiDiagnosticsQueue()}
+      onOpenArchive={(archiveId) => void openWikiQueryArchive(archiveId)}
+    />
   );
   const wikiWorkflowPanel = (
     <WikiWorkflowPanel
@@ -1319,6 +1317,8 @@ function App() {
       globalModelSaveStatus={globalModelSaveStatus}
       globalModelTestResult={globalModelTestResult}
       globalModelTestStatus={globalModelTestStatus}
+      automationSettingsDraft={automationSettingsDraft}
+      automationSettingsSaveStatus={automationSettingsSaveStatus}
       negotiationSettingsDraft={negotiationSettingsDraft}
       negotiationSettingsSaveStatus={negotiationSettingsSaveStatus}
       savingAgentModelIds={savingAgentModelIds}
@@ -1333,6 +1333,8 @@ function App() {
       onUpdateGlobalModelDraft={updateGlobalModelDraft}
       onSaveGlobalModel={() => void saveGlobalModel()}
       onTestGlobalModel={() => void testGlobalModelConnection()}
+      onUpdateAutomationSettingsDraft={updateAutomationSettingsDraft}
+      onSaveAutomationSettings={() => void saveAutomationSettings()}
       onUpdateNegotiationSettingsDraft={updateNegotiationSettingsDraft}
       onSaveNegotiationSettings={() => void saveNegotiationSettings()}
       onUpdateAgentModelDraft={updateAgentModelDraft}
@@ -1384,6 +1386,9 @@ function App() {
           void sendChatText(controlInput, () => setControlInput(""));
         }}
         onStopStreaming={stopStreaming}
+        revertingActionIds={revertingAgentActionIds}
+        onRevertAgentAction={(action) => void revertAgentAction(action)}
+        onOpenMemory={() => setWindowMode("memory")}
       />
     );
   }
@@ -1393,14 +1398,22 @@ function App() {
       <MemoryWindowView
         loading={agentActionsStatus === "loading" || loadingProposals || loadingContinuity}
         error={agentActionsError}
-        entries={memoryActivityEntries}
+        entries={agentActivityEntries}
         onRefresh={refreshActivity}
+        renderEntry={renderAgentActivityEntry}
       />
     );
   }
 
   if (windowMode === "world") {
-    return <WorldWindowView>{wikiWorkflowPanel}</WorldWindowView>;
+    return (
+      <WorldWindowView>
+        <div className="feature-page-stack">
+          {wikiBrowserPanel}
+          {wikiWorkflowPanel}
+        </div>
+      </WorldWindowView>
+    );
   }
 
   if (windowMode === "settings") {
@@ -1448,7 +1461,7 @@ function App() {
             },
             onDoubleClick: () => {
               endPetDrag();
-              petChat.showInput();
+              void window.agentDesktop?.openStage?.();
             },
           }}
         />
@@ -1591,7 +1604,12 @@ function App() {
                 )}
               </div>
             </section>
-            <ChatMessageList messages={recentControlMessages} />
+            <ChatMessageList
+              messages={recentControlMessages}
+              revertingActionIds={revertingAgentActionIds}
+              onRevertAgentAction={(action) => void revertAgentAction(action)}
+              onOpenMemory={() => setWindowMode("memory")}
+            />
             <div className="workflow-grid" aria-label="助手与 Obsidian 工作流状态">
               {coreWorkflowItems.map((item) => (
                 <article key={item.label} className={`workflow-card ${item.status}`}>

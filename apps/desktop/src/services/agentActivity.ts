@@ -198,6 +198,63 @@ export function isAttentionAgentAction(action: AgentAction): boolean {
   return action.risk_tier === "high" || action.decision === "ask" || action.status === "failed" || Boolean(action.error);
 }
 
+export type AgentActionDisplayFields = {
+  actionName: string;
+  actionTypeLabel: string;
+  riskTierLabel: string;
+  decisionLabel: string;
+  statusLabel: string;
+  targetPathLabel: string;
+  summary: string;
+  reversibleLabel: string;
+  createdTimeLabel: string;
+  updatedTimeLabel: string;
+  sourceLabel: string;
+};
+
+export function formatAgentActionSource(action: AgentAction): string {
+  return Object.entries(action.source || {})
+    .filter(([, value]) => Boolean(value))
+    .map(([key, value]) => `${key}=${value}`)
+    .join(" / ");
+}
+
+export function formatAgentActionTargetPaths(action: AgentAction): string {
+  return action.target_paths.length > 0 ? action.target_paths.join(", ") : "无目标文件";
+}
+
+export function getAgentActionDisplayFields(action: AgentAction): AgentActionDisplayFields {
+  const actionTypeLabel = formatAgentActionType(action.action_type);
+  return {
+    actionName: action.title || actionTypeLabel,
+    actionTypeLabel,
+    riskTierLabel: formatAgentActionRiskTier(action.risk_tier),
+    decisionLabel: formatAgentActionDecision(action.decision),
+    statusLabel: formatAgentActionStatus(action.status),
+    targetPathLabel: formatAgentActionTargetPaths(action),
+    summary: action.summary || "无摘要",
+    reversibleLabel: canRevertAgentAction(action) ? "可撤销" : action.reversible ? "撤销不可用" : "不可撤销",
+    createdTimeLabel: formatAgentActivityTimestamp(action.created_at),
+    updatedTimeLabel: formatAgentActivityTimestamp(action.updated_at || action.created_at),
+    sourceLabel: formatAgentActionSource(action),
+  };
+}
+
+export function getAgentActionSearchText(action: AgentAction): string {
+  const display = getAgentActionDisplayFields(action);
+  return [
+    display.actionName,
+    display.actionTypeLabel,
+    action.action_type,
+    display.targetPathLabel,
+    action.summary,
+    action.diff_summary,
+    action.error || "",
+  ]
+    .join(" ")
+    .toLocaleLowerCase();
+}
+
 export function buildAgentActivityEntries(
   agentActions: AgentAction[],
   proposals: MemoryProposal[],

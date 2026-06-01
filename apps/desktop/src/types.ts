@@ -105,6 +105,7 @@ declare global {
       quitApp?: () => Promise<void>;
       getPetMousePassthroughStatus?: () => Promise<DesktopPetMousePassthroughStatus>;
       setPetShortcutBarVisible?: (visible: boolean) => Promise<DesktopPetMousePassthroughStatus>;
+      setPetInputVisible?: (visible: boolean) => Promise<DesktopPetMousePassthroughStatus>;
       beginPetWindowDrag?: () => void;
       activatePetWindowDrag?: () => void;
       endPetWindowDrag?: () => void;
@@ -130,7 +131,9 @@ export type ChatMessage = {
   wiki_proposals?: ChatWikiProposal[];
   continuity_proposals?: ChatContinuityProposal[];
   continuity_signal?: ChatContinuitySignal;
+  agent_actions?: AgentAction[];
   agent_run_id?: string;
+  retrieval_attempted?: boolean;
 };
 
 export type ChatNegotiationAction = "invoking" | "reviewing" | "revising" | "synthesizing";
@@ -160,7 +163,7 @@ export type Citation = {
   heading?: string | null;
   snippet?: string;
   score?: number;
-  source_scope?: "personal_memory" | "diary_objects" | "daily_chat" | "knowledge_base" | "pending_memory" | "all";
+  source_scope?: "personal_memory" | "diary_objects" | "daily_chat" | "knowledge_base" | "pending_memory" | "all" | string;
   retrieval_mode?: "graph" | "vector" | "fts" | "hybrid" | string;
 };
 
@@ -319,7 +322,7 @@ export type MemorySearchResult = {
   heading?: string | null;
   snippet: string;
   score: number;
-  source_scope?: "personal_memory" | "diary_objects" | "daily_chat" | "knowledge_base" | "pending_memory" | "all";
+  source_scope?: "personal_memory" | "diary_objects" | "daily_chat" | "knowledge_base" | "pending_memory" | "all" | string;
   retrieval_mode?: "graph" | "vector" | "fts" | "hybrid" | string;
 };
 
@@ -855,6 +858,16 @@ export type AutomationSettings = {
   high_risk_confirmation_required: boolean;
   updated_at?: string | null;
 };
+
+export type AutomationSettingsUpdateRequest = Pick<
+  AutomationSettings,
+  | "auto_chat_diary"
+  | "auto_structured_memory"
+  | "auto_long_term_memory"
+  | "auto_wiki_organize"
+  | "use_negotiation"
+  | "max_rounds"
+>;
 
 export type SettingsUpdateRequest = {
   provider?: string;

@@ -7,17 +7,23 @@ import App from "./App";
 import type { DesktopSidecarStatus } from "./types";
 import type { Live2DAssetInfo, Live2DRuntimeBoundary } from "./services/live2dRuntime";
 
+const mockPetShowInput = vi.hoisted(() => vi.fn());
+
 vi.mock("./components/Live2DStage", () => ({
   Live2DStage: ({
     variant = "panel",
     petInteractions,
   }: {
     variant?: "panel" | "pet";
-    petInteractions?: { onContextMenu?: (event: MouseEvent<HTMLElement>) => void };
+    petInteractions?: {
+      onContextMenu?: (event: MouseEvent<HTMLElement>) => void;
+      onDoubleClick?: (event: MouseEvent<HTMLElement>) => void;
+    };
   }) => (
     <section
       aria-label={variant === "pet" ? "mock pet stage" : "mock panel stage"}
       onContextMenu={petInteractions?.onContextMenu}
+      onDoubleClick={petInteractions?.onDoubleClick}
     />
   ),
 }));
@@ -278,7 +284,7 @@ vi.mock("./features/chat/usePetChatBubble", () => ({
     setReplyPagesFromText: vi.fn(),
     showBubble: vi.fn(),
     showContinuityPresenceBubble: vi.fn(),
-    showInput: vi.fn(),
+    showInput: mockPetShowInput,
     showReaction: vi.fn(),
     showReply: vi.fn(),
     startReplyPaging: vi.fn(),
@@ -363,6 +369,24 @@ describe("App", () => {
 
     finishShortcutAnimation("pet-shortcut-roll-in");
     expect(shortcutBar).toHaveAttribute("data-shortcut-motion", "idle");
+  });
+
+  it("opens the stage window instead of the inline input when double-clicking the pet", async () => {
+    window.location.hash = "#pet";
+    window.agentDesktop = {
+      platform: "win32",
+      versions: {},
+      openStage: vi.fn().mockResolvedValue(undefined),
+      onPetDragCancelled: vi.fn().mockReturnValue(() => undefined),
+    };
+
+    render(<App />);
+
+    const petStage = await screen.findByLabelText("mock pet stage");
+    fireEvent.doubleClick(petStage);
+
+    expect(window.agentDesktop.openStage).toHaveBeenCalledTimes(1);
+    expect(mockPetShowInput).not.toHaveBeenCalled();
   });
 
   it("uses the desktop bridge window mode when available", async () => {

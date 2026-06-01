@@ -112,6 +112,10 @@ function registerIpcHandlers({ baseUrl, rendererUiState, sidecar, proxy, windows
     return windows.setPetShortcutBarVisible?.(event.sender, visible);
   });
 
+  ipcMain.handle("agent-pet:set-pet-input-visible", (event, visible) => {
+    return windows.setPetInputDockVisible?.(event.sender, visible);
+  });
+
   ipcMain.on("agent-pet:begin-pet-window-drag", (event) => {
     windows.beginPetWindowDrag(event.sender);
   });

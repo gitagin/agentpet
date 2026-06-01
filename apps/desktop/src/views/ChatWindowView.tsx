@@ -2,7 +2,7 @@ import { Loader2, MessageSquareText, Send, X } from "lucide-react";
 import type { FormEvent } from "react";
 import { Panel } from "../components/layout";
 import { ChatMessageList } from "../features/chat/ChatMessageList";
-import type { ChatMessage } from "../types";
+import type { AgentAction, ChatMessage } from "../types";
 import { FeatureWindowShell } from "./FeatureWindowShell";
 
 export default function ChatWindowView({
@@ -13,6 +13,9 @@ export default function ChatWindowView({
   onInputChange,
   onSend,
   onStopStreaming,
+  revertingActionIds,
+  onRevertAgentAction,
+  onOpenMemory,
 }: {
   input: string;
   messages: ChatMessage[];
@@ -21,6 +24,9 @@ export default function ChatWindowView({
   onInputChange: (value: string) => void;
   onSend: (event: FormEvent) => void;
   onStopStreaming: () => void;
+  revertingActionIds?: Set<string>;
+  onRevertAgentAction?: (action: AgentAction) => void;
+  onOpenMemory?: () => void;
 }) {
   return (
     <FeatureWindowShell
@@ -50,7 +56,12 @@ export default function ChatWindowView({
           )}
         </form>
         {streaming ? <p className="field-note"><Loader2 className="spin" size={14} /> 正在回复...</p> : null}
-        <ChatMessageList messages={messages} />
+        <ChatMessageList
+          messages={messages}
+          revertingActionIds={revertingActionIds}
+          onRevertAgentAction={onRevertAgentAction}
+          onOpenMemory={onOpenMemory}
+        />
       </Panel>
     </FeatureWindowShell>
   );

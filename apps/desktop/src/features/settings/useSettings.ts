@@ -1,6 +1,6 @@
 import type { FormEvent } from "react";
 import { useCallback, useReducer } from "react";
-import type { AgentModelId, SettingsStatusResponse } from "../../types";
+import type { AgentModelId, AutomationSettingsUpdateRequest, SettingsStatusResponse } from "../../types";
 import { describeError } from "../../services/apiErrorMessages";
 import {
   agentLabel,
@@ -13,7 +13,7 @@ import type { DesktopApi } from "../../services/desktopApi";
 import { formatTaskStatus } from "../tasks/taskReducer";
 import { formatVaultStatus } from "./settingsFormatters";
 import { createInitialSettingsState, settingsReducer } from "./settingsReducer";
-import type { GlobalModelDraft, LastIndexRun, NegotiationSettingsDraft } from "./settingsTypes";
+import type { AutomationSettingsDraft, GlobalModelDraft, LastIndexRun, NegotiationSettingsDraft } from "./settingsTypes";
 
 type Notice = {
   tone: "info" | "error" | "success";
@@ -26,6 +26,20 @@ type UseSettingsOptions = {
   onNotice: (notice: Notice | null) => void;
   onSettingsStatusLoaded?: (response: SettingsStatusResponse) => void;
 };
+
+function automationSettingsRequestFromDraft(
+  draft: AutomationSettingsDraft,
+  maxRounds = Math.trunc(draft.max_rounds),
+): AutomationSettingsUpdateRequest {
+  return {
+    auto_chat_diary: draft.auto_chat_diary,
+    auto_structured_memory: draft.auto_structured_memory,
+    auto_long_term_memory: draft.auto_long_term_memory,
+    auto_wiki_organize: draft.auto_wiki_organize,
+    use_negotiation: draft.use_negotiation,
+    max_rounds: maxRounds,
+  };
+}
 
 export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatusLoaded }: UseSettingsOptions) {
   const [state, dispatch] = useReducer(settingsReducer, undefined, createInitialSettingsState);
@@ -129,6 +143,33 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
     }
   }, [api, onNotice, state.globalModelDraft]);
 
+  const updateAutomationSettingsDraft = useCallback((patch: Partial<AutomationSettingsDraft>) => {
+    dispatch({ type: "updateAutomationSettingsDraft", patch });
+  }, []);
+
+  const saveAutomationSettings = useCallback(async () => {
+    const draft = state.automationSettingsDraft;
+    const maxRounds = Math.trunc(draft.max_rounds);
+    if (!Number.isFinite(maxRounds) || maxRounds < 2 || maxRounds > 10) {
+      onNotice({ tone: "error", message: "最大协商轮数需在 2 到 10 之间。" });
+      return;
+    }
+
+    dispatch({ type: "setAutomationSettingsSaveStatus", status: "loading" });
+    onNotice(null);
+    try {
+      const settings = await api.saveAutomationSettings(
+        automationSettingsRequestFromDraft(draft, maxRounds),
+      );
+      const refreshed = await loadSettingsStatus({ silent: true });
+      dispatch({ type: "saveAutomationSettingsSuccess", settings: refreshed?.automation || settings });
+      onNotice({ tone: "success", message: "自动整理设置已保存。" });
+    } catch (error) {
+      dispatch({ type: "setAutomationSettingsSaveStatus", status: "error" });
+      onNotice({ tone: "error", message: describeError(error, "自动整理设置保存失败") });
+    }
+  }, [api, loadSettingsStatus, onNotice, state.automationSettingsDraft]);
+
   const updateNegotiationSettingsDraft = useCallback((patch: Partial<NegotiationSettingsDraft>) => {
     dispatch({ type: "updateNegotiationSettingsDraft", patch });
   }, []);
@@ -136,7 +177,7 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
   const saveNegotiationSettings = useCallback(async () => {
     const draft = state.negotiationSettingsDraft;
     const maxRounds = Math.trunc(draft.max_rounds);
-    if (maxRounds < 2 || maxRounds > 10) {
+    if (!Number.isFinite(maxRounds) || maxRounds < 2 || maxRounds > 10) {
       onNotice({ tone: "error", message: "最大协商轮次需在 2 到 10 之间。" });
       return;
     }
@@ -144,20 +185,24 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
     dispatch({ type: "setNegotiationSettingsSaveStatus", status: "loading" });
     onNotice(null);
     try {
-      await api.updateSettings({
+      const settings = await api.saveAutomationSettings({
+        ...automationSettingsRequestFromDraft(state.automationSettingsDraft),
         use_negotiation: draft.use_negotiation,
         max_rounds: maxRounds,
       });
+      const refreshed = await loadSettingsStatus({ silent: true });
+      const automation = refreshed?.automation || settings;
+      dispatch({ type: "saveAutomationSettingsSuccess", settings: automation });
       dispatch({
         type: "saveNegotiationSettingsSuccess",
-        draft: { use_negotiation: draft.use_negotiation, max_rounds: maxRounds },
+        draft: { use_negotiation: automation.use_negotiation, max_rounds: automation.max_rounds },
       });
       onNotice({ tone: "success", message: "多轮协商设置已保存。" });
     } catch (error) {
       dispatch({ type: "setNegotiationSettingsSaveStatus", status: "error" });
       onNotice({ tone: "error", message: describeError(error, "多轮协商设置保存失败") });
     }
-  }, [api, onNotice, state.negotiationSettingsDraft]);
+  }, [api, loadSettingsStatus, onNotice, state.automationSettingsDraft, state.negotiationSettingsDraft]);
 
   const updateAgentModelDraft = useCallback((agentId: AgentModelId, patch: Partial<AgentModelDraft>) => {
     dispatch({ type: "updateAgentModelDraft", agentId, patch });
@@ -384,6 +429,8 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
     agentModelTestResults: state.agentModelTestResults,
     applyDiagnosticsStatus,
     applySettingsStatus,
+    automationSettingsDraft: state.automationSettingsDraft,
+    automationSettingsSaveStatus: state.automationSettingsSaveStatus,
     bindVault,
     globalModelDraft: state.globalModelDraft,
     globalModelSaveStatus: state.globalModelSaveStatus,
@@ -399,6 +446,7 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
     rebuildIndex,
     resetSettingsState,
     saveAgentModel,
+    saveAutomationSettings,
     saveGlobalModel,
     saveNegotiationSettings,
     savingAgentModelIds: state.savingAgentModelIds,
@@ -410,6 +458,7 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
     testGlobalModelConnection,
     testingAgentModelIds: state.testingAgentModelIds,
     updateAgentModelDraft,
+    updateAutomationSettingsDraft,
     updateGlobalModelDraft,
     updateNegotiationSettingsDraft,
     vaultId: state.vaultId,

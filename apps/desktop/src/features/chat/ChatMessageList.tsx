@@ -1,9 +1,14 @@
-import type { ChatMessage, ChatNegotiationAction } from "../../types";
+import type { AgentAction, ChatMessage, ChatNegotiationAction } from "../../types";
 import { EmptyState } from "../../components/layout";
-import { formatCitationSourceLabel, formatMessageRole, formatRunStatus } from "./chatFormatters";
+import { ChatAgentActionSummary } from "./ChatAgentActionSummary";
+import { ChatCitationSummary } from "./ChatCitationSummary";
+import { formatMessageRole, formatRunStatus } from "./chatFormatters";
 
 type ChatMessageListProps = {
   messages: ChatMessage[];
+  revertingActionIds?: Set<string>;
+  onRevertAgentAction?: (action: AgentAction) => void;
+  onOpenMemory?: () => void;
 };
 
 const NEGOTIATION_ACTION_LABELS: Record<ChatNegotiationAction, string> = {
@@ -20,7 +25,12 @@ function formatConfidence(confidence: number | undefined): string {
   return `置信度 ${Math.round(Math.max(0, Math.min(1, confidence)) * 100)}%`;
 }
 
-export function ChatMessageList({ messages }: ChatMessageListProps) {
+export function ChatMessageList({
+  messages,
+  revertingActionIds,
+  onRevertAgentAction,
+  onOpenMemory,
+}: ChatMessageListProps) {
   return (
     <div className="message-list" aria-label="Agent 对话记录">
       {messages.length > 0 ? (
@@ -31,16 +41,7 @@ export function ChatMessageList({ messages }: ChatMessageListProps) {
               {message.status ? <span>{formatRunStatus(message.status)}</span> : null}
             </div>
             <p>{message.content || (message.status === "partial" ? "Agent 正在生成回复..." : "无内容")}</p>
-            {message.citations?.length ? (
-              <div className="message-events">
-                {message.citations.slice(0, 4).map((citation) => (
-                  <span key={`${message.id}-${citation.relative_path}-${citation.chunk_id || citation.note_id || citation.heading || ""}`}>
-                    <strong>{formatCitationSourceLabel([citation])}</strong>
-                    {citation.relative_path}
-                  </span>
-                ))}
-              </div>
-            ) : null}
+            <ChatCitationSummary message={message} />
             {message.events?.length ? (
               <div className="message-events">
                 {message.events.slice(-4).map((toolEvent) => (
@@ -50,6 +51,14 @@ export function ChatMessageList({ messages }: ChatMessageListProps) {
                   </span>
                 ))}
               </div>
+            ) : null}
+            {message.agent_actions?.length ? (
+              <ChatAgentActionSummary
+                actions={message.agent_actions}
+                revertingActionIds={revertingActionIds}
+                onRevertAgentAction={onRevertAgentAction}
+                onOpenMemory={onOpenMemory}
+              />
             ) : null}
             {message.negotiation_steps?.length ? (
               <details className="message-negotiation">

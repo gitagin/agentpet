@@ -4,9 +4,10 @@ import { Panel } from "../../components/layout";
 import type { AgentModelId, ModelTestResponse } from "../../types";
 import type { AgentModelDraft } from "../../services/agentModelDrafts";
 import type { DesktopApi } from "../../services/desktopApi";
+import { AutomationSettingsCard } from "./AutomationSettingsCard";
 import { GlobalModelCard } from "./GlobalModelCard";
 import { ModelHealthBanner } from "./ModelHealthBanner";
-import type { AsyncStatus, GlobalModelDraft, LastIndexRun, NegotiationSettingsDraft } from "./settingsTypes";
+import type { AsyncStatus, AutomationSettingsDraft, GlobalModelDraft, LastIndexRun, NegotiationSettingsDraft } from "./settingsTypes";
 import { VaultBindingSection } from "./VaultBindingSection";
 
 type SettingsPanelProps = {
@@ -17,6 +18,8 @@ type SettingsPanelProps = {
   globalModelSaveStatus: AsyncStatus;
   globalModelTestResult?: ModelTestResponse;
   globalModelTestStatus: AsyncStatus;
+  automationSettingsDraft: AutomationSettingsDraft;
+  automationSettingsSaveStatus: AsyncStatus;
   negotiationSettingsDraft: NegotiationSettingsDraft;
   negotiationSettingsSaveStatus: AsyncStatus;
   savingAgentModelIds: Set<string>;
@@ -31,6 +34,8 @@ type SettingsPanelProps = {
   onUpdateGlobalModelDraft: (patch: Partial<GlobalModelDraft>) => void;
   onSaveGlobalModel: () => void;
   onTestGlobalModel: () => void;
+  onUpdateAutomationSettingsDraft: (patch: Partial<AutomationSettingsDraft>) => void;
+  onSaveAutomationSettings: () => void;
   onUpdateNegotiationSettingsDraft: (patch: Partial<NegotiationSettingsDraft>) => void;
   onSaveNegotiationSettings: () => void;
   onUpdateAgentModelDraft: (agentId: AgentModelId, patch: Partial<AgentModelDraft>) => void;
@@ -51,6 +56,8 @@ export function SettingsPanel({
   globalModelSaveStatus,
   globalModelTestResult,
   globalModelTestStatus,
+  automationSettingsDraft,
+  automationSettingsSaveStatus,
   negotiationSettingsDraft,
   negotiationSettingsSaveStatus,
   savingAgentModelIds,
@@ -65,6 +72,8 @@ export function SettingsPanel({
   onUpdateGlobalModelDraft,
   onSaveGlobalModel,
   onTestGlobalModel,
+  onUpdateAutomationSettingsDraft,
+  onSaveAutomationSettings,
   onUpdateNegotiationSettingsDraft,
   onSaveNegotiationSettings,
   onUpdateAgentModelDraft,
@@ -82,8 +91,6 @@ export function SettingsPanel({
   void negotiationSettingsSaveStatus;
   void savingAgentModelIds;
   void testingAgentModelIds;
-  void loadingSettingsStatus;
-  void onRefreshSettings;
   void onUpdateNegotiationSettingsDraft;
   void onSaveNegotiationSettings;
   void onUpdateAgentModelDraft;
@@ -111,6 +118,14 @@ export function SettingsPanel({
         onUpdateDraft={onUpdateGlobalModelDraft}
         onSave={onSaveGlobalModel}
         onTest={onTestGlobalModel}
+      />
+      <AutomationSettingsCard
+        draft={automationSettingsDraft}
+        saveStatus={automationSettingsSaveStatus}
+        loadingSettingsStatus={loadingSettingsStatus}
+        onUpdateDraft={onUpdateAutomationSettingsDraft}
+        onSave={onSaveAutomationSettings}
+        onRefresh={onRefreshSettings}
       />
       <VaultBindingSection
         vaultId={vaultId}

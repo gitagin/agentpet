@@ -1,23 +1,39 @@
 import type { ChatMessage, Citation } from "../../types";
 
+const CITATION_SOURCE_SCOPE_LABELS: Record<string, string> = {
+  personal_memory: "记忆",
+  diary_objects: "结构化日记",
+  daily_chat: "聊天日记",
+  knowledge_base: "资料",
+  pending_memory: "待确认记忆",
+  all: "记忆/资料",
+};
+
+const CITATION_RETRIEVAL_MODE_LABELS: Record<string, string> = {
+  graph: "图谱",
+  graph_active: "图谱",
+  vector: "向量检索",
+  fts: "全文搜索",
+  hybrid: "混合检索",
+  multi_source: "多源检索",
+};
+
+export function formatCitationSourceScope(sourceScope: Citation["source_scope"]): string | null {
+  if (!sourceScope) {
+    return null;
+  }
+  return CITATION_SOURCE_SCOPE_LABELS[sourceScope] || sourceScope;
+}
+
+export function formatCitationRetrievalMode(retrievalMode: Citation["retrieval_mode"]): string | null {
+  if (!retrievalMode) {
+    return null;
+  }
+  return CITATION_RETRIEVAL_MODE_LABELS[retrievalMode] || retrievalMode;
+}
+
 export function formatCitationSourceLabel(citations: Citation[]): string {
-  const sourceScope = citations[0]?.source_scope;
-  if (sourceScope === "personal_memory") {
-    return "记忆";
-  }
-  if (sourceScope === "diary_objects") {
-    return "结构化日记";
-  }
-  if (sourceScope === "daily_chat") {
-    return "聊天日记";
-  }
-  if (sourceScope === "knowledge_base") {
-    return "资料";
-  }
-  if (sourceScope === "pending_memory") {
-    return "待确认记忆";
-  }
-  return "记忆/资料";
+  return formatCitationSourceScope(citations[0]?.source_scope) || "记忆/资料";
 }
 
 export function formatRunStatus(status: NonNullable<ChatMessage["status"]>): string {

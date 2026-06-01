@@ -2,7 +2,14 @@ const { app, Menu, Tray, nativeImage } = require("electron");
 const fs = require("node:fs");
 const path = require("node:path");
 
-function createTrayManager({ createPetWindow, showControlWindow, quitApp }) {
+function createTrayManager({
+  createPetWindow,
+  showControlWindow,
+  showStageWindow,
+  showAgentWindow,
+  showFeatureWindow,
+  quitApp,
+}) {
   let tray = null;
 
   function findTrayIconPath() {
@@ -34,6 +41,12 @@ function createTrayManager({ createPetWindow, showControlWindow, quitApp }) {
     tray.setContextMenu(
       Menu.buildFromTemplate([
         { label: "显示桌宠", click: () => createPetWindow() },
+        { label: "打开主舞台", click: showStageWindow },
+        { label: "打开聊天窗口", click: () => showFeatureWindow("chat") },
+        { label: "打开任务工作台", click: showAgentWindow },
+        { label: "打开记忆整理", click: () => showFeatureWindow("memory") },
+        { label: "打开知识库", click: () => showFeatureWindow("world") },
+        { label: "打开设置", click: () => showFeatureWindow("settings") },
         { label: "打开控制台", click: showControlWindow },
         { type: "separator" },
         {

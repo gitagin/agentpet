@@ -5,6 +5,8 @@ import type {
   AgentModelConfigResponse,
   AgentModelId,
   AgentModelKeyRequest,
+  AutomationSettings,
+  AutomationSettingsUpdateRequest,
   ChatAcceptedResponse,
   ContinuityProposalActionResponse,
   ContinuityProposalListResponse,
@@ -191,6 +193,15 @@ export class DesktopApi {
     return this.client.get<TaskListResponse>("/api/tasks", signal);
   }
 
+  listTodayTasks(timezone?: string | null, signal?: AbortSignal): Promise<TaskListResponse> {
+    const params = new URLSearchParams();
+    if (timezone?.trim()) {
+      params.set("timezone", timezone.trim());
+    }
+    const query = params.toString();
+    return this.client.get<TaskListResponse>(`/api/tasks/today${query ? `?${query}` : ""}`, signal);
+  }
+
   completeTask(taskId: string, signal?: AbortSignal): Promise<TaskActionResponse> {
     return this.client.post<TaskActionResponse>(`/api/tasks/${encodeURIComponent(taskId)}/complete`, {}, signal);
   }
@@ -233,6 +244,17 @@ export class DesktopApi {
 
   getSettingsStatus(signal?: AbortSignal): Promise<SettingsStatusResponse> {
     return this.client.get<SettingsStatusResponse>("/api/settings", signal);
+  }
+
+  getAutomationSettings(signal?: AbortSignal): Promise<AutomationSettings> {
+    return this.client.get<AutomationSettings>("/api/settings/automation", signal);
+  }
+
+  saveAutomationSettings(
+    request: AutomationSettingsUpdateRequest,
+    signal?: AbortSignal,
+  ): Promise<AutomationSettings> {
+    return this.client.put<AutomationSettings>("/api/settings/automation", request, signal);
   }
 
   saveModelKey(provider: string, apiKey: string, signal?: AbortSignal): Promise<ModelKeyResponse> {

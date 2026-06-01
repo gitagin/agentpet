@@ -44,6 +44,9 @@ const proxy = createProxyManager({
 const tray = createTrayManager({
   createPetWindow: windows.createPetWindow,
   showControlWindow: windows.showControlWindow,
+  showStageWindow: windows.showStageWindow,
+  showAgentWindow: windows.showAgentWindow,
+  showFeatureWindow: windows.showFeatureWindow,
   quitApp,
 });
 

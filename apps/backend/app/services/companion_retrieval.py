@@ -4,9 +4,8 @@ import json
 import sqlite3
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Iterable, Protocol
+from typing import TYPE_CHECKING, Iterable, Protocol
 
-from app.agents.memory_router import MemoryRoute, route_memory
 from app.models.api import MemorySearchResponse, MemorySearchResult
 from app.models.common import new_id
 from app.models.enums import MemoryFactStatus
@@ -17,6 +16,9 @@ from app.services.memory_policy import evaluate_memory_content
 from app.utils.hash import sha256_hex
 from app.utils.time import utc_now_iso
 
+if TYPE_CHECKING:
+    from app.agents.memory_router import MemoryRoute
+
 
 COMPANION_RETRIEVAL_SCOPES = {
     "personal_memory",
@@ -25,6 +27,12 @@ COMPANION_RETRIEVAL_SCOPES = {
     "knowledge_base",
     "graph_facts",
 }
+
+
+def _route_memory(message: str) -> MemoryRoute:
+    from app.agents.memory_router import route_memory
+
+    return route_memory(message)
 
 
 class VaultRetrievalService(Protocol):
@@ -116,7 +124,7 @@ class CompanionRetrievalService:
         budget: CompanionRetrievalBudget | None = None,
     ) -> CompanionRetrievalResult:
         active_budget = budget or CompanionRetrievalBudget()
-        active_route = route or route_memory(query)
+        active_route = route or _route_memory(query)
         scopes = _normalize_scopes(active_route.all_scopes)
         raw_items: list[CompanionRetrievedItem] = []
         skipped_sensitive = 0

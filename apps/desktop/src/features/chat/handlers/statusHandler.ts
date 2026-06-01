@@ -2,6 +2,7 @@ import type { StreamHandlerInput } from "../streamDispatcher";
 
 export function statusHandler({ messageId, payload, context }: StreamHandlerInput) {
   const { petChat, appendChatEvent } = context;
+  const stage = typeof payload?.stage === "string" ? payload.stage : null;
   const stageLabel = formatAgentStage(payload?.stage);
   const statusMessage = formatAgentStatusMessage(payload?.message);
   if (!petChat.replyStartedRef.current) {
@@ -22,6 +23,23 @@ export function statusHandler({ messageId, payload, context }: StreamHandlerInpu
     detail: statusMessage,
     tone: "info",
   });
+  if (isRetrievalStage(stage)) {
+    context.setMessages((current) =>
+      current.map((message) => (message.id === messageId ? { ...message, retrieval_attempted: true } : message)),
+    );
+  }
+}
+
+function isRetrievalStage(stage: string | null): boolean {
+  return (
+    stage === "personal_memory_retrieval" ||
+    stage === "diary_object_retrieval" ||
+    stage === "daily_chat_retrieval" ||
+    stage === "daily_chat_fallback" ||
+    stage === "knowledge_base_retrieval" ||
+    stage === "multi_source_retrieval" ||
+    stage === "multi_source_memory_retrieval"
+  );
 }
 
 function formatAgentStage(stage: unknown): string | null {
