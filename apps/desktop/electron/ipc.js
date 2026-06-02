@@ -216,8 +216,8 @@ function registerIpcHandlers({ baseUrl, rendererUiState, persistRendererUiState,
     windows.hideAgentWindow();
   });
 
-  ipcMain.handle("window:open-stage", () => {
-    windows.showStageWindow();
+  ipcMain.handle("window:open-stage", (_event, mode) => {
+    windows.showStageWindow(mode);
   });
 
   ipcMain.handle("window:open-feature", (_event, mode) => {

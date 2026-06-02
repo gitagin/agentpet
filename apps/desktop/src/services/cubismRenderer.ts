@@ -80,9 +80,9 @@ const modelProfiles = {
     targetCenterY: -0.02,
   },
   stage: {
-    visibleScale: 0.82,
+    visibleScale: 1.04,
     targetCenterX: 0,
-    targetCenterY: -0.06,
+    targetCenterY: 0.02,
   },
 } satisfies Record<CubismRendererVariant, { visibleScale: number; targetCenterX: number; targetCenterY: number }>;
 

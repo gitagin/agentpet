@@ -907,8 +907,13 @@ dt,
   display: flex;
   justify-content: center;
   border: 0;
-  background: transparent;
+  border-radius: 0;
+  background: none !important;
   box-shadow: none;
+  filter: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  contain: none;
   padding: 0;
   overflow: visible;
 }
@@ -1560,34 +1565,43 @@ dt,
   height: 100%;
   min-height: 520px;
   place-items: center;
-  border-radius: 34px;
-  background:
-    radial-gradient(circle at 50% 16%, rgba(255, 255, 255, 0.9), transparent 28%),
-    radial-gradient(ellipse at 50% 84%, rgba(231, 166, 195, 0.36), transparent 42%),
-    linear-gradient(180deg, rgba(255, 248, 251, 0.84), rgba(242, 231, 255, 0.72));
+  border: 0;
+  border-radius: 0;
+  background: none !important;
+  box-shadow: none;
+  filter: none !important;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  overflow: visible;
+  isolation: auto;
 }
 
 .live2d-panel-stage .live2d-runtime-host {
-  inset: 5% 8% 9%;
+  inset: 0 2% 0;
   z-index: 4;
+  background: transparent;
+  filter: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .live2d-panel-stage .live2d-runtime-canvas {
   opacity: 1;
+  background: transparent !important;
 }
 
 .live2d-panel-stage .live2d-cover {
-  width: min(360px, 76%);
-  margin: 0 0 72px;
+  width: min(460px, 86%);
+  margin: 0 0 44px;
 }
 
 .live2d-panel-stage .live2d-cover img {
-  max-height: 430px;
+  max-height: 520px;
 }
 
 .live2d-panel-stage .live2d-model {
-  transform: scale(1.45);
-  margin-bottom: 96px;
+  transform: scale(1.66);
+  margin-bottom: 72px;
 }
 
 .live2d-panel-stage .live2d-status-card {
@@ -1611,17 +1625,52 @@ dt,
 }
 
 .live2d-panel-stage .live2d-runtime-placeholder {
-  top: 18px;
+  top: 8px;
   left: 50%;
   right: auto;
-  width: min(380px, calc(100% - 48px));
+  width: min(320px, calc(100% - 48px));
   transform: translateX(-50%);
   text-align: center;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
 }
 
 .live2d-panel-stage .live2d-layout-warning {
   width: min(520px, 100%);
   margin: 10px auto 0;
+}
+
+.live2d-panel-stage .live2d-scanline,
+.live2d-panel-stage .live2d-meter,
+.live2d-panel-stage .live2d-stage::before {
+  display: none;
+}
+
+.stage-host-routes {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: #f7f7f2;
+}
+
+.stage-host-route {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.stage-host-route.is-active {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+  z-index: 1;
 }
 
 .live2d-panel-pet .live2d-copy,
@@ -1642,6 +1691,19 @@ dt,
   transform: translateX(-50%);
   z-index: 4;
   pointer-events: none;
+}
+
+.pet-shell.pet-bubble-visible .live2d-panel-pet .live2d-runtime-host {
+  bottom: 16px;
+}
+
+.pet-shell.pet-bubble-visible .live2d-panel-pet .live2d-cover,
+.pet-shell.pet-bubble-visible .live2d-panel-pet .live2d-model {
+  bottom: 16px;
+}
+
+.pet-shell.pet-bubble-visible .live2d-panel-pet .pet-hit-model {
+  bottom: 48px;
 }
 
 .live2d-panel-pet .live2d-runtime-canvas {
@@ -1681,9 +1743,9 @@ dt,
 }
 
 .live2d-panel-pet .pet-hit-bubble {
-  bottom: var(--pet-input-dock-hit-bottom);
-  width: min(var(--pet-input-dock-hit-width), calc(100% - 24px));
-  height: var(--pet-input-dock-hit-height);
+  bottom: var(--pet-chat-bubble-hit-bottom);
+  width: min(var(--pet-chat-bubble-hit-width), calc(100% - 24px));
+  height: var(--pet-chat-bubble-hit-height);
 }
 
 .pet-shell.pet-debug-hitbox .pet-hit-region {
@@ -1777,6 +1839,7 @@ dt,
   position: absolute;
   z-index: 28;
   left: 50%;
+  top: auto;
   bottom: var(--pet-chat-bubble-hit-bottom);
   width: min(var(--pet-chat-bubble-hit-width), calc(100% - 24px));
   height: var(--pet-chat-bubble-hit-height);
@@ -1796,6 +1859,20 @@ dt,
   -webkit-app-region: no-drag;
 }
 
+.pet-agent-bubble::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -7px;
+  width: 12px;
+  height: 12px;
+  transform: translateX(-50%) rotate(45deg);
+  border-right: 1px solid rgba(202, 113, 151, 0.16);
+  border-bottom: 1px solid rgba(202, 113, 151, 0.16);
+  background: inherit;
+  box-shadow: 4px 4px 10px rgba(119, 77, 104, 0.06);
+}
+
 .pet-agent-bubble strong {
   display: flex;
   justify-content: space-between;
@@ -1807,9 +1884,9 @@ dt,
 
 .pet-agent-bubble-page {
   flex: 0 0 auto;
-  color: rgba(49, 83, 92, 0.42);
+  color: rgba(49, 83, 92, 0.62);
   font-size: 9px;
-  font-weight: 500;
+  font-weight: 700;
 }
 
 .pet-agent-bubble-text {

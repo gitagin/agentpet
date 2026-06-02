@@ -40,7 +40,7 @@ contextBridge.exposeInMainWorld("agentDesktop", {
   openControlWindow: (targetId) => ipcRenderer.invoke("agent-pet:open-control-window", targetId),
   openAgent: () => ipcRenderer.invoke("window:open-agent"),
   closeAgent: () => ipcRenderer.invoke("window:close-agent"),
-  openStage: () => ipcRenderer.invoke("window:open-stage"),
+  openStage: (mode) => ipcRenderer.invoke("window:open-stage", mode),
   openFeatureWindow: (mode) => ipcRenderer.invoke("window:open-feature", mode),
   quitApp: () => ipcRenderer.invoke("app:quit"),
   getPetMousePassthroughStatus: () => ipcRenderer.invoke("agent-pet:get-pet-mouse-passthrough-status"),
@@ -77,6 +77,16 @@ contextBridge.exposeInMainWorld("agentDesktop", {
     ipcRenderer.on("agent-pet:focus-control-target", listener);
     return () => {
       ipcRenderer.removeListener("agent-pet:focus-control-target", listener);
+    };
+  },
+  onStageRouteRequested: (callback) => {
+    const allowedModes = new Set(["stage", "agent", "chat", "memory", "world", "settings"]);
+    const listener = (_event, mode) => {
+      callback(typeof mode === "string" && allowedModes.has(mode) ? mode : "stage");
+    };
+    ipcRenderer.on("agent-pet:show-stage-route", listener);
+    return () => {
+      ipcRenderer.removeListener("agent-pet:show-stage-route", listener);
     };
   },
   selectKnowledgeBaseFolder: () => ipcRenderer.invoke("agent-pet:select-knowledge-base-folder"),

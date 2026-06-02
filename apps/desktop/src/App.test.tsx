@@ -1,6 +1,6 @@
 import { createRef } from "react";
 import type { MouseEvent } from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import App from "./App";
@@ -14,14 +14,14 @@ vi.mock("./components/Live2DStage", () => ({
     variant = "panel",
     petInteractions,
   }: {
-    variant?: "panel" | "pet";
+    variant?: "panel" | "pet" | "stage";
     petInteractions?: {
       onContextMenu?: (event: MouseEvent<HTMLElement>) => void;
       onDoubleClick?: (event: MouseEvent<HTMLElement>) => void;
     };
   }) => (
     <section
-      aria-label={variant === "pet" ? "mock pet stage" : "mock panel stage"}
+      aria-label={variant === "pet" ? "mock pet stage" : variant === "stage" ? "mock stage stage" : "mock panel stage"}
       onContextMenu={petInteractions?.onContextMenu}
       onDoubleClick={petInteractions?.onDoubleClick}
     />
@@ -412,6 +412,9 @@ describe("App", () => {
     window.agentDesktop = {
       platform: "win32",
       versions: {},
+      openAgent: vi.fn().mockResolvedValue(undefined),
+      openFeatureWindow: vi.fn().mockResolvedValue(undefined),
+      openStage: vi.fn().mockResolvedValue(undefined),
       setPetShortcutBarVisible: vi.fn().mockResolvedValue({ enabled: false, reason: "test", changed: false }),
       onPetDragCancelled: vi.fn().mockReturnValue(() => undefined),
     };
@@ -438,6 +441,14 @@ describe("App", () => {
     expect(shortcutBar).toHaveClass("is-visible");
     expect(screen.getByLabelText("打开桌宠主舞台")).toHaveAttribute("tabindex", "0");
     expect(window.agentDesktop.setPetShortcutBarVisible).toHaveBeenLastCalledWith(true);
+
+    fireEvent.click(screen.getByLabelText("打开任务工作台"));
+    fireEvent.click(screen.getByLabelText("打开配置"));
+
+    expect(window.agentDesktop.openStage).toHaveBeenCalledWith("agent");
+    expect(window.agentDesktop.openStage).toHaveBeenCalledWith("settings");
+    expect(window.agentDesktop.openAgent).not.toHaveBeenCalled();
+    expect(window.agentDesktop.openFeatureWindow).not.toHaveBeenCalled();
 
     finishShortcutAnimation("pet-shortcut-roll-out");
     expect(shortcutBar).toHaveAttribute("data-shortcut-motion", "idle");
@@ -484,5 +495,47 @@ describe("App", () => {
 
     await waitFor(() => expect(screen.getByLabelText("桌面记忆助手桌宠")).toBeInTheDocument());
     expect(window.agentDesktop.getWindowMode).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the stage Live2D route mounted while navigating inside the stage window", async () => {
+    window.location.hash = "#stage";
+    let requestStageRoute: ((mode: "stage" | "agent" | "chat" | "memory" | "world" | "settings") => void) | null = null;
+    window.agentDesktop = {
+      platform: "win32",
+      versions: {},
+      getWindowMode: vi.fn().mockResolvedValue("stage"),
+      onStageRouteRequested: vi.fn((callback) => {
+        requestStageRoute = callback;
+        return () => undefined;
+      }),
+    };
+
+    render(<App />);
+
+    expect(await screen.findByLabelText("stage persistent route")).toHaveAttribute("aria-hidden", "false");
+
+    act(() => {
+      window.location.hash = "#chat";
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    });
+
+    await waitFor(() => expect(screen.getByLabelText("stage persistent route")).toHaveAttribute("aria-hidden", "true"));
+    expect(screen.getByLabelText("stage persistent route")).toBeInTheDocument();
+
+    act(() => {
+      requestStageRoute?.("settings");
+    });
+
+    await waitFor(() => expect(window.location.hash).toBe("#settings"));
+    expect(screen.getByLabelText("stage persistent route")).toHaveAttribute("aria-hidden", "true");
+    expect(screen.getByLabelText("stage persistent route")).toBeInTheDocument();
+
+    act(() => {
+      window.location.hash = "#stage";
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    });
+
+    await waitFor(() => expect(screen.getByLabelText("stage persistent route")).toHaveAttribute("aria-hidden", "false"));
+    expect(screen.getByLabelText("stage persistent route")).toBeInTheDocument();
   });
 });

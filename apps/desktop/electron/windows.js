@@ -523,6 +523,12 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     });
 
     configureCommonWindow(stageWindow);
+    stageWindow.on("close", (event) => {
+      if (!state.isQuitting) {
+        event.preventDefault();
+        stageWindow?.hide();
+      }
+    });
     stageWindow.on("closed", () => {
       stageWindow = null;
     });
@@ -583,12 +589,12 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
         ],
       },
       { type: "separator" },
-      { label: "打开主舞台", click: showStageWindow },
-      { label: "打开聊天窗口", click: () => showFeatureWindow("chat") },
-      { label: "打开任务工作台", click: showAgentWindow },
-      { label: "打开记忆整理", click: () => showFeatureWindow("memory") },
-      { label: "打开知识库", click: () => showFeatureWindow("world") },
-      { label: "打开设置", click: () => showFeatureWindow("settings") },
+      { label: "打开主舞台", click: () => showStageRouteWindow("stage") },
+      { label: "打开聊天窗口", click: () => showStageRouteWindow("chat") },
+      { label: "打开任务工作台", click: () => showStageRouteWindow("agent") },
+      { label: "打开记忆整理", click: () => showStageRouteWindow("memory") },
+      { label: "打开知识库", click: () => showStageRouteWindow("world") },
+      { label: "打开设置", click: () => showStageRouteWindow("settings") },
       { type: "separator" },
       {
         label: "桌宠置顶",
@@ -687,13 +693,26 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     agentWindow?.hide();
   }
 
-  function showStageWindow() {
+  function showStageRouteWindow(mode = "stage") {
     const window = createStageWindow();
     if (window.isMinimized()) {
       window.restore();
     }
+    const routeMode = ["stage", "agent", "chat", "memory", "world", "settings"].includes(mode) ? mode : "stage";
+    const showRoute = () => {
+      window.webContents.send("agent-pet:show-stage-route", routeMode);
+    };
+    if (window.webContents.isLoading()) {
+      window.webContents.once("did-finish-load", showRoute);
+    } else {
+      showRoute();
+    }
     window.show();
     window.focus();
+  }
+
+  function showStageWindow(mode = "stage") {
+    showStageRouteWindow(mode);
   }
 
   function showControlWindow(targetId) {

@@ -1,6 +1,7 @@
 export const petBubbleSegmentMaxWeight = 31;
 export const petBubbleHardSplitWeight = 30;
 export const petBubbleSegmentMinWeight = 10;
+export const petBubblePageDelayMs = 4500;
 
 type GraphemeSegment = {
   segment: string;
@@ -260,6 +261,6 @@ export function paginatePetBubbleReply(text: string) {
 }
 
 export function getPetBubblePageDelay(page: string) {
-  const visualWeight = getPetBubbleVisualWeight(page);
-  return Math.max(3600, Math.min(7600, Math.round(visualWeight * 130 + 1800)));
+  void page;
+  return petBubblePageDelayMs;
 }

@@ -81,8 +81,6 @@ export function PetChatOverlay({
           <div
             className="pet-agent-bubble-text"
             tabIndex={bubble.tone === "reply" ? 0 : undefined}
-            onPointerEnter={onPausePaging}
-            onPointerLeave={onResumePaging}
             onFocus={onPausePaging}
             onBlur={onResumePaging}
             onWheel={onPausePaging}

@@ -27,6 +27,8 @@ type UseLive2DOptions = {
   continuitySignal: ChatContinuitySignal | null;
 };
 
+const live2DAssetCache = new Map<string, Live2DAssetInfo>();
+
 export function useLive2D({
   connected,
   streaming,
@@ -149,7 +151,8 @@ export function useLive2D({
     async function loadLive2DAsset() {
       const selectedModel = models.find((model) => model.id === selectedModelId) || models[0] || defaultLive2DModelOption;
       const initialAsset = createInitialLive2DAssetInfo(selectedModel);
-      setAsset(initialAsset);
+      const cachedAsset = live2DAssetCache.get(selectedModel.id);
+      setAsset(cachedAsset || initialAsset);
       try {
         const [manifestResponse, hasIcon] = await Promise.all([
           fetch(live2DManifestPath(selectedModel), { signal: abort.signal }),
@@ -171,7 +174,9 @@ export function useLive2D({
         const manifest = (await manifestResponse.json()) as Live2DModelManifest;
 
         if (!cancelled) {
-          setAsset(createLive2DAssetInfo(manifest, hasIcon, selectedModel));
+          const nextAsset = createLive2DAssetInfo(manifest, hasIcon, selectedModel);
+          live2DAssetCache.set(selectedModel.id, nextAsset);
+          setAsset(nextAsset);
         }
       } catch (error) {
         if (abort.signal.aborted || cancelled) {

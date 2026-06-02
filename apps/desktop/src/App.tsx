@@ -120,6 +120,19 @@ function detectDesktopWindowMode(): DesktopWindowMode {
   return "control";
 }
 
+function isDesktopWindowMode(mode: unknown): mode is DesktopWindowMode {
+  return (
+    mode === "pet" ||
+    mode === "control" ||
+    mode === "stage" ||
+    mode === "agent" ||
+    mode === "chat" ||
+    mode === "memory" ||
+    mode === "world" ||
+    mode === "settings"
+  );
+}
+
 const petHitboxStyle = {
   "--pet-model-hit-width": `${petHitboxConfig.hitboxes.model.width}px`,
   "--pet-model-hit-height": `${petHitboxConfig.hitboxes.model.height}px`,
@@ -296,6 +309,7 @@ function App() {
   const [continuityActionIds, setContinuityActionIds] = useState<Set<string>>(() => new Set());
   const [resettingLocalState, setResettingLocalState] = useState(false);
   const [windowMode, setWindowMode] = useState<DesktopWindowMode>(() => detectDesktopWindowMode());
+  const [desktopHostMode, setDesktopHostMode] = useState<DesktopWindowMode>(() => detectDesktopWindowMode());
   const [petShortcutsVisible, setPetShortcutsVisible] = useState(false);
   const [petShortcutMotion, setPetShortcutMotion] = useState<PetShortcutMotion>("idle");
   const [petInputMode, setPetInputMode] = useState<PetInputMode>("chat");
@@ -520,6 +534,9 @@ function App() {
   useEffect(() => {
     let cancelled = false;
     void window.agentDesktop?.getWindowMode?.().then((mode) => {
+      if (!cancelled && isDesktopWindowMode(mode)) {
+        setDesktopHostMode(mode);
+      }
       const detectedMode = detectDesktopWindowMode();
       if (!cancelled && detectedMode !== "control") {
         setWindowMode(detectedMode);
@@ -529,6 +546,9 @@ function App() {
         setWindowMode(mode);
       }
     });
+    if (!window.agentDesktop?.getWindowMode) {
+      setDesktopHostMode(detectDesktopWindowMode());
+    }
 
     const updateFromHash = () => setWindowMode(detectDesktopWindowMode());
     window.addEventListener("hashchange", updateFromHash);
@@ -547,6 +567,22 @@ function App() {
     });
     return unsubscribe;
   }, [windowMode]);
+
+  useEffect(() => {
+    if (desktopHostMode !== "stage") {
+      return;
+    }
+    const unsubscribe = window.agentDesktop?.onStageRouteRequested?.((mode) => {
+      const nextMode = isDesktopWindowMode(mode) ? mode : "stage";
+      const nextHash = `#${nextMode}`;
+      if (window.location.hash !== nextHash) {
+        window.location.hash = nextMode;
+        return;
+      }
+      setWindowMode(nextMode);
+    });
+    return unsubscribe;
+  }, [desktopHostMode]);
 
   useEffect(() => {
     if (windowMode !== "pet") {
@@ -1584,23 +1620,90 @@ function App() {
 
   const petHitboxDebug =
     windowMode === "pet" && new URLSearchParams(window.location.search).get("hitbox") === "1";
-  if (windowMode === "stage") {
+  const stageView = (
+    <StageView
+      live2dStage={live2dStage}
+      live2dAsset={live2dAsset}
+      live2dRuntime={live2dRuntime}
+      live2dCanvasRef={live2dCanvasRef}
+      connected={hasConnection}
+      streaming={streaming}
+      bubble={petChat.bubble}
+      onSendChat={sendChatText}
+      onStopStreaming={stopStreaming}
+      onAdvancePage={petChat.advancePageManually}
+      onPausePaging={petChat.pausePaging}
+      onResumePaging={petChat.resumePaging}
+    />
+  );
+  const isStageHostWindow = desktopHostMode === "stage";
+
+  if (isStageHostWindow && windowMode !== "pet" && windowMode !== "control") {
+    const activeRoute =
+      windowMode === "agent" ? (
+        <AgentWorkspaceView api={api} />
+      ) : windowMode === "chat" ? (
+        <ChatWindowView
+          input={controlInput}
+          messages={messages}
+          connected={hasConnection}
+          streaming={streaming}
+          onInputChange={setControlInput}
+          onSend={(event) => {
+            event.preventDefault();
+            void sendChatText(controlInput, () => setControlInput(""));
+          }}
+          onStopStreaming={stopStreaming}
+          revertingActionIds={revertingAgentActionIds}
+          onRevertAgentAction={(action) => void revertAgentAction(action)}
+          onOpenMemory={() => setWindowMode("memory")}
+          onboardingPanel={firstUseOnboardingPanel}
+        />
+      ) : windowMode === "memory" ? (
+        <MemoryWindowView
+          api={api}
+          loading={agentActionsStatus === "loading" || loadingProposals || loadingContinuity}
+          error={agentActionsError}
+          entries={agentActivityEntries}
+          onRefresh={refreshActivity}
+          renderEntry={renderAgentActivityEntry}
+        />
+      ) : windowMode === "world" ? (
+        <WorldWindowView>
+          <div className="feature-page-stack">
+            {wikiBrowserPanel}
+            {wikiWorkflowPanel}
+          </div>
+        </WorldWindowView>
+      ) : windowMode === "settings" ? (
+        <SettingsWindowView>
+          <div className="feature-page-stack">
+            {connectionPanel}
+            {settingsPanel}
+          </div>
+        </SettingsWindowView>
+      ) : null;
+
     return (
-      <StageView
-        live2dStage={live2dStage}
-        live2dAsset={live2dAsset}
-        live2dRuntime={live2dRuntime}
-        live2dCanvasRef={live2dCanvasRef}
-        connected={hasConnection}
-        streaming={streaming}
-        bubble={petChat.bubble}
-        onSendChat={sendChatText}
-        onStopStreaming={stopStreaming}
-        onAdvancePage={petChat.advancePageManually}
-        onPausePaging={petChat.pausePaging}
-        onResumePaging={petChat.resumePaging}
-      />
+      <div className="stage-host-routes" data-active-route={windowMode}>
+        <div
+          className={`stage-host-route${windowMode === "stage" ? " is-active" : ""}`}
+          aria-label="stage persistent route"
+          aria-hidden={windowMode !== "stage"}
+        >
+          {stageView}
+        </div>
+        {windowMode !== "stage" ? (
+          <div className="stage-host-route is-active" aria-label="stage active route">
+            {activeRoute}
+          </div>
+        ) : null}
+      </div>
     );
+  }
+
+  if (windowMode === "stage") {
+    return stageView;
   }
 
   if (windowMode === "agent") {
@@ -1666,7 +1769,11 @@ function App() {
   if (windowMode === "pet") {
     return (
       <main
-        className={`pet-shell${petHitboxDebug ? " pet-debug-hitbox" : ""}`}
+        className={[
+          "pet-shell",
+          petHitboxDebug ? "pet-debug-hitbox" : "",
+          petChat.bubble.visible ? "pet-bubble-visible" : "",
+        ].filter(Boolean).join(" ")}
         style={petHitboxStyle}
         aria-label="桌面记忆助手桌宠"
         onDragStart={(event) => event.preventDefault()}
@@ -1733,10 +1840,10 @@ function App() {
           <button type="button" className="pet-shortcut-button" style={petShortcutButtonStyles[1]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="开始聊天" onClick={() => openPetInputMode("chat")}>
             聊天
           </button>
-          <button type="button" className="pet-shortcut-button" style={petShortcutButtonStyles[2]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="打开任务工作台" onClick={() => void window.agentDesktop?.openAgent?.()}>
+          <button type="button" className="pet-shortcut-button" style={petShortcutButtonStyles[2]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="打开任务工作台" onClick={() => void window.agentDesktop?.openStage?.("agent")}>
             任务
           </button>
-          <button type="button" className="pet-shortcut-button" style={petShortcutButtonStyles[3]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="打开配置" onClick={() => void window.agentDesktop?.openFeatureWindow?.("settings")}>
+          <button type="button" className="pet-shortcut-button" style={petShortcutButtonStyles[3]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="打开配置" onClick={() => void window.agentDesktop?.openStage?.("settings")}>
             配置
           </button>
           <button type="button" className="pet-shortcut-button danger" style={petShortcutButtonStyles[4]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="退出应用" onClick={() => void window.agentDesktop?.quitApp?.()}>

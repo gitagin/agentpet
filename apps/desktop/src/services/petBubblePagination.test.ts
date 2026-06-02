@@ -31,8 +31,8 @@ describe("petBubblePagination", () => {
     expect(pages.every((page) => getPetBubbleVisualWeight(page) <= 36)).toBe(true);
   });
 
-  it("calculates bounded page delay from visual weight", () => {
-    expect(getPetBubblePageDelay("短句")).toBe(3600);
-    expect(getPetBubblePageDelay("这是一段需要停留更久的较长桌宠气泡文本，用来确认阅读时间不会无限增长。".repeat(4))).toBe(7600);
+  it("uses a fixed page delay", () => {
+    expect(getPetBubblePageDelay("短句")).toBe(4500);
+    expect(getPetBubblePageDelay("这是一段需要停留更久的较长桌宠气泡文本，用来确认阅读时间不会无限增长。".repeat(4))).toBe(4500);
   });
 });

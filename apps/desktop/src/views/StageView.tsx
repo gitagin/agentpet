@@ -74,28 +74,28 @@ export default function StageView({
         <time style={S.time}>{now}</time>
       </header>
 
-      {/* ── Main stage: Live2D model centered ── */}
-      <section style={S.mainStage} aria-label="Live2D 陪伴模型主舞台">
-        {bubbleVisible && (
-          <div
-            ref={bubbleRef}
-            className={bubbleClass}
-            style={S.bubble}
-            role="status"
-            aria-live="polite"
-            onClick={onAdvancePage}
-            onMouseEnter={onPausePaging}
-            onMouseLeave={onResumePaging}
-          >
-            <div style={S.bubbleHeader}>
-              <strong>{bubble!.title}</strong>
-              {bubble!.continueHint ? <span style={S.bubblePage}>{bubble!.continueHint}</span> : null}
-            </div>
-            <div style={S.bubbleText}>{bubble!.message}</div>
-            {bubble!.continueHint ? <div style={S.bubbleTapHint}>点击翻页</div> : null}
+      {bubbleVisible && (
+        <div
+          ref={bubbleRef}
+          className={bubbleClass}
+          style={S.bubble}
+          role="status"
+          aria-live="polite"
+          onClick={onAdvancePage}
+          onFocus={onPausePaging}
+          onBlur={onResumePaging}
+        >
+          <div style={S.bubbleHeader}>
+            <strong>{bubble!.title}</strong>
+            {bubble!.continueHint ? <span style={S.bubblePage}>{bubble!.continueHint}</span> : null}
           </div>
-        )}
+          <div style={S.bubbleText}>{bubble!.message}</div>
+          {bubble!.continueHint ? <div style={S.bubbleTapHint}>自动翻页中 · 点击下一页</div> : null}
+        </div>
+      )}
 
+      {/* ── Main stage: Live2D model centered ── */}
+      <section className="stage-main-view" style={S.mainStage} aria-label="Live2D 陪伴模型主舞台">
         <Live2DStage
           key={`stage-${live2dAsset.modelId}`}
           stage={live2dStage}
@@ -140,14 +140,11 @@ export default function StageView({
 /* ── Inline style dictionary ── */
 const S: Record<string, CSSProperties> = {
   shell: {
+    position: "relative",
     height: "100vh",
     display: "grid",
     gridTemplateRows: "44px minmax(0, 1fr) auto",
-    background:
-      "radial-gradient(circle at 50% 30%, rgba(255,220,231,0.55), transparent 40%)," +
-      "radial-gradient(circle at 50% 80%, rgba(224,203,255,0.4), transparent 38%)," +
-      "linear-gradient(180deg, rgba(255,247,242,0.72) 0%, rgba(255,238,245,0.65) 42%, rgba(242,236,255,0.68) 100%)," +
-      "url(/images/home.png) center/cover no-repeat",
+    background: "url(/images/home.png) center/cover no-repeat",
     color: "var(--color-text, #2b2931)",
     fontFamily: "Inter, 'Segoe UI', system-ui, sans-serif",
     boxSizing: "border-box",
@@ -214,20 +211,20 @@ const S: Record<string, CSSProperties> = {
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
-    overflow: "hidden",
+    overflow: "visible",
     isolation: "isolate",
   },
 
-  /* Bubble — positioned at top of stage, above model */
+  /* Bubble — centered above the model so the model can stay still. */
   bubble: {
     position: "absolute",
-    zIndex: 30,
-    top: 12,
-    left: "50%",
-    transform: "translateX(-50%)",
-    width: "min(480px, calc(100% - 48px))",
-    padding: "12px 16px",
-    borderRadius: 20,
+    zIndex: 70,
+    top: 19,
+    left: "calc(50% + 22px)",
+    width: "min(420px, calc(50vw - 92px))",
+    maxHeight: 88,
+    padding: "8px 14px",
+    borderRadius: 18,
     background: "rgba(255,255,255,0.88)",
     backdropFilter: "blur(18px)",
     WebkitBackdropFilter: "blur(18px)",
@@ -235,36 +232,52 @@ const S: Record<string, CSSProperties> = {
     border: "1px solid rgba(255,255,255,0.6)",
     cursor: "pointer",
     userSelect: "none",
-    transition: "opacity 0.22s ease, transform 0.22s ease",
+    transition: "opacity 0.22s ease",
   },
   bubbleHeader: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
     gap: 10,
-    marginBottom: 4,
+    marginBottom: 3,
     fontSize: 12,
     fontWeight: 700,
     color: "#1f3f48",
   },
-  bubblePage: { flex: "0 0 auto", color: "rgba(49,83,92,0.45)", fontSize: 10, fontWeight: 500 },
+  bubblePage: {
+    flex: "0 0 auto",
+    padding: "1px 7px",
+    borderRadius: 999,
+    background: "rgba(49,83,92,0.1)",
+    color: "rgba(49,83,92,0.78)",
+    fontSize: 10,
+    fontWeight: 800,
+  },
   bubbleText: {
-    fontSize: 13.5,
-    lineHeight: 1.48,
+    fontSize: 12,
+    lineHeight: 1.32,
     color: "#31535c",
     whiteSpace: "pre-wrap",
     wordBreak: "break-word",
     overflowWrap: "anywhere",
-    maxHeight: 108,
+    maxHeight: 38,
     overflow: "hidden",
   },
-  bubbleTapHint: { marginTop: 6, fontSize: 10, color: "rgba(49,83,92,0.38)", textAlign: "right" },
+  bubbleTapHint: { marginTop: 3, fontSize: 9.5, fontWeight: 700, color: "rgba(49,83,92,0.58)", textAlign: "right" },
 
   /* Footer */
-  footer: { display: "grid", gap: 0, padding: "10px 16px 4px", zIndex: 20, flexShrink: 0 },
+  footer: {
+    display: "grid",
+    justifyItems: "center",
+    gap: 0,
+    padding: "10px 16px 4px",
+    zIndex: 20,
+    flexShrink: 0,
+  },
   chatForm: {
     display: "flex",
     gap: 8,
+    width: "min(420px, calc(100vw - 44px))",
     padding: "8px 14px",
     borderRadius: 22,
     background: "rgba(255,255,255,0.64)",

@@ -113,7 +113,7 @@ declare global {
       openControlWindow?: (targetId?: string) => Promise<void>;
       openAgent?: () => Promise<void>;
       closeAgent?: () => Promise<void>;
-      openStage?: () => Promise<void>;
+      openStage?: (mode?: "stage" | "agent" | DesktopFeatureWindowMode) => Promise<void>;
       openFeatureWindow?: (mode: DesktopFeatureWindowMode) => Promise<void>;
       quitApp?: () => Promise<void>;
       getPetMousePassthroughStatus?: () => Promise<DesktopPetMousePassthroughStatus>;
@@ -125,6 +125,7 @@ declare global {
       endPetWindowDrag?: () => void;
       onPetDragCancelled?: (callback: () => void) => () => void;
       onControlTargetRequested?: (callback: (targetId: string) => void) => () => void;
+      onStageRouteRequested?: (callback: (mode: "stage" | "agent" | DesktopFeatureWindowMode) => void) => () => void;
       selectKnowledgeBaseFolder?: () => Promise<string | null>;
       onSidecarStatusChanged?: (
         callback: (status: DesktopSidecarStatus) => void,
