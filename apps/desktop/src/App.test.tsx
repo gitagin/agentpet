@@ -81,8 +81,23 @@ const sidecarStatus: DesktopSidecarStatus = {
 };
 
 const api = {
+  startChat: vi.fn().mockResolvedValue({
+    conversation_id: "conversation-1",
+    message_id: "message-1",
+    agent_run_id: "run-1",
+    stream_url: "/api/chat/runs/run-1/events",
+  }),
   getSettingsStatus: vi.fn().mockResolvedValue({ model_configured: false, vault_configured: false }),
-  getVaultStatus: vi.fn().mockResolvedValue({ configured: false, active_vault_id: null, root_path: "" }),
+  getVaultStatus: vi.fn().mockResolvedValue({
+    configured: false,
+    active_vault_id: null,
+    root_path: "",
+    root_path_label: null,
+    latest_indexed_at: null,
+    markdown_count: 0,
+    wiki_page_count: 0,
+    diary_page_count: 0,
+  }),
   listMemoryProposals: vi.fn().mockResolvedValue({ proposals: [] }),
   listAgentActions: vi.fn().mockResolvedValue({ actions: [] }),
   getContinuityState: vi.fn().mockResolvedValue({ items: [] }),
@@ -90,6 +105,14 @@ const api = {
   exportDiagnostics: vi.fn(),
   resetLocalState: vi.fn(),
 };
+
+vi.mock("./services/sse", () => ({
+  fetchSseStream: vi.fn().mockImplementation(async (_client, _url, handlers) => {
+    handlers.onOpen?.();
+    handlers.onEvent({ event: "token", data: JSON.stringify({ text: "已收到你的首次引导。" }) });
+    handlers.onEvent({ event: "done", data: JSON.stringify({ text: "已收到你的首次引导。" }) });
+  }),
+}));
 
 vi.mock("./features/connection/useConnection", () => ({
   useConnection: () => ({
@@ -300,6 +323,7 @@ describe("App", () => {
   beforeEach(() => {
     window.location.hash = "";
     delete window.agentDesktop;
+    sessionStorage.clear();
     vi.clearAllMocks();
   });
 
@@ -311,6 +335,65 @@ describe("App", () => {
     expect(screen.getByText("和桌宠对话")).toBeInTheDocument();
     expect(screen.getByLabelText("mock panel stage")).toBeInTheDocument();
     expect(screen.getByLabelText("mock connection panel")).toBeInTheDocument();
+  });
+
+  it("starts the first-use onboarding as a normal chat and persists completion", async () => {
+    const uiState = new Map<string, string>();
+    window.agentDesktop = {
+      platform: "win32",
+      versions: {},
+      getUiState: vi.fn((key: string) => uiState.get(key) ?? null),
+      setUiState: vi.fn((key: string, value: string | null) => {
+        if (value === null) {
+          uiState.delete(key);
+        } else {
+          uiState.set(key, value);
+        }
+      }),
+    };
+
+    render(<App />);
+
+    expect(await screen.findByLabelText("首次使用引导")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("最近主要在忙什么？"), {
+      target: { value: "准备产品加固任务" },
+    });
+    fireEvent.change(screen.getByLabelText("希望我长期记住什么偏好或背景？"), {
+      target: { value: "偏好简洁可追踪的结果" },
+    });
+    fireEvent.change(screen.getByLabelText("主要想让我帮你做什么？"), {
+      target: { value: "日记、任务、知识整理、项目复盘" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "开始第一次聊天" }));
+
+    await waitFor(() => expect(api.startChat).toHaveBeenCalledTimes(1));
+    const request = api.startChat.mock.calls[0][0];
+    expect(request.message).toContain("准备产品加固任务");
+    expect(request.message).toContain("偏好简洁可追踪的结果");
+    expect(request.message).toContain("日记、任务、知识整理、项目复盘");
+    await waitFor(() =>
+      expect(window.agentDesktop?.setUiState).toHaveBeenCalledWith(
+        "agent-pet.first-use-onboarding",
+        "completed:v1",
+      ),
+    );
+    expect(screen.queryByLabelText("首次使用引导")).not.toBeInTheDocument();
+  });
+
+  it("does not show first-use onboarding after completion is stored in Electron UI state", async () => {
+    window.agentDesktop = {
+      platform: "win32",
+      versions: {},
+      getUiState: vi.fn((key: string) =>
+        key === "agent-pet.first-use-onboarding" ? "completed:v1" : null,
+      ),
+      setUiState: vi.fn(),
+    };
+
+    render(<App />);
+
+    await waitFor(() => expect(window.agentDesktop?.getUiState).toHaveBeenCalledWith("agent-pet.first-use-onboarding"));
+    expect(screen.queryByLabelText("首次使用引导")).not.toBeInTheDocument();
   });
 
   it("renders the pet shell from hash routing", async () => {

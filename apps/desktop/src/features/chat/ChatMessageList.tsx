@@ -52,9 +52,12 @@ export function ChatMessageList({
                 ))}
               </div>
             ) : null}
-            {message.agent_actions?.length ? (
+            {message.role === "assistant" &&
+            (message.status === "completed" || message.agent_actions?.length || message.task_actions?.length) ? (
               <ChatAgentActionSummary
-                actions={message.agent_actions}
+                actions={message.agent_actions || []}
+                tasks={message.task_actions || []}
+                showEmpty={message.status === "completed"}
                 revertingActionIds={revertingActionIds}
                 onRevertAgentAction={onRevertAgentAction}
                 onOpenMemory={onOpenMemory}

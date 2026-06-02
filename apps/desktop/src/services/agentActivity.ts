@@ -6,6 +6,30 @@ export type AgentActivityLogEntry =
   | { kind: "continuity_proposal"; id: string; sortAt: string; sortKey: number; proposal: ContinuityProposal }
   | { kind: "wiki_proposal"; id: string; sortAt: string; sortKey: number; message: ChatMessage; proposal: ChatWikiProposal };
 
+export type MemoryTrustGroupKey =
+  | "long_term"
+  | "chat_diary"
+  | "structured_diary"
+  | "wiki_summary"
+  | "tasks"
+  | "skipped";
+
+export type MemoryTrustGroup = {
+  key: MemoryTrustGroupKey;
+  label: string;
+  description: string;
+  entries: AgentActivityLogEntry[];
+};
+
+export const memoryTrustGroupDefinitions: Array<Omit<MemoryTrustGroup, "entries">> = [
+  { key: "long_term", label: "长期记忆", description: "偏好、背景、连续性和需要确认的长期记忆。" },
+  { key: "chat_diary", label: "聊天日记", description: "普通对话归档到每日 Markdown 日记。" },
+  { key: "structured_diary", label: "结构化日记", description: "从对话中提取的主题、事件和可检索日记对象。" },
+  { key: "wiki_summary", label: "Wiki 摘要", description: "从有价值回答沉淀出的 Wiki 页面、摘要或待确认计划。" },
+  { key: "tasks", label: "任务/提醒", description: "从对话创建或更新的本地任务和提醒。" },
+  { key: "skipped", label: "已跳过", description: "敏感、低价值、重复或没有可保存内容的安全记录。" },
+];
+
 function pickPayloadString(payload: Record<string, unknown> | null, keys: string[]): string | null {
   if (!payload) {
     return null;
@@ -99,6 +123,15 @@ export function normalizeAgentAction(payload: Record<string, unknown> | null): A
 }
 
 export function formatAgentActionType(actionType: string): string {
+  if (actionType === "chat.auto_memory.skip") {
+    return "已跳过自动整理";
+  }
+  if (actionType === "memory.long_term.skip") {
+    return "已跳过长期记忆";
+  }
+  if (actionType === "wiki.answer_summary.skip") {
+    return "已跳过 Wiki 摘要";
+  }
   const labels: Record<string, string> = {
     "agent_action.revert": "撤销自动整理",
     "chat.daily_archive": "已归档聊天日记",
@@ -147,6 +180,9 @@ export function formatAgentActionDecision(decision: AgentAction["decision"]): st
 }
 
 export function formatAgentActionStatus(status: string): string {
+  if (status === "skipped") {
+    return "已跳过";
+  }
   const labels: Record<string, string> = {
     applying: "正在应用",
     cancelled: "已取消",
@@ -249,6 +285,7 @@ export function getAgentActionSearchText(action: AgentAction): string {
     display.targetPathLabel,
     action.summary,
     action.diff_summary,
+    display.sourceLabel,
     action.error || "",
   ]
     .join(" ")
@@ -304,4 +341,54 @@ export function buildAgentActivityEntries(
   });
 
   return entries.sort((left, right) => right.sortKey - left.sortKey);
+}
+
+export function classifyMemoryTrustEntry(entry: AgentActivityLogEntry): MemoryTrustGroupKey | null {
+  if (entry.kind === "memory_proposal" || entry.kind === "continuity_proposal") {
+    return "long_term";
+  }
+  if (entry.kind === "wiki_proposal") {
+    return "wiki_summary";
+  }
+
+  const action = entry.action;
+  const actionType = action.action_type.toLocaleLowerCase();
+  if (action.status === "skipped" || actionType.endsWith(".skip") || actionType.includes(".skip.")) {
+    return "skipped";
+  }
+  if (
+    actionType.startsWith("memory.long_term") ||
+    actionType.startsWith("memory.promote") ||
+    actionType.startsWith("continuity.")
+  ) {
+    return "long_term";
+  }
+  if (actionType === "chat.daily_archive") {
+    return "chat_diary";
+  }
+  if (actionType === "diary.structured_memory") {
+    return "structured_diary";
+  }
+  if (actionType.startsWith("wiki.")) {
+    return "wiki_summary";
+  }
+  if (actionType.startsWith("task.")) {
+    return "tasks";
+  }
+  return null;
+}
+
+export function buildMemoryTrustGroups(entries: AgentActivityLogEntry[]): MemoryTrustGroup[] {
+  const groups = memoryTrustGroupDefinitions.map((definition) => ({
+    ...definition,
+    entries: [] as AgentActivityLogEntry[],
+  }));
+  const byKey = new Map(groups.map((group) => [group.key, group]));
+  entries.forEach((entry) => {
+    const key = classifyMemoryTrustEntry(entry);
+    if (key) {
+      byKey.get(key)?.entries.push(entry);
+    }
+  });
+  return groups;
 }

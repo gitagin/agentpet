@@ -1,4 +1,11 @@
-import type { AgentModelId, AutomationSettings, ModelConfigResponse, ModelTestResponse, SettingsStatusResponse } from "../../types";
+import type {
+  AgentModelId,
+  AutomationSettings,
+  ModelConfigResponse,
+  ModelTestResponse,
+  SettingsStatusResponse,
+  VaultStatusResponse,
+} from "../../types";
 import {
   buildSavedAgentModelDraftPatch,
   defaultAgentModelDrafts,
@@ -80,6 +87,7 @@ export type SettingsState = {
   loadingSettingsStatus: boolean;
   vaultId: string | null;
   vaultPath: string;
+  vaultStatus: VaultStatusResponse | null;
   lastIndexRun: LastIndexRun | null;
   indexingVault: boolean;
 };
@@ -112,7 +120,7 @@ export type SettingsAction =
   | { type: "setAgentModelTestResult"; agentId: AgentModelId; result?: ModelTestResponse }
   | { type: "setLoadingSettingsStatus"; loading: boolean }
   | { type: "setVaultPath"; vaultPath: string }
-  | { type: "setVaultStatus"; vaultId: string | null; vaultPath: string }
+  | { type: "setVaultStatus"; vaultId: string | null; vaultPath: string; vaultStatus?: VaultStatusResponse | null }
   | { type: "setVaultId"; vaultId: string | null }
   | { type: "setLastIndexRun"; lastIndexRun: LastIndexRun | null }
   | { type: "setIndexingVault"; indexingVault: boolean }
@@ -136,6 +144,7 @@ export function createInitialSettingsState(): SettingsState {
     loadingSettingsStatus: false,
     vaultId: null,
     vaultPath: "",
+    vaultStatus: null,
     lastIndexRun: null,
     indexingVault: false,
   };
@@ -351,7 +360,12 @@ export function settingsReducer(state: SettingsState, action: SettingsAction): S
     case "setVaultPath":
       return { ...state, vaultPath: action.vaultPath };
     case "setVaultStatus":
-      return { ...state, vaultId: action.vaultId, vaultPath: action.vaultPath };
+      return {
+        ...state,
+        vaultId: action.vaultId,
+        vaultPath: action.vaultPath,
+        vaultStatus: action.vaultStatus === undefined ? state.vaultStatus : action.vaultStatus,
+      };
     case "setVaultId":
       return { ...state, vaultId: action.vaultId };
     case "setLastIndexRun":

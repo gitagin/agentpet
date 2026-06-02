@@ -3,6 +3,7 @@ import type { StreamHandlerInput } from "../streamDispatcher";
 export function statusHandler({ messageId, payload, context }: StreamHandlerInput) {
   const { petChat, appendChatEvent } = context;
   const stage = typeof payload?.stage === "string" ? payload.stage : null;
+  const sourceScopes = normalizeSourceScopes(payload?.source_scopes);
   const stageLabel = formatAgentStage(payload?.stage);
   const statusMessage = formatAgentStatusMessage(payload?.message);
   if (!petChat.replyStartedRef.current) {
@@ -25,7 +26,15 @@ export function statusHandler({ messageId, payload, context }: StreamHandlerInpu
   });
   if (isRetrievalStage(stage)) {
     context.setMessages((current) =>
-      current.map((message) => (message.id === messageId ? { ...message, retrieval_attempted: true } : message)),
+      current.map((message) =>
+        message.id === messageId
+          ? {
+              ...message,
+              retrieval_attempted: true,
+              retrieval_scopes: mergeScopes(message.retrieval_scopes, sourceScopes.length ? sourceScopes : scopesForStage(stage)),
+            }
+          : message,
+      ),
     );
   }
 }
@@ -40,6 +49,30 @@ function isRetrievalStage(stage: string | null): boolean {
     stage === "multi_source_retrieval" ||
     stage === "multi_source_memory_retrieval"
   );
+}
+
+function normalizeSourceScopes(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+}
+
+function mergeScopes(current: string[] | undefined, next: string[]): string[] {
+  return Array.from(new Set([...(current || []), ...next]));
+}
+
+function scopesForStage(stage: string | null): string[] {
+  const scopes: Record<string, string[]> = {
+    personal_memory_retrieval: ["personal_memory"],
+    diary_object_retrieval: ["diary_objects"],
+    daily_chat_retrieval: ["daily_chat"],
+    daily_chat_fallback: ["daily_chat"],
+    knowledge_base_retrieval: ["knowledge_base"],
+    multi_source_retrieval: ["personal_memory", "daily_chat", "knowledge_base"],
+    multi_source_memory_retrieval: ["personal_memory", "diary_objects", "daily_chat"],
+  };
+  return stage ? scopes[stage] || [] : [];
 }
 
 function formatAgentStage(stage: unknown): string | null {

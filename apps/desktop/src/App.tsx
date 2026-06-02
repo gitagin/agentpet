@@ -25,6 +25,7 @@ import type {
   ContinuityStateResponse,
   DiagnosticsExportResponse,
   DesktopFeatureWindowMode,
+  DesktopVaultRevealMode,
   SettingsStatusResponse,
 } from "./types";
 import { describeError } from "./services/apiErrorMessages";
@@ -56,6 +57,12 @@ import WorldWindowView from "./views/WorldWindowView";
 import { EmptyState, Panel } from "./components/layout";
 import { ChatMessageList } from "./features/chat/ChatMessageList";
 import { PetChatOverlay } from "./features/chat/PetChatOverlay";
+import {
+  buildPetInputIntentMessage,
+  normalizePetInputMode,
+  petInputModes,
+  type PetInputMode,
+} from "./features/chat/petInputModes";
 import { applyStreamEvent } from "./features/chat/streamDispatcher";
 import { usePetChatBubble } from "./features/chat/usePetChatBubble";
 import { pickPayloadString } from "./features/chat/chatStreamUtils";
@@ -70,7 +77,7 @@ import {
   isAttentionAgentAction,
   type AgentActivityLogEntry,
 } from "./services/agentActivity";
-import { writeRendererUiState } from "./services/rendererUiState";
+import { readRendererUiState, writeRendererUiState } from "./services/rendererUiState";
 import petHitboxConfig from "../pet-hitbox.json";
 
 type Notice = {
@@ -81,6 +88,7 @@ type Notice = {
 type DesktopWindowMode = "pet" | "control" | "stage" | "agent" | DesktopFeatureWindowMode;
 type AsyncStatus = "idle" | "loading" | "success" | "empty" | "error";
 type PetShortcutMotion = "idle" | "opening" | "closing";
+type FirstUseOnboardingStatus = "unknown" | "pending" | "completed";
 
 type CoreWorkflowItem = {
   label: string;
@@ -93,6 +101,8 @@ const petShortcutButtonSize = 38;
 const petShortcutButtonGap = 8;
 const petShortcutButtonCount = 5;
 const petShortcutButtonStyles = buildPetShortcutButtonStyles();
+const firstUseOnboardingStorageKey = "agent-pet.first-use-onboarding";
+const firstUseOnboardingCompletedValue = "completed:v1";
 
 function detectDesktopWindowMode(): DesktopWindowMode {
   const mode = window.location.hash.replace("#/", "").replace("#", "") || "control";
@@ -159,6 +169,114 @@ function buildPetShortcutButtonStyles(): CSSProperties[] {
   });
 }
 
+type FirstUseOnboardingDraft = {
+  currentFocus: string;
+  longTermContext: string;
+  preferredHelp: string;
+};
+
+function buildFirstUseOnboardingMessage(draft: FirstUseOnboardingDraft): string | null {
+  const currentFocus = draft.currentFocus.trim();
+  const longTermContext = draft.longTermContext.trim();
+  const preferredHelp = draft.preferredHelp.trim();
+  if (!currentFocus && !longTermContext && !preferredHelp) {
+    return null;
+  }
+  return [
+    "这是我的首次使用引导回答。请先按普通聊天回应我，再根据现有自动整理策略判断哪些内容值得沉淀；如果没有可保存内容，请明确说明已跳过以及原因。",
+    "",
+    `最近主要在忙什么：${currentFocus || "未填写"}`,
+    `希望你长期记住的偏好或背景：${longTermContext || "未填写"}`,
+    `主要想让你帮我做什么：${preferredHelp || "未填写"}`,
+  ].join("\n");
+}
+
+function FirstUseOnboardingCard({
+  currentFocus,
+  longTermContext,
+  preferredHelp,
+  connected,
+  streaming,
+  submitting,
+  hasVaultInitialized,
+  onCurrentFocusChange,
+  onLongTermContextChange,
+  onPreferredHelpChange,
+  onSubmit,
+  onSkip,
+}: {
+  currentFocus: string;
+  longTermContext: string;
+  preferredHelp: string;
+  connected: boolean;
+  streaming: boolean;
+  submitting: boolean;
+  hasVaultInitialized: boolean;
+  onCurrentFocusChange: (value: string) => void;
+  onLongTermContextChange: (value: string) => void;
+  onPreferredHelpChange: (value: string) => void;
+  onSubmit: (event: FormEvent) => void;
+  onSkip: () => void;
+}) {
+  const hasAnyAnswer = Boolean(currentFocus.trim() || longTermContext.trim() || preferredHelp.trim());
+  return (
+    <section className="first-use-onboarding" aria-label="首次使用引导">
+      <div className="section-heading">
+        <strong>先让我了解你</strong>
+        <span>
+          回答 3 个问题后会直接开始第一次聊天；没有 Vault 也可以先聊，后端只会按当前自动整理策略记录已整理或已跳过的结果。
+        </span>
+      </div>
+      <form className="first-use-onboarding-form" onSubmit={onSubmit}>
+        <label>
+          <span>最近主要在忙什么？</span>
+          <textarea
+            rows={2}
+            value={currentFocus}
+            onChange={(event) => onCurrentFocusChange(event.target.value)}
+            placeholder="例如：收尾一个桌面应用、准备考试、整理个人知识库"
+            disabled={submitting || streaming}
+          />
+        </label>
+        <label>
+          <span>希望我长期记住什么偏好或背景？</span>
+          <textarea
+            rows={2}
+            value={longTermContext}
+            onChange={(event) => onLongTermContextChange(event.target.value)}
+            placeholder="例如：喜欢简洁结论、工作日晚上复盘、项目资料优先写入 Wiki"
+            disabled={submitting || streaming}
+          />
+        </label>
+        <label>
+          <span>主要想让我帮你做什么？</span>
+          <textarea
+            rows={2}
+            value={preferredHelp}
+            onChange={(event) => onPreferredHelpChange(event.target.value)}
+            placeholder="陪聊、日记、任务、知识整理、项目复盘"
+            disabled={submitting || streaming}
+          />
+        </label>
+        <div className="button-row">
+          <button type="submit" disabled={!connected || streaming || submitting || !hasAnyAnswer}>
+            {submitting ? <Loader2 className="spin" size={16} /> : <Send size={16} />}
+            {submitting ? "正在开始" : "开始第一次聊天"}
+          </button>
+          <button type="button" className="secondary" onClick={onSkip} disabled={submitting || streaming}>
+            跳过
+          </button>
+        </div>
+        <p className="field-note">
+          {hasVaultInitialized
+            ? "当前已有 active Vault；低风险内容可按设置进入自动整理，高风险或敏感内容仍需确认或会被跳过。"
+            : "当前没有 active Vault；这不会阻止聊天，也不会偷偷绑定真实知识库。"}
+        </p>
+      </form>
+    </section>
+  );
+}
+
 function App() {
   const [notice, setNotice] = useState<Notice | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -180,6 +298,15 @@ function App() {
   const [windowMode, setWindowMode] = useState<DesktopWindowMode>(() => detectDesktopWindowMode());
   const [petShortcutsVisible, setPetShortcutsVisible] = useState(false);
   const [petShortcutMotion, setPetShortcutMotion] = useState<PetShortcutMotion>("idle");
+  const [petInputMode, setPetInputMode] = useState<PetInputMode>("chat");
+  const [firstUseOnboardingStatus, setFirstUseOnboardingStatus] =
+    useState<FirstUseOnboardingStatus>("unknown");
+  const [firstUseOnboardingDraft, setFirstUseOnboardingDraft] = useState({
+    currentFocus: "",
+    longTermContext: "",
+    preferredHelp: "",
+  });
+  const [submittingFirstUseOnboarding, setSubmittingFirstUseOnboarding] = useState(false);
   const streamAbort = useRef<AbortController | null>(null);
   const live2dTaskStageRef = useRef<() => void>(() => undefined);
   const petDragRef = useRef<{
@@ -193,6 +320,7 @@ function App() {
   const canSelectVaultDirectory = Boolean(window.agentDesktop?.selectKnowledgeBaseFolder);
 
   const pendingSettingsStatusRef = useRef<SettingsStatusResponse | null>(null);
+  const openPetInputModeRef = useRef<(mode: PetInputMode) => void>(() => undefined);
   const applySettingsStatusRef = useRef<(response: SettingsStatusResponse) => void>((response) => {
     pendingSettingsStatusRef.current = response;
   });
@@ -255,6 +383,7 @@ function App() {
     updateNegotiationSettingsDraft,
     vaultId,
     vaultPath,
+    vaultStatus,
   } = useSettings({
     api,
     isElectronRuntime,
@@ -420,6 +549,25 @@ function App() {
   }, [windowMode]);
 
   useEffect(() => {
+    if (windowMode !== "pet") {
+      return;
+    }
+    const unsubscribe = window.agentDesktop?.onPetInputModeRequested?.((requestedMode) => {
+      const normalizedMode = normalizePetInputMode(requestedMode);
+      if (!normalizedMode) {
+        return;
+      }
+      openPetInputModeRef.current(normalizedMode);
+    });
+    return unsubscribe;
+  }, [windowMode]);
+
+  useEffect(() => {
+    const saved = readRendererUiState(firstUseOnboardingStorageKey);
+    setFirstUseOnboardingStatus(saved === firstUseOnboardingCompletedValue ? "completed" : "pending");
+  }, []);
+
+  useEffect(() => {
     const cancelPetDrag = () => {
       const dragState = petDragRef.current;
       try {
@@ -487,10 +635,10 @@ function App() {
     return () => abort.abort();
   }, [loadVaultStatus, sidecarStatus?.state, sidecarStatus?.updatedAt]);
 
-  async function sendChatText(rawText: string, clearInput: () => void) {
+  async function sendChatText(rawText: string, clearInput: () => void): Promise<boolean> {
     const text = rawText.trim();
     if (!text || streaming) {
-      return;
+      return false;
     }
     if (agentActionsStatus !== "loading") {
       void loadAgentActions({ silent: true });
@@ -603,26 +751,27 @@ function App() {
       petChat.clearStreamWatchdogTimer();
 
       if (petChat.streamFailedRef.current) {
-        return;
+        return false;
       }
 
-    if (petChat.replyStartedRef.current) {
-      setMessages((current) =>
-        current.map((message) =>
-          message.id === assistantId && message.status === "partial"
-            ? { ...message, status: "completed" }
-            : message,
-          ),
-      );
-      petChat.startReplyPaging();
-      const signal = petChat.latestContinuitySignalForMessage(assistantId);
-      if (signal) {
-        const delay = Math.min(9000, Math.max(1200, petChat.replyPagesRef.current.length * 2600));
-        window.setTimeout(() => petChat.showContinuityPresenceBubble(signal), delay);
-      }
+      if (petChat.replyStartedRef.current) {
+        setMessages((current) =>
+          current.map((message) =>
+            message.id === assistantId && message.status === "partial"
+              ? { ...message, status: "completed" }
+              : message,
+            ),
+        );
+        petChat.startReplyPaging();
+        const signal = petChat.latestContinuitySignalForMessage(assistantId);
+        if (signal) {
+          const delay = Math.min(9000, Math.max(1200, petChat.replyPagesRef.current.length * 2600));
+          window.setTimeout(() => petChat.showContinuityPresenceBubble(signal), delay);
+        }
       } else {
         petChat.completeStreamWithoutReply(assistantId);
       }
+      return !petChat.streamFailedRef.current;
     } catch (error) {
       petChat.clearStreamWatchdogTimer();
       petChat.streamFailedRef.current = true;
@@ -643,6 +792,7 @@ function App() {
         petChat.scheduleHide(10000);
         setNotice({ tone: "error", message });
       }
+      return false;
     } finally {
       petChat.clearStreamWatchdogTimer();
       setStreaming(false);
@@ -653,8 +803,46 @@ function App() {
 
   async function sendPetMessage(event: FormEvent) {
     event.preventDefault();
-    await sendChatText(petChat.input, () => petChat.setInput(""));
+    await sendChatText(buildPetInputIntentMessage(petInputMode, petChat.input), () => petChat.setInput(""));
   }
+
+  async function submitFirstUseOnboarding(event: FormEvent) {
+    event.preventDefault();
+    if (submittingFirstUseOnboarding || streaming || !hasConnection) {
+      return;
+    }
+    const message = buildFirstUseOnboardingMessage(firstUseOnboardingDraft);
+    if (!message) {
+      setNotice({ tone: "error", message: "请至少填写一个首次使用问题，再开始第一次整理。" });
+      return;
+    }
+    setSubmittingFirstUseOnboarding(true);
+    const completed = await sendChatText(message, () => undefined);
+    setSubmittingFirstUseOnboarding(false);
+    if (!completed) {
+      return;
+    }
+    writeRendererUiState(firstUseOnboardingStorageKey, firstUseOnboardingCompletedValue);
+    setFirstUseOnboardingStatus("completed");
+    setNotice({
+      tone: "success",
+      message: "首次引导已完成；本轮整理结果会显示在聊天消息和最近自动整理活动中。",
+    });
+  }
+
+  function skipFirstUseOnboarding() {
+    writeRendererUiState(firstUseOnboardingStorageKey, firstUseOnboardingCompletedValue);
+    setFirstUseOnboardingStatus("completed");
+    setNotice({ tone: "info", message: "已跳过首次引导，可以直接开始聊天。" });
+  }
+
+  function openPetInputMode(mode: PetInputMode) {
+    setPetInputMode(mode);
+    setPetShortcutsVisible(false);
+    setPetShortcutMotion("idle");
+    petChat.showInput();
+  }
+  openPetInputModeRef.current = openPetInputMode;
 
   function appendChatEvent(
     messageId: string,
@@ -773,6 +961,33 @@ function App() {
     }
   }
 
+  async function revealAgentActionTarget(relativePath: string, mode: DesktopVaultRevealMode) {
+    if (!window.agentDesktop?.revealVaultPath) {
+      setNotice({
+        tone: "info",
+        message: "当前浏览器预览不能打开本地 Vault 文件；请在 Electron 桌面端使用该操作。",
+      });
+      return;
+    }
+
+    try {
+      const result = await window.agentDesktop.revealVaultPath(relativePath, mode);
+      if (result.status === "opened" || result.status === "shown") {
+        setNotice({
+          tone: "success",
+          message: result.status === "opened" ? `已打开 ${result.relative_path}。` : `已在文件夹中显示 ${result.relative_path}。`,
+        });
+        return;
+      }
+      setNotice({
+        tone: "error",
+        message: `无法打开 Vault 目标：${result.reason || result.status}。`,
+      });
+    } catch (error) {
+      setNotice({ tone: "error", message: describeError(error, "打开 Vault 目标失败") });
+    }
+  }
+
   function upsertContinuityProposal(proposal: ContinuityProposal) {
     setContinuityProposals((current) => {
       const rest = current.filter((item) => item.proposal_id !== proposal.proposal_id);
@@ -813,6 +1028,7 @@ function App() {
           entry={entry}
           reverting={revertingAgentActionIds.has(entry.action.action_id)}
           onRevert={(action) => void revertAgentAction(action)}
+          onRevealTarget={(relativePath, mode) => void revealAgentActionTarget(relativePath, mode)}
         />
       );
     }
@@ -1200,6 +1416,23 @@ function App() {
     void loadPendingProposals({ silent: true });
     void loadContinuity({ silent: true });
   };
+  const showFirstUseOnboarding = firstUseOnboardingStatus === "pending" && (windowMode === "control" || windowMode === "chat");
+  const firstUseOnboardingPanel = showFirstUseOnboarding ? (
+    <FirstUseOnboardingCard
+      currentFocus={firstUseOnboardingDraft.currentFocus}
+      longTermContext={firstUseOnboardingDraft.longTermContext}
+      preferredHelp={firstUseOnboardingDraft.preferredHelp}
+      connected={hasConnection}
+      streaming={streaming}
+      submitting={submittingFirstUseOnboarding}
+      hasVaultInitialized={hasVaultInitialized}
+      onCurrentFocusChange={(value) => setFirstUseOnboardingDraft((current) => ({ ...current, currentFocus: value }))}
+      onLongTermContextChange={(value) => setFirstUseOnboardingDraft((current) => ({ ...current, longTermContext: value }))}
+      onPreferredHelpChange={(value) => setFirstUseOnboardingDraft((current) => ({ ...current, preferredHelp: value }))}
+      onSubmit={submitFirstUseOnboarding}
+      onSkip={skipFirstUseOnboarding}
+    />
+  ) : null;
   const connectionPanel = (
     <Panel id="connection-panel" icon={<Settings size={18} />} title="本地连接">
       <ConnectionPanel
@@ -1326,6 +1559,7 @@ function App() {
       loadingSettingsStatus={loadingSettingsStatus}
       vaultId={vaultId}
       vaultPath={vaultPath}
+      vaultStatus={vaultStatus}
       lastIndexRun={lastIndexRun}
       indexingVault={indexingVault}
       canSelectVaultDirectory={canSelectVaultDirectory}
@@ -1389,6 +1623,7 @@ function App() {
         revertingActionIds={revertingAgentActionIds}
         onRevertAgentAction={(action) => void revertAgentAction(action)}
         onOpenMemory={() => setWindowMode("memory")}
+        onboardingPanel={firstUseOnboardingPanel}
       />
     );
   }
@@ -1396,6 +1631,7 @@ function App() {
   if (windowMode === "memory") {
     return (
       <MemoryWindowView
+        api={api}
         loading={agentActionsStatus === "loading" || loadingProposals || loadingContinuity}
         error={agentActionsError}
         entries={agentActivityEntries}
@@ -1470,12 +1706,15 @@ function App() {
           input={petChat.input}
           inputVisible={petChat.inputVisible}
           inputRef={petChat.inputRef}
+          mode={petInputMode}
+          modes={petInputModes}
           connected={hasConnection}
           streaming={streaming}
           onAdvancePage={petChat.advancePageManually}
           onPausePaging={petChat.pausePaging}
           onResumePaging={petChat.resumePaging}
           onInputChange={petChat.setInput}
+          onModeChange={openPetInputMode}
           onInputClose={() => petChat.setInputVisible(false)}
           onSubmit={sendPetMessage}
           onStopStreaming={stopStreaming}
@@ -1491,7 +1730,7 @@ function App() {
           <button type="button" className="pet-shortcut-button" style={petShortcutButtonStyles[0]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="打开桌宠主舞台" onClick={() => void window.agentDesktop?.openStage?.()}>
             桌宠
           </button>
-          <button type="button" className="pet-shortcut-button" style={petShortcutButtonStyles[1]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="开始聊天" onClick={() => petChat.showInput()}>
+          <button type="button" className="pet-shortcut-button" style={petShortcutButtonStyles[1]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="开始聊天" onClick={() => openPetInputMode("chat")}>
             聊天
           </button>
           <button type="button" className="pet-shortcut-button" style={petShortcutButtonStyles[2]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="打开任务工作台" onClick={() => void window.agentDesktop?.openAgent?.()}>
@@ -1536,6 +1775,7 @@ function App() {
 
         <Panel id="agent-workspace-panel" icon={<MessageSquareText size={18} />} title="记忆陪伴工作区" className="chat-panel">
           <section className="stack" aria-label="聊天和 Obsidian 记忆工作流">
+            {firstUseOnboardingPanel}
             <div className="section-heading">
               <strong>和桌宠对话</strong>
               <span>日常聊天会优先引用资料库；自动记忆功能默认关闭，可在设置中开启，高风险写入仍会打断你确认。</span>
@@ -1703,6 +1943,7 @@ function App() {
 function clearRendererResettableState(): void {
   for (const key of [
     "agent-pet.base-url",
+    firstUseOnboardingStorageKey,
     live2dModelSelectionStorageKey,
     wikiArchiveCandidateStorageKey,
   ]) {

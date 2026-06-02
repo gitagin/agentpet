@@ -1,7 +1,7 @@
 import { KeyRound } from "lucide-react";
 import type { FormEvent } from "react";
 import { Panel } from "../../components/layout";
-import type { AgentModelId, ModelTestResponse } from "../../types";
+import type { AgentModelId, ModelTestResponse, VaultStatusResponse } from "../../types";
 import type { AgentModelDraft } from "../../services/agentModelDrafts";
 import type { DesktopApi } from "../../services/desktopApi";
 import { AutomationSettingsCard } from "./AutomationSettingsCard";
@@ -27,6 +27,7 @@ type SettingsPanelProps = {
   loadingSettingsStatus: boolean;
   vaultId: string | null;
   vaultPath: string;
+  vaultStatus: VaultStatusResponse | null;
   lastIndexRun: LastIndexRun | null;
   indexingVault: boolean;
   canSelectVaultDirectory: boolean;
@@ -65,6 +66,7 @@ export function SettingsPanel({
   loadingSettingsStatus,
   vaultId,
   vaultPath,
+  vaultStatus,
   lastIndexRun,
   indexingVault,
   canSelectVaultDirectory,
@@ -130,6 +132,7 @@ export function SettingsPanel({
       <VaultBindingSection
         vaultId={vaultId}
         vaultPath={vaultPath}
+        vaultStatus={vaultStatus}
         lastIndexRun={lastIndexRun}
         indexingVault={indexingVault}
         canSelectVaultDirectory={canSelectVaultDirectory}

@@ -1,6 +1,11 @@
-const { BrowserWindow, dialog, ipcMain } = require("electron");
+const { BrowserWindow, dialog, ipcMain, shell } = require("electron");
+const fs = require("node:fs");
+const path = require("node:path");
+
+const deniedVaultPathParts = new Set([".git", ".obsidian"]);
 
 const allowedRendererUiStateKeys = new Set([
+  "agent-pet.first-use-onboarding",
   "agent-pet.live2d-model-id",
   "agent-pet.wiki-archive-candidate",
 ]);
@@ -13,7 +18,125 @@ function normalizeRendererUiStateKey(key) {
   return allowedRendererUiStateKeys.has(normalized) ? normalized : null;
 }
 
-function registerIpcHandlers({ baseUrl, rendererUiState, sidecar, proxy, windows }) {
+function rejectVaultReveal(reason) {
+  return {
+    status: "rejected",
+    reason,
+  };
+}
+
+function normalizeVaultRelativeMarkdownPath(relativePath) {
+  if (typeof relativePath !== "string") {
+    return null;
+  }
+  const raw = relativePath.replace(/\\/g, "/");
+  if (!raw || raw.trim() !== raw) {
+    return null;
+  }
+  if (raw.startsWith("/") || raw.startsWith("//") || /^[A-Za-z]:/.test(raw)) {
+    return null;
+  }
+  const parts = raw.split("/");
+  if (parts.some((part) => !part || part === "." || part === "..")) {
+    return null;
+  }
+  if (
+    parts.some(
+      (part) => part.startsWith(".") || part.includes("~") || part.includes(":") || deniedVaultPathParts.has(part.toLowerCase()),
+    )
+  ) {
+    return null;
+  }
+  if (path.posix.extname(raw).toLowerCase() !== ".md") {
+    return null;
+  }
+  return parts.join("/");
+}
+
+function isInsidePath(rootPath, targetPath) {
+  const root = path.resolve(rootPath);
+  const target = path.resolve(targetPath);
+  const relative = path.relative(root, target);
+  return relative === "" || (!!relative && !relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+function resolveVaultMarkdownPath(rootPath, relativePath) {
+  if (typeof rootPath !== "string" || !rootPath.trim()) {
+    return null;
+  }
+  const normalizedRelativePath = normalizeVaultRelativeMarkdownPath(relativePath);
+  if (!normalizedRelativePath) {
+    return null;
+  }
+
+  const root = path.resolve(rootPath);
+  const target = path.resolve(root, ...normalizedRelativePath.split("/"));
+  if (!isInsidePath(root, target)) {
+    return null;
+  }
+
+  try {
+    const realRoot = fs.realpathSync.native(root);
+    const existingPath = fs.existsSync(target) ? target : path.dirname(target);
+    const realExistingPath = fs.realpathSync.native(existingPath);
+    if (!isInsidePath(realRoot, realExistingPath)) {
+      return null;
+    }
+  } catch (_error) {
+    return null;
+  }
+
+  return {
+    root,
+    relativePath: normalizedRelativePath,
+    absolutePath: target,
+  };
+}
+
+async function getActiveVaultStatus(proxy) {
+  const response = await proxy.proxyApiRequest("/api/vaults/status", { method: "GET" });
+  if (!response || response.status < 200 || response.status >= 300) {
+    return null;
+  }
+  try {
+    return JSON.parse(response.body);
+  } catch (_error) {
+    return null;
+  }
+}
+
+async function revealVaultPath({ proxy, relativePath, mode, shellApi = shell }) {
+  const revealMode = mode === "show" ? "show" : mode === "open" ? "open" : null;
+  if (!revealMode) {
+    return rejectVaultReveal("invalid_mode");
+  }
+
+  const status = await getActiveVaultStatus(proxy);
+  if (!status?.configured || typeof status.root_path !== "string" || !status.root_path) {
+    return rejectVaultReveal("vault_not_configured");
+  }
+
+  const resolved = resolveVaultMarkdownPath(status.root_path, relativePath);
+  if (!resolved) {
+    return rejectVaultReveal("invalid_vault_path");
+  }
+  if (!fs.existsSync(resolved.absolutePath)) {
+    return rejectVaultReveal("target_not_found");
+  }
+
+  if (revealMode === "show") {
+    shellApi.showItemInFolder(resolved.absolutePath);
+    return { status: "shown", relative_path: resolved.relativePath };
+  }
+
+  const openError = await shellApi.openPath(resolved.absolutePath);
+  if (openError) {
+    return { status: "failed", relative_path: resolved.relativePath, reason: openError };
+  }
+  return { status: "opened", relative_path: resolved.relativePath };
+}
+
+function registerIpcHandlers({ baseUrl, rendererUiState, persistRendererUiState, sidecar, proxy, windows }) {
   ipcMain.on("agent-pet:get-sidecar-config", (event) => {
     event.returnValue = {
       baseUrl,
@@ -32,17 +155,23 @@ function registerIpcHandlers({ baseUrl, rendererUiState, sidecar, proxy, windows
     }
     if (typeof value !== "string" || value.length === 0) {
       rendererUiState.delete(normalized);
+      persistRendererUiState?.();
       return;
     }
     if (value.length > 250000) {
       return;
     }
     rendererUiState.set(normalized, value);
+    persistRendererUiState?.();
   });
 
   ipcMain.handle("agent-pet:get-sidecar-status", () => sidecar.getPublicSidecarStatus());
 
   ipcMain.handle("agent-pet:api-request", async (_event, pathOrUrl, options) => proxy.proxyApiRequest(pathOrUrl, options));
+
+  ipcMain.handle("agent-pet:reveal-vault-path", async (_event, relativePath, mode) =>
+    revealVaultPath({ proxy, relativePath, mode }),
+  );
 
   ipcMain.handle("agent-pet:sse-start", async (event, streamId, pathOrUrl) => {
     proxy.startSseStream(event.sender, streamId, pathOrUrl);
@@ -145,4 +274,7 @@ function registerIpcHandlers({ baseUrl, rendererUiState, sidecar, proxy, windows
 
 module.exports = {
   registerIpcHandlers,
+  normalizeVaultRelativeMarkdownPath,
+  resolveVaultMarkdownPath,
+  revealVaultPath,
 };

@@ -317,12 +317,17 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
   const loadVaultStatus = useCallback(async (options: { silent?: boolean; signal?: AbortSignal } = {}) => {
     try {
       const response = await api.getVaultStatus(options.signal);
-      dispatch({ type: "setVaultStatus", vaultId: response.active_vault_id || null, vaultPath: response.root_path || "" });
+      dispatch({
+        type: "setVaultStatus",
+        vaultId: response.active_vault_id || null,
+        vaultPath: response.root_path || "",
+        vaultStatus: response,
+      });
       if (!options.silent) {
         onNotice({
           tone: "success",
           message: response.configured
-            ? `当前知识库：${response.root_path || response.active_vault_id || "已配置"}。`
+            ? `当前知识库：${response.root_path_label || response.active_vault_id || "已配置"}。`
             : "尚未配置知识库。",
         });
       }
@@ -372,13 +377,13 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
           message: describeError(indexError, `知识库 ${response.vault_id} 已初始化，但自动索引失败`),
         });
       }
-      await loadSettingsStatus({ silent: true });
+      await loadVaultStatus({ silent: true });
     } catch (error) {
       onNotice({ tone: "error", message: describeError(error, "知识库初始化失败") });
     } finally {
       dispatch({ type: "setIndexingVault", indexingVault: false });
     }
-  }, [api, loadSettingsStatus, onNotice, state.vaultPath]);
+  }, [api, loadVaultStatus, onNotice, state.vaultPath]);
 
   const rebuildIndex = useCallback(async () => {
     if (!state.vaultId) {
@@ -463,5 +468,6 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
     updateNegotiationSettingsDraft,
     vaultId: state.vaultId,
     vaultPath: state.vaultPath,
+    vaultStatus: state.vaultStatus,
   };
 }

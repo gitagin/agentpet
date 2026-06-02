@@ -1,6 +1,7 @@
 import type { Dispatch, SetStateAction } from "react";
 import type {
   AgentAction,
+  ChatContextBudget,
   ChatContinuityProposal,
   ChatContinuitySignal,
   ChatMessage,
@@ -70,6 +71,11 @@ export function applyStreamEvent(messageId: string, sseEvent: SseEvent, context:
 
   if (sseEvent.event === "status") {
     statusHandler(input);
+    return;
+  }
+
+  if (sseEvent.event === "context_budget") {
+    contextBudgetHandler(input);
     return;
   }
 
@@ -221,4 +227,92 @@ function applyTextOrCitationEvent({ messageId, sseEvent, payload, context }: Str
       };
     }),
   );
+}
+
+function contextBudgetHandler({ messageId, payload, context }: StreamHandlerInput) {
+  const contextBudget = normalizeContextBudget(payload);
+  if (!contextBudget) {
+    return;
+  }
+  const budgetScopes = [
+    ...(contextBudget.selected_scopes || []),
+    ...Object.keys(contextBudget.source_counts || {}),
+  ];
+  context.setMessages((current) =>
+    current.map((message) =>
+      message.id === messageId
+        ? {
+            ...message,
+            retrieval_attempted: true,
+            retrieval_context_budget: contextBudget,
+            retrieval_scopes: mergeScopes(message.retrieval_scopes, budgetScopes),
+          }
+        : message,
+    ),
+  );
+}
+
+function normalizeContextBudget(payload: Record<string, unknown> | null): ChatContextBudget | null {
+  if (!payload || typeof payload.strategy !== "string") {
+    return null;
+  }
+  const candidateCount = numberFromPayload(payload.candidate_count);
+  const selectedCount = numberFromPayload(payload.selected_count);
+  const itemBudget = numberFromPayload(payload.item_budget);
+  const perScopeLimit = numberFromPayload(payload.per_scope_limit);
+  const charBudget = numberFromPayload(payload.char_budget);
+  const usedChars = numberFromPayload(payload.used_chars);
+  if (
+    candidateCount === null ||
+    selectedCount === null ||
+    itemBudget === null ||
+    perScopeLimit === null ||
+    charBudget === null ||
+    usedChars === null
+  ) {
+    return null;
+  }
+  return {
+    strategy: payload.strategy,
+    candidate_count: candidateCount,
+    selected_count: selectedCount,
+    duplicate_drop_count: numberFromPayload(payload.duplicate_drop_count) ?? undefined,
+    per_scope_drop_count: numberFromPayload(payload.per_scope_drop_count) ?? undefined,
+    budget_drop_count: numberFromPayload(payload.budget_drop_count) ?? undefined,
+    item_budget: itemBudget,
+    per_scope_limit: perScopeLimit,
+    char_budget: charBudget,
+    used_chars: usedChars,
+    source_counts: normalizeSourceCounts(payload.source_counts),
+    selected_scopes: normalizeStringList(payload.selected_scopes),
+  };
+}
+
+function numberFromPayload(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function normalizeSourceCounts(value: unknown): Record<string, number> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const counts: Record<string, number> = {};
+  Object.entries(value as Record<string, unknown>).forEach(([key, count]) => {
+    if (typeof count === "number" && Number.isFinite(count)) {
+      counts[key] = count;
+    }
+  });
+  return Object.keys(counts).length ? counts : undefined;
+}
+
+function normalizeStringList(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const strings = value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+  return strings.length ? strings : undefined;
+}
+
+function mergeScopes(current: string[] | undefined, next: string[]): string[] {
+  return Array.from(new Set([...(current || []), ...next]));
 }

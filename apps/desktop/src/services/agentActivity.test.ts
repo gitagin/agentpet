@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AgentAction, ChatMessage, ChatWikiProposal, ContinuityProposal, MemoryProposal } from "../types";
 import {
+  buildMemoryTrustGroups,
   buildAgentActivityEntries,
   canRevertAgentAction,
   formatAgentActionDecision,
@@ -124,5 +125,29 @@ describe("agentActivity", () => {
       "wiki_proposal",
       "agent_action",
     ]);
+  });
+
+  it("groups trustworthy memory activities by durable outcome", () => {
+    const entries = buildAgentActivityEntries(
+      [
+        buildAction({ action_id: "daily", action_type: "chat.daily_archive" }),
+        buildAction({ action_id: "structured", action_type: "diary.structured_memory" }),
+        buildAction({ action_id: "wiki", action_type: "wiki.answer_summary.write" }),
+        buildAction({ action_id: "skip", action_type: "wiki.answer_summary.skip", status: "skipped", decision: "notify" }),
+      ],
+      [],
+      [],
+      [],
+    );
+
+    const groups = buildMemoryTrustGroups(entries);
+    const counts = Object.fromEntries(groups.map((group) => [group.key, group.entries.length]));
+
+    expect(counts).toMatchObject({
+      chat_diary: 1,
+      structured_diary: 1,
+      wiki_summary: 1,
+      skipped: 1,
+    });
   });
 });

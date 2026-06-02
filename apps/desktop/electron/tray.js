@@ -8,6 +8,7 @@ function createTrayManager({
   showStageWindow,
   showAgentWindow,
   showFeatureWindow,
+  showPetInputMode,
   quitApp,
 }) {
   let tray = null;
@@ -40,6 +41,17 @@ function createTrayManager({
     tray.setToolTip("桌面记忆助手");
     tray.setContextMenu(
       Menu.buildFromTemplate([
+        {
+          label: "桌宠输入入口",
+          submenu: [
+            { label: "聊天", click: () => showPetInputMode("chat") },
+            { label: "记一个", click: () => showPetInputMode("note") },
+            { label: "新任务", click: () => showPetInputMode("task") },
+            { label: "整理 Wiki", click: () => showPetInputMode("wiki") },
+            { label: "今日复盘", click: () => showPetInputMode("review") },
+          ],
+        },
+        { type: "separator" },
         { label: "显示桌宠", click: () => createPetWindow() },
         { label: "打开主舞台", click: showStageWindow },
         { label: "打开聊天窗口", click: () => showFeatureWindow("chat") },

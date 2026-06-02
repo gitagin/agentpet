@@ -1,12 +1,12 @@
 import type { ChatMessage, Citation } from "../../types";
 
 const CITATION_SOURCE_SCOPE_LABELS: Record<string, string> = {
-  personal_memory: "记忆",
+  personal_memory: "长期记忆",
   diary_objects: "结构化日记",
-  daily_chat: "聊天日记",
-  knowledge_base: "资料",
+  daily_chat: "每日聊天日记",
+  knowledge_base: "Wiki/知识库",
   pending_memory: "待确认记忆",
-  all: "记忆/资料",
+  all: "全部本地资产",
 };
 
 const CITATION_RETRIEVAL_MODE_LABELS: Record<string, string> = {
@@ -33,7 +33,14 @@ export function formatCitationRetrievalMode(retrievalMode: Citation["retrieval_m
 }
 
 export function formatCitationSourceLabel(citations: Citation[]): string {
-  return formatCitationSourceScope(citations[0]?.source_scope) || "记忆/资料";
+  return formatCitationSourceScope(citations[0]?.source_scope) || "本地资产";
+}
+
+export function formatCitationSourceScopes(sourceScopes: string[] | undefined): string {
+  const labels = (sourceScopes || [])
+    .map((scope) => formatCitationSourceScope(scope))
+    .filter((label): label is string => Boolean(label));
+  return Array.from(new Set(labels)).join(" / ");
 }
 
 export function formatRunStatus(status: NonNullable<ChatMessage["status"]>): string {

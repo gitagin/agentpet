@@ -73,7 +73,16 @@ export type DesktopReminderNotificationResult = {
   reason?: string;
 };
 
+export type DesktopVaultRevealMode = "open" | "show";
+
+export type DesktopVaultRevealResult = {
+  status: "opened" | "shown" | "rejected" | "failed";
+  relative_path?: string;
+  reason?: string;
+};
+
 export type DesktopFeatureWindowMode = "chat" | "memory" | "world" | "settings";
+export type DesktopPetInputMode = "chat" | "note" | "task" | "wiki" | "review";
 
 declare global {
   interface Window {
@@ -88,6 +97,10 @@ declare global {
       setUiState?: (key: string, value: string | null) => void;
       getSidecarStatus?: () => Promise<DesktopSidecarStatus>;
       apiRequest?: (pathOrUrl: string, options?: DesktopApiRequestOptions) => Promise<DesktopApiResponse>;
+      revealVaultPath?: (
+        relativePath: string,
+        mode: DesktopVaultRevealMode,
+      ) => Promise<DesktopVaultRevealResult>;
       startSseStream?: (streamId: string, pathOrUrl: string) => Promise<{ streamId: string }>;
       cancelSseStream?: (streamId: string) => Promise<void>;
       onSseChunk?: (callback: (streamId: string, chunk: string) => void) => () => void;
@@ -106,6 +119,7 @@ declare global {
       getPetMousePassthroughStatus?: () => Promise<DesktopPetMousePassthroughStatus>;
       setPetShortcutBarVisible?: (visible: boolean) => Promise<DesktopPetMousePassthroughStatus>;
       setPetInputVisible?: (visible: boolean) => Promise<DesktopPetMousePassthroughStatus>;
+      onPetInputModeRequested?: (callback: (mode: DesktopPetInputMode) => void) => () => void;
       beginPetWindowDrag?: () => void;
       activatePetWindowDrag?: () => void;
       endPetWindowDrag?: () => void;
@@ -125,6 +139,8 @@ export type ChatMessage = {
   content: string;
   status?: "partial" | "completed" | "failed" | "cancelled";
   citations?: Citation[];
+  retrieval_scopes?: string[];
+  retrieval_context_budget?: ChatContextBudget;
   events?: ChatToolEvent[];
   negotiation_steps?: ChatNegotiationStep[];
   negotiation_done?: ChatNegotiationDone;
@@ -132,8 +148,24 @@ export type ChatMessage = {
   continuity_proposals?: ChatContinuityProposal[];
   continuity_signal?: ChatContinuitySignal;
   agent_actions?: AgentAction[];
+  task_actions?: TaskItem[];
   agent_run_id?: string;
   retrieval_attempted?: boolean;
+};
+
+export type ChatContextBudget = {
+  strategy: string;
+  candidate_count: number;
+  selected_count: number;
+  duplicate_drop_count?: number;
+  per_scope_drop_count?: number;
+  budget_drop_count?: number;
+  item_budget: number;
+  per_scope_limit: number;
+  char_budget: number;
+  used_chars: number;
+  source_counts?: Record<string, number>;
+  selected_scopes?: string[];
 };
 
 export type ChatNegotiationAction = "invoking" | "reviewing" | "revising" | "synthesizing";
@@ -334,6 +366,19 @@ export type MemorySearchResponse = {
     vector_available?: boolean;
     vector_error?: string;
   };
+};
+
+export type LocalAssetStatsResponse = {
+  vault_configured: boolean;
+  vault_id?: string | null;
+  chat_diary_days: number;
+  chat_diary_entries: number;
+  long_term_memory_count: number;
+  wiki_page_count: number;
+  task_count: number;
+  completed_task_count: number;
+  latest_organization_at?: string | null;
+  reversible_operation_count: number;
 };
 
 export type WikiIngestOperation = "create" | "append" | "replace_section";
@@ -956,7 +1001,7 @@ export type MemoryGraphFact = {
   subject: string;
   predicate: string;
   object: string;
-  status: "candidate" | "active" | "quarantined" | "archived" | "rejected" | string;
+  status: "candidate" | "active" | "quarantined" | "archived" | "rejected" | "wrong" | "sensitive_blocked" | string;
   confidence: number;
   source_text: string;
   source_type: string;
@@ -1017,6 +1062,20 @@ export type MemoryGraphFactActionResponse = {
   status: string;
 };
 
+export type MemoryGraphExportItem = Omit<MemoryGraphFact, "source_text"> & {
+  metadata: Record<string, unknown>;
+};
+
+export type MemoryGraphExportPreviewResponse = {
+  generated_at: string;
+  format: "json" | "markdown";
+  item_count: number;
+  items: MemoryGraphExportItem[];
+  json_preview: string;
+  markdown_preview: string;
+  redaction_note: string;
+};
+
 export type CompanionConsolidationRunRequest = {
   from?: string | null;
   to?: string | null;
@@ -1057,11 +1116,99 @@ export type CompanionRetrievalReportListResponse = {
   reports: CompanionRetrievalReport[];
 };
 
+export type RetrospectiveSourceReference = {
+  kind: string;
+  id: string;
+  label: string;
+  path?: string | null;
+  created_at?: string | null;
+};
+
+export type RetrospectiveReportPeriod = "weekly" | "monthly";
+
+export type RetrospectiveTopic = {
+  name: string;
+  count: number;
+  sources: RetrospectiveSourceReference[];
+};
+
+export type RetrospectiveDiarySummary = {
+  id: string;
+  summary: string;
+  topic?: string | null;
+  source_path?: string | null;
+  occurred_at: string;
+};
+
+export type RetrospectiveMemoryItem = {
+  id: string;
+  summary: string;
+  category: string;
+  status: string;
+  confidence: number;
+  source_path?: string | null;
+  created_at: string;
+};
+
+export type RetrospectiveTaskStats = {
+  total: number;
+  completed: number;
+  pending: number;
+  cancelled: number;
+  overdue: number;
+  sources: RetrospectiveSourceReference[];
+};
+
+export type RetrospectiveWikiItem = {
+  path: string;
+  title: string;
+  action_type: string;
+  created_at: string;
+  action_id?: string | null;
+};
+
+export type RetrospectivePreference = {
+  name: string;
+  count: number;
+  sources: RetrospectiveSourceReference[];
+};
+
+export type RetrospectiveWindow = {
+  days: number;
+  label: string;
+  start_at: string;
+  end_at: string;
+  summary: Record<string, number>;
+  topics: RetrospectiveTopic[];
+  diary_summaries: RetrospectiveDiarySummary[];
+  long_term_memories: RetrospectiveMemoryItem[];
+  tasks: RetrospectiveTaskStats;
+  wiki_updates: RetrospectiveWikiItem[];
+  repeated_preferences: RetrospectivePreference[];
+  has_data: boolean;
+};
+
+export type RetrospectiveResponse = {
+  generated_at: string;
+  windows: RetrospectiveWindow[];
+};
+
+export type RetrospectiveReportResponse = {
+  page: WikiPageResponse;
+  action: AgentAction;
+  markdown: string;
+};
+
 export type VaultStatusResponse = {
   configured: boolean;
   active_vault_id?: string | null;
   root_path?: string | null;
+  root_path_label?: string | null;
   name?: string | null;
+  latest_indexed_at?: string | null;
+  markdown_count: number;
+  wiki_page_count: number;
+  diary_page_count: number;
 };
 
 export type VaultInitRequest = {

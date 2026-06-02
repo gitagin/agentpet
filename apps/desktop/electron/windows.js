@@ -22,6 +22,7 @@ const PET_SHORTCUT_BAR_HIT_WIDTH = petHitboxConfig.hitboxes.shortcutBar.width;
 const PET_SHORTCUT_BAR_HIT_HEIGHT = petHitboxConfig.hitboxes.shortcutBar.height;
 const PET_SHORTCUT_BAR_HIT_RIGHT = petHitboxConfig.hitboxes.shortcutBar.right;
 const PET_SHORTCUT_BAR_HIT_BOTTOM = petHitboxConfig.hitboxes.shortcutBar.bottom;
+const PET_INPUT_MODES = new Set(["chat", "note", "task", "wiki", "review"]);
 function createWindowManager({ devServerUrl, state, quitApp }) {
   let petWindow = null;
   let controlWindow = null;
@@ -45,6 +46,10 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
 
   function normalizeFeatureWindowMode(mode) {
     return ["chat", "memory", "world", "settings"].includes(mode) ? mode : "chat";
+  }
+
+  function normalizePetInputMode(mode) {
+    return PET_INPUT_MODES.has(mode) ? mode : "chat";
   }
 
   function getFeatureWindowTitle(mode) {
@@ -567,6 +572,17 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
       return;
     }
     Menu.buildFromTemplate([
+      {
+        label: "桌宠输入入口",
+        submenu: [
+          { label: "聊天", click: () => showPetInputMode("chat") },
+          { label: "记一个", click: () => showPetInputMode("note") },
+          { label: "新任务", click: () => showPetInputMode("task") },
+          { label: "整理 Wiki", click: () => showPetInputMode("wiki") },
+          { label: "今日复盘", click: () => showPetInputMode("review") },
+        ],
+      },
+      { type: "separator" },
       { label: "打开主舞台", click: showStageWindow },
       { label: "打开聊天窗口", click: () => showFeatureWindow("chat") },
       { label: "打开任务工作台", click: showAgentWindow },
@@ -646,6 +662,25 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     }
     window.show();
     window.focus();
+  }
+
+  function showPetInputMode(mode) {
+    const normalizedMode = normalizePetInputMode(mode);
+    const window = createPetWindow();
+    if (window.isMinimized()) {
+      window.restore();
+    }
+    window.show();
+    window.focus();
+    const sendMode = () => {
+      window.webContents.send("agent-pet:open-pet-input-mode", normalizedMode);
+      setPetInputDockVisible(window.webContents, true);
+    };
+    if (window.webContents.isLoading()) {
+      window.webContents.once("did-finish-load", sendMode);
+      return;
+    }
+    sendMode();
   }
 
   function hideAgentWindow() {
@@ -772,6 +807,7 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     hideAgentWindow,
     showStageWindow,
     showFeatureWindow,
+    showPetInputMode,
     clearPetWindowDrag,
     getPetMousePassthroughStatus,
     updatePetMousePassthroughFromCursor,

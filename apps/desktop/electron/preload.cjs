@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld("agentDesktop", {
   setUiState: (key, value) => ipcRenderer.send("agent-pet:set-ui-state", key, value),
   getSidecarStatus: () => ipcRenderer.invoke("agent-pet:get-sidecar-status"),
   apiRequest: (pathOrUrl, options) => ipcRenderer.invoke("agent-pet:api-request", pathOrUrl, options),
+  revealVaultPath: (relativePath, mode) => ipcRenderer.invoke("agent-pet:reveal-vault-path", relativePath, mode),
   startSseStream: (streamId, pathOrUrl) => ipcRenderer.invoke("agent-pet:sse-start", streamId, pathOrUrl),
   cancelSseStream: (streamId) => ipcRenderer.invoke("agent-pet:sse-cancel", streamId),
   onSseChunk: (callback) => {
@@ -45,6 +46,18 @@ contextBridge.exposeInMainWorld("agentDesktop", {
   getPetMousePassthroughStatus: () => ipcRenderer.invoke("agent-pet:get-pet-mouse-passthrough-status"),
   setPetShortcutBarVisible: (visible) => ipcRenderer.invoke("agent-pet:set-pet-shortcut-bar-visible", visible),
   setPetInputVisible: (visible) => ipcRenderer.invoke("agent-pet:set-pet-input-visible", visible),
+  onPetInputModeRequested: (callback) => {
+    const allowedModes = new Set(["chat", "note", "task", "wiki", "review"]);
+    const listener = (_event, mode) => {
+      if (typeof mode === "string" && allowedModes.has(mode)) {
+        callback(mode);
+      }
+    };
+    ipcRenderer.on("agent-pet:open-pet-input-mode", listener);
+    return () => {
+      ipcRenderer.removeListener("agent-pet:open-pet-input-mode", listener);
+    };
+  },
   beginPetWindowDrag: () => ipcRenderer.send("agent-pet:begin-pet-window-drag"),
   activatePetWindowDrag: () => ipcRenderer.send("agent-pet:activate-pet-window-drag"),
   endPetWindowDrag: () => ipcRenderer.send("agent-pet:end-pet-window-drag"),

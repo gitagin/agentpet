@@ -1,5 +1,5 @@
 import { Loader2, MessageSquareText, Send, X } from "lucide-react";
-import type { FormEvent } from "react";
+import type { FormEvent, ReactNode } from "react";
 import { Panel } from "../components/layout";
 import { ChatMessageList } from "../features/chat/ChatMessageList";
 import type { AgentAction, ChatMessage } from "../types";
@@ -16,6 +16,7 @@ export default function ChatWindowView({
   revertingActionIds,
   onRevertAgentAction,
   onOpenMemory,
+  onboardingPanel,
 }: {
   input: string;
   messages: ChatMessage[];
@@ -27,6 +28,7 @@ export default function ChatWindowView({
   revertingActionIds?: Set<string>;
   onRevertAgentAction?: (action: AgentAction) => void;
   onOpenMemory?: () => void;
+  onboardingPanel?: ReactNode;
 }) {
   return (
     <FeatureWindowShell
@@ -36,6 +38,7 @@ export default function ChatWindowView({
       activeTab="聊天"
     >
       <Panel icon={<MessageSquareText size={18} />} title="聊天与检索" className="feature-window-panel chat-panel">
+        {onboardingPanel}
         <form className="chat-form" onSubmit={onSend}>
           <input
             value={input}

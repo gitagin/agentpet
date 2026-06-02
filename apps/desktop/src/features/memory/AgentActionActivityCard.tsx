@@ -1,4 +1,4 @@
-import { Loader2, RotateCcw } from "lucide-react";
+import { ExternalLink, FolderSearch, Loader2, RotateCcw } from "lucide-react";
 import type { AgentAction } from "../../types";
 import {
   canRevertAgentAction,
@@ -11,13 +11,15 @@ type AgentActionActivityCardProps = {
   entry: Extract<AgentActivityLogEntry, { kind: "agent_action" }>;
   reverting: boolean;
   onRevert: (action: AgentAction) => void;
+  onRevealTarget?: (relativePath: string, mode: "open" | "show") => void;
 };
 
-export function AgentActionActivityCard({ entry, reverting, onRevert }: AgentActionActivityCardProps) {
+export function AgentActionActivityCard({ entry, reverting, onRevert, onRevealTarget }: AgentActionActivityCardProps) {
   const action = entry.action;
   const display = getAgentActionDisplayFields(action);
   const attention = isAttentionAgentAction(action);
   const canRevert = canRevertAgentAction(action);
+  const targetPaths = action.target_paths.filter((targetPath) => targetPath.toLowerCase().endsWith(".md"));
 
   return (
     <article className={`proposal agent-activity-item ${attention ? "pending" : "confirmed"}`}>
@@ -55,6 +57,36 @@ export function AgentActionActivityCard({ entry, reverting, onRevert }: AgentAct
       ) : null}
       {action.decision === "ask" && action.status === "pending" ? (
         <p className="field-note error">该活动需要人工确认；请处理下方对应的高风险确认项。</p>
+      ) : null}
+
+      {onRevealTarget && targetPaths.length > 0 ? (
+        <div className="agent-action-targets" aria-label="Vault 目标文件">
+          {targetPaths.map((targetPath) => (
+            <div key={targetPath} className="agent-action-target-row">
+              <span>{targetPath}</span>
+              <div className="button-row compact-actions">
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => onRevealTarget(targetPath, "open")}
+                  title={`打开 ${targetPath}`}
+                >
+                  <ExternalLink size={16} />
+                  打开 Markdown
+                </button>
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => onRevealTarget(targetPath, "show")}
+                  title={`在文件夹中显示 ${targetPath}`}
+                >
+                  <FolderSearch size={16} />
+                  显示位置
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
       ) : null}
 
       {canRevert ? (

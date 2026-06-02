@@ -14,7 +14,7 @@ type StageViewProps = {
   connected: boolean;
   streaming: boolean;
   bubble?: PetBubbleState | null;
-  onSendChat: (text: string, clearInput: () => void) => void | Promise<void>;
+  onSendChat: (text: string, clearInput: () => void) => void | Promise<void | boolean>;
   onStopStreaming?: () => void;
   onAdvancePage?: () => void;
   onPausePaging?: () => void;

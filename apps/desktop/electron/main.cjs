@@ -1,5 +1,6 @@
 const { app, BrowserWindow, Menu, globalShortcut } = require("electron");
 const crypto = require("node:crypto");
+const fs = require("node:fs");
 const path = require("node:path");
 const { createWindowManager } = require("./windows.js");
 const { createTrayManager } = require("./tray.js");
@@ -12,15 +13,42 @@ const SIDECAR_HOST = "127.0.0.1";
 const SIDECAR_PORT = 8765;
 const SIDECAR_BASE_URL = `http://${SIDECAR_HOST}:${SIDECAR_PORT}`;
 const sessionToken = process.env.AGENT_PET_SESSION_TOKEN || crypto.randomBytes(32).toString("base64url");
+const rendererUiStatePath = path.join(app.getPath("userData"), "renderer-ui-state.json");
 const managedSidecarDataDir = path.join(app.getPath("userData"), "backend-state");
 const state = {
   isQuitting: false,
-  rendererUiState: new Map(),
+  rendererUiState: loadRendererUiState(rendererUiStatePath),
 };
 
 function quitApp() {
   state.isQuitting = true;
   app.quit();
+}
+
+function loadRendererUiState(filePath) {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return new Map();
+    }
+    return new Map(
+      Object.entries(parsed).filter((entry) => typeof entry[1] === "string" && entry[1].length <= 250000),
+    );
+  } catch {
+    return new Map();
+  }
+}
+
+function persistRendererUiState() {
+  try {
+    fs.mkdirSync(path.dirname(rendererUiStatePath), { recursive: true });
+    const payload = Object.fromEntries(state.rendererUiState.entries());
+    const tempPath = `${rendererUiStatePath}.tmp`;
+    fs.writeFileSync(tempPath, JSON.stringify(payload, null, 2), "utf8");
+    fs.renameSync(tempPath, rendererUiStatePath);
+  } catch (error) {
+    console.warn("Failed to persist renderer UI state.", error);
+  }
 }
 
 const windows = createWindowManager({
@@ -47,12 +75,14 @@ const tray = createTrayManager({
   showStageWindow: windows.showStageWindow,
   showAgentWindow: windows.showAgentWindow,
   showFeatureWindow: windows.showFeatureWindow,
+  showPetInputMode: windows.showPetInputMode,
   quitApp,
 });
 
 registerIpcHandlers({
   baseUrl: SIDECAR_BASE_URL,
   rendererUiState: state.rendererUiState,
+  persistRendererUiState,
   sidecar,
   proxy,
   windows,

@@ -2,14 +2,14 @@ import { formatTaskStatus, formatTimezoneForUser } from "../../tasks/taskReducer
 import type { StreamHandlerInput } from "../streamDispatcher";
 
 export function taskHandler({ messageId, payload, context }: StreamHandlerInput, taskId: string) {
-  const { petChat, addTaskFromChat, appendChatEvent, triggerLive2DTaskStage } = context;
+  const { petChat, addTaskFromChat, appendChatEvent, setMessages, triggerLive2DTaskStage } = context;
   const title = typeof payload?.title === "string" ? payload.title : "聊天创建的任务";
   const remindAt = typeof payload?.remind_at === "string" ? payload.remind_at : undefined;
   const timezone = typeof payload?.timezone === "string" ? payload.timezone : undefined;
   const timezoneLabel =
     typeof payload?.timezone_label === "string" ? payload.timezone_label : formatTimezoneForUser(timezone);
   const reminderStatus = typeof payload?.reminder_status === "string" ? payload.reminder_status : undefined;
-  addTaskFromChat({
+  const task = {
     task_id: taskId,
     reminder_id: typeof payload?.reminder_id === "string" ? payload.reminder_id : undefined,
     title,
@@ -18,7 +18,20 @@ export function taskHandler({ messageId, payload, context }: StreamHandlerInput,
     remind_at: remindAt,
     timezone,
     timezone_label: timezoneLabel,
-  });
+  };
+  addTaskFromChat(task);
+  setMessages((current) =>
+    current.map((message) => {
+      if (message.id !== messageId) {
+        return message;
+      }
+      const existing = message.task_actions || [];
+      return {
+        ...message,
+        task_actions: [...existing.filter((item) => item.task_id !== task.task_id), task],
+      };
+    }),
+  );
   triggerLive2DTaskStage();
   appendChatEvent(messageId, {
     label: "任务",

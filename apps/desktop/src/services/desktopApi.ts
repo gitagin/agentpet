@@ -16,16 +16,23 @@ import type {
   CompanionConsolidationRunResponse,
   CompanionRetrievalReportListResponse,
   DiagnosticsExportResponse,
+  LocalAssetStatsResponse,
   LocalStateResetResponse,
   MemoryProposalActionResponse,
   MemoryProposalCreateResponse,
   MemoryProposalDraft,
   MemoryProposalListResponse,
+  MemoryGraphExportPreviewResponse,
+  MemoryGraphFactActionResponse,
+  MemoryGraphFactListResponse,
   MemorySearchResponse,
   ModelKeyResponse,
   ModelConfigResponse,
   ModelHealthResponse,
   ModelTestResponse,
+  RetrospectiveReportPeriod,
+  RetrospectiveReportResponse,
+  RetrospectiveResponse,
   SettingsStatusResponse,
   SettingsUpdateRequest,
   SettingsUpdateResponse,
@@ -98,6 +105,10 @@ export class DesktopApi {
     );
   }
 
+  getLocalAssetStats(signal?: AbortSignal): Promise<LocalAssetStatsResponse> {
+    return this.client.get<LocalAssetStatsResponse>("/api/memory/local-assets", signal);
+  }
+
   createMemoryProposal(
     draft: MemoryProposalDraft,
     signal?: AbortSignal,
@@ -107,6 +118,74 @@ export class DesktopApi {
 
   listMemoryProposals(signal?: AbortSignal): Promise<MemoryProposalListResponse> {
     return this.client.get<MemoryProposalListResponse>("/api/memory/proposals", signal);
+  }
+
+  listMemoryGraphFacts(
+    status?: string | null,
+    query?: string | null,
+    limit = 50,
+    signal?: AbortSignal,
+  ): Promise<MemoryGraphFactListResponse> {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (status?.trim()) {
+      params.set("status", status.trim());
+    }
+    if (query?.trim()) {
+      params.set("query", query.trim());
+    }
+    return this.client.get<MemoryGraphFactListResponse>(`/api/memory/graph/facts?${params.toString()}`, signal);
+  }
+
+  confirmMemoryGraphFact(factId: string, signal?: AbortSignal): Promise<MemoryGraphFactActionResponse> {
+    return this.client.post<MemoryGraphFactActionResponse>(
+      `/api/memory/graph/facts/${encodeURIComponent(factId)}/confirm`,
+      {},
+      signal,
+    );
+  }
+
+  markMemoryGraphFactWrong(factId: string, signal?: AbortSignal): Promise<MemoryGraphFactActionResponse> {
+    return this.client.post<MemoryGraphFactActionResponse>(
+      `/api/memory/graph/facts/${encodeURIComponent(factId)}/wrong`,
+      {},
+      signal,
+    );
+  }
+
+  archiveMemoryGraphFact(factId: string, signal?: AbortSignal): Promise<MemoryGraphFactActionResponse> {
+    return this.client.post<MemoryGraphFactActionResponse>(
+      `/api/memory/graph/facts/${encodeURIComponent(factId)}/archive`,
+      {},
+      signal,
+    );
+  }
+
+  sensitiveBlockMemoryGraphFact(factId: string, signal?: AbortSignal): Promise<MemoryGraphFactActionResponse> {
+    return this.client.post<MemoryGraphFactActionResponse>(
+      `/api/memory/graph/facts/${encodeURIComponent(factId)}/sensitive-block`,
+      {},
+      signal,
+    );
+  }
+
+  getMemoryGraphExportPreview(
+    format: "json" | "markdown" = "markdown",
+    status?: string | null,
+    query?: string | null,
+    limit = 100,
+    signal?: AbortSignal,
+  ): Promise<MemoryGraphExportPreviewResponse> {
+    const params = new URLSearchParams({ format, limit: String(limit) });
+    if (status?.trim()) {
+      params.set("status", status.trim());
+    }
+    if (query?.trim()) {
+      params.set("query", query.trim());
+    }
+    return this.client.get<MemoryGraphExportPreviewResponse>(
+      `/api/memory/graph/export-preview?${params.toString()}`,
+      signal,
+    );
   }
 
   runCompanionConsolidation(
@@ -129,6 +208,21 @@ export class DesktopApi {
       `/api/memory/companion/context-reports?${params.toString()}`,
       signal,
     );
+  }
+
+  getRetrospectives(signal?: AbortSignal): Promise<RetrospectiveResponse> {
+    return this.client.get<RetrospectiveResponse>("/api/memory/retrospectives", signal);
+  }
+
+  writeRetrospectiveReport(days: number, signal?: AbortSignal): Promise<RetrospectiveReportResponse> {
+    return this.client.post<RetrospectiveReportResponse>("/api/memory/retrospectives/report", { days }, signal);
+  }
+
+  writeRetrospectivePeriodReport(
+    period: RetrospectiveReportPeriod,
+    signal?: AbortSignal,
+  ): Promise<RetrospectiveReportResponse> {
+    return this.client.post<RetrospectiveReportResponse>("/api/memory/retrospectives/report", { period }, signal);
   }
 
   confirmMemoryProposal(
