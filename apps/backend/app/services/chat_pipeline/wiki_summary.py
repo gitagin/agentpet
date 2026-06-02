@@ -21,7 +21,7 @@ def archive_wiki_answer_summary(
     automation,
     policy: AutomationPolicy,
 ) -> list[AgentActionEvent]:
-    from . import agent_action_event
+    from . import agent_action_event, skipped_agent_action_event
 
     actions: list[AgentActionEvent] = []
     if daily_result is None or not automation.auto_wiki_organize:
@@ -40,6 +40,23 @@ def archive_wiki_answer_summary(
             memory_date=daily_result.entry.memory_date,
             diary_object_ids=diary_object_ids,
         )
+        if plan is None:
+            reason = summary_service.skip_reason(
+                user_question=state.user_message,
+                assistant_answer=assistant_answer,
+            )
+            actions.append(
+                skipped_agent_action_event(
+                    context=context,
+                    state=state,
+                    action_type="wiki.answer_summary.skip",
+                    title="Skipped Wiki summary",
+                    summary=_wiki_skip_summary(reason),
+                    reason=reason,
+                    risk_tier="low" if reason in {"low_value_chat", "low_knowledge_score", "no_saveable_content"} else "high",
+                )
+            )
+            return actions
         if plan is not None:
             decision = policy.decide(
                 "wiki.answer_summary.write",
@@ -100,3 +117,13 @@ def archive_wiki_answer_summary(
             exc,
         )
     return actions
+
+
+def _wiki_skip_summary(reason: str) -> str:
+    if reason == "sensitive_content":
+        return "Skipped because this turn contained sensitive content; no Wiki summary was written."
+    if reason == "low_value_chat":
+        return "Skipped because this turn was too short or low-value for a durable Wiki summary."
+    if reason == "low_knowledge_score":
+        return "Skipped because this answer did not contain enough reusable knowledge for Wiki."
+    return "Skipped because this turn did not produce saveable Wiki summary content."

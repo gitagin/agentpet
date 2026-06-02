@@ -70,9 +70,19 @@ class MigrationRunner:
                     )
                 applied.append(version)
             if applied:
-                conn.execute("PRAGMA secure_delete = ON")
-                conn.execute("VACUUM")
+                self._purge_deleted_content(conn)
         return applied
+
+    def _purge_deleted_content(self, conn: sqlite3.Connection) -> None:
+        conn.commit()
+        conn.execute("PRAGMA secure_delete = ON")
+        journal_mode = str(conn.execute("PRAGMA journal_mode").fetchone()[0]).lower()
+        if journal_mode == "wal":
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+            conn.execute("PRAGMA journal_mode = DELETE")
+        conn.execute("VACUUM")
+        if journal_mode == "wal":
+            conn.execute("PRAGMA journal_mode = WAL")
 
     def _apply_script_allowing_duplicate_columns(self, conn: sqlite3.Connection, script: str) -> None:
         for statement in self._split_sql_statements(script):

@@ -41,6 +41,8 @@ def test_langgraph_runtime_preserves_core_search_event_contract() -> None:
         ("Ada", 5, "fts", "knowledge_base"),
     ]
     assert events[0].event == "status"
+    retrieval_statuses = [event for event in events if event.event == "status" and event.stage in {"personal_memory_retrieval", "knowledge_base_retrieval"}]
+    assert [event.source_scopes for event in retrieval_statuses] == [["personal_memory"], ["knowledge_base"]]
     assert [event.citation.source_scope for event in events if event.event == "citation"] == [
         "personal_memory",
         "knowledge_base",
@@ -176,6 +178,8 @@ def test_langgraph_falls_back_to_daily_chat_as_weak_evidence_when_personal_memor
     ]
     assert "上下文范围：daily_chat" in chat_model.calls[-1][0]
     assert "还没沉淀为长期记忆" in chat_model.calls[-1][0]
+    fallback_status = next(event for event in events if getattr(event, "stage", None) == "daily_chat_fallback")
+    assert fallback_status.source_scopes == ["daily_chat"]
     assert first_event(events, "citation").citation.source_scope == "daily_chat"
     assert any(getattr(event, "stage", None) == "daily_chat_fallback" for event in events)
     assert_langgraph_events(events, ["citation", "token", "done"])
@@ -252,6 +256,8 @@ def test_langgraph_aggregates_and_compresses_companion_memory_route_scopes() -> 
         ("What do you remember about my coding style?", 5, "fts", "diary_objects"),
         ("What do you remember about my coding style?", 5, "fts", "daily_chat"),
     ]
+    multi_source_status = next(event for event in events if getattr(event, "stage", None) == "multi_source_memory_retrieval")
+    assert multi_source_status.source_scopes == ["personal_memory", "diary_objects", "daily_chat"]
     citation_events = [event for event in events if event.event == "citation"]
     assert [event.citation.source_scope for event in citation_events] == [
         "personal_memory",

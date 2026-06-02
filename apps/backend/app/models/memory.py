@@ -34,6 +34,19 @@ class DiaryMemorySearchResponse(BaseModel):
     objects: list[DiaryMemoryObjectResponse] = Field(default_factory=list)
 
 
+class LocalAssetStatsResponse(BaseModel):
+    vault_configured: bool
+    vault_id: str | None = None
+    chat_diary_days: int = 0
+    chat_diary_entries: int = 0
+    long_term_memory_count: int = 0
+    wiki_page_count: int = 0
+    task_count: int = 0
+    completed_task_count: int = 0
+    latest_organization_at: str | None = None
+    reversible_operation_count: int = 0
+
+
 class MemoryProposalCreateRequest(BaseModel):
     type: MemoryProposalType; content: str = Field(min_length=1); target_path: str; source_message_id: str | None = None
 
@@ -88,6 +101,14 @@ class AgentActionRevertResponse(BaseModel):
 
 class MemoryGraphFactResponse(BaseModel):
     fact_id: str; category: str; subject: str; predicate: str; object: str; status: str; confidence: float; source_text: str; source_type: str; support_count: int = 1; conflicts_with: str | None = None; memory_type: str | None = None; entity_type: str | None = None; occurred_at: str | None = None; expires_at: str | None = None; metadata_json: str | None = None; importance: float = 0.5; created_at: str; updated_at: str
+
+
+class MemoryGraphExportItem(BaseModel):
+    fact_id: str; category: str; subject: str; predicate: str; object: str; status: str; confidence: float; source_type: str; support_count: int = 1; conflicts_with: str | None = None; memory_type: str | None = None; entity_type: str | None = None; occurred_at: str | None = None; expires_at: str | None = None; metadata: dict[str, object] = Field(default_factory=dict); importance: float = 0.5; created_at: str; updated_at: str
+
+
+class MemoryGraphExportPreviewResponse(BaseModel):
+    generated_at: str; format: Literal["json", "markdown"] = "markdown"; item_count: int; items: list[MemoryGraphExportItem] = Field(default_factory=list); json_preview: str; markdown_preview: str; redaction_note: str
 
 
 class MemoryGraphFactListResponse(BaseModel):

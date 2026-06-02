@@ -161,6 +161,30 @@ def test_search_normalizes_chinese_question_to_preference_synonyms(tmp_path: Pat
     assert "喜欢" in response.results[0].snippet
 
 
+def test_search_handles_colloquial_chinese_preference_question_with_citation_metadata(tmp_path: Path) -> None:
+    vault = tmp_path / "vault"
+    memory_dir = vault / "Memories" / "LongTerm"
+    memory_dir.mkdir(parents=True)
+    (memory_dir / "Profile.md").write_text(
+        "# 个人偏好\n\n用户喜欢简洁的状态更新，也偏好可追溯的来源说明。",
+        encoding="utf-8",
+    )
+    db = Database(tmp_path / "app.db")
+    service = RetrievalService(db)
+    service.initialize()
+    vault_id = service.bind_vault(str(vault))
+    service.rebuild_index(vault_id)
+
+    response = service.search(vault_id=vault_id, query="我之前是不是说过自己喜欢什么样的更新？", top_k=5)
+
+    assert response.results
+    result = response.results[0]
+    assert result.relative_path == "Memories/LongTerm/Profile.md"
+    assert result.source_scope == "personal_memory"
+    assert result.retrieval_mode == "fts"
+    assert "喜欢" in result.snippet
+
+
 def test_search_source_scope_filters_and_sanitizes_daily_chat(tmp_path: Path) -> None:
     vault = tmp_path / "vault"
     daily_path = vault / "Memories" / "Daily" / "2026" / "05" / "\u7b2c1\u5468_05-01\u81f305-07" / "\u661f\u671f\u65e5"

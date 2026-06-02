@@ -29,6 +29,7 @@ from app.services.memory import MemoryProposalStore, MemoryService, SafeMarkdown
 from app.services.memory_graph import MemoryGraphStore
 from app.services.retrieval import RetrievalService
 from app.services.retrieval_factory import build_vector_index
+from app.services.retrospectives import RetrospectiveService
 from app.services.settings import SettingsStore
 from app.services.tasks import TaskService, TaskStore
 from app.services.wiki import WikiService
@@ -448,6 +449,18 @@ def companion_consolidation_service(request: Request | AppContext) -> CompanionC
 
 def companion_retrieval_report_store(request: Request | AppContext) -> CompanionRetrievalReportStore:
     return CompanionRetrievalReportStore(database(request).path)
+
+
+def retrospective_service(request: Request | AppContext) -> RetrospectiveService:
+    services = vault_services(request)
+    writer = services.optional_writer()
+    return RetrospectiveService(
+        database(request).path,
+        vault_id=services.vault_id,
+        writer=writer,
+        agent_actions=agent_action_service(request) if writer is not None else None,
+        index_refresh=services.index_refresh() if writer is not None else None,
+    )
 
 
 def schedule_index_refresh(request: Request | AppContext, vault_id: str, *, delay_seconds: float = 0.5) -> str:

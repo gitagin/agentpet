@@ -1,3 +1,5 @@
+import json
+
 from fastapi import APIRouter, Depends, Request, status
 
 from ..errors import AppError
@@ -10,7 +12,10 @@ from ..models.api import (
     DiaryMemorySearchRequest,
     DiaryMemorySearchResponse,
     DiaryMemorySourceResponse,
+    LocalAssetStatsResponse,
     MemoryGraphFactActionResponse,
+    MemoryGraphExportItem,
+    MemoryGraphExportPreviewResponse,
     MemoryGraphFactListResponse,
     MemoryGraphFactResponse,
     MemoryProposalActionResponse,
@@ -20,7 +25,11 @@ from ..models.api import (
     MemorySearchRequest,
     MemorySearchResponse,
     RejectProposalRequest,
+    RetrospectiveReportRequest,
+    RetrospectiveReportResponse,
+    RetrospectiveResponse,
 )
+from ..models.enums import MemoryFactStatus
 from ..services.agent_actions import AgentActionCreate
 from ..services.diary_memory import (
     DiaryMemoryNotFoundError,
@@ -29,11 +38,14 @@ from ..services.diary_memory import (
 )
 from ..services.memory import MemoryService
 from ..services.memory_policy import evaluate_memory_content
+from ..services.local_assets import LocalAssetStatsService
 from .wiring import (
     active_vault_id,
+    active_vault_root,
     audit_reason,
     companion_consolidation_service,
     companion_retrieval_report_store,
+    database,
     diary_memory_service,
     map_memory_error,
     memory_service_dependency,
@@ -42,9 +54,14 @@ from .wiring import (
     record_agent_action,
     prepend_graph_memory_results,
     retrieval_service,
+    retrospective_service,
 )
 
 router = APIRouter(prefix="/memory", tags=["memory"])
+
+RAW_EVIDENCE_REDACTION_NOTE = (
+    "Raw source evidence is omitted from this preview. File export must be handled by a confirmed safe path."
+)
 
 
 @router.post("/search", response_model=MemorySearchResponse)
@@ -127,6 +144,35 @@ async def get_diary_memory_object(object_id: str, request: Request) -> DiaryMemo
     return _diary_memory_response(record)
 
 
+@router.get("/local-assets", response_model=LocalAssetStatsResponse)
+async def get_local_asset_stats(request: Request) -> LocalAssetStatsResponse:
+    vault_id: str | None
+    vault_root: str | None
+    try:
+        vault_id = active_vault_id(request)
+        vault_root = active_vault_root(request)
+    except AppError as exc:
+        if exc.code != "vault_not_configured":
+            raise
+        vault_id = None
+        vault_root = None
+
+    with database(request).connect() as conn:
+        stats = LocalAssetStatsService(conn, vault_id=vault_id, vault_root=vault_root).summarize()
+    return LocalAssetStatsResponse(
+        vault_configured=stats.vault_configured,
+        vault_id=stats.vault_id,
+        chat_diary_days=stats.chat_diary_days,
+        chat_diary_entries=stats.chat_diary_entries,
+        long_term_memory_count=stats.long_term_memory_count,
+        wiki_page_count=stats.wiki_page_count,
+        task_count=stats.task_count,
+        completed_task_count=stats.completed_task_count,
+        latest_organization_at=stats.latest_organization_at,
+        reversible_operation_count=stats.reversible_operation_count,
+    )
+
+
 @router.get("/graph/facts", response_model=MemoryGraphFactListResponse)
 async def list_memory_graph_facts(
     request: Request,
@@ -140,6 +186,48 @@ async def list_memory_graph_facts(
     finally:
         store.close()
     return MemoryGraphFactListResponse(facts=[_graph_fact_response(fact) for fact in facts])
+
+
+@router.get("/graph/export-preview", response_model=MemoryGraphExportPreviewResponse)
+async def export_memory_graph_preview(
+    request: Request,
+    format: str = "markdown",
+    status: str | None = None,
+    query: str | None = None,
+    limit: int = 100,
+) -> MemoryGraphExportPreviewResponse:
+    preview_format = "json" if format == "json" else "markdown"
+    store = memory_graph_store(request)
+    try:
+        facts = store.list_facts(status=status, query=query, limit=limit)
+    finally:
+        store.close()
+    items = [_graph_export_item(fact) for fact in facts]
+    payload = [item.model_dump() for item in items]
+    json_preview = json.dumps(payload, ensure_ascii=False, indent=2)
+    markdown_preview = _memory_graph_markdown_preview(items)
+    record_audit(
+        request,
+        action="memory.graph.export_preview",
+        result="success",
+        reason=audit_reason(
+            request,
+            format=preview_format,
+            status=status or "all",
+            item_count=str(len(items)),
+        ),
+    )
+    from ..utils.time import utc_now_iso
+
+    return MemoryGraphExportPreviewResponse(
+        generated_at=utc_now_iso(),
+        format=preview_format,
+        item_count=len(items),
+        items=items,
+        json_preview=json_preview,
+        markdown_preview=markdown_preview,
+        redaction_note=RAW_EVIDENCE_REDACTION_NOTE,
+    )
 
 
 @router.post("/graph/facts/{fact_id}/confirm", response_model=MemoryGraphFactActionResponse)
@@ -168,6 +256,38 @@ async def reject_memory_graph_fact(fact_id: str, request: Request) -> MemoryGrap
     record_audit(
         request,
         action="memory.graph.reject",
+        result="success",
+        reason=audit_reason(request, fact_id=fact_id),
+    )
+    return MemoryGraphFactActionResponse(fact_id=fact.id, status=fact.status.value)
+
+
+@router.post("/graph/facts/{fact_id}/wrong", response_model=MemoryGraphFactActionResponse)
+async def wrong_memory_graph_fact(fact_id: str, request: Request) -> MemoryGraphFactActionResponse:
+    store = memory_graph_store(request)
+    try:
+        fact = store.update_status(fact_id, MemoryFactStatus.WRONG, reason="user_marked_wrong")
+    finally:
+        store.close()
+    record_audit(
+        request,
+        action="memory.graph.wrong",
+        result="success",
+        reason=audit_reason(request, fact_id=fact_id),
+    )
+    return MemoryGraphFactActionResponse(fact_id=fact.id, status=fact.status.value)
+
+
+@router.post("/graph/facts/{fact_id}/sensitive-block", response_model=MemoryGraphFactActionResponse)
+async def sensitive_block_memory_graph_fact(fact_id: str, request: Request) -> MemoryGraphFactActionResponse:
+    store = memory_graph_store(request)
+    try:
+        fact = store.update_status(fact_id, MemoryFactStatus.SENSITIVE_BLOCKED, reason="user_sensitive_blocked")
+    finally:
+        store.close()
+    record_audit(
+        request,
+        action="memory.graph.sensitive_block",
         result="success",
         reason=audit_reason(request, fact_id=fact_id),
     )
@@ -229,6 +349,65 @@ async def list_companion_context_reports(
     return CompanionRetrievalReportListResponse(
         reports=[_companion_retrieval_report_response(report) for report in reports]
     )
+
+
+@router.get("/retrospectives", response_model=RetrospectiveResponse)
+async def get_retrospectives(request: Request) -> RetrospectiveResponse:
+    service = retrospective_service(request)
+    try:
+        windows = service.build_windows()
+    finally:
+        service.close()
+        if service.agent_actions is not None:
+            service.agent_actions.close()
+    record_audit(
+        request,
+        action="memory.retrospective.read",
+        result="success",
+        reason=audit_reason(request, windows="7,30,90"),
+    )
+    from ..utils.time import utc_now_iso
+
+    return RetrospectiveResponse(generated_at=utc_now_iso(), windows=windows)
+
+
+@router.post("/retrospectives/report", response_model=RetrospectiveReportResponse)
+async def write_retrospective_report(
+    report_request: RetrospectiveReportRequest,
+    request: Request,
+) -> RetrospectiveReportResponse:
+    service = retrospective_service(request)
+    try:
+        response = (
+            service.write_period_report(report_request.period)
+            if report_request.period is not None
+            else service.write_report(report_request.days)
+        )
+    except RuntimeError as exc:
+        if str(exc) == "retrospective_report_requires_vault":
+            raise AppError(
+                code="vault_not_configured",
+                message="生成 Markdown 回顾报告前需要先配置 active Vault。",
+                status_code=status.HTTP_409_CONFLICT,
+            ) from exc
+        raise
+    finally:
+        service.close()
+        if service.agent_actions is not None:
+            service.agent_actions.close()
+    record_audit(
+        request,
+        action="memory.retrospective.report.write",
+        result="success",
+        target_path=response.page.relative_path,
+        reason=audit_reason(
+            request,
+            days=str(report_request.days),
+            period=report_request.period or "days",
+            action_id=response.action.action_id,
+        ),
+    )
+    return response
 
 
 @router.post("/proposals", response_model=MemoryProposalResponse)
@@ -429,6 +608,99 @@ def _graph_fact_response(fact) -> MemoryGraphFactResponse:
         created_at=fact.created_at,
         updated_at=fact.updated_at,
     )
+
+
+def _graph_export_item(fact) -> MemoryGraphExportItem:
+    return MemoryGraphExportItem(
+        fact_id=fact.id,
+        category=_safe_export_value(fact.category),
+        subject=_safe_export_value(fact.subject),
+        predicate=_safe_export_value(fact.predicate),
+        object=_safe_export_value(fact.object),
+        status=fact.status.value,
+        confidence=fact.confidence,
+        source_type=_safe_export_value(fact.source_type),
+        support_count=fact.support_count,
+        conflicts_with=fact.conflicts_with,
+        memory_type=_safe_export_optional(fact.memory_type),
+        entity_type=_safe_export_optional(fact.entity_type),
+        occurred_at=fact.occurred_at,
+        expires_at=fact.expires_at,
+        metadata=_safe_export_metadata(fact.metadata_json),
+        importance=fact.importance,
+        created_at=fact.created_at,
+        updated_at=fact.updated_at,
+    )
+
+
+def _memory_graph_markdown_preview(items: list[MemoryGraphExportItem]) -> str:
+    lines = [
+        "# Long-term memory export preview",
+        "",
+        f"> {RAW_EVIDENCE_REDACTION_NOTE}",
+        "",
+    ]
+    if not items:
+        lines.append("_No long-term memory facts matched this export preview._")
+        return "\n".join(lines)
+    for item in items:
+        lines.extend(
+            [
+                f"## {item.subject} {item.predicate} {item.object}",
+                "",
+                f"- fact_id: `{item.fact_id}`",
+                f"- status: `{item.status}`",
+                f"- category: `{item.category}`",
+                f"- confidence: {item.confidence:.2f}",
+                f"- support_count: {item.support_count}",
+                f"- source_type: `{item.source_type}`",
+                f"- importance: {item.importance:.2f}",
+                f"- updated_at: `{item.updated_at}`",
+                "",
+            ]
+        )
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _safe_export_metadata(raw: str | None) -> dict[str, object]:
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(parsed, dict):
+        return {}
+    return {
+        _safe_export_value(str(key)): _safe_export_object(value)
+        for key, value in parsed.items()
+    }
+
+
+def _safe_export_object(value) -> object:
+    if isinstance(value, str):
+        return _safe_export_value(value)
+    if isinstance(value, dict):
+        return {
+            _safe_export_value(str(key)): _safe_export_object(nested)
+            for key, nested in value.items()
+        }
+    if isinstance(value, list):
+        return [_safe_export_object(item) for item in value]
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    return _safe_export_value(str(value))
+
+
+def _safe_export_optional(value: str | None) -> str | None:
+    return _safe_export_value(value) if value is not None else None
+
+
+def _safe_export_value(value: str) -> str:
+    policy = evaluate_memory_content(value)
+    if not policy.allowed:
+        return "[redacted sensitive content]"
+    return value
 
 
 def _companion_consolidation_response(result) -> CompanionConsolidationRunResponse:

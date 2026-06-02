@@ -10,7 +10,7 @@ from apps.backend.tests._schema import migrate_db
 from app.models.enums import MemoryFactStatus
 from app.services.long_term_memory import LongTermMemoryService
 from app.services.memory import SafeMarkdownWriter
-from app.services.memory_graph import MemoryFactCandidate, MemoryGraphStore
+from app.services.memory_graph import MemoryFactCandidate, MemoryGraphStore, facts_to_context_lines
 from app.storage.database import Database, MigrationRunner
 
 
@@ -89,6 +89,60 @@ def test_memory_graph_quarantines_conflicting_fact_until_confirmed(tmp_path):
 
     confirmed = store.update_status(conflict.fact.id, MemoryFactStatus.ACTIVE, reason="user_confirmed")
     assert confirmed.status == MemoryFactStatus.ACTIVE
+    store.close()
+
+
+def test_memory_graph_status_controls_exclude_inactive_facts_from_context(tmp_path):
+    store = MemoryGraphStore(graph_db(tmp_path), graph_root=tmp_path / "graph")
+    active = store.upsert_candidate(
+        MemoryFactCandidate(
+            category="preference",
+            subject="fruit",
+            predicate="is",
+            object="apple",
+            source_text="I like apple",
+            confidence=0.9,
+        )
+    ).fact
+    wrong = store.upsert_candidate(
+        MemoryFactCandidate(
+            category="preference",
+            subject="drink",
+            predicate="is",
+            object="coffee",
+            source_text="I like coffee",
+            confidence=0.9,
+        )
+    ).fact
+    archived = store.upsert_candidate(
+        MemoryFactCandidate(
+            category="preference",
+            subject="editor",
+            predicate="is",
+            object="vim",
+            source_text="I like vim",
+            confidence=0.9,
+        )
+    ).fact
+    sensitive_blocked = store.upsert_candidate(
+        MemoryFactCandidate(
+            category="profile",
+            subject="account",
+            predicate="is",
+            object="private",
+            source_text="private account fact",
+            confidence=0.9,
+        )
+    ).fact
+
+    store.update_status(wrong.id, MemoryFactStatus.WRONG, reason="user_marked_wrong")
+    store.update_status(archived.id, MemoryFactStatus.ARCHIVED, reason="user_archived")
+    store.update_status(sensitive_blocked.id, MemoryFactStatus.SENSITIVE_BLOCKED, reason="user_sensitive_blocked")
+
+    assert [fact.id for fact in store.search_active("i")] == [active.id]
+    assert facts_to_context_lines(store.list_facts(query="i")) == [
+        "fruit is apple (confidence=0.90, support=1)"
+    ]
     store.close()
 
 

@@ -157,7 +157,12 @@ class VaultStatusResponse(BaseModel):
     configured: bool = False
     active_vault_id: str | None = None
     root_path: str | None = None
+    root_path_label: str | None = None
     name: str | None = None
+    latest_indexed_at: str | None = None
+    markdown_count: int = 0
+    wiki_page_count: int = 0
+    diary_page_count: int = 0
 
 
 class VaultBindRequest(BaseModel):

@@ -40,7 +40,13 @@ def _events(graph_state: dict[str, Any]) -> list[AgentEventBase]:
     return graph_state["events"]
 
 
-def _append_status(graph_state: dict[str, Any], message: str, *, stage: str | None = None) -> None:
+def _append_status(
+    graph_state: dict[str, Any],
+    message: str,
+    *,
+    stage: str | None = None,
+    source_scopes: list[str] | tuple[str, ...] | None = None,
+) -> None:
     state = _agent_state(graph_state)
     _events(graph_state).append(
         AgentStatusEvent(
@@ -49,6 +55,7 @@ def _append_status(graph_state: dict[str, Any], message: str, *, stage: str | No
             intent=state.route.intent if state.route else None,
             message=message,
             stage=stage,
+            source_scopes=list(source_scopes or ()),
         )
     )
 

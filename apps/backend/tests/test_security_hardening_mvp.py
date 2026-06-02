@@ -375,6 +375,46 @@ def test_sensitive_api_key_memory_proposal_is_rejected_before_pending_state(
     assert pending.json()["proposals"] == []
 
 
+def test_memory_graph_export_preview_omits_sensitive_raw_evidence(
+    client: TestClient,
+    tmp_path: Path,
+) -> None:
+    vault = tmp_path / "Vault"
+    _bind_vault(client, vault)
+    secret = "sk-memory-export-source-1234567890"
+    db_path = client.app.state.database.path
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO memory_graph_facts (
+                id, fact_key, conflict_key, category, subject, predicate, object,
+                status, confidence, source_text, source_type, support_count,
+                created_at, updated_at, memory_type, entity_type, occurred_at,
+                expires_at, metadata_json, importance
+            )
+            VALUES (
+                'fact-export-sensitive', 'fact-export-key', 'fact-export-conflict',
+                'preference', 'fruit', 'is', 'apple', 'active', 0.9,
+                ?, 'user_message', 1, '2026-06-01T00:00:00Z',
+                '2026-06-01T00:00:00Z', 'preference', 'preference',
+                NULL, NULL, '{"raw_note":"password=hidden"}', 0.8
+            )
+            """,
+            (f"My API key is {secret}",),
+        )
+        conn.commit()
+
+    response = client.get("/api/memory/graph/export-preview?query=fruit", headers=_auth())
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["item_count"] == 1
+    assert secret not in response.text
+    assert "source_text" not in response.text
+    assert "password=hidden" not in response.text
+    assert payload["items"][0]["subject"] == "fruit"
+
+
 def test_model_key_endpoint_reports_credential_store_errors(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,

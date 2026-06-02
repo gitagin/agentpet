@@ -125,6 +125,18 @@ class ChatAnswerWikiSummaryService:
             links=links,
         )
 
+    def skip_reason(self, *, user_question: str, assistant_answer: str) -> str:
+        question = _clean_text(user_question)
+        answer = _clean_text(assistant_answer)
+        if not question or not answer or _looks_low_value(question, answer):
+            return "low_value_chat"
+        policy = evaluate_memory_content(f"{question}\n{answer}")
+        if not policy.allowed:
+            return policy.reason or "sensitive_content"
+        if _knowledge_score(question, answer) < 0.65:
+            return "low_knowledge_score"
+        return "no_saveable_content"
+
     def write(self, plan: ChatAnswerWikiSummaryPlan, *, source_message_id: str) -> ChatAnswerWikiSummaryWriteResult:
         before = markdown_snapshot(self.wiki.writer, [plan.target_path])
         page = self.wiki.write_page(

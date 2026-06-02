@@ -33,6 +33,32 @@ async def wait_for_reminder_status(db_path: Path, reminder_id: str, status: Remi
     return row
 
 
+def reminder_audit(db_path: Path, reminder_id: str) -> sqlite3.Row | None:
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        return conn.execute(
+            """
+            SELECT *
+            FROM audit_logs
+            WHERE action = ? AND reason LIKE ?
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            ("reminder.triggered", f"%reminder_id={reminder_id}%"),
+        ).fetchone()
+
+
+async def wait_for_reminder_audit(db_path: Path, reminder_id: str) -> sqlite3.Row | None:
+    deadline = asyncio.get_running_loop().time() + 3.0
+    audit = reminder_audit(db_path, reminder_id)
+    while asyncio.get_running_loop().time() < deadline:
+        audit = reminder_audit(db_path, reminder_id)
+        if audit is not None:
+            return audit
+        await asyncio.sleep(0.05)
+    return audit
+
+
 @pytest.mark.asyncio
 async def test_reminder_job_persists_across_scheduler_restart(tmp_path: Path) -> None:
     db_path = tmp_path / "state.sqlite3"
@@ -77,6 +103,7 @@ async def test_due_reminder_job_marks_reminder_triggered(tmp_path: Path) -> None
         assert created.reminder is not None
         scheduler.resume()
         row = await wait_for_reminder_status(db_path, created.reminder.id, ReminderStatus.TRIGGERED)
+        audit = await wait_for_reminder_audit(db_path, created.reminder.id)
     finally:
         store.close()
         scheduler.shutdown()
@@ -85,12 +112,6 @@ async def test_due_reminder_job_marks_reminder_triggered(tmp_path: Path) -> None
     assert row["scheduler_job_id"] is None
     assert row["triggered_at"]
 
-    with sqlite3.connect(db_path) as conn:
-        conn.row_factory = sqlite3.Row
-        audit = conn.execute(
-            "SELECT * FROM audit_logs WHERE action = ? ORDER BY created_at DESC LIMIT 1",
-            ("reminder.triggered",),
-        ).fetchone()
     assert audit is not None
     assert audit["actor"] == "scheduler"
     assert audit["result"] == "success"

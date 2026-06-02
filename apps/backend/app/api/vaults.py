@@ -1,6 +1,9 @@
+from pathlib import Path, PureWindowsPath
+
 from fastapi import APIRouter, Request, status
 
 from ..errors import AppError
+from ..models.enums import NoteStatus
 from ..models.api import VaultBindRequest, VaultBindResponse, VaultIndexResponse, VaultStatusResponse
 from ..repositories.storage import VaultRepository
 from .wiring import (
@@ -17,6 +20,48 @@ from .wiring import (
 router = APIRouter(prefix="/vaults", tags=["vaults"])
 
 
+def _safe_root_path_label(root_path: str) -> str:
+    root = Path(root_path)
+    name = root.name or str(root)
+    windows_path = PureWindowsPath(root_path)
+    if windows_path.drive:
+        return f"{windows_path.drive}\\...\\{name}"
+    return f".../{name}"
+
+
+def _read_vault_summary(conn, vault_id: str) -> dict[str, int | str | None]:
+    active_note_status = NoteStatus.DELETED.value
+    counts = conn.execute(
+        """
+        SELECT
+            COUNT(*) AS markdown_count,
+            SUM(CASE WHEN relative_path LIKE 'Wiki/%' THEN 1 ELSE 0 END) AS wiki_page_count,
+            SUM(CASE WHEN relative_path LIKE 'Memories/Daily/%' THEN 1 ELSE 0 END) AS diary_page_count,
+            MAX(indexed_at) AS latest_note_indexed_at
+        FROM notes
+        WHERE vault_id = ? AND status != ?
+        """,
+        (vault_id, active_note_status),
+    ).fetchone()
+    latest_job = conn.execute(
+        """
+        SELECT MAX(updated_at) AS latest_job_indexed_at
+        FROM index_jobs
+        WHERE vault_id = ?
+        """,
+        (vault_id,),
+    ).fetchone()
+    latest_indexed_at = (latest_job and latest_job["latest_job_indexed_at"]) or (
+        counts and counts["latest_note_indexed_at"]
+    )
+    return {
+        "latest_indexed_at": latest_indexed_at,
+        "markdown_count": int(counts["markdown_count"] or 0) if counts else 0,
+        "wiki_page_count": int(counts["wiki_page_count"] or 0) if counts else 0,
+        "diary_page_count": int(counts["diary_page_count"] or 0) if counts else 0,
+    }
+
+
 @router.get("/status", response_model=VaultStatusResponse)
 async def get_vault_status(request: Request) -> VaultStatusResponse:
     try:
@@ -27,11 +72,15 @@ async def get_vault_status(request: Request) -> VaultStatusResponse:
         raise
     with database(request).connect() as conn:
         vault = VaultRepository(conn).get(vault_id)
+        summary = _read_vault_summary(conn, vault_id)
+    root_path = str(vault["root_path"])
     return VaultStatusResponse(
         configured=True,
         active_vault_id=vault_id,
-        root_path=str(vault["root_path"]),
+        root_path=root_path,
+        root_path_label=_safe_root_path_label(root_path),
         name=str(vault["name"]),
+        **summary,
     )
 
 

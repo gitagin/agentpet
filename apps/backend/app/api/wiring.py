@@ -3,6 +3,7 @@ from __future__ import annotations
 from .deps import (
     AppContext,
     active_vault_id,
+    active_vault_root,
     add_chat_run,
     agent_action_service,
     agent_runtime,
@@ -34,6 +35,7 @@ from .deps import (
     reminder_scheduler,
     reset_chat_runs,
     retrieval_service,
+    retrospective_service,
     set_active_vault_id,
     settings_store,
     settings_store_dependency,
@@ -48,6 +50,7 @@ from .deps import (
 __all__ = [
     "AppContext",
     "active_vault_id",
+    "active_vault_root",
     "add_chat_run",
     "agent_action_service",
     "agent_runtime",
@@ -79,6 +82,7 @@ __all__ = [
     "reminder_scheduler",
     "reset_chat_runs",
     "retrieval_service",
+    "retrospective_service",
     "set_active_vault_id",
     "settings_store",
     "settings_store_dependency",

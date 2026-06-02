@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import pytest
+from datetime import datetime, timezone
 
 from app.models.api import WikiPageWriteRequest
+from apps.backend.tests._schema import migrated_connection
+from app.services.agent_actions import AgentActionCreate, AgentActionService, AgentActionStore
 from app.services.memory import MarkdownWriteError, SafeMarkdownWriter
+from app.services.retrospectives import RetrospectiveService
 from app.services.wiki import SensitiveWikiRejectedError, WikiService, WIKI_PAGE_TEMPLATE_SECTIONS, resolve_wiki_path
 from app.storage.markdown import read_markdown
 
@@ -219,3 +223,101 @@ def test_wiki_service_rejects_sensitive_policy_metadata_before_core_files(tmp_pa
 
     assert exc_info.value.reason == "bearer_token"
     assert not (tmp_path / "Wiki").exists()
+
+
+def test_weekly_report_writes_markdown_asset_with_sources_and_reversible_action(tmp_path) -> None:
+    conn = migrated_connection()
+    vault = tmp_path / "Vault"
+    now = "2026-06-02T00:00:00Z"
+    conn.execute("INSERT INTO vaults(id, root_path, name) VALUES ('vault-1', ?, 'Vault')", (str(vault),))
+    conn.execute(
+        """
+        INSERT INTO diary_memory_objects (
+            id, vault_id, type, summary, topic, emotion, people_json,
+            keywords_json, importance, confidence, occurred_at, timezone,
+            status, object_hash, extraction_model, created_at, updated_at
+        )
+        VALUES (
+            'diary-weekly-1', 'vault-1', 'event', 'Reviewed weekly report requirements.',
+            'weekly planning', 'focused', '[]', '["weekly","report"]', 0.9, 0.95,
+            '2026-06-01T12:00:00Z', 'UTC', 'active', 'hash-weekly-1', 'fake', ?, ?
+        )
+        """,
+        (now, now),
+    )
+    conn.execute(
+        """
+        INSERT INTO diary_memory_object_sources(
+            object_id, source_type, source_id, markdown_path, agent_run_id
+        )
+        VALUES (
+            'diary-weekly-1', 'chat_exchange', 'run-weekly-1',
+            'Memories/Daily/2026-06-01.md', 'run-weekly-1'
+        )
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO tasks(id, title, description, due_at_utc, status, source_text, created_at, updated_at)
+        VALUES
+            ('task-weekly-1', 'Finish report UI', '', '2026-06-01T15:00:00Z', 'done', '', '2026-06-01T10:00:00Z', '2026-06-01T16:00:00Z'),
+            ('task-weekly-2', 'Review delayed report question', '', '2026-06-01T15:00:00Z', 'pending', '', '2026-06-01T10:00:00Z', '2026-06-01T11:00:00Z')
+        """
+    )
+    writer = SafeMarkdownWriter(vault)
+    action_service = AgentActionService(AgentActionStore(conn), writer=writer)
+    action_service.record(
+        AgentActionCreate(
+            action_type="wiki.page.write",
+            title="Weekly Knowledge",
+            summary="created knowledge page",
+            target_paths=("Wiki/Weekly-Knowledge.md",),
+            reversible=True,
+        )
+    )
+    conn.execute("UPDATE agent_actions SET created_at = ?, updated_at = ?, completed_at = ?", (now, now, now))
+    conn.commit()
+    service = RetrospectiveService(
+        conn,
+        vault_id="vault-1",
+        writer=writer,
+        agent_actions=action_service,
+        now_provider=lambda: datetime(2026, 6, 2, tzinfo=timezone.utc),
+    )
+
+    response = service.write_period_report("weekly")
+
+    assert response.page.relative_path.startswith("Wiki/Companion/Reports/")
+    assert "-weekly-" in response.page.relative_path
+    assert response.action.action_type == "wiki.weekly_report.write"
+    assert response.action.reversible is True
+    report_path = vault.joinpath(*response.page.relative_path.split("/"))
+    markdown = report_path.read_text(encoding="utf-8")
+    assert "type: weekly_report" in markdown
+    assert "updated_at: 2026-06-02T00:00:00Z" in markdown
+    assert "## 本周主要主题" in markdown
+    assert "## 重要对话和日记摘要" in markdown
+    assert "## 任务完成与延迟" in markdown
+    assert "## 新增知识页" in markdown
+    assert "## 值得回顾的问题" in markdown
+    assert "`Memories/Daily/2026-06-01.md`" in markdown
+    assert "`Wiki/Weekly-Knowledge.md`" in markdown
+
+    monthly_response = service.write_period_report("monthly")
+    monthly_path = vault.joinpath(*monthly_response.page.relative_path.split("/"))
+    monthly_markdown = monthly_path.read_text(encoding="utf-8")
+    assert "-monthly-" in monthly_response.page.relative_path
+    assert monthly_response.action.action_type == "wiki.monthly_report.write"
+    assert "type: monthly_report" in monthly_markdown
+    assert "## 本月主要主题" in monthly_markdown
+
+    monthly_updated, monthly_reverted = action_service.revert(monthly_response.action.action_id)
+    assert monthly_updated.status == "reverted"
+    assert monthly_reverted.action_type == "agent_action.revert"
+    assert not monthly_path.exists()
+
+    updated, reverted = action_service.revert(response.action.action_id)
+
+    assert updated.status == "reverted"
+    assert reverted.action_type == "agent_action.revert"
+    assert not report_path.exists()

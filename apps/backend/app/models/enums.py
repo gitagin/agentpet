@@ -53,6 +53,8 @@ class MemoryFactStatus(StrEnum):
     QUARANTINED = "quarantined"
     ARCHIVED = "archived"
     REJECTED = "rejected"
+    WRONG = "wrong"
+    SENSITIVE_BLOCKED = "sensitive_blocked"
 
 
 class TaskStatus(StrEnum):

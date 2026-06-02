@@ -172,6 +172,40 @@ def test_vault_bind_index_and_search_are_wired(client: TestClient, tmp_path: Pat
     assert search.json()["results"][0]["relative_path"] == "People.md"
 
 
+def test_vault_status_exposes_safe_migration_summary(client: TestClient, tmp_path: Path) -> None:
+    vault = tmp_path / "PortableVault"
+    wiki_root = vault / "Wiki"
+    diary_root = vault / "Memories" / "Daily" / "2026" / "06" / "02"
+    wiki_root.mkdir(parents=True)
+    diary_root.mkdir(parents=True)
+    (vault / "People.md").write_text("# People\n\nAda likes portable vaults.\n", encoding="utf-8")
+    (wiki_root / "Local.md").write_text("# Local\n\nVault files are local Markdown.\n", encoding="utf-8")
+    (diary_root / "2026-06-02.md").write_text("# Daily\n\nToday we checked migration.\n", encoding="utf-8")
+
+    bind = client.post(
+        "/api/vaults/init",
+        headers=auth(),
+        json={"path": str(vault), "create_if_missing": False},
+    )
+    assert bind.status_code == 200
+    vault_id = bind.json()["vault_id"]
+    indexed = client.post(f"/api/vaults/{vault_id}/index", headers=auth())
+    assert indexed.status_code == 200
+
+    status = client.get("/api/vaults/status", headers=auth())
+    assert status.status_code == 200
+    payload = status.json()
+    assert payload["configured"] is True
+    assert payload["active_vault_id"] == vault_id
+    assert payload["root_path"] == str(vault)
+    assert payload["root_path_label"].endswith("PortableVault")
+    assert str(tmp_path) not in payload["root_path_label"]
+    assert payload["latest_indexed_at"]
+    assert payload["markdown_count"] == 3
+    assert payload["wiki_page_count"] == 1
+    assert payload["diary_page_count"] == 1
+
+
 def test_wiki_diagnostics_queue_api_is_read_only_and_auth_required(client: TestClient, tmp_path: Path) -> None:
     vault = tmp_path / "Vault"
     wiki_root = vault / "Wiki"
@@ -300,6 +334,96 @@ def test_companion_consolidation_and_context_report_apis_are_wired(
     assert report_payload["strategy"] == "deterministic_v1"
     assert "query" not in report_payload
     assert "hash-only" not in reports.text
+
+
+def test_retrospective_apis_aggregate_local_assets_and_write_reversible_report(
+    client: TestClient,
+    tmp_path: Path,
+) -> None:
+    vault = tmp_path / "Vault"
+    init = client.post(
+        "/api/vaults/init",
+        headers=auth(),
+        json={"path": str(vault), "create_if_missing": True},
+    )
+    assert init.status_code == 200
+    vault_id = init.json()["vault_id"]
+    db_path = client.app.state.database.path
+    now = "2026-06-02T00:00:00Z"
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO diary_memory_objects (
+                id, vault_id, type, summary, topic, emotion, people_json,
+                keywords_json, importance, confidence, occurred_at, timezone,
+                status, object_hash, extraction_model, created_at, updated_at
+            )
+            VALUES (
+                'diary-retro-api-1', ?, 'event', 'Reviewed local retrospective API.', 'retrospective',
+                'focused', '[]', '["retrospective","local"]', 0.9, 0.95,
+                '2026-06-01T12:00:00Z', 'UTC', 'active', 'hash-retro-api-1', 'fake', ?, ?
+            )
+            """,
+            (vault_id, now, now),
+        )
+        conn.execute(
+            """
+            INSERT INTO memory_graph_facts (
+                id, fact_key, conflict_key, category, subject, predicate, object,
+                status, confidence, source_text, source_type, support_count,
+                created_at, updated_at, memory_type, entity_type, occurred_at,
+                expires_at, metadata_json, importance
+            )
+            VALUES (
+                'fact-retro-api-1', 'retro-api-key', 'retro-api-conflict', 'preference',
+                'report cadence', 'prefers', 'weekly local review', 'active', 0.88,
+                'User prefers weekly local review.', 'user_message', 2,
+                '2026-06-01T12:30:00Z', '2026-06-01T12:30:00Z',
+                'preference', 'preference', NULL, NULL, '{}', 0.8
+            )
+            """
+        )
+        conn.commit()
+
+    denied = client.get("/api/memory/retrospectives")
+    assert denied.status_code == 401
+
+    listed = client.get("/api/memory/retrospectives", headers=auth())
+    assert listed.status_code == 200
+    seven = next(window for window in listed.json()["windows"] if window["days"] == 7)
+    assert seven["has_data"] is True
+    assert seven["summary"]["diary_objects"] == 1
+    assert seven["summary"]["long_term_memories"] == 1
+    assert seven["topics"][0]["sources"]
+
+    report = client.post("/api/memory/retrospectives/report", headers=auth(), json={"days": 7})
+    assert report.status_code == 200
+    payload = report.json()
+    assert payload["page"]["relative_path"].startswith("Wiki/Companion/Reports/")
+    assert payload["action"]["action_type"] == "wiki.retrospective_report.write"
+    assert payload["action"]["reversible"] is True
+    report_path = vault.joinpath(*payload["page"]["relative_path"].split("/"))
+    assert report_path.exists()
+    assert "retrospective" in report_path.read_text(encoding="utf-8")
+
+    weekly_report = client.post("/api/memory/retrospectives/report", headers=auth(), json={"period": "weekly"})
+    assert weekly_report.status_code == 200
+    weekly_payload = weekly_report.json()
+    assert weekly_payload["page"]["relative_path"].startswith("Wiki/Companion/Reports/")
+    assert "-weekly-" in weekly_payload["page"]["relative_path"]
+    assert weekly_payload["action"]["action_type"] == "wiki.weekly_report.write"
+    weekly_path = vault.joinpath(*weekly_payload["page"]["relative_path"].split("/"))
+    assert weekly_path.exists()
+    weekly_markdown = weekly_path.read_text(encoding="utf-8")
+    assert "type: weekly_report" in weekly_markdown
+    assert "## 本周主要主题" in weekly_markdown
+    assert "## 重要对话和日记摘要" in weekly_markdown
+
+    actions = client.get("/api/agent/actions", headers=auth())
+    assert actions.status_code == 200
+    action_ids = {action["action_id"] for action in actions.json()["actions"]}
+    assert payload["action"]["action_id"] in action_ids
+    assert weekly_payload["action"]["action_id"] in action_ids
 
 
 def test_vault_status_recovers_persisted_active_vault_after_restart(
@@ -443,6 +567,169 @@ def test_memory_graph_fact_api_actions_are_wired(client: TestClient, tmp_path: P
     confirmed = client.post(f"/api/memory/graph/facts/{fact_id}/confirm", headers=auth())
     assert confirmed.status_code == 200
     assert confirmed.json()["status"] == "active"
+
+    wrong = client.post(f"/api/memory/graph/facts/{fact_id}/wrong", headers=auth())
+    assert wrong.status_code == 200
+    assert wrong.json()["status"] == "wrong"
+    search = client.post(
+        "/api/memory/search",
+        headers=auth(),
+        json={"query": "fruit", "top_k": 5, "source_scope": "personal_memory", "mode": "fts"},
+    )
+    assert search.status_code == 200
+    assert all(result["retrieval_mode"] != "graph" for result in search.json()["results"])
+    assert all(result["relative_path"] != "Memories/LongTerm/Preferences.md" for result in search.json()["results"])
+
+    sensitive_blocked = client.post(f"/api/memory/graph/facts/{fact_id}/sensitive-block", headers=auth())
+    assert sensitive_blocked.status_code == 200
+    assert sensitive_blocked.json()["status"] == "sensitive_blocked"
+
+    confirmed_again = client.post(f"/api/memory/graph/facts/{fact_id}/confirm", headers=auth())
+    assert confirmed_again.status_code == 200
+    assert confirmed_again.json()["status"] == "active"
+
+    export = client.get("/api/memory/graph/export-preview?query=fruit&format=markdown", headers=auth())
+    assert export.status_code == 200
+    payload = export.json()
+    assert payload["item_count"] == 1
+    assert "source_text" not in payload["json_preview"]
+    assert "I like apple" not in payload["json_preview"]
+    assert "I like apple" not in payload["markdown_preview"]
+    assert payload["items"][0]["subject"] == "fruit"
+    assert "source_text" not in payload["items"][0]
+
+
+def test_local_asset_stats_api_is_local_read_only_and_no_data_safe(
+    client: TestClient,
+    tmp_path: Path,
+) -> None:
+    denied = client.get("/api/memory/local-assets")
+    assert denied.status_code == 401
+
+    empty = client.get("/api/memory/local-assets", headers=auth())
+    assert empty.status_code == 200
+    assert empty.json() == {
+        "vault_configured": False,
+        "vault_id": None,
+        "chat_diary_days": 0,
+        "chat_diary_entries": 0,
+        "long_term_memory_count": 0,
+        "wiki_page_count": 0,
+        "task_count": 0,
+        "completed_task_count": 0,
+        "latest_organization_at": None,
+        "reversible_operation_count": 0,
+    }
+
+    vault = tmp_path / "Vault"
+    init = client.post(
+        "/api/vaults/init",
+        headers=auth(),
+        json={"path": str(vault), "create_if_missing": True},
+    )
+    assert init.status_code == 200
+    vault_id = init.json()["vault_id"]
+    wiki = vault / "Wiki"
+    (wiki / "Concepts").mkdir(parents=True, exist_ok=True)
+    (wiki / "Reports").mkdir(parents=True, exist_ok=True)
+    (wiki / "AGENTS.md").write_text("# Core\n", encoding="utf-8")
+    (wiki / "index.md").write_text("# Index\n", encoding="utf-8")
+    (wiki / "log.md").write_text("# Log\n", encoding="utf-8")
+    (wiki / "Concepts" / "Local Assets.md").write_text("# Local Assets\n", encoding="utf-8")
+    (wiki / "Reports" / "Weekly.md").write_text("# Weekly\n", encoding="utf-8")
+
+    db_path = client.app.state.database.path
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO daily_chat_memory_entries(
+                id, conversation_id, user_message_id, assistant_message_id,
+                agent_run_id, entry_hash, memory_date, memory_time, timezone,
+                markdown_path, created_at, updated_at
+            )
+            VALUES
+                ('daily-1', 'conv-1', 'user-1', 'assistant-1', 'run-1', 'hash-1',
+                 '2026-06-01', '10:00:00', 'Asia/Shanghai', 'Memories/Daily/2026-06-01.md',
+                 '2026-06-01T02:00:00Z', '2026-06-01T02:00:00Z'),
+                ('daily-2', 'conv-1', 'user-2', 'assistant-2', 'run-2', 'hash-2',
+                 '2026-06-01', '11:00:00', 'Asia/Shanghai', 'Memories/Daily/2026-06-01.md',
+                 '2026-06-01T03:00:00Z', '2026-06-01T03:00:00Z'),
+                ('daily-3', 'conv-2', 'user-3', 'assistant-3', 'run-3', 'hash-3',
+                 '2026-06-02', '09:00:00', 'Asia/Shanghai', 'Memories/Daily/2026-06-02.md',
+                 '2026-06-02T01:00:00Z', '2026-06-02T01:00:00Z')
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO memory_graph_facts (
+                id, fact_key, conflict_key, category, subject, predicate, object,
+                status, confidence, source_text, source_type, support_count,
+                created_at, updated_at, memory_type, entity_type, occurred_at,
+                expires_at, metadata_json, importance
+            )
+            VALUES
+                ('fact-active', 'fact-key-active', 'conflict-active', 'preference', 'updates',
+                 'prefer', 'concise', 'active', 0.91, 'User prefers concise updates.',
+                 'user_message', 2, '2026-06-01T04:00:00Z', '2026-06-01T04:00:00Z',
+                 'preference', 'preference', NULL, NULL, '{}', 0.8),
+                ('fact-candidate', 'fact-key-candidate', 'conflict-candidate', 'fact', 'project',
+                 'uses', 'local vault', 'candidate', 0.72, 'Project uses a local vault.',
+                 'assistant_message', 1, '2026-06-01T05:00:00Z', '2026-06-01T05:00:00Z',
+                 'fact', 'project', NULL, NULL, '{}', 0.6),
+                ('fact-rejected', 'fact-key-rejected', 'conflict-rejected', 'fact', 'old',
+                 'is', 'ignored', 'rejected', 0.5, 'Rejected memory.',
+                 'assistant_message', 1, '2026-06-01T06:00:00Z', '2026-06-01T06:00:00Z',
+                 'fact', 'project', NULL, NULL, '{}', 0.3)
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO tasks(id, title, description, due_at_utc, status, source_text, created_at, updated_at)
+            VALUES
+                ('task-done', 'Finish dashboard', '', NULL, 'done', '', '2026-06-01T07:00:00Z', '2026-06-01T08:00:00Z'),
+                ('task-pending', 'Review dashboard', '', NULL, 'pending', '', '2026-06-01T07:30:00Z', '2026-06-01T07:30:00Z')
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO agent_actions (
+                id, action_type, risk_tier, decision, status, title, summary,
+                target_paths_json, before_snapshot_json, after_snapshot_json,
+                metadata_json, reversible, reverted_by, reverts_action_id,
+                created_at, updated_at, completed_at
+            )
+            VALUES
+                ('action-1', 'wiki.page.write', 'low', 'auto', 'completed', 'Write page', '',
+                 '["Wiki/Concepts/Local Assets.md"]', '{}', '{}', '{}', 1, NULL, NULL,
+                 '2026-06-02T08:00:00Z', '2026-06-02T08:00:00Z', '2026-06-02T08:00:00Z'),
+                ('action-2', 'wiki.page.write', 'low', 'auto', 'reverted', 'Old page', '',
+                 '["Wiki/Old.md"]', '{}', '{}', '{}', 1, 'action-revert', NULL,
+                 '2026-06-02T09:00:00Z', '2026-06-02T09:10:00Z', '2026-06-02T09:00:00Z'),
+                ('action-3', 'chat.daily_archive', 'low', 'notify', 'skipped', 'Skipped', '',
+                 '[]', '{}', '{}', '{"skipped_reason":"automation_disabled"}', 0, NULL, NULL,
+                 '2026-06-02T10:00:00Z', '2026-06-02T10:00:00Z', NULL)
+            """
+        )
+        before_actions = conn.execute("SELECT COUNT(*) FROM agent_actions").fetchone()[0]
+        conn.commit()
+
+    response = client.get("/api/memory/local-assets", headers=auth())
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["vault_configured"] is True
+    assert payload["vault_id"] == vault_id
+    assert payload["chat_diary_days"] == 2
+    assert payload["chat_diary_entries"] == 3
+    assert payload["long_term_memory_count"] == 2
+    assert payload["wiki_page_count"] == 2
+    assert payload["task_count"] == 2
+    assert payload["completed_task_count"] == 1
+    assert payload["latest_organization_at"] == "2026-06-02T10:00:00Z"
+    assert payload["reversible_operation_count"] == 1
+
+    with sqlite3.connect(db_path) as conn:
+        after_actions = conn.execute("SELECT COUNT(*) FROM agent_actions").fetchone()[0]
+    assert after_actions == before_actions
 
 
 def test_structured_diary_memory_api_search_detail_and_source_scope_are_wired(
@@ -751,6 +1038,11 @@ def test_chat_stream_auto_archives_daily_memory_and_records_action(
     assert action_payload["action_type"] == "chat.daily_archive"
     assert action_payload["decision"] == "auto"
     assert action_payload["requires_confirmation"] is False
+    assert action_payload["source_agent_run_id"] == chat_payload["agent_run_id"]
+    assert action_payload["source_conversation_id"] == chat_payload["conversation_id"]
+    assert action_payload["source_message_id"] == chat_payload["message_id"]
+    assert action_payload["source"]["source_agent_run_id"] == chat_payload["agent_run_id"]
+    assert action_payload["created_at"]
     assert action_payload["target_paths"][0].startswith("Memories/Daily/")
 
     listed = client.get(
@@ -825,6 +1117,10 @@ def test_chat_stream_auto_summarizes_useful_answer_to_wiki(
     wiki_action = next(payload for payload in action_payloads if payload["action_type"] == "wiki.answer_summary.write")
     assert wiki_action["decision"] == "auto"
     assert wiki_action["reversible"] is True
+    assert wiki_action["source_agent_run_id"] == chat_payload["agent_run_id"]
+    assert wiki_action["source"]["source_message_id"] == chat_payload["message_id"]
+    assert wiki_action["diff_summary"]
+    assert wiki_action["created_at"]
     assert wiki_action["target_paths"][0].startswith("Wiki/Companion/Summaries/")
 
     page_path = vault.joinpath(*wiki_action["target_paths"][0].split("/"))
@@ -855,6 +1151,10 @@ def test_retrieval_chat_stream_emits_citation_event(client: TestClient, tmp_path
 
     events = stream_chat(client, "search memory for citation-term")
 
+    status_events = [event for event in events if event.get("event") == "status"]
+    status_payloads = [json.loads(event["data"]) for event in status_events]
+    assert any("personal_memory" in payload.get("source_scopes", []) for payload in status_payloads)
+    assert any("knowledge_base" in payload.get("source_scopes", []) for payload in status_payloads)
     citation_events = [event for event in events if event.get("event") == "citation"]
     assert citation_events
     citation_payload = json.loads(citation_events[0]["data"])
@@ -935,6 +1235,51 @@ def test_chat_done_auto_writes_long_term_memory_for_explicit_preference(
     assert "- 主题：水果" in content
     assert "- 内容：用户的水果是苹果" in content
     assert "- 来源原文：我喜欢的水果是苹果" in content
+
+
+def test_chat_auto_memory_records_low_value_wiki_skip_without_raw_content(
+    client: TestClient,
+    tmp_path: Path,
+) -> None:
+    vault = tmp_path / "Vault"
+    client.post(
+        "/api/vaults/init",
+        headers=auth(),
+        json={"path": str(vault), "create_if_missing": True},
+    )
+    enable_automation(client, chat_diary=True, wiki_organize=True)
+
+    events = stream_chat(client, "hello")
+    action_payloads = [
+        json.loads(event["data"])
+        for event in events
+        if event["event"] == "agent_action"
+    ]
+    skip_action = next(payload for payload in action_payloads if payload["action_type"] == "wiki.answer_summary.skip")
+
+    assert skip_action["status"] == "skipped"
+    assert skip_action["decision"] == "notify"
+    assert skip_action["metadata"]["skipped_reason"] == "low_value_chat"
+    assert skip_action["summary"]
+    assert "hello" not in skip_action["summary"].casefold()
+
+
+def test_chat_auto_memory_records_disabled_automation_skip_without_vault_write(client: TestClient) -> None:
+    events = stream_chat(client, "最近主要忙着整理首次使用体验")
+
+    assert_successful_chat_events(events)
+    action_payloads = [
+        json.loads(event["data"])
+        for event in events
+        if event["event"] == "agent_action"
+    ]
+    skip_action = next(payload for payload in action_payloads if payload["action_type"] == "chat.auto_memory.skip")
+    assert skip_action["status"] == "skipped"
+    assert skip_action["decision"] == "notify"
+    assert skip_action["target_paths"] == []
+    assert skip_action["reversible"] is False
+    assert skip_action["metadata"]["skipped_reason"] == "automation_disabled"
+    assert "首次使用体验" not in skip_action["summary"]
 
 
 def test_chat_auto_memory_skips_without_vault_and_does_not_break_sse(client: TestClient) -> None:

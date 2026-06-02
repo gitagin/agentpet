@@ -69,6 +69,17 @@ class AgentActionDecisionFields(AgentActionFields):
     target_paths: list[str] = Field(default_factory=list)
     reversible: bool = False
     metadata: dict[str, object] = Field(default_factory=dict)
+    source_agent_run_id: str | None = None
+    source_conversation_id: str | None = None
+    source_message_id: str | None = None
+    reverted_by: str | None = None
+    reverts_action_id: str | None = None
+    error: str | None = None
+    source: dict[str, str] = Field(default_factory=dict)
+    diff_summary: str = ""
+    created_at: str | None = None
+    updated_at: str | None = None
+    completed_at: str | None = None
 
 
 class TaskCreateFields(BaseModel):

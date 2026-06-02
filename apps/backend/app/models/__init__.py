@@ -58,7 +58,10 @@ from .memory import (
     DiaryMemorySearchRequest,
     DiaryMemorySearchResponse,
     DiaryMemorySourceResponse,
+    LocalAssetStatsResponse,
     MemoryGraphFactActionResponse,
+    MemoryGraphExportItem,
+    MemoryGraphExportPreviewResponse,
     MemoryGraphFactListResponse,
     MemoryGraphFactResponse,
     MemoryProposalActionResponse,
@@ -69,6 +72,20 @@ from .memory import (
     MemorySearchResponse,
     MemorySearchResult,
     RejectProposalRequest,
+)
+from .retrospectives import (
+    RetrospectiveDiarySummary,
+    RetrospectiveMemoryItem,
+    RetrospectivePreference,
+    RetrospectiveReportPeriod,
+    RetrospectiveReportRequest,
+    RetrospectiveReportResponse,
+    RetrospectiveResponse,
+    RetrospectiveSourceReference,
+    RetrospectiveTaskStats,
+    RetrospectiveTopic,
+    RetrospectiveWikiItem,
+    RetrospectiveWindow,
 )
 from .tasks import (
     CurrentTaskResponse,

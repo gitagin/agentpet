@@ -29,8 +29,10 @@ from app.models.api import (
     WikiSynthesizeRequest,
     WikiSynthesizeResponse,
 )
+from app.models.enums import MemoryFactStatus
 from app.services.agent_actions import AgentActionCreate, markdown_snapshot
 from app.services.diary_memory import DiaryMemorySearch, diary_records_to_search_results
+from app.services.memory_graph import MemoryGraphFact
 from app.services.tasks import display_timezone_name
 from app.services.wiki import resolve_wiki_path
 
@@ -98,8 +100,10 @@ def prepend_graph_memory_results(
     store = memory_graph_store(request)
     try:
         facts = store.search_active(query, limit=top_k)
+        inactive_facts = store.list_facts(query=query, limit=200)
     finally:
         store.close()
+    inactive_signatures = _inactive_long_term_signatures(inactive_facts)
     graph_results = [
         MemorySearchResult(
             note_id=fact.id,
@@ -117,12 +121,38 @@ def prepend_graph_memory_results(
     seen = {(result.relative_path, result.heading or "", result.snippet) for result in graph_results}
     merged = [*graph_results]
     for result in response.results:
+        if _matches_inactive_long_term_fact(result, inactive_signatures):
+            continue
         key = (result.relative_path, result.heading or "", result.snippet)
         if key in seen:
             continue
         seen.add(key)
         merged.append(result)
     return response.model_copy(update={"results": merged[:top_k]})
+
+
+def _inactive_long_term_signatures(facts: list[MemoryGraphFact]) -> set[tuple[str, str]]:
+    inactive_statuses = {
+        MemoryFactStatus.ARCHIVED,
+        MemoryFactStatus.REJECTED,
+        MemoryFactStatus.WRONG,
+        MemoryFactStatus.SENSITIVE_BLOCKED,
+    }
+    return {
+        (fact.subject.casefold(), fact.object.casefold())
+        for fact in facts
+        if fact.status in inactive_statuses
+    }
+
+
+def _matches_inactive_long_term_fact(result: MemorySearchResult, signatures: set[tuple[str, str]]) -> bool:
+    if not signatures:
+        return False
+    normalized_path = result.relative_path.replace("\\", "/")
+    if not normalized_path.startswith("Memories/LongTerm/"):
+        return False
+    haystack = " ".join([result.title, result.heading or "", result.snippet]).casefold()
+    return any(subject in haystack and object_value in haystack for subject, object_value in signatures)
 
 
 def _prepend_diary_memory_results(

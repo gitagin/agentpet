@@ -29,6 +29,7 @@ class AgentStatusEvent(AgentEventBase):
     intent: AgentIntent | None = None
     message: str = ""
     stage: str | None = None
+    source_scopes: list[str] = Field(default_factory=list)
 
 
 class AgentTokenEvent(AgentEventBase):

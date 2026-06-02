@@ -15,7 +15,7 @@ def archive_long_term_memory(
     automation,
     policy: AutomationPolicy,
 ) -> list[AgentActionEvent]:
-    from . import AutomationStepSkipped, agent_action_event
+    from . import AutomationStepSkipped, agent_action_event, skipped_agent_action_event
 
     long_term_service = None
     actions: list[AgentActionEvent] = []
@@ -57,6 +57,18 @@ def archive_long_term_memory(
                 ),
             )
             actions.append(agent_action_event(state.agent_run_id, action))
+        elif long_term_result.reason in {"sensitive_field", "sensitive_life_domain"}:
+            actions.append(
+                skipped_agent_action_event(
+                    context=context,
+                    state=state,
+                    action_type="memory.long_term.skip",
+                    title="Skipped long-term memory",
+                    summary="Skipped because this turn contained sensitive or confirmation-only content; no long-term memory was written.",
+                    reason=long_term_result.reason,
+                    risk_tier="high",
+                )
+            )
     except AutomationStepSkipped:
         pass
     except Exception as exc:
