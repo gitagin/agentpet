@@ -17,6 +17,7 @@ export default function ChatWindowView({
   onRevertAgentAction,
   onOpenMemory,
   onboardingPanel,
+  hasVaultInitialized = false,
 }: {
   input: string;
   messages: ChatMessage[];
@@ -29,7 +30,16 @@ export default function ChatWindowView({
   onRevertAgentAction?: (action: AgentAction) => void;
   onOpenMemory?: () => void;
   onboardingPanel?: ReactNode;
+  hasVaultInitialized?: boolean;
 }) {
+  const shouldDeferOnboarding = Boolean(onboardingPanel) && (hasVaultInitialized || messages.length > 0);
+  const deferredOnboarding = shouldDeferOnboarding ? (
+    <details className="chat-onboarding-drawer">
+      <summary>补充首次偏好</summary>
+      {onboardingPanel}
+    </details>
+  ) : null;
+
   return (
     <FeatureWindowShell
       eyebrow="本地助手"
@@ -38,7 +48,7 @@ export default function ChatWindowView({
       activeTab="聊天"
     >
       <Panel icon={<MessageSquareText size={18} />} title="聊天与检索" className="feature-window-panel chat-panel">
-        {onboardingPanel}
+        {shouldDeferOnboarding ? null : onboardingPanel}
         <form className="chat-form" onSubmit={onSend}>
           <input
             value={input}
@@ -65,6 +75,7 @@ export default function ChatWindowView({
           onRevertAgentAction={onRevertAgentAction}
           onOpenMemory={onOpenMemory}
         />
+        {deferredOnboarding}
       </Panel>
     </FeatureWindowShell>
   );

@@ -57,7 +57,7 @@ describe("ChatAgentActionSummary", () => {
             action_type: "chat.auto_memory.skip",
             status: "skipped",
             decision: "notify",
-            title: "已跳过自动整理",
+            title: "Skipped automatic organization",
             summary: "Skipped because automation is disabled.",
             metadata: { skipped_reason: "automation_disabled" },
           }),
@@ -73,7 +73,9 @@ describe("ChatAgentActionSummary", () => {
     expect(screen.getByText("Wiki 摘要")).toBeInTheDocument();
     expect(screen.getByText("任务/提醒")).toBeInTheDocument();
     expect(screen.getByText("已跳过")).toBeInTheDocument();
-    expect(screen.getByText("原因：automation_disabled")).toBeInTheDocument();
+    expect(screen.getByText("已跳过自动整理")).toBeInTheDocument();
+    expect(screen.getByText(/自动整理策略当前关闭/)).toBeInTheDocument();
+    expect(screen.queryByText("原因：automation_disabled")).not.toBeInTheDocument();
     expect(screen.getByText("复盘 TASK-02")).toBeInTheDocument();
   });
 

@@ -68,4 +68,30 @@ describe("AgentActionActivityCard", () => {
     expect(screen.queryByRole("button", { name: "打开 Markdown" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "显示位置" })).not.toBeInTheDocument();
   });
+
+  it("uses human-readable skipped automation copy while keeping raw audit details secondary", () => {
+    render(
+      <AgentActionActivityCard
+        entry={entry(
+          action({
+            action_type: "chat.auto_memory.skip",
+            status: "skipped",
+            decision: "notify",
+            title: "Skipped automatic organization",
+            summary:
+              "Skipped because automatic diary, structured memory, long-term memory, and Wiki organization are disabled; no local asset was written.",
+            target_paths: [],
+            metadata: { skipped_reason: "automation_disabled" },
+          }),
+        )}
+        reverting={false}
+        onRevert={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("已跳过自动整理")).toBeInTheDocument();
+    expect(screen.getByText(/自动整理策略当前关闭/)).toBeInTheDocument();
+    expect(screen.getByText("审计详情")).toBeInTheDocument();
+    expect(screen.getByText("原始跳过原因：automation_disabled")).toBeInTheDocument();
+  });
 });

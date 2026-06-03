@@ -89,6 +89,7 @@ type DesktopWindowMode = "pet" | "control" | "stage" | "agent" | DesktopFeatureW
 type AsyncStatus = "idle" | "loading" | "success" | "empty" | "error";
 type PetShortcutMotion = "idle" | "opening" | "closing";
 type FirstUseOnboardingStatus = "unknown" | "pending" | "completed";
+type PetEntryHintStatus = "unknown" | "pending" | "completed";
 
 type CoreWorkflowItem = {
   label: string;
@@ -103,6 +104,8 @@ const petShortcutButtonCount = 5;
 const petShortcutButtonStyles = buildPetShortcutButtonStyles();
 const firstUseOnboardingStorageKey = "agent-pet.first-use-onboarding";
 const firstUseOnboardingCompletedValue = "completed:v1";
+const petEntryHintStorageKey = "agent-pet.pet-entry-hint";
+const petEntryHintCompletedValue = "completed:v1";
 
 function detectDesktopWindowMode(): DesktopWindowMode {
   const mode = window.location.hash.replace("#/", "").replace("#", "") || "control";
@@ -315,6 +318,7 @@ function App() {
   const [petInputMode, setPetInputMode] = useState<PetInputMode>("chat");
   const [firstUseOnboardingStatus, setFirstUseOnboardingStatus] =
     useState<FirstUseOnboardingStatus>("unknown");
+  const [petEntryHintStatus, setPetEntryHintStatus] = useState<PetEntryHintStatus>("unknown");
   const [firstUseOnboardingDraft, setFirstUseOnboardingDraft] = useState({
     currentFocus: "",
     longTermContext: "",
@@ -406,6 +410,7 @@ function App() {
 
   applySettingsStatusRef.current = applySettingsStatus;
 
+  const taskReminderPollingEnabled = (desktopHostMode === "pet" && windowMode === "pet") || windowMode === "control";
   const {
     addTaskFromChat,
     clearTasks,
@@ -413,6 +418,7 @@ function App() {
     tasks,
   } = useTasks({
     api,
+    pollingEnabled: taskReminderPollingEnabled,
     sidecarReady: sidecarStatus?.state === "ready",
     onNotice: setNotice,
     onTaskStage: () => live2dTaskStageRef.current(),
@@ -602,6 +608,24 @@ function App() {
     const saved = readRendererUiState(firstUseOnboardingStorageKey);
     setFirstUseOnboardingStatus(saved === firstUseOnboardingCompletedValue ? "completed" : "pending");
   }, []);
+
+  useEffect(() => {
+    const saved = readRendererUiState(petEntryHintStorageKey);
+    setPetEntryHintStatus(saved === petEntryHintCompletedValue ? "completed" : "pending");
+  }, []);
+
+  useEffect(() => {
+    if (
+      windowMode !== "pet" ||
+      petEntryHintStatus !== "pending" ||
+      petShortcutsVisible ||
+      petChat.inputVisible ||
+      petChat.bubble.visible
+    ) {
+      return;
+    }
+    void writeRendererUiState(petEntryHintStorageKey, petEntryHintCompletedValue);
+  }, [petChat.bubble.visible, petChat.inputVisible, petEntryHintStatus, petShortcutsVisible, windowMode]);
 
   useEffect(() => {
     const cancelPetDrag = () => {
@@ -858,7 +882,7 @@ function App() {
     if (!completed) {
       return;
     }
-    writeRendererUiState(firstUseOnboardingStorageKey, firstUseOnboardingCompletedValue);
+    await writeRendererUiState(firstUseOnboardingStorageKey, firstUseOnboardingCompletedValue);
     setFirstUseOnboardingStatus("completed");
     setNotice({
       tone: "success",
@@ -867,12 +891,21 @@ function App() {
   }
 
   function skipFirstUseOnboarding() {
-    writeRendererUiState(firstUseOnboardingStorageKey, firstUseOnboardingCompletedValue);
+    void writeRendererUiState(firstUseOnboardingStorageKey, firstUseOnboardingCompletedValue);
     setFirstUseOnboardingStatus("completed");
     setNotice({ tone: "info", message: "已跳过首次引导，可以直接开始聊天。" });
   }
 
+  function completePetEntryHint() {
+    if (petEntryHintStatus === "completed") {
+      return;
+    }
+    void writeRendererUiState(petEntryHintStorageKey, petEntryHintCompletedValue);
+    setPetEntryHintStatus("completed");
+  }
+
   function openPetInputMode(mode: PetInputMode) {
+    completePetEntryHint();
     setPetInputMode(mode);
     setPetShortcutsVisible(false);
     setPetShortcutMotion("idle");
@@ -1318,6 +1351,7 @@ function App() {
   }
 
   function togglePetShortcuts() {
+    completePetEntryHint();
     setPetShortcutsVisible((visible) => {
       setPetShortcutMotion(visible ? "closing" : "opening");
       return !visible;
@@ -1631,6 +1665,7 @@ function App() {
       bubble={petChat.bubble}
       onSendChat={sendChatText}
       onStopStreaming={stopStreaming}
+      onPreviousPage={petChat.retreatPageManually}
       onAdvancePage={petChat.advancePageManually}
       onPausePaging={petChat.pausePaging}
       onResumePaging={petChat.resumePaging}
@@ -1658,6 +1693,7 @@ function App() {
           onRevertAgentAction={(action) => void revertAgentAction(action)}
           onOpenMemory={() => setWindowMode("memory")}
           onboardingPanel={firstUseOnboardingPanel}
+          hasVaultInitialized={hasVaultInitialized}
         />
       ) : windowMode === "memory" ? (
         <MemoryWindowView
@@ -1727,6 +1763,7 @@ function App() {
         onRevertAgentAction={(action) => void revertAgentAction(action)}
         onOpenMemory={() => setWindowMode("memory")}
         onboardingPanel={firstUseOnboardingPanel}
+        hasVaultInitialized={hasVaultInitialized}
       />
     );
   }
@@ -1767,6 +1804,9 @@ function App() {
   }
 
   if (windowMode === "pet") {
+    const showPetEntryHint =
+      petEntryHintStatus === "pending" && !petShortcutsVisible && !petChat.inputVisible && !petChat.bubble.visible;
+
     return (
       <main
         className={[
@@ -1803,11 +1843,17 @@ function App() {
               endPetDrag();
             },
             onDoubleClick: () => {
+              completePetEntryHint();
               endPetDrag();
               void window.agentDesktop?.openStage?.();
             },
           }}
         />
+        {showPetEntryHint ? (
+          <div className="pet-entry-hint" aria-label="桌宠入口提示">
+            右键我打开功能
+          </div>
+        ) : null}
         <PetChatOverlay
           bubble={petChat.bubble}
           input={petChat.input}
@@ -1817,6 +1863,7 @@ function App() {
           modes={petInputModes}
           connected={hasConnection}
           streaming={streaming}
+          onPreviousPage={petChat.retreatPageManually}
           onAdvancePage={petChat.advancePageManually}
           onPausePaging={petChat.pausePaging}
           onResumePaging={petChat.resumePaging}
@@ -2051,10 +2098,11 @@ function clearRendererResettableState(): void {
   for (const key of [
     "agent-pet.base-url",
     firstUseOnboardingStorageKey,
+    petEntryHintStorageKey,
     live2dModelSelectionStorageKey,
     wikiArchiveCandidateStorageKey,
   ]) {
-    writeRendererUiState(key, null);
+    void writeRendererUiState(key, null);
   }
 }
 

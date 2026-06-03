@@ -1,4 +1,15 @@
-import { BookOpen, CalendarCheck, ListPlus, MessageCircle, NotebookPen, Send, Square, X } from "lucide-react";
+import {
+  BookOpen,
+  CalendarCheck,
+  ChevronLeft,
+  ChevronRight,
+  ListPlus,
+  MessageCircle,
+  NotebookPen,
+  Send,
+  Square,
+  X,
+} from "lucide-react";
 import type { FormEvent, RefObject } from "react";
 import type { PetBubbleState } from "./chatTypes";
 import type { PetInputMode, PetInputModeOption } from "./petInputModes";
@@ -12,6 +23,7 @@ type PetChatOverlayProps = {
   modes: PetInputModeOption[];
   connected: boolean;
   streaming: boolean;
+  onPreviousPage: () => void;
   onAdvancePage: () => void;
   onPausePaging: () => void;
   onResumePaging: () => void;
@@ -47,6 +59,7 @@ export function PetChatOverlay({
   modes,
   connected,
   streaming,
+  onPreviousPage,
   onAdvancePage,
   onPausePaging,
   onResumePaging,
@@ -57,12 +70,22 @@ export function PetChatOverlay({
   onStopStreaming,
 }: PetChatOverlayProps) {
   const activeMode = modes.find((option) => option.id === mode) ?? modes[0];
+  const hasBubbleTitle = Boolean(bubble.title.trim());
+  const hasBubblePagination = Boolean(bubble.continueHint);
+  const hasBubbleHeader = hasBubbleTitle || hasBubblePagination;
+  const bubbleClass = [
+    "pet-agent-bubble",
+    bubble.tone,
+    hasBubbleHeader ? "has-header" : "no-header",
+    hasBubbleTitle ? "has-title" : "no-title",
+    hasBubblePagination ? "has-pagination" : "",
+  ].filter(Boolean).join(" ");
 
   return (
     <>
       {bubble.visible ? (
         <div
-          className={`pet-agent-bubble ${bubble.tone}`}
+          className={bubbleClass}
           role="status"
           aria-live="polite"
           onPointerDown={(event) => event.stopPropagation()}
@@ -74,10 +97,40 @@ export function PetChatOverlay({
           }}
           onDoubleClick={(event) => event.stopPropagation()}
         >
-          <strong>
-            {bubble.title}
-            {bubble.continueHint ? <span className="pet-agent-bubble-page">{bubble.continueHint}</span> : null}
-          </strong>
+          {hasBubbleHeader ? (
+            <div className="pet-agent-bubble-header">
+              {hasBubbleTitle ? <strong>{bubble.title}</strong> : null}
+              {bubble.continueHint ? <span className="pet-agent-bubble-page">{bubble.continueHint}</span> : null}
+              {bubble.continueHint ? (
+              <div
+                className="pet-agent-bubble-controls"
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  className="pet-agent-bubble-page-button"
+                  aria-label="上一页回复"
+                  title="上一页"
+                  disabled={!bubble.canPageBackward}
+                  onClick={onPreviousPage}
+                >
+                  <ChevronLeft size={12} aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  className="pet-agent-bubble-page-button"
+                  aria-label="下一页回复"
+                  title="下一页"
+                  disabled={!bubble.canPageForward}
+                  onClick={onAdvancePage}
+                >
+                  <ChevronRight size={12} aria-hidden="true" />
+                </button>
+              </div>
+              ) : null}
+            </div>
+          ) : null}
           <div
             className="pet-agent-bubble-text"
             tabIndex={bubble.tone === "reply" ? 0 : undefined}

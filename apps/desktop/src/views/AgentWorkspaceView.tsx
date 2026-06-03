@@ -7,7 +7,7 @@ import type { TaskItem, TaskLogItem, TaskStepItem, TaskWorkspaceItem } from "../
 import { formatTaskStatus } from "../features/tasks/taskReducer";
 import { FeatureWindowShell } from "./FeatureWindowShell";
 
-type AgentTaskStatus = "running" | "approval" | "completed" | "failed";
+type AgentTaskStatus = "idle" | "running" | "approval" | "completed" | "failed";
 type AgentStepStatus = "done" | "running" | "failed" | "pending";
 
 type WorkspaceTask = {
@@ -36,6 +36,7 @@ type AgentWorkspaceViewProps = {
 };
 
 const statusLabels: Record<AgentTaskStatus, string> = {
+  idle: "空闲",
   running: "进行中",
   approval: "等待审批",
   completed: "完成",
@@ -49,7 +50,7 @@ const stepStatusLabels: Record<AgentStepStatus, string> = {
   pending: "等待中",
 };
 
-const pollIntervalMs = 5000;
+const pollIntervalMs = 30000;
 
 function mapTaskStatus(task: TaskWorkspaceItem): AgentTaskStatus {
   if (task.needs_approval) {
@@ -288,7 +289,7 @@ export default function AgentWorkspaceView({ api }: AgentWorkspaceViewProps) {
     const abort = new AbortController();
     void loadWorkspace({ signal: abort.signal });
     const timer = window.setInterval(() => {
-      void loadWorkspace({ silent: true });
+      void loadWorkspace({ silent: true, signal: abort.signal });
     }, pollIntervalMs);
     return () => {
       abort.abort();
@@ -317,8 +318,8 @@ export default function AgentWorkspaceView({ api }: AgentWorkspaceViewProps) {
   }
 
   const title = loading && !currentTask ? "正在加载任务" : currentTask?.name || "暂无当前任务";
-  const statusLabel = currentTask ? statusLabels[currentTask.status] : loading ? "进行中" : "完成";
-  const statusTone = currentTask?.status || (loading ? "running" : "completed");
+  const statusLabel = currentTask ? statusLabels[currentTask.status] : loading ? statusLabels.running : statusLabels.idle;
+  const statusTone = currentTask?.status || (loading ? "running" : "idle");
   const description = currentTask?.description || (loading ? "正在从后端读取任务状态。" : "当前没有待展示的任务。");
   const mergedTodayTasks = mergeTodayTasks(todayTasks, tasks, localTimezone);
   const upcomingReminders = upcomingReminderTasks(tasks);

@@ -36,6 +36,7 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
   let petDragWatchdog = null;
   let petMouseHitTestTimer = null;
   let petMousePassthrough = false;
+  let petEntryCaptureActive = false;
   let petShortcutBarVisible = false;
   let petInputDockVisible = false;
   let pendingControlTargetId = null;
@@ -284,6 +285,9 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     if (!petWindow || petWindow.isDestroyed()) {
       return getPetMousePassthroughStatus("no_pet_window", false);
     }
+    if (petEntryCaptureActive) {
+      return setPetMousePassthrough(false, "entry_hint_capture");
+    }
     if (petDragState?.active) {
       return setPetMousePassthrough(false, "dragging");
     }
@@ -359,6 +363,7 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     }
 
     petShortcutBarVisible = false;
+    petEntryCaptureActive = true;
     const initialBounds = getInitialPetWindowBounds();
     petWindow = new BrowserWindow({
       x: initialBounds.x,
@@ -395,7 +400,7 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     petWindow.once("ready-to-show", () => {
       enforcePetWindowSize();
       petWindow?.show();
-      setPetMousePassthrough(true, "ready_to_show");
+      updatePetMousePassthroughFromCursor();
       startPetMouseHitTest();
     });
     petWindow.on("will-resize", (event) => {
@@ -413,12 +418,14 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
       clearPetWindowDrag();
       stopPetMouseHitTest();
       petMousePassthrough = false;
+      petEntryCaptureActive = false;
       petShortcutBarVisible = false;
       petInputDockVisible = false;
       petWindow = null;
     });
     petWindow.webContents.on("context-menu", (event) => {
       event.preventDefault();
+      petEntryCaptureActive = false;
       showPetContextMenu();
     });
     petWindow.webContents.on("did-finish-load", () => {
@@ -752,6 +759,9 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     }
 
     petShortcutBarVisible = Boolean(visible);
+    if (petShortcutBarVisible) {
+      petEntryCaptureActive = false;
+    }
     return updatePetMousePassthroughFromCursor();
   }
 
@@ -761,6 +771,9 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     }
 
     petInputDockVisible = Boolean(visible);
+    if (petInputDockVisible) {
+      petEntryCaptureActive = false;
+    }
     return updatePetMousePassthroughFromCursor();
   }
 
@@ -770,6 +783,7 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     }
 
     setPetMousePassthrough(false, "begin_drag");
+    petEntryCaptureActive = false;
     const cursor = screen.getCursorScreenPoint();
     const bounds = petWindow.getBounds();
     petDragState = {

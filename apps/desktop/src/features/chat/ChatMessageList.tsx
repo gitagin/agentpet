@@ -99,7 +99,7 @@ export function ChatMessageList({
           </article>
         ))
       ) : (
-        <EmptyState text="还没有对话。先绑定 Obsidian/Markdown 资料库，然后和桌宠聊一句。" />
+        <EmptyState text="还没有对话。可以直接和桌宠聊一句，之后这里会显示最近聊天。" />
       )}
     </div>
   );

@@ -4,9 +4,9 @@ import { FeatureWindowShell } from "./FeatureWindowShell";
 export default function WorldWindowView({ children }: { children: ReactNode }) {
   return (
     <FeatureWindowShell
-      eyebrow="Vault / Wiki"
+      eyebrow="本地知识"
       title="知识库"
-      description="维护资料库、归档查询结果，并检查长期知识状态。"
+      description="查看知识页面、查询历史和只读检查结果；高级维护默认收起。"
       activeTab="知识库"
     >
       {children}

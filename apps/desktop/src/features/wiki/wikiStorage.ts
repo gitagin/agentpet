@@ -14,7 +14,7 @@ export function loadWikiArchiveCandidate(): WikiArchiveCandidate | null {
 
 export function saveWikiArchiveCandidate(candidate: WikiArchiveCandidate): void {
   try {
-    writeRendererUiState(wikiArchiveCandidateStorageKey, JSON.stringify(candidate));
+    void writeRendererUiState(wikiArchiveCandidateStorageKey, JSON.stringify(candidate));
   } catch (error) {
     console.warn("保存 Wiki 归档候选到桌面状态失败。", error);
   }

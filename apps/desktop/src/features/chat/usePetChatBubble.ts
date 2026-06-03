@@ -208,8 +208,42 @@ export function usePetChatBubble({
       tone: "reply",
       phase,
       continueHint: formatContinueHint(safeIndex, pages.length),
+      canPageBackward: pages.length > 1 && safeIndex > 0,
+      canPageForward: pages.length > 1 && safeIndex < pages.length - 1,
     });
     return true;
+  }
+
+  function scheduleAutoAdvancePage() {
+    clearPageTimer();
+    const pages = replyPagesRef.current;
+    const pageIndex = replyPageIndexRef.current;
+    if (bubblePausedRef.current || pages.length <= 1) {
+      return;
+    }
+    if (pageIndex >= pages.length - 1) {
+      if (replyCompleteRef.current) {
+        scheduleHide(9000);
+      }
+      return;
+    }
+
+    pageTimerRef.current = window.setTimeout(() => {
+      pageTimerRef.current = null;
+      if (bubblePausedRef.current) {
+        return;
+      }
+      const latestPages = replyPagesRef.current;
+      if (latestPages.length <= 1 || replyPageIndexRef.current >= latestPages.length - 1) {
+        if (replyCompleteRef.current) {
+          scheduleHide(9000);
+        }
+        return;
+      }
+      const nextIndex = Math.min(replyPageIndexRef.current + 1, latestPages.length - 1);
+      renderPage(nextIndex, replyCompleteRef.current ? "complete" : "speaking");
+      scheduleAutoAdvancePage();
+    }, getPetBubblePageDelay(pages[pageIndex]));
   }
 
   function setReplyPagesFromText(
@@ -229,27 +263,6 @@ export function usePetChatBubble({
       ? Math.min(replyPageIndexRef.current, pages.length - 1)
       : 0;
     renderPage(nextIndex, options.phase || "speaking");
-  }
-
-  function scheduleNextPage() {
-    clearPageTimer();
-    const pages = replyPagesRef.current;
-    if (pages.length === 0 || bubblePausedRef.current) {
-      return;
-    }
-    const currentIndex = replyPageIndexRef.current;
-    if (currentIndex >= pages.length - 1) {
-      scheduleHide(9000);
-      return;
-    }
-    pageTimerRef.current = window.setTimeout(() => {
-      if (bubblePausedRef.current) {
-        pageTimerRef.current = null;
-        return;
-      }
-      renderPage(currentIndex + 1, replyCompleteRef.current ? "complete" : "speaking");
-      scheduleNextPage();
-    }, getPetBubblePageDelay(pages[currentIndex]));
   }
 
   function startReplyPaging() {
@@ -278,7 +291,11 @@ export function usePetChatBubble({
 
     const safeIndex = Math.min(replyPageIndexRef.current, pages.length - 1);
     renderPage(safeIndex, "complete");
-    scheduleNextPage();
+    if (pages.length === 1) {
+      scheduleHide(9000);
+    } else {
+      scheduleAutoAdvancePage();
+    }
   }
 
   function failStream(messageId: string, title: string, message: string) {
@@ -330,9 +347,18 @@ export function usePetChatBubble({
       }
       return;
     }
-    if (replyPagingStartedRef.current && !bubblePausedRef.current) {
-      scheduleNextPage();
+    scheduleAutoAdvancePage();
+  }
+
+  function retreatPageManually() {
+    const pages = replyPagesRef.current;
+    if (pages.length <= 1 || petBubble.tone !== "reply") {
+      return;
     }
+    clearPageTimer();
+    const previousIndex = Math.max(replyPageIndexRef.current - 1, 0);
+    renderPage(previousIndex, replyCompleteRef.current ? "complete" : "speaking");
+    scheduleAutoAdvancePage();
   }
 
   function pausePaging() {
@@ -345,8 +371,13 @@ export function usePetChatBubble({
   function resumePaging() {
     bubblePausedRef.current = false;
     userIsReadingRef.current = false;
-    if (replyPagingStartedRef.current && petBubble.tone === "reply") {
-      scheduleNextPage();
+    const pages = replyPagesRef.current;
+    if (replyCompleteRef.current && petBubble.tone === "reply" && replyPageIndexRef.current >= pages.length - 1) {
+      scheduleHide(9000);
+      return;
+    }
+    if (petBubble.tone === "reply") {
+      scheduleAutoAdvancePage();
     }
   }
 
@@ -417,6 +448,7 @@ export function usePetChatBubble({
     showReply,
     startReplyPaging,
     advancePageManually,
+    retreatPageManually,
     pausePaging,
     resumePaging,
     latestContinuitySignalForMessage,

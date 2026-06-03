@@ -94,7 +94,7 @@ declare global {
       };
       getSidecarConfig?: () => DesktopSidecarConfig;
       getUiState?: (key: string) => string | null;
-      setUiState?: (key: string, value: string | null) => void;
+      setUiState?: (key: string, value: string | null) => Promise<void> | void;
       getSidecarStatus?: () => Promise<DesktopSidecarStatus>;
       apiRequest?: (pathOrUrl: string, options?: DesktopApiRequestOptions) => Promise<DesktopApiResponse>;
       revealVaultPath?: (

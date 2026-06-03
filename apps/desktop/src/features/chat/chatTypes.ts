@@ -11,4 +11,6 @@ export type PetBubbleState = {
   tone: PetBubbleTone;
   phase: PetBubblePhase;
   continueHint?: string;
+  canPageBackward?: boolean;
+  canPageForward?: boolean;
 };

@@ -6,8 +6,10 @@ import {
   canRevertAgentAction,
   formatAgentActionDecision,
   formatAgentActionRiskTier,
+  formatAgentActionSkippedReason,
   formatAgentActionStatus,
   formatAgentActionType,
+  getAgentActionDisplayFields,
   isAttentionAgentAction,
   normalizeAgentAction,
 } from "./agentActivity";
@@ -67,6 +69,58 @@ describe("agentActivity", () => {
     expect(formatAgentActionRiskTier("high")).toBe("高风险");
     expect(formatAgentActionDecision("ask")).toBe("需确认");
     expect(formatAgentActionStatus("reverted")).toBe("已撤销");
+  });
+
+  it("humanizes skipped automation reasons for the primary UI", () => {
+    const skipped = buildAction({
+      action_type: "chat.auto_memory.skip",
+      status: "skipped",
+      decision: "notify",
+      title: "Skipped automatic organization",
+      summary:
+        "Skipped because automatic diary, structured memory, long-term memory, and Wiki organization are disabled; no local asset was written.",
+      metadata: { skipped_reason: "automation_disabled" },
+    });
+
+    const display = getAgentActionDisplayFields(skipped);
+
+    expect(display.actionName).toBe("已跳过自动整理");
+    expect(display.summary).toContain("自动整理策略当前关闭");
+    expect(display.summary).not.toContain("Skipped");
+    expect(formatAgentActionSkippedReason(skipped)).not.toContain("automation_disabled");
+  });
+
+  it("distinguishes skipped reasons without exposing raw status codes", () => {
+    const needsConfirmation = formatAgentActionSkippedReason(
+      buildAction({
+        action_type: "memory.long_term.skip",
+        status: "skipped",
+        summary: "Skipped because this is confirmation-only.",
+        metadata: { skipped_reason: "confirmation-only" },
+      }),
+    );
+    const nothingToSave = formatAgentActionSkippedReason(
+      buildAction({
+        action_type: "wiki.summary.skip",
+        status: "skipped",
+        summary: "Skipped because the reply did not produce saveable Wiki content.",
+        metadata: { skipped_reason: "not_enough_reusable_knowledge" },
+      }),
+    );
+    const lowValue = formatAgentActionSkippedReason(
+      buildAction({
+        action_type: "memory.long_term.skip",
+        status: "skipped",
+        summary: "Skipped because the message is too short or low-value.",
+        metadata: { skipped_reason: "too short" },
+      }),
+    );
+
+    expect(needsConfirmation).toContain("确认");
+    expect(nothingToSave).toContain("知识库");
+    expect(lowValue).toContain("长期保存");
+    expect(new Set([needsConfirmation, nothingToSave, lowValue]).size).toBe(3);
+    expect(`${needsConfirmation} ${nothingToSave} ${lowValue}`).not.toMatch(/confirmation-only|saveable|too short|low-value/);
   });
 
   it("detects reversible and attention actions", () => {

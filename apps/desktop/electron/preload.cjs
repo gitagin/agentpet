@@ -8,7 +8,7 @@ contextBridge.exposeInMainWorld("agentDesktop", {
   },
   getSidecarConfig: () => ipcRenderer.sendSync("agent-pet:get-sidecar-config"),
   getUiState: (key) => ipcRenderer.sendSync("agent-pet:get-ui-state", key),
-  setUiState: (key, value) => ipcRenderer.send("agent-pet:set-ui-state", key, value),
+  setUiState: (key, value) => ipcRenderer.invoke("agent-pet:set-ui-state", key, value),
   getSidecarStatus: () => ipcRenderer.invoke("agent-pet:get-sidecar-status"),
   apiRequest: (pathOrUrl, options) => ipcRenderer.invoke("agent-pet:api-request", pathOrUrl, options),
   revealVaultPath: (relativePath, mode) => ipcRenderer.invoke("agent-pet:reveal-vault-path", relativePath, mode),

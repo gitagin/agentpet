@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef } from "react";
 import type { CSSProperties, FormEvent, RefObject } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Live2DStage } from "../components/Live2DStage";
 import type { Live2DStageView } from "../components/Live2DStage";
 import type { Live2DAssetInfo, Live2DRuntimeBoundary } from "../services/live2dRuntime";
@@ -16,6 +17,7 @@ type StageViewProps = {
   bubble?: PetBubbleState | null;
   onSendChat: (text: string, clearInput: () => void) => void | Promise<void | boolean>;
   onStopStreaming?: () => void;
+  onPreviousPage?: () => void;
   onAdvancePage?: () => void;
   onPausePaging?: () => void;
   onResumePaging?: () => void;
@@ -39,6 +41,7 @@ export default function StageView({
   bubble,
   onSendChat,
   onStopStreaming,
+  onPreviousPage,
   onAdvancePage,
   onPausePaging,
   onResumePaging,
@@ -56,7 +59,16 @@ export default function StageView({
   );
 
   const bubbleVisible = Boolean(bubble?.visible);
-  const bubbleClass = ["stage-bubble", bubble?.tone ? bubbleToneClass(bubble.tone) : ""]
+  const hasBubbleTitle = Boolean(bubble?.title.trim());
+  const hasBubblePagination = Boolean(bubble?.continueHint);
+  const hasBubbleHeader = hasBubbleTitle || hasBubblePagination;
+  const bubbleClass = [
+    "stage-bubble",
+    bubble?.tone ? bubbleToneClass(bubble.tone) : "",
+    hasBubbleHeader ? "stage-bubble--has-header" : "stage-bubble--no-header",
+    hasBubbleTitle ? "stage-bubble--has-title" : "stage-bubble--no-title",
+    hasBubblePagination ? "stage-bubble--paged" : "",
+  ]
     .filter(Boolean)
     .join(" ");
 
@@ -88,9 +100,39 @@ export default function StageView({
           <div style={S.bubbleHeader}>
             <strong>{bubble!.title}</strong>
             {bubble!.continueHint ? <span style={S.bubblePage}>{bubble!.continueHint}</span> : null}
+            {bubble!.continueHint ? (
+              <div style={S.bubbleControls} onClick={(event) => event.stopPropagation()}>
+                <button
+                  type="button"
+                  style={S.bubblePageButton}
+                  aria-label="上一页回复"
+                  title="上一页"
+                  disabled={!bubble!.canPageBackward}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onPreviousPage?.();
+                  }}
+                >
+                  <ChevronLeft size={13} aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  style={S.bubblePageButton}
+                  aria-label="下一页回复"
+                  title="下一页"
+                  disabled={!bubble!.canPageForward}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onAdvancePage?.();
+                  }}
+                >
+                  <ChevronRight size={13} aria-hidden="true" />
+                </button>
+              </div>
+            ) : null}
           </div>
           <div style={S.bubbleText}>{bubble!.message}</div>
-          {bubble!.continueHint ? <div style={S.bubbleTapHint}>自动翻页中 · 点击下一页</div> : null}
+          {bubble!.continueHint ? <div style={S.bubbleTapHint}>像说话一样自动翻页 · 点击可跳过当前页</div> : null}
         </div>
       )}
 
@@ -253,6 +295,24 @@ const S: Record<string, CSSProperties> = {
     fontSize: 10,
     fontWeight: 800,
   },
+  bubbleControls: {
+    flex: "0 0 auto",
+    display: "none",
+    alignItems: "center",
+    gap: 4,
+  },
+  bubblePageButton: {
+    width: 24,
+    minWidth: 24,
+    height: 24,
+    minHeight: 24,
+    padding: 0,
+    borderRadius: 999,
+    border: "1px solid rgba(49,83,92,0.16)",
+    background: "rgba(255,255,255,0.72)",
+    boxShadow: "none",
+    color: "#31535c",
+  },
   bubbleText: {
     fontSize: 12,
     lineHeight: 1.32,
@@ -260,10 +320,10 @@ const S: Record<string, CSSProperties> = {
     whiteSpace: "pre-wrap",
     wordBreak: "break-word",
     overflowWrap: "anywhere",
-    maxHeight: 38,
+    maxHeight: 52,
     overflow: "hidden",
   },
-  bubbleTapHint: { marginTop: 3, fontSize: 9.5, fontWeight: 700, color: "rgba(49,83,92,0.58)", textAlign: "right" },
+  bubbleTapHint: { display: "none" },
 
   /* Footer */
   footer: {

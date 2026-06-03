@@ -259,16 +259,52 @@ export function formatAgentActionTargetPaths(action: AgentAction): string {
   return action.target_paths.length > 0 ? action.target_paths.join(", ") : "无目标文件";
 }
 
+function isSkippedAgentAction(action: AgentAction): boolean {
+  const actionType = action.action_type.toLocaleLowerCase();
+  return action.status === "skipped" || actionType.endsWith(".skip") || actionType.includes(".skip.");
+}
+
+function normalizeReasonText(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+export function formatAgentActionSkippedReason(action: AgentAction): string {
+  const reason = normalizeReasonText(action.metadata?.skipped_reason);
+  const summary = normalizeReasonText(action.summary);
+  const searchable = `${reason} ${summary}`.toLocaleLowerCase();
+
+  if (reason === "automation_disabled" || searchable.includes("organization are disabled") || searchable.includes("automation is disabled")) {
+    return "自动整理策略当前关闭，所以这次对话只保留聊天结果，没有写入日记、长期记忆或知识库。可在配置页的“自动整理策略”里开启低风险自动整理。";
+  }
+  if (searchable.includes("sensitive")) {
+    return "这次内容可能包含敏感信息，已按安全策略跳过写入。";
+  }
+  if (searchable.includes("confirmation-only")) {
+    return "这次内容需要你先确认，暂时没有直接写入长期记忆。";
+  }
+  if (searchable.includes("too short") || searchable.includes("low-value")) {
+    return "这次内容较短或临时性较强，没有形成值得长期保存的整理项。";
+  }
+  if (searchable.includes("not contain enough reusable knowledge") || searchable.includes("did not produce saveable")) {
+    return "这次回复没有提炼出适合沉淀到知识库的可复用内容。";
+  }
+  if (summary) {
+    return summary;
+  }
+  return "这次没有可保存的整理内容，所以已安全跳过。";
+}
+
 export function getAgentActionDisplayFields(action: AgentAction): AgentActionDisplayFields {
   const actionTypeLabel = formatAgentActionType(action.action_type);
+  const skipped = isSkippedAgentAction(action);
   return {
-    actionName: action.title || actionTypeLabel,
+    actionName: skipped ? actionTypeLabel : action.title || actionTypeLabel,
     actionTypeLabel,
     riskTierLabel: formatAgentActionRiskTier(action.risk_tier),
     decisionLabel: formatAgentActionDecision(action.decision),
     statusLabel: formatAgentActionStatus(action.status),
     targetPathLabel: formatAgentActionTargetPaths(action),
-    summary: action.summary || "无摘要",
+    summary: skipped ? formatAgentActionSkippedReason(action) : action.summary || "无摘要",
     reversibleLabel: canRevertAgentAction(action) ? "可撤销" : action.reversible ? "撤销不可用" : "不可撤销",
     createdTimeLabel: formatAgentActivityTimestamp(action.created_at),
     updatedTimeLabel: formatAgentActivityTimestamp(action.updated_at || action.created_at),

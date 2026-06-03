@@ -7,9 +7,9 @@
   },
   "hitboxes": {
     "model": {
-      "width": 176,
-      "height": 238,
-      "bottom": 72
+      "width": 220,
+      "height": 282,
+      "bottom": 58
     },
     "inputDock": {
       "width": 248,

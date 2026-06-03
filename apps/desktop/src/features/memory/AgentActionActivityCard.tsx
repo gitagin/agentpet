@@ -20,6 +20,11 @@ export function AgentActionActivityCard({ entry, reverting, onRevert, onRevealTa
   const attention = isAttentionAgentAction(action);
   const canRevert = canRevertAgentAction(action);
   const targetPaths = action.target_paths.filter((targetPath) => targetPath.toLowerCase().endsWith(".md"));
+  const auditDetails = [
+    action.title && action.title !== display.actionName ? `原始标题：${action.title}` : "",
+    action.summary && action.summary !== display.summary ? `原始摘要：${action.summary}` : "",
+    action.metadata?.skipped_reason ? `原始跳过原因：${String(action.metadata.skipped_reason)}` : "",
+  ].filter(Boolean);
 
   return (
     <article className={`proposal agent-activity-item ${attention ? "pending" : "confirmed"}`}>
@@ -48,6 +53,15 @@ export function AgentActionActivityCard({ entry, reverting, onRevert, onRevealTa
         {action.diff_summary ? <small>差异：{action.diff_summary}</small> : null}
         {display.sourceLabel ? <small>来源：{display.sourceLabel}</small> : null}
       </div>
+
+      {auditDetails.length > 0 ? (
+        <details className="agent-action-audit-details">
+          <summary>审计详情</summary>
+          {auditDetails.map((detail) => (
+            <small key={detail}>{detail}</small>
+          ))}
+        </details>
+      ) : null}
 
       {action.error ? <p className="field-note error">{action.error}</p> : null}
       {action.reverted_by ? <p className="field-note">已由 {action.reverted_by} 撤销。</p> : null}

@@ -102,3 +102,37 @@ describe("vault reveal IPC helpers", () => {
     expect(shellApi.showItemInFolder).not.toHaveBeenCalled();
   });
 });
+
+describe("renderer UI state IPC", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    delete require.cache[ipcPath];
+    Module._load = originalModuleLoad;
+  });
+
+  it("persists the pet entry hint state through the invoke handler", async () => {
+    const electronMock = createElectronMock();
+    const { registerIpcHandlers } = loadIpcWithMocks(electronMock);
+    const rendererUiState = new Map();
+    const persistRendererUiState = vi.fn();
+
+    registerIpcHandlers({
+      baseUrl: "http://127.0.0.1:8765",
+      rendererUiState,
+      persistRendererUiState,
+      sidecar: {},
+      proxy: {},
+      windows: {},
+    });
+
+    const setUiStateCall = electronMock.ipcMain.handle.mock.calls.find(
+      ([channel]) => channel === "agent-pet:set-ui-state",
+    );
+    expect(setUiStateCall).toBeTruthy();
+
+    await setUiStateCall[1]({}, "agent-pet.pet-entry-hint", "completed:v1");
+
+    expect(rendererUiState.get("agent-pet.pet-entry-hint")).toBe("completed:v1");
+    expect(persistRendererUiState).toHaveBeenCalledTimes(1);
+  });
+});

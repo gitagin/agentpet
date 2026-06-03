@@ -7,7 +7,7 @@ export function loadLive2DModelSelection(): string {
 }
 
 export function saveLive2DModelSelection(modelId: string): void {
-  writeRendererUiState(live2dModelSelectionStorageKey, modelId);
+  void writeRendererUiState(live2dModelSelectionStorageKey, modelId);
 }
 
 export function broadcastLive2DModelSelection(modelId: string): void {

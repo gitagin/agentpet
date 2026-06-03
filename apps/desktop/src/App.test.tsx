@@ -415,6 +415,8 @@ describe("App", () => {
       openAgent: vi.fn().mockResolvedValue(undefined),
       openFeatureWindow: vi.fn().mockResolvedValue(undefined),
       openStage: vi.fn().mockResolvedValue(undefined),
+      getUiState: vi.fn().mockReturnValue(null),
+      setUiState: vi.fn(),
       setPetShortcutBarVisible: vi.fn().mockResolvedValue({ enabled: false, reason: "test", changed: false }),
       onPetDragCancelled: vi.fn().mockReturnValue(() => undefined),
     };
@@ -426,6 +428,7 @@ describe("App", () => {
     expect(shortcutBar).toHaveAttribute("aria-hidden", "true");
     expect(shortcutBar).toHaveAttribute("data-shortcut-motion", "idle");
     expect(shortcutBar).not.toHaveClass("is-visible");
+    expect(await screen.findByLabelText("桌宠入口提示")).toHaveTextContent("右键我打开功能");
     expect(screen.getByLabelText("打开桌宠主舞台")).toHaveAttribute("tabindex", "-1");
 
     const finishShortcutAnimation = (animationName: string) => {
@@ -439,8 +442,10 @@ describe("App", () => {
     expect(shortcutBar).toHaveAttribute("aria-hidden", "false");
     expect(shortcutBar).toHaveAttribute("data-shortcut-motion", "opening");
     expect(shortcutBar).toHaveClass("is-visible");
+    expect(screen.queryByLabelText("桌宠入口提示")).not.toBeInTheDocument();
     expect(screen.getByLabelText("打开桌宠主舞台")).toHaveAttribute("tabindex", "0");
     expect(window.agentDesktop.setPetShortcutBarVisible).toHaveBeenLastCalledWith(true);
+    expect(window.agentDesktop.setUiState).toHaveBeenCalledWith("agent-pet.pet-entry-hint", "completed:v1");
 
     fireEvent.click(screen.getByLabelText("打开任务工作台"));
     fireEvent.click(screen.getByLabelText("打开配置"));
@@ -458,6 +463,7 @@ describe("App", () => {
     expect(shortcutBar).toHaveAttribute("aria-hidden", "true");
     expect(shortcutBar).toHaveAttribute("data-shortcut-motion", "closing");
     expect(shortcutBar).not.toHaveClass("is-visible");
+    expect(screen.queryByLabelText("桌宠入口提示")).not.toBeInTheDocument();
     expect(screen.getByLabelText("打开桌宠主舞台")).toHaveAttribute("tabindex", "-1");
     expect(window.agentDesktop.setPetShortcutBarVisible).toHaveBeenLastCalledWith(false);
 

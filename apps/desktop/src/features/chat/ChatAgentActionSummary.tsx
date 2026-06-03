@@ -2,6 +2,7 @@ import { CheckCircle2, CircleAlert, Clock3, Loader2, RotateCcw, SkipForward } fr
 import type { AgentAction, TaskItem } from "../../types";
 import {
   canRevertAgentAction,
+  formatAgentActionSkippedReason,
   getAgentActionDisplayFields,
 } from "../../services/agentActivity";
 import { formatTaskStatus } from "../tasks/taskReducer";
@@ -176,6 +177,7 @@ function ActionResultRow({
   const display = getAgentActionDisplayFields(action);
   const canRevert = canRevertAgentAction(action);
   const pending = isPendingConfirmation(action);
+  const skippedReason = action.metadata?.skipped_reason ? formatAgentActionSkippedReason(action) : "";
   return (
     <div className={`message-agent-action ${pending ? "pending" : action.status}`}>
       <div>
@@ -186,7 +188,7 @@ function ActionResultRow({
       </div>
       <p>{display.summary}</p>
       <small>目标：{display.targetPathLabel}</small>
-      {action.metadata?.skipped_reason ? <small>原因：{String(action.metadata.skipped_reason)}</small> : null}
+      {skippedReason && skippedReason !== display.summary ? <small>原因：{skippedReason}</small> : null}
       {action.error ? <small className="error">错误：{action.error}</small> : null}
       {pending ? <small className="error">需要确认后才会执行，请在整理页处理。</small> : null}
       {canRevert && onRevertAgentAction ? (

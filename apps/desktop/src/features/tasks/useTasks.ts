@@ -16,14 +16,15 @@ type Notice = {
   message: string;
 };
 
-type UseTasksOptions = {
+export type UseTasksOptions = {
   api: DesktopApi;
+  pollingEnabled: boolean;
   sidecarReady: boolean;
   onNotice: (notice: Notice | null) => void;
   onTaskStage: () => void;
 };
 
-export function useTasks({ api, sidecarReady, onNotice, onTaskStage }: UseTasksOptions) {
+export function useTasks({ api, pollingEnabled, sidecarReady, onNotice, onTaskStage }: UseTasksOptions) {
   const [state, dispatch] = useReducer(
     taskReducer,
     undefined,
@@ -146,15 +147,16 @@ export function useTasks({ api, sidecarReady, onNotice, onTaskStage }: UseTasksO
   }, [api, loadTasks]);
 
   useEffect(() => {
-    if (!window.agentDesktop?.showReminderNotification || !sidecarReady) {
+    if (!pollingEnabled || !window.agentDesktop?.showReminderNotification || !sidecarReady) {
       return;
     }
 
+    void loadTasks({ silent: true });
     const intervalId = window.setInterval(() => {
       void loadTasks({ silent: true });
     }, 15000);
     return () => window.clearInterval(intervalId);
-  }, [loadTasks, sidecarReady]);
+  }, [loadTasks, pollingEnabled, sidecarReady]);
 
   const updateTaskDraft = useCallback((patch: Partial<TaskDraft>) => {
     dispatch({ type: "updateDraft", patch });

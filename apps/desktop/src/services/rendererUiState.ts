@@ -15,9 +15,9 @@ export function readRendererUiState(key: string): string | null {
   }
 }
 
-export function writeRendererUiState(key: string, value: string | null): void {
+export async function writeRendererUiState(key: string, value: string | null): Promise<void> {
   try {
-    window.agentDesktop?.setUiState?.(key, value);
+    await window.agentDesktop?.setUiState?.(key, value);
   } catch (error) {
     console.warn("写入桌面 UI 状态失败，改用 sessionStorage。", error);
   }

@@ -95,47 +95,47 @@ export function WikiBrowserPanel({
   return (
     <Panel id="wiki-browser-panel" icon={<BookOpen size={18} />} title="知识浏览">
       <div className="wiki-browser-shell">
-        <section className="wiki-browser-hero" aria-label="Wiki 首页状态">
+        <section className="wiki-browser-hero" aria-label="知识库状态">
           <div className="section-heading">
-            <strong>Wiki 首页状态</strong>
+            <strong>知识库状态</strong>
             <span>
               {indexStatus
-                ? `${indexStatus.path}，${indexStatus.entries.length} 条索引，更新于 ${formatWikiTime(indexStatus.updated_at)}。`
+                ? `${indexStatus.entries.length} 个知识页面，更新于 ${formatWikiTime(indexStatus.updated_at)}。`
                 : coreStatus === "loading"
-                  ? "正在读取 Wiki 首页、索引和日志。"
-                  : "尚未加载 Wiki 首页状态。"}
+                  ? "正在读取知识页面、更新日志和安全检查状态。"
+                  : "尚未加载知识库状态。"}
             </span>
           </div>
           <dl className="details wiki-browser-status-grid">
             <div>
-              <dt>规范</dt>
-              <dd>{schemaStatus?.exists ? `${schemaStatus.path} / ${formatWikiTime(schemaStatus.updated_at)}` : "未加载"}</dd>
+              <dt>维护规则</dt>
+              <dd>{schemaStatus?.exists ? `已加载 / ${formatWikiTime(schemaStatus.updated_at)}` : "未加载"}</dd>
             </div>
             <div>
-              <dt>索引</dt>
+              <dt>知识页面</dt>
               <dd>{indexStatus ? `${indexStatus.entries.length} 页 / ${formatWikiTime(indexStatus.updated_at)}` : "未加载"}</dd>
             </div>
             <div>
-              <dt>日志</dt>
+              <dt>更新日志</dt>
               <dd>{logStatus ? `${logStatus.entries.length} 条 / ${formatWikiTime(logStatus.updated_at)}` : "未加载"}</dd>
             </div>
             <div>
-              <dt>检查</dt>
+              <dt>只读检查</dt>
               <dd>{lintResult ? `${lintResult.summary.pages ?? 0} 页 / ${lintResult.summary.issues ?? lintResult.issues.length} 个问题` : "未运行"}</dd>
             </div>
           </dl>
           <div className="button-row">
             <button type="button" className="secondary" onClick={onLoadCoreStatus} disabled={coreStatus === "loading" || workflowBusy}>
               {coreStatus === "loading" ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />}
-              刷新首页
+              刷新状态
             </button>
             <button type="button" className="secondary" onClick={onLoadArchiveHistory} disabled={archiveHistoryLoading || workflowBusy}>
               {archiveHistoryLoading ? <Loader2 className="spin" size={16} /> : <Clock3 size={16} />}
-              刷新归档
+              刷新查询历史
             </button>
             <button type="button" className="secondary" onClick={onLoadDiagnosticsQueue} disabled={workflowBusy}>
               {workflowAction === "diagnostics" ? <Loader2 className="spin" size={16} /> : <CircleAlert size={16} />}
-              只读诊断
+              只读检查
             </button>
           </div>
           {coreError ? <p className="field-note error">{coreError}</p> : null}
@@ -144,15 +144,19 @@ export function WikiBrowserPanel({
         <section className="wiki-browser-section" aria-label="最近自动总结页">
           <div className="section-heading">
             <strong>最近自动总结页</strong>
-            <span>来自 `Wiki/Companion/Summaries/` 的自动沉淀页面。</span>
+            <span>桌宠从对话中沉淀的知识页面，按最近更新时间展示。</span>
           </div>
           <div className="wiki-browser-list">
             {summaryPages.length > 0 ? (
               summaryPages.map((entry) => (
                 <article key={entry.relative_path} className="wiki-browser-item">
                   <strong>{entry.title}</strong>
-                  <span>{entry.relative_path}</span>
-                  <small>{entry.summary || "无摘要"} / {formatWikiTime(entry.updated_at)}</small>
+                  <span>{entry.page_type === "summary" ? "自动总结页面" : "知识页面"}</span>
+                  <small>{entry.summary || "无摘要"} / 更新于 {formatWikiTime(entry.updated_at)}</small>
+                  <details className="wiki-technical-details">
+                    <summary>页面位置</summary>
+                    <small>{entry.relative_path}</small>
+                  </details>
                 </article>
               ))
             ) : (
@@ -164,7 +168,7 @@ export function WikiBrowserPanel({
         <section className="wiki-browser-section" aria-label="最近更新日志">
           <div className="section-heading">
             <strong>最近更新日志</strong>
-            <span>读取 `Wiki/log.md`，只展示最近条目。</span>
+            <span>只展示最近的知识库更新记录。</span>
           </div>
           <div className="wiki-browser-list">
             {logStatus?.entries.length ? (
@@ -176,15 +180,15 @@ export function WikiBrowserPanel({
                 </article>
               ))
             ) : (
-              <p className="field-note">还没有可显示的 Wiki 更新日志。</p>
+              <p className="field-note">还没有可显示的知识库更新日志。</p>
             )}
           </div>
         </section>
 
-        <section className="wiki-browser-section" aria-label="lint 和诊断提示">
+        <section className="wiki-browser-section" aria-label="只读检查和诊断提示">
           <div className="section-heading">
-            <strong>lint / 诊断提示</strong>
-            <span>浏览区只读展示结果；写入检查报告或修复仍在下方高级维护中处理。</span>
+            <strong>只读检查和诊断提示</strong>
+            <span>这里不会写入文件；生成报告或修复页面仍在下方高级维护中处理。</span>
           </div>
           <div className="message-events wiki-browser-events">
             {lintIssues.map((issue, index) => (
@@ -204,15 +208,15 @@ export function WikiBrowserPanel({
             {lintIssues.length === 0 && diagnosticItems.length === 0 ? (
               <span>
                 <strong>暂无提示</strong>
-                尚未运行检查或只读诊断，当前没有可展示的问题。
+                尚未运行只读检查，当前没有可展示的问题。
               </span>
             ) : null}
           </div>
         </section>
 
-        <section className="wiki-browser-section" aria-label="query archive 历史入口">
+        <section className="wiki-browser-section" aria-label="查询历史入口">
           <div className="section-heading">
-            <strong>query archive 历史</strong>
+            <strong>查询历史</strong>
             <span>
               {archiveHistoryStatus === "error"
                 ? archiveHistoryError

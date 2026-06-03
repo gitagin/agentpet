@@ -6,6 +6,7 @@ const deniedVaultPathParts = new Set([".git", ".obsidian"]);
 
 const allowedRendererUiStateKeys = new Set([
   "agent-pet.first-use-onboarding",
+  "agent-pet.pet-entry-hint",
   "agent-pet.live2d-model-id",
   "agent-pet.wiki-archive-candidate",
 ]);
@@ -148,7 +149,7 @@ function registerIpcHandlers({ baseUrl, rendererUiState, persistRendererUiState,
     event.returnValue = normalized ? rendererUiState.get(normalized) ?? null : null;
   });
 
-  ipcMain.on("agent-pet:set-ui-state", (_event, key, value) => {
+  ipcMain.handle("agent-pet:set-ui-state", (_event, key, value) => {
     const normalized = normalizeRendererUiStateKey(key);
     if (!normalized) {
       return;

@@ -131,15 +131,15 @@ export function WikiWorkflowPanel({
   const workflowBusy = workflowAction !== null;
 
   return (
-    <Panel id="wiki-workflow-panel" icon={<FileDown size={18} />} title="高级资料库维护">
-      <details className="stack advanced-vault-maintenance" aria-label="高级 Vault 维护工具">
+    <Panel id="wiki-workflow-panel" icon={<FileDown size={18} />} title="高级知识库维护">
+      <details className="stack advanced-vault-maintenance" aria-label="高级知识库维护工具">
         <summary>
-          <strong>展开资料库页面维护工具</strong>
-          <span>这些按钮调用现有资料库接口（内部保留历史命名），用于手工预览、审查、归档、综合整理和检查；主流程优先使用上方对话。</span>
+          <strong>展开高级维护工具</strong>
+          <span>包含手工预览、审查、查询归档、综合整理和检查；部分操作会写入 Markdown，请先确认目标页面。</span>
         </summary>
         <form className="stack" onSubmit={onPreview}>
           <div className="section-heading">
-            <strong>维护 Obsidian 资料库里的长期记忆</strong>
+            <strong>维护知识库里的长期记忆</strong>
             <span>这是高级维护入口，不作为日常主流程；桌宠对话会优先自动整理，只有高风险项才会进入确认流程。</span>
           </div>
           <label>
@@ -252,7 +252,7 @@ export function WikiWorkflowPanel({
               className="secondary"
               onClick={onArchiveLatestQuery}
               disabled={workflowBusy || latestKnowledgeCitationCount === 0}
-              title={latestKnowledgeCitationCount > 0 ? "归档最近一条带 Vault 引用的已完成助手回复" : "没有可归档的知识库引用回复"}
+              title={latestKnowledgeCitationCount > 0 ? "保存最近一条带知识库引用的已完成助手回复" : "没有可保存的知识库引用回复"}
             >
               {workflowAction === "archive" ? <Loader2 className="spin" size={16} /> : <MessageSquareText size={16} />}
               归档查询
@@ -292,8 +292,8 @@ export function WikiWorkflowPanel({
               <dd>{reviewResult ? `${formatTaskStatus(reviewResult.status)} / ${reviewResult.findings.length} 个发现 / ${reviewResult.recommended_targets.length} 个推荐` : "未运行"}</dd>
             </div>
             <div>
-              <dt>Agent 引用来源</dt>
-              <dd>{latestArchiveMessage ? `${latestArchiveMessage.id} / ${latestKnowledgeCitationCount} 条 Vault 引用` : "无"}</dd>
+              <dt>引用来源</dt>
+              <dd>{latestArchiveMessage ? `${latestArchiveMessage.id} / ${latestKnowledgeCitationCount} 条知识库引用` : "无"}</dd>
             </div>
             <div>
               <dt>检查</dt>
@@ -378,7 +378,7 @@ export function WikiWorkflowPanel({
             <section className="wiki-review-result" aria-label="资料库只读诊断队列">
               <div className="section-heading">
                 <strong>只读诊断队列</strong>
-                <span>{diagnosticsQueue.items.length} 项，不写入 Vault</span>
+                <span>{diagnosticsQueue.items.length} 项，不写入知识库文件</span>
               </div>
               <div className="message-events">
                 {diagnosticsQueue.items.slice(0, 8).map((item) => (
