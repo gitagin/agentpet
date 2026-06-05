@@ -80,6 +80,7 @@ Write-Host "ok auth-required"
 $vault = Invoke-SmokeJson -Method Post -Path "/api/vaults/init" -Body @{
   path = $vaultRoot
   create_if_missing = $false
+  confirmed = $true
 }
 Assert-True ([bool]$vault.vault_id) "Vault init did not return vault_id."
 Write-Host "ok vault init $($vault.vault_id)"

@@ -44,6 +44,13 @@ import type {
   TaskListResponse,
   TaskLogsResponse,
   TaskStepsResponse,
+  TtsSettingsResponse,
+  TtsSettingsUpdateRequest,
+  TtsKeyRequest,
+  TtsKeyResponse,
+  TtsCacheClearResponse,
+  TtsSynthesisApiRequest,
+  TtsSynthesisApiResponse,
   VaultIndexResponse,
   VaultInitResponse,
   VaultStatusResponse,
@@ -351,6 +358,32 @@ export class DesktopApi {
     return this.client.put<AutomationSettings>("/api/settings/automation", request, signal);
   }
 
+  getTtsSettings(signal?: AbortSignal): Promise<TtsSettingsResponse> {
+    return this.client.get<TtsSettingsResponse>("/api/settings/tts", signal);
+  }
+
+  saveTtsSettings(
+    request: TtsSettingsUpdateRequest,
+    signal?: AbortSignal,
+  ): Promise<TtsSettingsResponse> {
+    return this.client.put<TtsSettingsResponse>("/api/settings/tts", request, signal);
+  }
+
+  saveTtsKey(request: TtsKeyRequest, signal?: AbortSignal): Promise<TtsKeyResponse> {
+    return this.client.put<TtsKeyResponse>("/api/settings/tts-key", request, signal);
+  }
+
+  synthesizeTts(
+    request: TtsSynthesisApiRequest,
+    signal?: AbortSignal,
+  ): Promise<TtsSynthesisApiResponse> {
+    return this.client.post<TtsSynthesisApiResponse>("/api/tts/synthesize", request, signal);
+  }
+
+  clearTtsCache(signal?: AbortSignal): Promise<TtsCacheClearResponse> {
+    return this.client.request<TtsCacheClearResponse>("/api/tts/cache", { method: "DELETE", signal });
+  }
+
   saveModelKey(provider: string, apiKey: string, signal?: AbortSignal): Promise<ModelKeyResponse> {
     return this.client.put<ModelKeyResponse>("/api/settings/model-key", { provider, api_key: apiKey }, signal);
   }
@@ -405,7 +438,7 @@ export class DesktopApi {
   initVault(path: string, createIfMissing: boolean, signal?: AbortSignal): Promise<VaultInitResponse> {
     return this.client.post<VaultInitResponse>(
       "/api/vaults/init",
-      { path, create_if_missing: createIfMissing },
+      { path, create_if_missing: createIfMissing, confirmed: true },
       signal,
     );
   }

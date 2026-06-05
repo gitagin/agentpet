@@ -1,13 +1,21 @@
 import { KeyRound } from "lucide-react";
 import type { FormEvent } from "react";
 import { Panel } from "../../components/layout";
-import type { AgentModelId, ModelTestResponse, VaultStatusResponse } from "../../types";
+import type { AgentModelId, ModelTestResponse, TtsSettingsResponse, VaultStatusResponse } from "../../types";
 import type { AgentModelDraft } from "../../services/agentModelDrafts";
 import type { DesktopApi } from "../../services/desktopApi";
 import { AutomationSettingsCard } from "./AutomationSettingsCard";
 import { GlobalModelCard } from "./GlobalModelCard";
 import { ModelHealthBanner } from "./ModelHealthBanner";
-import type { AsyncStatus, AutomationSettingsDraft, GlobalModelDraft, LastIndexRun, NegotiationSettingsDraft } from "./settingsTypes";
+import type {
+  AsyncStatus,
+  AutomationSettingsDraft,
+  GlobalModelDraft,
+  LastIndexRun,
+  NegotiationSettingsDraft,
+  TtsSettingsDraft,
+} from "./settingsTypes";
+import { TtsSettingsCard } from "./TtsSettingsCard";
 import { VaultBindingSection } from "./VaultBindingSection";
 
 type SettingsPanelProps = {
@@ -20,6 +28,9 @@ type SettingsPanelProps = {
   globalModelTestStatus: AsyncStatus;
   automationSettingsDraft: AutomationSettingsDraft;
   automationSettingsSaveStatus: AsyncStatus;
+  ttsSettingsDraft: TtsSettingsDraft;
+  ttsSettingsSaveStatus: AsyncStatus;
+  ttsSettingsStatus?: TtsSettingsResponse | null;
   negotiationSettingsDraft: NegotiationSettingsDraft;
   negotiationSettingsSaveStatus: AsyncStatus;
   savingAgentModelIds: Set<string>;
@@ -37,6 +48,9 @@ type SettingsPanelProps = {
   onTestGlobalModel: () => void;
   onUpdateAutomationSettingsDraft: (patch: Partial<AutomationSettingsDraft>) => void;
   onSaveAutomationSettings: () => void;
+  onUpdateTtsSettingsDraft: (patch: Partial<TtsSettingsDraft>) => void;
+  onSaveTtsSettings: (apiKey?: string) => void;
+  onClearTtsCache?: () => void;
   onUpdateNegotiationSettingsDraft: (patch: Partial<NegotiationSettingsDraft>) => void;
   onSaveNegotiationSettings: () => void;
   onUpdateAgentModelDraft: (agentId: AgentModelId, patch: Partial<AgentModelDraft>) => void;
@@ -59,6 +73,9 @@ export function SettingsPanel({
   globalModelTestStatus,
   automationSettingsDraft,
   automationSettingsSaveStatus,
+  ttsSettingsDraft,
+  ttsSettingsSaveStatus,
+  ttsSettingsStatus,
   negotiationSettingsDraft,
   negotiationSettingsSaveStatus,
   savingAgentModelIds,
@@ -76,6 +93,9 @@ export function SettingsPanel({
   onTestGlobalModel,
   onUpdateAutomationSettingsDraft,
   onSaveAutomationSettings,
+  onUpdateTtsSettingsDraft,
+  onSaveTtsSettings,
+  onClearTtsCache,
   onUpdateNegotiationSettingsDraft,
   onSaveNegotiationSettings,
   onUpdateAgentModelDraft,
@@ -128,6 +148,18 @@ export function SettingsPanel({
         onUpdateDraft={onUpdateAutomationSettingsDraft}
         onSave={onSaveAutomationSettings}
         onRefresh={onRefreshSettings}
+      />
+      <TtsSettingsCard
+        draft={ttsSettingsDraft}
+        saveStatus={ttsSettingsSaveStatus}
+        loadingSettingsStatus={loadingSettingsStatus}
+        status={ttsSettingsStatus}
+        keyMasked={ttsSettingsStatus?.key_masked}
+        keyConfigured={ttsSettingsStatus?.key_configured}
+        onUpdateDraft={onUpdateTtsSettingsDraft}
+        onSave={onSaveTtsSettings}
+        onRefresh={onRefreshSettings}
+        onClearCache={onClearTtsCache}
       />
       <VaultBindingSection
         vaultId={vaultId}

@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import ctypes
 import ctypes.wintypes
+import json
 import logging
 import os
 import sys
@@ -17,6 +18,8 @@ from app.models.api import (
     AutomationSettingsRequest,
     AutomationSettingsResponse,
     ModelHealthResponse,
+    TtsSettingsRequest,
+    TtsSettingsResponse,
 )
 from app.utils.hash import sha256_hex
 from app.utils.time import utc_now_iso
@@ -52,6 +55,25 @@ _OPENAI_COMPATIBLE_PROVIDER_ALIASES = {
     "openai 兼容协议",
 }
 SUPPORTED_MODEL_PROVIDERS = {"openai", "openai-compatible"}
+TTS_SETTINGS_STATE_KEY = "tts_settings"
+TTS_KEY_STATE_PREFIX = "tts_key:"
+XIAOMI_MIMO_TTS_PROVIDER = "xiaomi-mimo"
+XIAOMI_MIMO_TTS_URL = "https://api.xiaomimimo.com/v1/chat/completions"
+XIAOMI_MIMO_TTS_MODEL = "mimo-v2.5-tts"
+XIAOMI_MIMO_TTS_FORMAT = "wav"
+XIAOMI_MIMO_TTS_DEFAULT_VOICE = "Chloe"
+XIAOMI_MIMO_TTS_VOICES = {
+    "Mia",
+    "Chloe",
+    "mimo_default",
+    "Milo",
+    "Dean",
+    "冰糖",
+    "茉莉",
+    "苏打",
+    "白桦",
+}
+LOCAL_TTS_PROVIDERS = {"system", "mock"}
 logger = logging.getLogger(__name__)
 
 
@@ -265,6 +287,143 @@ class SettingsStore:
                 ),
             )
         return self.get_automation_settings()
+
+    def get_tts_settings(self) -> TtsSettingsResponse:
+        row = self.conn.execute(
+            "SELECT value, updated_at FROM app_state WHERE key = ?",
+            (TTS_SETTINGS_STATE_KEY,),
+        ).fetchone()
+        if row is None:
+            settings = TtsSettingsRequest()
+            return _tts_settings_response(
+                settings,
+                updated_at=None,
+                key_status=self.get_tts_key_status(settings.provider),
+            )
+        try:
+            raw = json.loads(str(row["value"]))
+            settings = TtsSettingsRequest.model_validate(raw)
+        except (TypeError, ValueError):
+            settings = TtsSettingsRequest()
+        return _tts_settings_response(
+            settings,
+            updated_at=str(row["updated_at"]),
+            key_status=self.get_tts_key_status(settings.provider),
+        )
+
+    def set_tts_settings(self, settings: TtsSettingsRequest) -> TtsSettingsResponse:
+        raw_settings = settings.model_dump(mode="json") if hasattr(settings, "model_dump") else settings
+        if isinstance(raw_settings, dict):
+            provider = normalize_tts_provider(str(raw_settings.get("provider") or "system"))
+            base_url = str(raw_settings.get("base_url") or "").strip()
+            model = str(raw_settings.get("model") or "").strip()
+            response_format = str(raw_settings.get("response_format") or "mp3").strip().lower()
+            api_style = str(raw_settings.get("api_style") or "generic").strip().lower()
+            auth_header_name = str(raw_settings.get("auth_header_name") or "").strip()
+            audio_json_path = str(raw_settings.get("audio_json_path") or "").strip()
+            audio_encoding = str(raw_settings.get("audio_encoding") or "base64").strip().lower()
+            mime_type = str(raw_settings.get("mime_type") or "").strip()
+            raw_settings = {
+                **raw_settings,
+                "provider": provider,
+                "base_url": base_url or None,
+                "model": model or None,
+                "response_format": response_format or "mp3",
+                "api_style": api_style or "generic",
+                "auth_header_name": auth_header_name or None,
+                "audio_json_path": audio_json_path or None,
+                "audio_encoding": audio_encoding or "base64",
+                "mime_type": mime_type or None,
+            }
+            raw_settings = _normalize_tts_preset_settings(raw_settings)
+        normalized = TtsSettingsRequest.model_validate(
+            raw_settings
+        )
+        now = utc_now_iso()
+        with self.conn:
+            self.conn.execute(
+                """
+                INSERT INTO app_state(key, value, updated_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(key) DO UPDATE SET
+                    value = excluded.value,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    TTS_SETTINGS_STATE_KEY,
+                    normalized.model_dump_json(),
+                    now,
+                ),
+            )
+        return self.get_tts_settings()
+
+    def set_tts_key(self, provider: str, api_key: str) -> ModelKeyStatus:
+        normalized_provider = normalize_tts_provider(provider)
+        now = utc_now_iso()
+        masked = mask_secret(api_key)
+        credential_ref = credential_ref_for_tts_provider(normalized_provider)
+        self.credentials.put(credential_ref, api_key)
+        with self.conn:
+            self.conn.execute(
+                """
+                INSERT INTO app_state(key, value, updated_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(key) DO UPDATE SET
+                    value = excluded.value,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    tts_key_state_key(normalized_provider),
+                    json.dumps(
+                        {
+                            "provider": normalized_provider,
+                            "masked": masked,
+                            "credential_ref": credential_ref,
+                        },
+                        ensure_ascii=False,
+                    ),
+                    now,
+                ),
+            )
+        return ModelKeyStatus(provider=normalized_provider, configured=True, masked=masked)
+
+    def get_tts_key_status(self, provider: str) -> ModelKeyStatus:
+        normalized_provider = normalize_tts_provider(provider)
+        row = self.conn.execute(
+            "SELECT value FROM app_state WHERE key = ?",
+            (tts_key_state_key(normalized_provider),),
+        ).fetchone()
+        if row is None:
+            credential_ref = credential_ref_for_tts_provider(normalized_provider)
+            return ModelKeyStatus(
+                provider=normalized_provider,
+                configured=self.credentials.exists(credential_ref),
+            )
+        try:
+            raw = json.loads(str(row["value"]))
+        except (TypeError, ValueError):
+            raw = {}
+        credential_ref = str(raw.get("credential_ref") or credential_ref_for_tts_provider(normalized_provider))
+        return ModelKeyStatus(
+            provider=normalized_provider,
+            configured=self.credentials.exists(credential_ref),
+            masked=str(raw["masked"]) if raw.get("masked") else None,
+        )
+
+    def get_tts_key(self, provider: str) -> str | None:
+        normalized_provider = normalize_tts_provider(provider)
+        row = self.conn.execute(
+            "SELECT value FROM app_state WHERE key = ?",
+            (tts_key_state_key(normalized_provider),),
+        ).fetchone()
+        credential_ref = credential_ref_for_tts_provider(normalized_provider)
+        if row is not None:
+            try:
+                raw = json.loads(str(row["value"]))
+                credential_ref = str(raw.get("credential_ref") or credential_ref)
+            except (TypeError, ValueError):
+                pass
+        return self.credentials.get(credential_ref)
 
     def _migrate_legacy_retrieval_agent_configs(self) -> None:
         for legacy_agent_id, target_agent_ids in _LEGACY_RETRIEVAL_AGENT_MIGRATIONS:
@@ -848,6 +1007,83 @@ def _model_config_matches(left: ModelConfig, right: ModelConfig) -> bool:
     )
 
 
+def _tts_settings_response(
+    settings: TtsSettingsRequest,
+    *,
+    updated_at: str | None,
+    key_status: ModelKeyStatus,
+) -> TtsSettingsResponse:
+    settings = TtsSettingsRequest.model_validate(_normalize_tts_preset_settings(settings.model_dump(mode="json")))
+    provider = normalize_tts_provider(settings.provider)
+    has_custom_endpoint = bool((settings.base_url or "").strip())
+    if not settings.enabled:
+        status = "disabled"
+        configured = False
+    elif provider in LOCAL_TTS_PROVIDERS:
+        status = "ready"
+        configured = True
+    elif not has_custom_endpoint:
+        status = "provider_not_configured"
+        configured = False
+    elif settings.requires_api_key and not key_status.configured:
+        status = "credential_missing"
+        configured = False
+    else:
+        status = "ready"
+        configured = True
+    return TtsSettingsResponse(
+        **{**settings.model_dump(), "provider": provider},
+        configured=configured,
+        status=status,
+        key_configured=key_status.configured,
+        key_masked=key_status.masked,
+        updated_at=updated_at,
+    )
+
+
+def _normalize_tts_preset_settings(raw_settings: dict) -> dict:
+    provider = normalize_tts_provider(str(raw_settings.get("provider") or "system"))
+    if provider != XIAOMI_MIMO_TTS_PROVIDER:
+        return raw_settings
+
+    raw_voice = raw_settings.get("voice")
+    voice_id = XIAOMI_MIMO_TTS_DEFAULT_VOICE
+    if isinstance(raw_voice, dict):
+        candidate = str(raw_voice.get("id") or "").strip()
+        if candidate in XIAOMI_MIMO_TTS_VOICES:
+            voice_id = candidate
+    raw_settings = {
+        **raw_settings,
+        "provider": XIAOMI_MIMO_TTS_PROVIDER,
+        "base_url": XIAOMI_MIMO_TTS_URL,
+        "model": XIAOMI_MIMO_TTS_MODEL,
+        "response_format": XIAOMI_MIMO_TTS_FORMAT,
+        "requires_api_key": True,
+        "api_style": "chat-completions-audio",
+        "auth_header_name": "api-key",
+        "audio_json_path": "choices.0.message.audio.data",
+        "audio_encoding": "base64",
+        "mime_type": "audio/wav",
+        "voice": {
+            "id": voice_id,
+            "provider": XIAOMI_MIMO_TTS_PROVIDER,
+            "label": voice_id,
+            "locale": raw_voice.get("locale") if isinstance(raw_voice, dict) else None,
+            "gender": raw_voice.get("gender") if isinstance(raw_voice, dict) else None,
+            "description": "MiMo built-in voice",
+        },
+    }
+    return raw_settings
+
+
+def normalize_tts_provider(provider: str) -> str:
+    return provider.strip().lower() or "system"
+
+
+def tts_key_state_key(provider: str) -> str:
+    return f"{TTS_KEY_STATE_PREFIX}{sha256_hex(normalize_tts_provider(provider))}"
+
+
 def credential_ref_for_provider(provider: str) -> str:
     normalized = provider.strip().lower()
     digest = sha256_hex(normalized)
@@ -858,6 +1094,12 @@ def credential_ref_for_embedding_provider(provider: str) -> str:
     normalized = provider.strip().lower()
     digest = sha256_hex(normalized)
     return f"embedding-key:{digest}"
+
+
+def credential_ref_for_tts_provider(provider: str) -> str:
+    normalized = normalize_tts_provider(provider)
+    digest = sha256_hex(normalized)
+    return f"tts-key:{digest}"
 
 
 def credential_ref_for_agent(agent_id: str) -> str:

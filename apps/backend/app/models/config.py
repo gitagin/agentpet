@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.config import (
     DEFAULT_CHAT_BASE_URL,
@@ -148,6 +150,84 @@ class AutomationSettingsResponse(AutomationSettingsRequest):
     updated_at: str | None = None
 
 
+class TtsVoiceConfig(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: str = Field(min_length=1, max_length=128)
+    provider: str = Field(default="system", min_length=1, max_length=64)
+    label: str = Field(min_length=1, max_length=128)
+    locale: str | None = Field(default=None, max_length=32)
+    gender: str | None = Field(default=None, max_length=16)
+    description: str | None = Field(default=None, max_length=256)
+
+
+class TtsSettingsRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    enabled: bool = False
+    auto_play_assistant_reply: bool = False
+    auto_play_reminders: bool = False
+    provider: str = Field(default="system", min_length=1, max_length=64)
+    base_url: str | None = Field(default=None, max_length=512)
+    model: str | None = Field(default=None, max_length=128)
+    voice: TtsVoiceConfig | None = None
+    speed: float = Field(default=1.0, ge=0.5, le=2.0)
+    volume: float = Field(default=1.0, ge=0.0, le=1.0)
+    response_format: str = Field(default="mp3", min_length=1, max_length=16)
+    requires_api_key: bool = False
+    api_style: str = Field(default="generic", min_length=1, max_length=64)
+    auth_header_name: str | None = Field(default=None, max_length=128)
+    request_template: dict[str, Any] | None = None
+    audio_json_path: str | None = Field(default=None, max_length=256)
+    audio_encoding: str = Field(default="base64", min_length=1, max_length=32)
+    mime_type: str | None = Field(default=None, max_length=128)
+    cache_enabled: bool = False
+    night_quiet_mode: bool = True
+
+
+class TtsSettingsResponse(TtsSettingsRequest):
+    configured: bool = False
+    status: str = "disabled"
+    key_configured: bool = False
+    key_masked: str | None = None
+    updated_at: str | None = None
+
+
+class TtsKeyRequest(BaseModel):
+    provider: str = Field(default="custom-http", min_length=1, max_length=64)
+    api_key: str = Field(min_length=1, max_length=4096)
+
+
+class TtsKeyResponse(BaseModel):
+    provider: str
+    status: str = "configured"
+    configured: bool = True
+    masked: str
+
+
+class TtsSynthesisRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=5000)
+    provider: str | None = Field(default=None, max_length=64)
+    voice: TtsVoiceConfig | None = None
+    speed: float = Field(default=1.0, ge=0.5, le=2.0)
+    volume: float = Field(default=1.0, ge=0.0, le=1.0)
+    cache_enabled: bool | None = None
+
+
+class TtsSynthesisResponse(BaseModel):
+    provider: str
+    mime_type: str
+    audio_base64: str
+    duration_ms: int | None = None
+    cache_hit: bool = False
+
+
+class TtsCacheClearResponse(BaseModel):
+    status: str = "cleared"
+    cleared_entries: int = 0
+    cleared_bytes: int = 0
+
+
 class SettingsUpdateResponse(ModelConfigResponse):
     agents_using_global: int
     automation: AutomationSettingsResponse | None = None
@@ -168,6 +248,7 @@ class VaultStatusResponse(BaseModel):
 class VaultBindRequest(BaseModel):
     path: str = Field(min_length=1)
     create_if_missing: bool = False
+    confirmed: bool = False
 
 
 class VaultBindResponse(BaseModel):
@@ -197,3 +278,4 @@ class SettingsStatusResponse(BaseModel):
     vault_configured: bool = False
     agent_models: list[AgentModelConfigResponse] = Field(default_factory=list)
     automation: AutomationSettingsResponse = Field(default_factory=AutomationSettingsResponse)
+    tts_settings: TtsSettingsResponse = Field(default_factory=TtsSettingsResponse)

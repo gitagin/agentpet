@@ -915,6 +915,102 @@ export type AutomationSettingsUpdateRequest = Pick<
   | "max_rounds"
 >;
 
+export type TtsSettingsStatus = "disabled" | "ready" | "provider_not_configured" | string;
+
+export type TtsSettingsVoiceConfig = {
+  id: string;
+  provider: string;
+  label: string;
+  locale?: string | null;
+  gender?: string | null;
+  description?: string | null;
+};
+
+export type TtsSettingsResponse = {
+  enabled: boolean;
+  auto_play_assistant_reply: boolean;
+  auto_play_reminders: boolean;
+  provider: string;
+  base_url?: string | null;
+  model?: string | null;
+  voice: TtsSettingsVoiceConfig | null;
+  speed: number;
+  volume: number;
+  response_format: string;
+  requires_api_key: boolean;
+  api_style: string;
+  auth_header_name?: string | null;
+  request_template?: Record<string, unknown> | null;
+  audio_json_path?: string | null;
+  audio_encoding: string;
+  mime_type?: string | null;
+  cache_enabled: boolean;
+  night_quiet_mode: boolean;
+  configured: boolean;
+  status: TtsSettingsStatus;
+  key_configured: boolean;
+  key_masked?: string | null;
+  updated_at?: string | null;
+};
+
+export type TtsSettingsUpdateRequest = Pick<
+  TtsSettingsResponse,
+  | "enabled"
+  | "auto_play_assistant_reply"
+  | "auto_play_reminders"
+  | "provider"
+  | "base_url"
+  | "model"
+  | "voice"
+  | "speed"
+  | "volume"
+  | "response_format"
+  | "requires_api_key"
+  | "api_style"
+  | "auth_header_name"
+  | "request_template"
+  | "audio_json_path"
+  | "audio_encoding"
+  | "mime_type"
+  | "cache_enabled"
+  | "night_quiet_mode"
+>;
+
+export type TtsKeyRequest = {
+  provider: string;
+  api_key: string;
+};
+
+export type TtsKeyResponse = {
+  provider: string;
+  status: string;
+  configured: boolean;
+  masked: string;
+};
+
+export type TtsSynthesisApiRequest = {
+  text: string;
+  provider?: string | null;
+  voice?: TtsSettingsVoiceConfig | null;
+  speed: number;
+  volume: number;
+  cache_enabled?: boolean;
+};
+
+export type TtsSynthesisApiResponse = {
+  provider: string;
+  mime_type: string;
+  audio_base64: string;
+  duration_ms?: number | null;
+  cache_hit: boolean;
+};
+
+export type TtsCacheClearResponse = {
+  status: string;
+  cleared_entries: number;
+  cleared_bytes: number;
+};
+
 export type SettingsUpdateRequest = {
   provider?: string;
   base_url?: string;
@@ -994,6 +1090,7 @@ export type SettingsStatusResponse = {
   vault_configured: boolean;
   agent_models?: AgentModelSettings[];
   automation: AutomationSettings;
+  tts_settings?: TtsSettingsResponse;
 };
 
 export type MemoryGraphFact = {
@@ -1215,6 +1312,7 @@ export type VaultStatusResponse = {
 export type VaultInitRequest = {
   path: string;
   create_if_missing?: boolean;
+  confirmed?: boolean;
 };
 
 export type VaultInitResponse = {
@@ -1230,3 +1328,20 @@ export type VaultIndexResponse = {
   files_seen: number;
   files_indexed: number;
 };
+
+export type {
+  TtsPlaybackError,
+  TtsPlaybackErrorCode,
+  TtsPlaybackItem,
+  TtsPlaybackQueueController,
+  TtsPlaybackState,
+  TtsPlaybackStatus,
+  TtsProviderId,
+  TtsProviderRegistry,
+  TtsSettings,
+  TtsSynthesisRequest,
+  TtsSynthesisResult,
+  TtsVoice,
+  TtsVoiceGender,
+  UseTtsPlaybackQueueOptions,
+} from "./features/tts";

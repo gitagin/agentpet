@@ -1,4 +1,4 @@
-import type { AutomationSettings } from "../../types";
+import type { AutomationSettings, TtsSettingsUpdateRequest } from "../../types";
 
 export type LastIndexRun = {
   vaultId: string;
@@ -27,3 +27,5 @@ export type NegotiationSettingsDraft = {
 };
 
 export type AutomationSettingsDraft = AutomationSettings;
+
+export type TtsSettingsDraft = TtsSettingsUpdateRequest;

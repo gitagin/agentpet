@@ -8,24 +8,36 @@ import type { DesktopSidecarStatus } from "./types";
 import type { Live2DAssetInfo, Live2DRuntimeBoundary } from "./services/live2dRuntime";
 
 const mockPetShowInput = vi.hoisted(() => vi.fn());
+const live2dStageRenderProps = vi.hoisted(() => [] as Array<{
+  variant: "panel" | "pet" | "stage";
+  canvasRef: unknown;
+  active: boolean;
+}>);
 
 vi.mock("./components/Live2DStage", () => ({
   Live2DStage: ({
+    active = true,
+    canvasRef,
     variant = "panel",
     petInteractions,
   }: {
+    canvasRef?: unknown;
+    active?: boolean;
     variant?: "panel" | "pet" | "stage";
     petInteractions?: {
       onContextMenu?: (event: MouseEvent<HTMLElement>) => void;
       onDoubleClick?: (event: MouseEvent<HTMLElement>) => void;
     };
-  }) => (
-    <section
-      aria-label={variant === "pet" ? "mock pet stage" : variant === "stage" ? "mock stage stage" : "mock panel stage"}
-      onContextMenu={petInteractions?.onContextMenu}
-      onDoubleClick={petInteractions?.onDoubleClick}
-    />
-  ),
+  }) => {
+    live2dStageRenderProps.push({ variant, canvasRef, active });
+    return (
+      <section
+        aria-label={variant === "pet" ? "mock pet stage" : variant === "stage" ? "mock stage stage" : "mock panel stage"}
+        onContextMenu={petInteractions?.onContextMenu}
+        onDoubleClick={petInteractions?.onDoubleClick}
+      />
+    );
+  },
 }));
 
 vi.mock("./features/chat/PetChatOverlay", () => ({
@@ -324,6 +336,7 @@ describe("App", () => {
     window.location.hash = "";
     delete window.agentDesktop;
     sessionStorage.clear();
+    live2dStageRenderProps.length = 0;
     vi.clearAllMocks();
   });
 
@@ -503,6 +516,37 @@ describe("App", () => {
     expect(window.agentDesktop.getWindowMode).toHaveBeenCalledTimes(1);
   });
 
+  it("uses an isolated Live2D canvas ref for each renderer surface", async () => {
+    render(<App />);
+    expect(await screen.findByLabelText("mock panel stage")).toBeInTheDocument();
+    const panelRef = live2dStageRenderProps.find((props) => props.variant === "panel")?.canvasRef;
+
+    live2dStageRenderProps.length = 0;
+    window.location.hash = "#pet";
+    render(<App />);
+    expect(await screen.findByLabelText("mock pet stage")).toBeInTheDocument();
+    const petRef = live2dStageRenderProps.find((props) => props.variant === "pet")?.canvasRef;
+
+    live2dStageRenderProps.length = 0;
+    window.location.hash = "#stage";
+    window.agentDesktop = {
+      platform: "win32",
+      versions: {},
+      getWindowMode: vi.fn().mockResolvedValue("stage"),
+      onStageRouteRequested: vi.fn(() => () => undefined),
+    };
+    render(<App />);
+    expect(await screen.findByLabelText("mock stage stage")).toBeInTheDocument();
+    const stageRef = live2dStageRenderProps.find((props) => props.variant === "stage")?.canvasRef;
+
+    expect(panelRef).toBeTruthy();
+    expect(petRef).toBeTruthy();
+    expect(stageRef).toBeTruthy();
+    expect(panelRef).not.toBe(petRef);
+    expect(panelRef).not.toBe(stageRef);
+    expect(petRef).not.toBe(stageRef);
+  });
+
   it("keeps the stage Live2D route mounted while navigating inside the stage window", async () => {
     window.location.hash = "#stage";
     let requestStageRoute: ((mode: "stage" | "agent" | "chat" | "memory" | "world" | "settings") => void) | null = null;
@@ -527,6 +571,7 @@ describe("App", () => {
 
     await waitFor(() => expect(screen.getByLabelText("stage persistent route")).toHaveAttribute("aria-hidden", "true"));
     expect(screen.getByLabelText("stage persistent route")).toBeInTheDocument();
+    expect(live2dStageRenderProps.at(-1)).toMatchObject({ variant: "stage", active: false });
 
     act(() => {
       requestStageRoute?.("settings");
@@ -535,6 +580,7 @@ describe("App", () => {
     await waitFor(() => expect(window.location.hash).toBe("#settings"));
     expect(screen.getByLabelText("stage persistent route")).toHaveAttribute("aria-hidden", "true");
     expect(screen.getByLabelText("stage persistent route")).toBeInTheDocument();
+    expect(live2dStageRenderProps.at(-1)).toMatchObject({ variant: "stage", active: false });
 
     act(() => {
       window.location.hash = "#stage";
@@ -543,5 +589,6 @@ describe("App", () => {
 
     await waitFor(() => expect(screen.getByLabelText("stage persistent route")).toHaveAttribute("aria-hidden", "false"));
     expect(screen.getByLabelText("stage persistent route")).toBeInTheDocument();
+    expect(live2dStageRenderProps.at(-1)).toMatchObject({ variant: "stage", active: true });
   });
 });

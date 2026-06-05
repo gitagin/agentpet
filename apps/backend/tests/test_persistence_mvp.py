@@ -885,7 +885,7 @@ def test_reset_local_state_clears_user_state_and_credentials(
     init = client.post(
         "/api/vaults/init",
         headers=auth(),
-        json={"path": str(vault), "create_if_missing": False},
+        json={"path": str(vault), "create_if_missing": False, "confirmed": True},
     )
     assert init.status_code == 200
     vault_id = init.json()["vault_id"]

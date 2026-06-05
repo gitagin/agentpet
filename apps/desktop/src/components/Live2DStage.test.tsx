@@ -47,7 +47,11 @@ const runtime: Live2DRuntimeBoundary = {
   canMountRenderer: false,
 };
 
-function renderStage(variant: "panel" | "pet" | "stage" = "panel", petInteractions?: Parameters<typeof Live2DStage>[0]["petInteractions"]) {
+function renderStage(
+  variant: "panel" | "pet" | "stage" = "panel",
+  petInteractions?: Parameters<typeof Live2DStage>[0]["petInteractions"],
+  speaking = false,
+) {
   return render(
     <Live2DStage
       stage={stage}
@@ -56,6 +60,7 @@ function renderStage(variant: "panel" | "pet" | "stage" = "panel", petInteractio
       canvasRef={createRef<HTMLCanvasElement>()}
       variant={variant}
       petInteractions={petInteractions}
+      speaking={speaking}
     />,
   );
 }
@@ -118,6 +123,17 @@ describe("Live2DStage", () => {
     expect(screen.queryByLabelText("Live2D 运行时边界状态")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Live2D 运行时诊断摘要")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("模型资源状态")).not.toBeInTheDocument();
+  });
+
+  it("marks the stage as speaking while TTS playback is active", () => {
+    renderStage("stage", undefined, true);
+
+    const shell = screen.getByLabelText("陪伴 Live2D 模型");
+    const stageView = screen.getByLabelText("陪伴模型状态：待命陪伴");
+
+    expect(shell).toHaveClass("live2d-speaking");
+    expect(shell).toHaveAttribute("data-live2d-speaking", "true");
+    expect(stageView).toHaveAttribute("data-live2d-speaking", "true");
   });
 
   it("describes missing assets with the manifest path", () => {

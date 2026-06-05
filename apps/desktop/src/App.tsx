@@ -10,7 +10,7 @@
   ShieldCheck,
   X,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { AnimationEvent, CSSProperties, FormEvent, PointerEvent } from "react";
 import type {
   AgentAction,
@@ -27,6 +27,8 @@ import type {
   DesktopFeatureWindowMode,
   DesktopVaultRevealMode,
   SettingsStatusResponse,
+  TtsPlaybackItem,
+  TtsVoiceGender,
 } from "./types";
 import { describeError } from "./services/apiErrorMessages";
 import { ConnectionPanel } from "./features/connection/ConnectionPanel";
@@ -37,6 +39,7 @@ import { formatTaskStatus } from "./features/tasks/taskReducer";
 import { useTasks } from "./features/tasks/useTasks";
 import { SettingsPanel } from "./features/settings/SettingsPanel";
 import { formatModelTestResult } from "./features/settings/settingsFormatters";
+import { isTtsSettingsSavedMessage, settingsSyncChannelName } from "./features/settings/settingsSync";
 import type { LastIndexRun } from "./features/settings/settingsTypes";
 import { useSettings } from "./features/settings/useSettings";
 import { AgentActionActivityCard } from "./features/memory/AgentActionActivityCard";
@@ -66,6 +69,13 @@ import {
 import { applyStreamEvent } from "./features/chat/streamDispatcher";
 import { usePetChatBubble } from "./features/chat/usePetChatBubble";
 import { pickPayloadString } from "./features/chat/chatStreamUtils";
+import {
+  createBackendTtsProvider,
+  createMockTtsProvider,
+  createSystemTtsProvider,
+  type TtsProviderPlaybackStatus,
+  useTtsPlaybackQueue,
+} from "./features/tts";
 import { Live2DModelPanel } from "./features/live2d/Live2DModelPanel";
 import { live2dModelSelectionStorageKey } from "./features/live2d/live2dConstants";
 import { useLive2D } from "./features/live2d/useLive2D";
@@ -371,6 +381,7 @@ function App() {
     automationSettingsDraft,
     automationSettingsSaveStatus,
     bindVault,
+    clearTtsCache,
     globalModelDraft,
     globalModelSaveStatus,
     globalModelTestResult,
@@ -388,17 +399,22 @@ function App() {
     saveAutomationSettings,
     saveGlobalModel,
     saveNegotiationSettings,
+    saveTtsSettings,
     savingAgentModelIds,
     selectVaultDirectory,
     setLastIndexRun,
     setVaultPath,
+    settingsStatus,
     testAgentModelConnection,
     testGlobalModelConnection,
     testingAgentModelIds,
+    ttsSettingsDraft,
+    ttsSettingsSaveStatus,
     updateAgentModelDraft,
     updateAutomationSettingsDraft,
     updateGlobalModelDraft,
     updateNegotiationSettingsDraft,
+    updateTtsSettingsDraft,
     vaultId,
     vaultPath,
     vaultStatus,
@@ -506,13 +522,60 @@ function App() {
     onNotice: setNotice,
   });
 
+  const ttsProviders = useMemo(
+    () => ({
+      "custom-http": createBackendTtsProvider({ api }),
+      mock: createMockTtsProvider(),
+      system: createSystemTtsProvider(),
+    }),
+    [api],
+  );
+  const petTtsPlaybackStartRef = useRef<(item: TtsPlaybackItem) => void>(() => undefined);
+  const petTtsPlaybackEndRef = useRef<(item: TtsPlaybackItem, status: TtsProviderPlaybackStatus) => void>(() => undefined);
+  const ttsQueue = useTtsPlaybackQueue({
+    providers: ttsProviders,
+    onPlaybackStart: (item) => petTtsPlaybackStartRef.current(item),
+    onPlaybackEnd: (item, status) => petTtsPlaybackEndRef.current(item, status),
+  });
+  const ttsSettings = settingsStatus?.tts_settings;
+  const ttsActive = ttsQueue.state.status === "synthesizing" || ttsQueue.state.status === "playing";
+  const ttsSpeaking = ttsQueue.state.status === "playing";
+  const ttsEnabled = Boolean(
+    ttsSettings?.enabled &&
+      ttsSettings.auto_play_assistant_reply &&
+      ttsSettings.configured &&
+      ttsSettings.status === "ready",
+  );
+  const ttsVoice = ttsSettings?.voice
+    ? {
+        id: ttsSettings.voice.id,
+        provider: ttsSettings.voice.provider,
+        label: ttsSettings.voice.label,
+        locale: ttsSettings.voice.locale || undefined,
+        gender: normalizeTtsVoiceGender(ttsSettings.voice.gender),
+        description: ttsSettings.voice.description || undefined,
+      }
+    : null;
+
   const petChat = usePetChatBubble({
     messages,
     latestContinuitySignal,
     setMessages,
     setNotice,
     abortStream: () => streamAbort.current?.abort(),
+    tts: {
+      enabled: ttsEnabled,
+      queue: ttsQueue,
+      provider: ttsSettings?.provider || "system",
+      voice: ttsVoice,
+      speed: ttsSettings?.speed ?? 1,
+      volume: ttsSettings?.volume ?? 1,
+      cacheEnabled: Boolean(ttsSettings?.cache_enabled),
+      playbackState: ttsQueue.state,
+    },
   });
+  petTtsPlaybackStartRef.current = petChat.handleTtsPlaybackStart || (() => undefined);
+  petTtsPlaybackEndRef.current = petChat.handleTtsPlaybackEnd || (() => undefined);
 
   useEffect(() => {
     document.body.dataset.windowMode = windowMode;
@@ -669,6 +732,19 @@ function App() {
   }, [loadSettingsStatus]);
 
   useEffect(() => {
+    if (!("BroadcastChannel" in window)) {
+      return;
+    }
+    const channel = new BroadcastChannel(settingsSyncChannelName);
+    channel.onmessage = (event) => {
+      if (isTtsSettingsSavedMessage(event.data)) {
+        void loadSettingsStatus({ silent: true });
+      }
+    };
+    return () => channel.close();
+  }, [loadSettingsStatus]);
+
+  useEffect(() => {
     const abort = new AbortController();
     void loadContinuity({ silent: true, signal: abort.signal });
     return () => abort.abort();
@@ -787,7 +863,7 @@ function App() {
               );
             }
           },
-          onEvent: (sseEvent) =>
+          onEvent: (sseEvent) => {
             applyStreamEvent(assistantId, sseEvent, {
               petChat,
               setMessages,
@@ -804,7 +880,11 @@ function App() {
               upsertChatWikiProposal,
               addTaskFromChat,
               triggerLive2DTaskStage,
-            }),
+            });
+            if (sseEvent.event === "reply_ready") {
+              setStreaming(false);
+            }
+          },
         },
         abort.signal,
       );
@@ -822,7 +902,7 @@ function App() {
               : message,
             ),
         );
-        petChat.startReplyPaging();
+        petChat.startReplyPaging(assistantId);
         const signal = petChat.latestContinuitySignalForMessage(assistantId);
         if (signal) {
           const delay = Math.min(9000, Math.max(1200, petChat.replyPagesRef.current.length * 2600));
@@ -1462,7 +1542,6 @@ function App() {
   ];
   const {
     asset: live2dAsset,
-    canvasRef: live2dCanvasRef,
     models: live2dModels,
     runtime: live2dRuntime,
     selectedModelId: selectedLive2dModelId,
@@ -1479,6 +1558,9 @@ function App() {
     continuityState,
     continuitySignal: activeContinuitySignal,
   });
+  const live2dStageCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const live2dPetCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const live2dPanelCanvasRef = useRef<HTMLCanvasElement | null>(null);
   live2dTaskStageRef.current = triggerLive2DTaskStage;
 
   const refreshActivity = () => {
@@ -1622,6 +1704,9 @@ function App() {
       globalModelTestStatus={globalModelTestStatus}
       automationSettingsDraft={automationSettingsDraft}
       automationSettingsSaveStatus={automationSettingsSaveStatus}
+      ttsSettingsDraft={ttsSettingsDraft}
+      ttsSettingsSaveStatus={ttsSettingsSaveStatus}
+      ttsSettingsStatus={settingsStatus?.tts_settings}
       negotiationSettingsDraft={negotiationSettingsDraft}
       negotiationSettingsSaveStatus={negotiationSettingsSaveStatus}
       savingAgentModelIds={savingAgentModelIds}
@@ -1639,6 +1724,9 @@ function App() {
       onTestGlobalModel={() => void testGlobalModelConnection()}
       onUpdateAutomationSettingsDraft={updateAutomationSettingsDraft}
       onSaveAutomationSettings={() => void saveAutomationSettings()}
+      onUpdateTtsSettingsDraft={updateTtsSettingsDraft}
+      onSaveTtsSettings={(apiKey) => void saveTtsSettings(apiKey)}
+      onClearTtsCache={() => void clearTtsCache()}
       onUpdateNegotiationSettingsDraft={updateNegotiationSettingsDraft}
       onSaveNegotiationSettings={() => void saveNegotiationSettings()}
       onUpdateAgentModelDraft={updateAgentModelDraft}
@@ -1654,12 +1742,13 @@ function App() {
 
   const petHitboxDebug =
     windowMode === "pet" && new URLSearchParams(window.location.search).get("hitbox") === "1";
+  const isStageHostWindow = desktopHostMode === "stage";
   const stageView = (
     <StageView
       live2dStage={live2dStage}
       live2dAsset={live2dAsset}
       live2dRuntime={live2dRuntime}
-      live2dCanvasRef={live2dCanvasRef}
+      live2dCanvasRef={live2dStageCanvasRef}
       connected={hasConnection}
       streaming={streaming}
       bubble={petChat.bubble}
@@ -1669,9 +1758,12 @@ function App() {
       onAdvancePage={petChat.advancePageManually}
       onPausePaging={petChat.pausePaging}
       onResumePaging={petChat.resumePaging}
+      ttsActive={ttsActive}
+      ttsSpeaking={ttsSpeaking}
+      onStopTts={() => ttsQueue.stop("user_stopped_tts")}
+      active={!isStageHostWindow || windowMode === "stage"}
     />
   );
-  const isStageHostWindow = desktopHostMode === "stage";
 
   if (isStageHostWindow && windowMode !== "pet" && windowMode !== "control") {
     const activeRoute =
@@ -1825,8 +1917,9 @@ function App() {
           stage={live2dStage}
           asset={live2dAsset}
           runtime={live2dRuntime}
-          canvasRef={live2dCanvasRef}
+          canvasRef={live2dPetCanvasRef}
           variant="pet"
+          speaking={ttsSpeaking}
           petInteractions={{
             onPointerDown: beginPetDrag,
             onPointerMove: movePetDrag,
@@ -1872,6 +1965,8 @@ function App() {
           onInputClose={() => petChat.setInputVisible(false)}
           onSubmit={sendPetMessage}
           onStopStreaming={stopStreaming}
+          ttsActive={ttsActive}
+          onStopTts={() => ttsQueue.stop("user_stopped_tts")}
         />
         <nav
           className={`pet-shortcut-bar${petShortcutsVisible ? " is-visible" : ""}`}
@@ -1924,7 +2019,8 @@ function App() {
           stage={live2dStage}
           asset={live2dAsset}
           runtime={live2dRuntime}
-          canvasRef={live2dCanvasRef}
+          canvasRef={live2dPanelCanvasRef}
+          speaking={ttsActive}
         />
 
         <Panel id="agent-workspace-panel" icon={<MessageSquareText size={18} />} title="记忆陪伴工作区" className="chat-panel">
@@ -2225,6 +2321,13 @@ function formatIssueSeverity(severity: string): string {
     info: "提示",
   };
   return labels[severity] || severity;
+}
+
+function normalizeTtsVoiceGender(gender: string | null | undefined): TtsVoiceGender | undefined {
+  if (gender === "female" || gender === "male" || gender === "neutral" || gender === "unknown") {
+    return gender;
+  }
+  return gender ? "unknown" : undefined;
 }
 
 function getSearchEmptyNotice(

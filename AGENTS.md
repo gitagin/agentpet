@@ -47,7 +47,7 @@ Agent Pet 是本地优先的 Windows 桌面 AI 伴随应用，使用 Obsidian/Ma
 
 - Shell：Windows PowerShell
 - 工作目录：`E:\agentproject`
-- Git：不是 Git 仓库，不能依赖 `git status`、`git diff`、`git history` 判断状态
+- Git：不要假设 Git 一定可用；使用 Git 状态前先检查当前工作区，且不要只依赖 `git status`、`git diff`、`git history` 判断状态
 
 禁止修改的路径列表：
 
@@ -61,7 +61,7 @@ Agent Pet 是本地优先的 Windows 桌面 AI 伴随应用，使用 Obsidian/Ma
 
 ### 已知环境坑
 
-- `E:\agentproject` 没有 `.git` 目录 （原因：状态判断要依赖文件检查、测试、进度日志）
+- `E:\agentproject` 的 Git 可用性以当前工作区检查结果为准 （原因：状态判断要依赖文件检查、测试、进度日志，不能只依赖 Git 历史）
 - PowerShell 可能出现 `[Console]::OutputEncoding` / ConstrainedLanguage 警告 （原因：该运行环境限制控制台编码设置，命令退出码和实际输出才是判断依据）
 - `Development_Documentation.md` 存在中文 mojibake （原因：补丁要锚定 ASCII 或当前可读片段，避免破坏周边内容）
 - `npm run build` 在 Codex sandbox 里可能报 Vite/esbuild `spawn EPERM` （原因：受限环境阻止子进程生成，不等同于源码错误，普通 Windows PowerShell 复跑确认）

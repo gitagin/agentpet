@@ -26,6 +26,10 @@ from ..models.api import (
     ModelTestResponse,
     SettingsStatusResponse,
     SettingsUpdateResponse,
+    TtsKeyRequest,
+    TtsKeyResponse,
+    TtsSettingsRequest,
+    TtsSettingsResponse,
 )
 from ..services.embeddings import LangChainEmbeddingClient
 from ..services.chat_model import ChatModelError, LangChainGraphChatClient
@@ -53,6 +57,7 @@ async def get_settings_status(
     model_status = store.get_model_key_status()
     embedding_status = store.get_embedding_key_status()
     automation = store.get_automation_settings()
+    tts_settings = store.get_tts_settings()
     model_config = store.get_model_config(
         default_provider=model_status.provider or "openai-compatible",
         default_base_url=defaults.model_base_url,
@@ -79,6 +84,7 @@ async def get_settings_status(
         vault_configured=vault_configured,
         agent_models=_agent_model_responses(store),
         automation=automation,
+        tts_settings=tts_settings,
     )
 
 
@@ -102,6 +108,38 @@ async def set_automation_settings(
     store: SettingsStore = Depends(settings_store_dependency),
 ) -> AutomationSettingsResponse:
     return store.set_automation_settings(automation)
+
+
+@router.get("/tts", response_model=TtsSettingsResponse)
+async def get_tts_settings(
+    store: SettingsStore = Depends(settings_store_dependency),
+) -> TtsSettingsResponse:
+    return store.get_tts_settings()
+
+
+@router.put("/tts", response_model=TtsSettingsResponse)
+async def set_tts_settings(
+    tts_settings: TtsSettingsRequest,
+    store: SettingsStore = Depends(settings_store_dependency),
+) -> TtsSettingsResponse:
+    return store.set_tts_settings(tts_settings)
+
+
+@router.put("/tts-key", response_model=TtsKeyResponse)
+async def set_tts_key(
+    tts_key: TtsKeyRequest,
+    store: SettingsStore = Depends(settings_store_dependency),
+) -> TtsKeyResponse:
+    try:
+        status_value = store.set_tts_key(tts_key.provider, tts_key.api_key)
+    except CredentialStoreError as exc:
+        _raise_credential_store_error(exc)
+    return TtsKeyResponse(
+        provider=status_value.provider or tts_key.provider,
+        status="configured",
+        configured=status_value.configured,
+        masked=status_value.masked or "****",
+    )
 
 
 @router.put("/model-key", response_model=ModelKeyResponse)

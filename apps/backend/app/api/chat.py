@@ -10,6 +10,7 @@ from ..agents.events import (
     AgentDoneEvent,
     AgentErrorEvent,
     AgentEventBase,
+    AgentReplyReadyEvent,
     AgentTokenEvent,
 )
 from ..errors import AppError
@@ -115,6 +116,12 @@ async def _persisting_stream(request: Request, state: AgentState) -> AsyncIterat
                         error_message = "后端返回了完成事件，但没有生成可显示回复。"
                         yield _fail_message(request, state, assistant_message_id, "".join(token_chunks), error_code, error_message)
                         continue
+                    _update_assistant_message(request, assistant_message_id, final_text, MessageStatus.COMPLETED.value)
+                    yield AgentReplyReadyEvent(
+                        agent_run_id=state.agent_run_id,
+                        intent=event.intent,
+                        text=final_text,
+                    )
                     async for post_event in _complete_assistant_message(request, state, assistant_message_id, final_text):
                         yield post_event
                     final_status = AgentRunStatus.SUCCESS.value

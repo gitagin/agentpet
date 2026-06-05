@@ -43,7 +43,6 @@ export function useLive2D({
   const [selectedModelId, setSelectedModelId] = useState<string>(() => loadLive2DModelSelection());
   const [asset, setAsset] = useState<Live2DAssetInfo>(initialLive2DAssetInfo);
   const [recentTaskStageActive, setRecentTaskStageActive] = useState(false);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const taskStageTimeoutRef = useRef<number | null>(null);
 
   function triggerTaskStage() {
@@ -213,7 +212,6 @@ export function useLive2D({
 
   return {
     asset,
-    canvasRef,
     models,
     runtime,
     selectedModelId,

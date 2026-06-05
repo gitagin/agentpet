@@ -35,7 +35,7 @@ def test_chat_audit_logs_include_request_and_agent_run_ids(client: TestClient, t
     client.post(
         "/api/vaults/init",
         headers=auth("audit-chat-vault"),
-        json={"path": str(vault), "create_if_missing": True},
+        json={"path": str(vault), "create_if_missing": True, "confirmed": True},
     )
     accepted = client.post(
         "/api/chat",
@@ -63,7 +63,7 @@ def test_memory_and_denied_vault_paths_are_audited(client: TestClient, tmp_path:
     bind = client.post(
         "/api/vaults/init",
         headers=auth("audit-vault-ok"),
-        json={"path": str(vault), "create_if_missing": True},
+        json={"path": str(vault), "create_if_missing": True, "confirmed": True},
     )
     assert bind.status_code == 200
     invalid_vault_path = tmp_path / "not-a-vault.md"
@@ -71,7 +71,7 @@ def test_memory_and_denied_vault_paths_are_audited(client: TestClient, tmp_path:
     denied = client.post(
         "/api/vaults/init",
         headers=auth("audit-vault-denied"),
-        json={"path": str(invalid_vault_path), "create_if_missing": True},
+        json={"path": str(invalid_vault_path), "create_if_missing": True, "confirmed": True},
     )
     assert denied.status_code == 400
 
@@ -111,9 +111,50 @@ def test_memory_and_denied_vault_paths_are_audited(client: TestClient, tmp_path:
     action_results = {(row["action"], row["result"]) for row in rows}
     assert ("vault.bind", "success") in action_results
     assert ("vault.bind", "denied") in action_results
+    denied_vault_rows = [row for row in rows if row["action"] == "vault.bind" and row["result"] == "denied"]
+    assert any("code=invalid_vault_path" in row["reason"] for row in denied_vault_rows)
     assert ("memory.proposal.create", "success") in action_results
     assert ("memory.proposal.confirm", "success") in action_results
     assert ("memory.proposal.reject", "success") in action_results
+
+
+def test_missing_vault_bind_confirmation_is_audited(client: TestClient, tmp_path: Path) -> None:
+    vault = tmp_path / "VaultWithoutConfirmation"
+    response = client.post(
+        "/api/vaults/init",
+        headers=auth("audit-vault-confirmation-missing"),
+        json={"path": str(vault), "create_if_missing": True},
+    )
+    assert response.status_code == 400
+
+    rows = audit_rows(client)
+    denied = [row for row in rows if row["action"] == "vault.bind" and row["result"] == "denied"]
+    assert denied
+    assert any("code=vault_bind_confirmation_required" in row["reason"] for row in denied)
+
+
+def test_vault_bind_process_exception_is_audited(
+    client: TestClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_bind(_root_path: str) -> str:
+        raise RuntimeError("simulated bind failure")
+
+    monkeypatch.setattr(client.app.state.retrieval_service, "bind_vault", fail_bind)
+    vault = tmp_path / "VaultBindFailure"
+    response = client.post(
+        "/api/vaults/init",
+        headers=auth("audit-vault-bind-failure"),
+        json={"path": str(vault), "create_if_missing": True, "confirmed": True},
+    )
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "vault_bind_failed"
+
+    rows = audit_rows(client)
+    failed = [row for row in rows if row["action"] == "vault.bind" and row["result"] == "failed"]
+    assert failed
+    assert any("code=RuntimeError" in row["reason"] for row in failed)
 
 
 def test_due_reminder_trigger_writes_scheduler_audit_log(client: TestClient) -> None:

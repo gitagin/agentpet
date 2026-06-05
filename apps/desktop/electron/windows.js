@@ -53,6 +53,29 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     return PET_INPUT_MODES.has(mode) ? mode : "chat";
   }
 
+  function isLiveWindow(window) {
+    return Boolean(window && !window.isDestroyed?.());
+  }
+
+  function getSenderWindowRole(sender) {
+    if (isLiveWindow(petWindow) && sender === petWindow.webContents) {
+      return "pet";
+    }
+    if (isLiveWindow(controlWindow) && sender === controlWindow.webContents) {
+      return "control";
+    }
+    if (isLiveWindow(stageWindow) && sender === stageWindow.webContents) {
+      return "stage";
+    }
+    if (isLiveWindow(agentWindow) && sender === agentWindow.webContents) {
+      return "agent";
+    }
+    if (isLiveWindow(featureWindow) && sender === featureWindow.webContents) {
+      return "feature";
+    }
+    return null;
+  }
+
   function getFeatureWindowTitle(mode) {
     return {
       chat: "聊天",
@@ -850,6 +873,7 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     activatePetWindowDrag,
     endPetWindowDrag,
     quitApp,
+    getSenderWindowRole,
     getPetWindow: () => petWindow,
     getStageWindow: () => stageWindow,
     getAgentWindow: () => agentWindow,

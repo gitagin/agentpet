@@ -85,6 +85,12 @@ class AgentDoneEvent(AgentEventBase):
     text: str = ""
 
 
+class AgentReplyReadyEvent(AgentEventBase):
+    event: Literal["reply_ready"] = "reply_ready"
+    intent: AgentIntent
+    text: str = ""
+
+
 class NegotiationStepEvent(AgentEventBase):
     event: Literal["negotiation_step"] = "negotiation_step"
     round: int
@@ -121,6 +127,7 @@ AgentEvent = Annotated[
     | AgentActionEvent
     | AgentWikiProposalEvent
     | AgentTaskEvent
+    | AgentReplyReadyEvent
     | AgentDoneEvent
     | NegotiationStepEvent
     | NegotiationDoneEvent

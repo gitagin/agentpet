@@ -43,7 +43,7 @@ def test_live_model_chat_stream_uses_vault_citation_when_configured(
         bind = client.post(
             "/api/vaults/init",
             headers=auth(),
-            json={"path": str(vault), "create_if_missing": False},
+            json={"path": str(vault), "create_if_missing": False, "confirmed": True},
         )
         assert bind.status_code == 200
         indexed = client.post(f"/api/vaults/{bind.json()['vault_id']}/index", headers=auth())

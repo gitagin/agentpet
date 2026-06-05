@@ -1,6 +1,7 @@
 function createProxyManager({ baseUrl, sessionToken }) {
   const activeSseStreams = new Map();
   const retryableMethods = new Set(["GET", "HEAD"]);
+  const allowedProxyRoutes = createAllowedProxyRoutes();
 
   function delay(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -52,6 +53,78 @@ function createProxyManager({ baseUrl, sessionToken }) {
     return target;
   }
 
+  function createAllowedProxyRoutes() {
+    return [
+      { methods: ["GET"], pattern: /^\/api\/health$/ },
+      { methods: ["POST"], pattern: /^\/api\/chat$/ },
+      { methods: ["GET"], pattern: /^\/api\/chat\/runs\/[^/]+\/events$/ },
+      { methods: ["GET"], pattern: /^\/api\/agent\/actions$/ },
+      { methods: ["POST"], pattern: /^\/api\/agent\/actions\/[^/]+\/revert$/ },
+      { methods: ["POST"], pattern: /^\/api\/memory\/search$/ },
+      { methods: ["GET"], pattern: /^\/api\/memory\/local-assets$/ },
+      { methods: ["GET", "POST"], pattern: /^\/api\/memory\/proposals$/ },
+      { methods: ["POST"], pattern: /^\/api\/memory\/proposals\/[^/]+\/(confirm|reject)$/ },
+      { methods: ["GET"], pattern: /^\/api\/memory\/graph\/facts$/ },
+      { methods: ["POST"], pattern: /^\/api\/memory\/graph\/facts\/[^/]+\/(confirm|wrong|archive|sensitive-block)$/ },
+      { methods: ["GET"], pattern: /^\/api\/memory\/graph\/export-preview$/ },
+      { methods: ["POST"], pattern: /^\/api\/memory\/companion\/consolidation\/runs$/ },
+      { methods: ["GET"], pattern: /^\/api\/memory\/companion\/context-reports$/ },
+      { methods: ["GET"], pattern: /^\/api\/memory\/retrospectives$/ },
+      { methods: ["POST"], pattern: /^\/api\/memory\/retrospectives\/report$/ },
+      { methods: ["GET"], pattern: /^\/api\/continuity\/state$/ },
+      { methods: ["GET"], pattern: /^\/api\/continuity\/proposals$/ },
+      { methods: ["POST"], pattern: /^\/api\/continuity\/proposals\/[^/]+\/(confirm|reject)$/ },
+      { methods: ["GET", "POST"], pattern: /^\/api\/tasks$/ },
+      { methods: ["GET"], pattern: /^\/api\/tasks\/today$/ },
+      { methods: ["GET"], pattern: /^\/api\/tasks\/current$/ },
+      { methods: ["GET"], pattern: /^\/api\/tasks\/[^/]+\/(steps|logs)$/ },
+      { methods: ["POST"], pattern: /^\/api\/tasks\/[^/]+\/(complete|cancel|approve|reject)$/ },
+      { methods: ["GET"], pattern: /^\/api\/diagnostics\/export$/ },
+      { methods: ["POST"], pattern: /^\/api\/diagnostics\/reset-local-state$/ },
+      { methods: ["GET", "PATCH"], pattern: /^\/api\/settings$/ },
+      { methods: ["GET", "PUT"], pattern: /^\/api\/settings\/automation$/ },
+      { methods: ["GET", "PUT"], pattern: /^\/api\/settings\/tts$/ },
+      { methods: ["PUT"], pattern: /^\/api\/settings\/tts-key$/ },
+      { methods: ["PUT"], pattern: /^\/api\/settings\/model-key$/ },
+      { methods: ["PUT"], pattern: /^\/api\/settings\/model-config$/ },
+      { methods: ["GET"], pattern: /^\/api\/settings\/model-health$/ },
+      { methods: ["POST"], pattern: /^\/api\/settings\/model-test$/ },
+      { methods: ["PUT"], pattern: /^\/api\/settings\/agent-models\/[^/]+\/(config|key)$/ },
+      { methods: ["POST"], pattern: /^\/api\/tts\/synthesize$/ },
+      { methods: ["DELETE"], pattern: /^\/api\/tts\/cache$/ },
+      { methods: ["GET"], pattern: /^\/api\/vaults\/status$/ },
+      { methods: ["POST"], pattern: /^\/api\/vaults\/init$/ },
+      { methods: ["POST"], pattern: /^\/api\/vaults\/[^/]+\/index$/ },
+      { methods: ["POST"], pattern: /^\/api\/wiki\/ingest\/(preview|apply|confirm|review)$/ },
+      { methods: ["GET"], pattern: /^\/api\/wiki\/(schema|index|log)$/ },
+      { methods: ["POST"], pattern: /^\/api\/wiki\/synthesize$/ },
+      { methods: ["GET", "POST"], pattern: /^\/api\/wiki\/query-archives$/ },
+      { methods: ["GET"], pattern: /^\/api\/wiki\/query-archives\/[^/]+$/ },
+      { methods: ["POST"], pattern: /^\/api\/wiki\/lint$/ },
+      { methods: ["POST"], pattern: /^\/api\/wiki\/diagnostics\/queue$/ },
+    ].map((route) => ({
+      methods: new Set(route.methods),
+      pattern: route.pattern,
+    }));
+  }
+
+  function createProxyRouteDeniedError(method, target) {
+    const error = new Error(`Renderer API proxy route is not allowed: ${method} ${target.pathname}`);
+    error.code = "renderer_api_route_not_allowed";
+    error.details = {
+      method,
+      path: target.pathname,
+    };
+    return error;
+  }
+
+  function assertAllowedProxyRoute(method, target) {
+    const allowed = allowedProxyRoutes.some((route) => route.methods.has(method) && route.pattern.test(target.pathname));
+    if (!allowed) {
+      throw createProxyRouteDeniedError(method, target);
+    }
+  }
+
   function sanitizeRendererHeaders(headers) {
     const sanitized = new Headers();
     if (!headers || typeof headers !== "object") {
@@ -96,6 +169,7 @@ function createProxyManager({ baseUrl, sessionToken }) {
   async function proxyApiRequest(pathOrUrl, options) {
     const target = resolveSidecarUrl(pathOrUrl);
     const init = normalizeApiRequestOptions(options);
+    assertAllowedProxyRoute(init.method, target);
     const attempts = retryableMethods.has(init.method) ? 12 : 1;
     let lastError = null;
 
@@ -148,6 +222,7 @@ function createProxyManager({ baseUrl, sessionToken }) {
 
     try {
       const target = resolveSidecarUrl(pathOrUrl);
+      assertAllowedProxyRoute("GET", target);
       const response = await fetch(target, {
         method: "GET",
         headers: {
@@ -202,6 +277,7 @@ function createProxyManager({ baseUrl, sessionToken }) {
     proxyApiRequest,
     startSseStream,
     cancelSseStream,
+    assertAllowedProxyRoute,
   };
 }
 

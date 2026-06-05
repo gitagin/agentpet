@@ -10,6 +10,8 @@ const allowedRendererUiStateKeys = new Set([
   "agent-pet.live2d-model-id",
   "agent-pet.wiki-archive-candidate",
 ]);
+const trustedAppWindowRoles = new Set(["pet", "control", "stage", "agent", "feature"]);
+const vaultPickerWindowRoles = new Set(["control", "stage", "feature"]);
 
 function normalizeRendererUiStateKey(key) {
   if (typeof key !== "string") {
@@ -24,6 +26,28 @@ function rejectVaultReveal(reason) {
     status: "rejected",
     reason,
   };
+}
+
+function getSenderWindowRole(windows, sender) {
+  return windows.getSenderWindowRole?.(sender) ?? null;
+}
+
+function createUnauthorizedIpcError(channel, role) {
+  const error = new Error(`Unauthorized IPC sender for ${channel}.`);
+  error.code = "unauthorized_ipc_sender";
+  error.details = {
+    channel,
+    role: role || "unknown",
+  };
+  return error;
+}
+
+function assertTrustedSender(windows, sender, allowedRoles, channel) {
+  const role = getSenderWindowRole(windows, sender);
+  if (!role || !allowedRoles.has(role)) {
+    throw createUnauthorizedIpcError(channel, role);
+  }
+  return role;
 }
 
 function normalizeVaultRelativeMarkdownPath(relativePath) {
@@ -168,64 +192,64 @@ function registerIpcHandlers({ baseUrl, rendererUiState, persistRendererUiState,
 
   ipcMain.handle("agent-pet:get-sidecar-status", () => sidecar.getPublicSidecarStatus());
 
-  ipcMain.handle("agent-pet:api-request", async (_event, pathOrUrl, options) => proxy.proxyApiRequest(pathOrUrl, options));
+  ipcMain.handle("agent-pet:api-request", async (event, pathOrUrl, options) => {
+    assertTrustedSender(windows, event.sender, trustedAppWindowRoles, "agent-pet:api-request");
+    return proxy.proxyApiRequest(pathOrUrl, options);
+  });
 
-  ipcMain.handle("agent-pet:reveal-vault-path", async (_event, relativePath, mode) =>
-    revealVaultPath({ proxy, relativePath, mode }),
-  );
+  ipcMain.handle("agent-pet:reveal-vault-path", async (event, relativePath, mode) => {
+    assertTrustedSender(windows, event.sender, trustedAppWindowRoles, "agent-pet:reveal-vault-path");
+    return revealVaultPath({ proxy, relativePath, mode });
+  });
 
   ipcMain.handle("agent-pet:sse-start", async (event, streamId, pathOrUrl) => {
+    assertTrustedSender(windows, event.sender, trustedAppWindowRoles, "agent-pet:sse-start");
     proxy.startSseStream(event.sender, streamId, pathOrUrl);
     return { streamId };
   });
 
-  ipcMain.handle("agent-pet:sse-cancel", (_event, streamId) => {
+  ipcMain.handle("agent-pet:sse-cancel", (event, streamId) => {
+    assertTrustedSender(windows, event.sender, trustedAppWindowRoles, "agent-pet:sse-cancel");
     proxy.cancelSseStream(streamId);
   });
 
   ipcMain.handle("agent-pet:show-reminder-notification", (_event, payload) => sidecar.showReminderNotification(payload));
 
   ipcMain.handle("agent-pet:get-window-mode", (event) => {
-    const petWindow = windows.getPetWindow();
-    if (petWindow && event.sender === petWindow.webContents) {
-      return "pet";
+    const role = getSenderWindowRole(windows, event.sender);
+    if (role === "feature") {
+      return windows.getFeatureWindowMode?.(event.sender) || "chat";
     }
-    const stageWindow = windows.getStageWindow?.();
-    if (stageWindow && event.sender === stageWindow.webContents) {
-      return "stage";
-    }
-    const agentWindow = windows.getAgentWindow?.();
-    if (agentWindow && event.sender === agentWindow.webContents) {
-      return "agent";
-    }
-    const featureWindowMode = windows.getFeatureWindowMode?.(event.sender);
-    if (featureWindowMode) {
-      return featureWindowMode;
-    }
-    return "control";
+    return role || "control";
   });
 
-  ipcMain.handle("agent-pet:open-control-window", (_event, targetId) => {
+  ipcMain.handle("agent-pet:open-control-window", (event, targetId) => {
+    assertTrustedSender(windows, event.sender, trustedAppWindowRoles, "agent-pet:open-control-window");
     windows.showControlWindow(targetId);
   });
 
-  ipcMain.handle("window:open-agent", () => {
+  ipcMain.handle("window:open-agent", (event) => {
+    assertTrustedSender(windows, event.sender, trustedAppWindowRoles, "window:open-agent");
     windows.showAgentWindow();
   });
 
-  ipcMain.handle("window:close-agent", () => {
+  ipcMain.handle("window:close-agent", (event) => {
+    assertTrustedSender(windows, event.sender, trustedAppWindowRoles, "window:close-agent");
     windows.hideAgentWindow();
   });
 
-  ipcMain.handle("window:open-stage", (_event, mode) => {
+  ipcMain.handle("window:open-stage", (event, mode) => {
+    assertTrustedSender(windows, event.sender, trustedAppWindowRoles, "window:open-stage");
     windows.showStageWindow(mode);
   });
 
-  ipcMain.handle("window:open-feature", (_event, mode) => {
+  ipcMain.handle("window:open-feature", (event, mode) => {
+    assertTrustedSender(windows, event.sender, trustedAppWindowRoles, "window:open-feature");
     windows.showFeatureWindow?.(mode);
   });
 
-  ipcMain.handle("app:quit", () => {
+  ipcMain.handle("app:quit", (event) => {
+    assertTrustedSender(windows, event.sender, trustedAppWindowRoles, "app:quit");
     windows.quitApp();
   });
 
@@ -259,6 +283,7 @@ function registerIpcHandlers({ baseUrl, rendererUiState, persistRendererUiState,
   });
 
   ipcMain.handle("agent-pet:select-knowledge-base-folder", async (event) => {
+    assertTrustedSender(windows, event.sender, vaultPickerWindowRoles, "agent-pet:select-knowledge-base-folder");
     const ownerWindow = BrowserWindow.fromWebContents(event.sender);
     const result = await dialog.showOpenDialog(ownerWindow ?? undefined, {
       title: "选择知识库文件夹",
@@ -278,4 +303,5 @@ module.exports = {
   normalizeVaultRelativeMarkdownPath,
   resolveVaultMarkdownPath,
   revealVaultPath,
+  assertTrustedSender,
 };

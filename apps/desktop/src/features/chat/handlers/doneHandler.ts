@@ -23,5 +23,5 @@ export function doneHandler({ messageId, sseEvent, payload, context }: StreamHan
         : message,
     ),
   );
-  petChat.startReplyPaging();
+  petChat.startReplyPaging(messageId);
 }

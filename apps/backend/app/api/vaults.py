@@ -86,6 +86,20 @@ async def get_vault_status(request: Request) -> VaultStatusResponse:
 
 @router.post("/init", response_model=VaultBindResponse)
 async def init_vault(bind_request: VaultBindRequest, request: Request) -> VaultBindResponse:
+    if not bind_request.confirmed:
+        record_audit(
+            request,
+            action="vault.bind",
+            result="denied",
+            target_path=bind_request.path,
+            reason=audit_reason(request, code="vault_bind_confirmation_required"),
+        )
+        raise AppError(
+            code="vault_bind_confirmation_required",
+            message="绑定知识库目录前需要显式确认。",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            details={"path": bind_request.path},
+        )
     try:
         root = ensure_vault_path(bind_request.path, create_if_missing=bind_request.create_if_missing)
     except AppError as exc:

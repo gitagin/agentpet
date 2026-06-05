@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import type { AgentModelId, AgentModelSettings, ModelTestResponse, SettingsStatusResponse } from "../../types";
+import type {
+  AgentModelId,
+  AgentModelSettings,
+  ModelTestResponse,
+  SettingsStatusResponse,
+  TtsSettingsResponse,
+} from "../../types";
 import type { AgentModelDraft } from "../../services/agentModelDrafts";
 import { createInitialSettingsState, getSavedAgentModelMasked, settingsReducer } from "./settingsReducer";
 
@@ -36,6 +42,36 @@ function settingsStatus(overrides: Partial<SettingsStatusResponse> = {}): Settin
       high_risk_confirmation_required: true,
       updated_at: null,
     },
+    ...overrides,
+  };
+}
+
+function ttsSettings(overrides: Partial<TtsSettingsResponse> = {}): TtsSettingsResponse {
+  return {
+    enabled: true,
+    auto_play_assistant_reply: true,
+    auto_play_reminders: false,
+    provider: "system",
+    base_url: null,
+    model: null,
+    voice: null,
+    speed: 1,
+    volume: 1,
+    response_format: "mp3",
+    requires_api_key: false,
+    api_style: "generic",
+    auth_header_name: null,
+    request_template: null,
+    audio_json_path: null,
+    audio_encoding: "base64",
+    mime_type: null,
+    cache_enabled: false,
+    night_quiet_mode: true,
+    configured: true,
+    status: "ready",
+    key_configured: false,
+    key_masked: null,
+    updated_at: null,
     ...overrides,
   };
 }
@@ -95,6 +131,27 @@ describe("settingsReducer", () => {
     expect(diagnosed.vaultId).toBe("vault-1");
     expect(diagnosed.settingsStatus).toMatchObject({ model_configured: true, vault_configured: true });
     expect(diagnosed.settingsStatus?.agent_models?.[0].agent_id).toBe(agentId);
+  });
+
+  it("tracks TTS settings drafts and saved status", () => {
+    const withStatus = settingsReducer(createInitialSettingsState(), {
+      type: "applySettingsStatus",
+      response: settingsStatus({ tts_settings: ttsSettings({ speed: 1.2, volume: 0.8 }) }),
+    });
+    const updated = settingsReducer(withStatus, {
+      type: "updateTtsSettingsDraft",
+      patch: { enabled: false, volume: 0.4 },
+    });
+    const saved = settingsReducer(updated, {
+      type: "saveTtsSettingsSuccess",
+      settings: ttsSettings({ enabled: false, volume: 0.4 }),
+    });
+
+    expect(withStatus.ttsSettingsDraft).toMatchObject({ enabled: true, speed: 1.2, volume: 0.8 });
+    expect(updated.ttsSettingsDraft).toMatchObject({ enabled: false, volume: 0.4 });
+    expect(updated.ttsSettingsSaveStatus).toBe("idle");
+    expect(saved.ttsSettingsSaveStatus).toBe("success");
+    expect(saved.settingsStatus?.tts_settings?.volume).toBe(0.4);
   });
 
   it("updates model drafts and saving ids immutably", () => {

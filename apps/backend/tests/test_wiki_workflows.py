@@ -988,7 +988,7 @@ def test_wiki_ingest_confirm_rejects_expired_preview_token(
     init = client.post(
         "/api/vaults/init",
         headers=AUTH_HEADERS,
-        json={"path": str(vault_root), "create_if_missing": True},
+        json={"path": str(vault_root), "create_if_missing": True, "confirmed": True},
     )
     assert init.status_code == 200
 
@@ -1018,7 +1018,7 @@ def test_wiki_workflow_api_writes_and_audits(api_client: tuple[TestClient, Path]
     init = client.post(
         "/api/vaults/init",
         headers=AUTH_HEADERS,
-        json={"path": str(vault_root), "create_if_missing": True},
+        json={"path": str(vault_root), "create_if_missing": True, "confirmed": True},
     )
     assert init.status_code == 200
 

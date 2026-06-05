@@ -1,10 +1,11 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback } from "react";
 import type { CSSProperties, FormEvent, RefObject } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { VolumeX } from "lucide-react";
 import { Live2DStage } from "../components/Live2DStage";
 import type { Live2DStageView } from "../components/Live2DStage";
 import type { Live2DAssetInfo, Live2DRuntimeBoundary } from "../services/live2dRuntime";
 import type { PetBubbleState } from "../features/chat/chatTypes";
+import { PetReplyBubble } from "../features/chat/PetReplyBubble";
 import { BottomNav } from "./BottomNav";
 
 type StageViewProps = {
@@ -21,15 +22,13 @@ type StageViewProps = {
   onAdvancePage?: () => void;
   onPausePaging?: () => void;
   onResumePaging?: () => void;
+  ttsActive?: boolean;
+  ttsSpeaking?: boolean;
+  onStopTts?: () => void;
+  active?: boolean;
 };
 
 const profile = { name: "小艾", mood: "开心 😊" };
-
-function bubbleToneClass(tone: PetBubbleState["tone"]): string {
-  if (tone === "error") return "stage-bubble--error";
-  if (tone === "tool" || tone === "reminder") return "stage-bubble--info";
-  return "";
-}
 
 export default function StageView({
   live2dStage,
@@ -45,9 +44,12 @@ export default function StageView({
   onAdvancePage,
   onPausePaging,
   onResumePaging,
+  ttsActive = false,
+  ttsSpeaking = false,
+  onStopTts,
+  active = true,
 }: StageViewProps) {
   const [chatInput, setChatInput] = useState("");
-  const bubbleRef = useRef<HTMLDivElement>(null);
   const now = new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
 
   const handleSubmit = useCallback(
@@ -59,18 +61,6 @@ export default function StageView({
   );
 
   const bubbleVisible = Boolean(bubble?.visible);
-  const hasBubbleTitle = Boolean(bubble?.title.trim());
-  const hasBubblePagination = Boolean(bubble?.continueHint);
-  const hasBubbleHeader = hasBubbleTitle || hasBubblePagination;
-  const bubbleClass = [
-    "stage-bubble",
-    bubble?.tone ? bubbleToneClass(bubble.tone) : "",
-    hasBubbleHeader ? "stage-bubble--has-header" : "stage-bubble--no-header",
-    hasBubbleTitle ? "stage-bubble--has-title" : "stage-bubble--no-title",
-    hasBubblePagination ? "stage-bubble--paged" : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
 
   return (
     <main style={S.shell} aria-label="桌面记忆助手主舞台">
@@ -87,53 +77,16 @@ export default function StageView({
       </header>
 
       {bubbleVisible && (
-        <div
-          ref={bubbleRef}
-          className={bubbleClass}
-          style={S.bubble}
-          role="status"
-          aria-live="polite"
-          onClick={onAdvancePage}
-          onFocus={onPausePaging}
-          onBlur={onResumePaging}
-        >
-          <div style={S.bubbleHeader}>
-            <strong>{bubble!.title}</strong>
-            {bubble!.continueHint ? <span style={S.bubblePage}>{bubble!.continueHint}</span> : null}
-            {bubble!.continueHint ? (
-              <div style={S.bubbleControls} onClick={(event) => event.stopPropagation()}>
-                <button
-                  type="button"
-                  style={S.bubblePageButton}
-                  aria-label="上一页回复"
-                  title="上一页"
-                  disabled={!bubble!.canPageBackward}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onPreviousPage?.();
-                  }}
-                >
-                  <ChevronLeft size={13} aria-hidden="true" />
-                </button>
-                <button
-                  type="button"
-                  style={S.bubblePageButton}
-                  aria-label="下一页回复"
-                  title="下一页"
-                  disabled={!bubble!.canPageForward}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onAdvancePage?.();
-                  }}
-                >
-                  <ChevronRight size={13} aria-hidden="true" />
-                </button>
-              </div>
-            ) : null}
-          </div>
-          <div style={S.bubbleText}>{bubble!.message}</div>
-          {bubble!.continueHint ? <div style={S.bubbleTapHint}>像说话一样自动翻页 · 点击可跳过当前页</div> : null}
-        </div>
+        <PetReplyBubble
+          bubble={bubble!}
+          className="stage-agent-bubble"
+          onPreviousPage={() => onPreviousPage?.()}
+          onAdvancePage={() => onAdvancePage?.()}
+          onPausePaging={() => onPausePaging?.()}
+          onResumePaging={() => onResumePaging?.()}
+          ttsActive={ttsActive}
+          onStopTts={onStopTts}
+        />
       )}
 
       {/* ── Main stage: Live2D model centered ── */}
@@ -145,6 +98,8 @@ export default function StageView({
           runtime={live2dRuntime}
           canvasRef={live2dCanvasRef}
           variant="stage"
+          speaking={ttsSpeaking}
+          active={active}
         />
       </section>
 
@@ -159,8 +114,15 @@ export default function StageView({
             disabled={streaming}
             aria-label="聊天输入"
           />
-          <button type="button" style={S.voiceBtn} disabled>
-            语音
+          <button
+            type="button"
+            style={S.voiceBtn}
+            disabled={!ttsActive}
+            aria-label={ttsActive ? "停止朗读" : "语音未播放"}
+            onClick={onStopTts}
+          >
+            <VolumeX size={14} aria-hidden="true" />
+            {ttsActive ? "停止朗读" : "语音"}
           </button>
           {streaming ? (
             <button type="button" style={S.stopBtn} onClick={onStopStreaming}>
@@ -359,6 +321,10 @@ const S: Record<string, CSSProperties> = {
     outline: "none",
   },
   voiceBtn: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
     border: "1px solid rgba(172,124,141,0.2)",
     borderRadius: 999,
     padding: "0 14px",

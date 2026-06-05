@@ -59,7 +59,7 @@ export function applyStreamEvent(messageId: string, sseEvent: SseEvent, context:
   const payload = parseJson(sseEvent.data);
   const input = { messageId, sseEvent, payload, context };
 
-  if (sseEvent.event === "done") {
+  if (sseEvent.event === "reply_ready" || sseEvent.event === "done") {
     doneHandler(input);
     return;
   }

@@ -4,6 +4,7 @@ import type {
   ModelConfigResponse,
   ModelTestResponse,
   SettingsStatusResponse,
+  TtsSettingsResponse,
   VaultStatusResponse,
 } from "../../types";
 import {
@@ -12,7 +13,14 @@ import {
   mergeAgentModelStatus,
   type AgentModelDraft,
 } from "../../services/agentModelDrafts";
-import type { AsyncStatus, AutomationSettingsDraft, GlobalModelDraft, LastIndexRun, NegotiationSettingsDraft } from "./settingsTypes";
+import type {
+  AsyncStatus,
+  AutomationSettingsDraft,
+  GlobalModelDraft,
+  LastIndexRun,
+  NegotiationSettingsDraft,
+  TtsSettingsDraft,
+} from "./settingsTypes";
 
 const defaultGlobalModelDraft: GlobalModelDraft = {
   provider: "openai-compatible",
@@ -28,6 +36,28 @@ const defaultGlobalModelDraft: GlobalModelDraft = {
 const defaultNegotiationSettingsDraft: NegotiationSettingsDraft = {
   use_negotiation: true,
   max_rounds: 5,
+};
+
+const defaultTtsSettingsDraft: TtsSettingsDraft = {
+  enabled: false,
+  auto_play_assistant_reply: false,
+  auto_play_reminders: false,
+  provider: "system",
+  base_url: null,
+  model: null,
+  voice: null,
+  speed: 1,
+  volume: 1,
+  response_format: "mp3",
+  requires_api_key: false,
+  api_style: "generic",
+  auth_header_name: null,
+  request_template: null,
+  audio_json_path: null,
+  audio_encoding: "base64",
+  mime_type: null,
+  cache_enabled: false,
+  night_quiet_mode: true,
 };
 
 function defaultAutomationSettings(): AutomationSettings {
@@ -52,6 +82,32 @@ function negotiationSettingsDraftFromStatus(response: SettingsStatusResponse): N
     use_negotiation: response.automation.use_negotiation,
     max_rounds: response.automation.max_rounds,
   };
+}
+
+function ttsSettingsDraftFromStatus(response: SettingsStatusResponse): TtsSettingsDraft {
+  return response.tts_settings
+    ? {
+        enabled: response.tts_settings.enabled,
+        auto_play_assistant_reply: response.tts_settings.auto_play_assistant_reply,
+        auto_play_reminders: response.tts_settings.auto_play_reminders,
+        provider: response.tts_settings.provider,
+        base_url: response.tts_settings.base_url,
+        model: response.tts_settings.model,
+        voice: response.tts_settings.voice,
+        speed: response.tts_settings.speed,
+        volume: response.tts_settings.volume,
+        response_format: response.tts_settings.response_format,
+        requires_api_key: response.tts_settings.requires_api_key,
+        api_style: response.tts_settings.api_style,
+        auth_header_name: response.tts_settings.auth_header_name,
+        request_template: response.tts_settings.request_template,
+        audio_json_path: response.tts_settings.audio_json_path,
+        audio_encoding: response.tts_settings.audio_encoding,
+        mime_type: response.tts_settings.mime_type,
+        cache_enabled: response.tts_settings.cache_enabled,
+        night_quiet_mode: response.tts_settings.night_quiet_mode,
+      }
+    : defaultTtsSettingsDraft;
 }
 
 function globalModelDraftFromStatus(response: SettingsStatusResponse): GlobalModelDraft {
@@ -79,6 +135,8 @@ export type SettingsState = {
   globalModelTestResult?: ModelTestResponse;
   automationSettingsDraft: AutomationSettingsDraft;
   automationSettingsSaveStatus: AsyncStatus;
+  ttsSettingsDraft: TtsSettingsDraft;
+  ttsSettingsSaveStatus: AsyncStatus;
   negotiationSettingsDraft: NegotiationSettingsDraft;
   negotiationSettingsSaveStatus: AsyncStatus;
   savingAgentModelIds: Set<string>;
@@ -102,6 +160,9 @@ export type SettingsAction =
   | { type: "updateAutomationSettingsDraft"; patch: Partial<AutomationSettingsDraft> }
   | { type: "setAutomationSettingsSaveStatus"; status: AsyncStatus }
   | { type: "saveAutomationSettingsSuccess"; settings: AutomationSettings }
+  | { type: "updateTtsSettingsDraft"; patch: Partial<TtsSettingsDraft> }
+  | { type: "setTtsSettingsSaveStatus"; status: AsyncStatus }
+  | { type: "saveTtsSettingsSuccess"; settings: TtsSettingsResponse }
   | { type: "updateNegotiationSettingsDraft"; patch: Partial<NegotiationSettingsDraft> }
   | { type: "setNegotiationSettingsSaveStatus"; status: AsyncStatus }
   | { type: "saveNegotiationSettingsSuccess"; draft: NegotiationSettingsDraft }
@@ -136,6 +197,8 @@ export function createInitialSettingsState(): SettingsState {
     globalModelTestResult: undefined,
     automationSettingsDraft: defaultAutomationSettings(),
     automationSettingsSaveStatus: "idle",
+    ttsSettingsDraft: defaultTtsSettingsDraft,
+    ttsSettingsSaveStatus: "idle",
     negotiationSettingsDraft: defaultNegotiationSettingsDraft,
     negotiationSettingsSaveStatus: "idle",
     savingAgentModelIds: new Set(),
@@ -162,6 +225,8 @@ export function settingsReducer(state: SettingsState, action: SettingsAction): S
         globalModelTestResult: undefined,
         automationSettingsDraft: automationSettingsDraftFromStatus(action.response),
         automationSettingsSaveStatus: "idle",
+        ttsSettingsDraft: ttsSettingsDraftFromStatus(action.response),
+        ttsSettingsSaveStatus: "idle",
         negotiationSettingsDraft: negotiationSettingsDraftFromStatus(action.response),
         negotiationSettingsSaveStatus: "idle",
         agentModelDrafts: mergeAgentModelStatus(state.agentModelDrafts, action.response.agent_models),
@@ -179,6 +244,7 @@ export function settingsReducer(state: SettingsState, action: SettingsAction): S
           vault_configured: action.vaultConfigured,
           agent_models: state.settingsStatus?.agent_models,
           automation: state.settingsStatus?.automation || defaultAutomationSettings(),
+          tts_settings: state.settingsStatus?.tts_settings,
         },
       };
     case "updateGlobalModelDraft":
@@ -251,6 +317,49 @@ export function settingsReducer(state: SettingsState, action: SettingsAction): S
                 ...action.settings,
                 high_risk_confirmation_required: true,
               },
+            }
+          : state.settingsStatus,
+      };
+    case "updateTtsSettingsDraft":
+      return {
+        ...state,
+        ttsSettingsDraft: {
+          ...state.ttsSettingsDraft,
+          ...action.patch,
+        },
+        ttsSettingsSaveStatus: "idle",
+      };
+    case "setTtsSettingsSaveStatus":
+      return { ...state, ttsSettingsSaveStatus: action.status };
+    case "saveTtsSettingsSuccess":
+      return {
+        ...state,
+        ttsSettingsDraft: {
+          enabled: action.settings.enabled,
+          auto_play_assistant_reply: action.settings.auto_play_assistant_reply,
+          auto_play_reminders: action.settings.auto_play_reminders,
+          provider: action.settings.provider,
+          base_url: action.settings.base_url,
+          model: action.settings.model,
+          voice: action.settings.voice,
+          speed: action.settings.speed,
+          volume: action.settings.volume,
+          response_format: action.settings.response_format,
+          requires_api_key: action.settings.requires_api_key,
+          api_style: action.settings.api_style,
+          auth_header_name: action.settings.auth_header_name,
+          request_template: action.settings.request_template,
+          audio_json_path: action.settings.audio_json_path,
+          audio_encoding: action.settings.audio_encoding,
+          mime_type: action.settings.mime_type,
+          cache_enabled: action.settings.cache_enabled,
+          night_quiet_mode: action.settings.night_quiet_mode,
+        },
+        ttsSettingsSaveStatus: "success",
+        settingsStatus: state.settingsStatus
+          ? {
+              ...state.settingsStatus,
+              tts_settings: action.settings,
             }
           : state.settingsStatus,
       };

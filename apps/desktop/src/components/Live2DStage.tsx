@@ -98,6 +98,20 @@ function getLive2DStageRuntimeDirective(
   return directives[state];
 }
 
+function getLive2DSpeakingRuntimeDirective(
+  defaultMotionGroup = "",
+  defaultMotionIndex = 0,
+): Live2DStageRuntimeDirective {
+  const motionGroup = defaultMotionGroup;
+  return {
+    expression: "2mic",
+    motionGroup,
+    motionIndex: motionGroup ? defaultMotionIndex : -1,
+    petHint: "TTS speaking feedback is active.",
+    controlSummary: "TTS speaking overlay: expression 2mic with the default loop motion.",
+  };
+}
+
 function getLive2DRuntimeDiagnosticRows({
   asset,
   runtime,
@@ -199,12 +213,16 @@ export function Live2DStage({
   canvasRef,
   variant = "panel",
   petInteractions,
+  speaking = false,
+  active = true,
 }: {
   stage: Live2DStageView;
   asset: Live2DAssetInfo;
   runtime: Live2DRuntimeBoundary;
   canvasRef: RefObject<HTMLCanvasElement>;
   variant?: "panel" | "pet" | "stage";
+  speaking?: boolean;
+  active?: boolean;
   petInteractions?: {
     onPointerDown: (event: PointerEvent<HTMLElement>) => void;
     onPointerMove: (event: PointerEvent<HTMLElement>) => void;
@@ -231,7 +249,9 @@ export function Live2DStage({
   }));
   const [layoutWarning, setLayoutWarning] = useState<string | null>(null);
   const [runtimeCommand, setRuntimeCommand] = useState<Live2DStageRuntimeDirective>(() =>
-    getLive2DStageRuntimeDirective(stage.state, asset.defaultMotionGroup, asset.defaultMotionIndex),
+    speaking
+      ? getLive2DSpeakingRuntimeDirective(asset.defaultMotionGroup, asset.defaultMotionIndex)
+      : getLive2DStageRuntimeDirective(stage.state, asset.defaultMotionGroup, asset.defaultMotionIndex),
   );
   const [runtimeDiagnostics, setRuntimeDiagnostics] = useState<Live2DRendererDiagnostics | null>(null);
   const live2dRuntimeHandleRef = useRef<Live2DRuntimeHandle | null>(null);
@@ -404,7 +424,9 @@ export function Live2DStage({
   }, [asset, canvasRef, runtime.detail, runtime.status, shouldMountRenderer, variant]);
 
   useEffect(() => {
-    const command = getLive2DStageRuntimeDirective(stage.state, asset.defaultMotionGroup, asset.defaultMotionIndex);
+    const command = speaking
+      ? getLive2DSpeakingRuntimeDirective(asset.defaultMotionGroup, asset.defaultMotionIndex)
+      : getLive2DStageRuntimeDirective(stage.state, asset.defaultMotionGroup, asset.defaultMotionIndex);
     setRuntimeCommand(command);
 
     const handle = live2dRuntimeHandleRef.current;
@@ -421,16 +443,17 @@ export function Live2DStage({
     } catch (error) {
       console.warn("[Live2D] 状态指令发送失败。", {
         state: stage.state,
+        speaking,
         expression: command.expression,
         motionGroup: command.motionGroup,
         motionIndex: command.motionIndex,
         error,
       });
     }
-  }, [asset.defaultMotionGroup, asset.defaultMotionIndex, renderLifecycle.status, stage.state]);
+  }, [asset.defaultMotionGroup, asset.defaultMotionIndex, renderLifecycle.status, speaking, stage.state]);
 
   useEffect(() => {
-    if (renderLifecycle.status !== "mounted") {
+    if (!active || renderLifecycle.status !== "mounted") {
       setLayoutWarning(null);
       return;
     }
@@ -472,16 +495,18 @@ export function Live2DStage({
     };
 
     const frame = window.requestAnimationFrame(inspectCanvasLayout);
+    const layoutInspectTimer = window.setInterval(inspectCanvasLayout, 1000);
     const resizeObserver = new ResizeObserver(inspectCanvasLayout);
     resizeObserver.observe(canvas);
     window.addEventListener("resize", inspectCanvasLayout);
 
     return () => {
       window.cancelAnimationFrame(frame);
+      window.clearInterval(layoutInspectTimer);
       resizeObserver.disconnect();
       window.removeEventListener("resize", inspectCanvasLayout);
     };
-  }, [canvasRef, renderLifecycle.status]);
+  }, [active, canvasRef, renderLifecycle.status]);
 
   const lifecycleText = getLive2DRenderLifecycleText(renderLifecycle.status);
   const renderModeText = getLive2DRenderModeText(renderLifecycle.renderMode || "failed");
@@ -537,8 +562,9 @@ export function Live2DStage({
 
     return (
       <section
-        className={`panel live2d-panel live2d-panel-pet live2d-${stage.state} live2d-runtime-${runtime.status} live2d-render-${renderLifecycle.status} live2d-render-mode-${renderLifecycle.renderMode || "unknown"}`}
+        className={`panel live2d-panel live2d-panel-pet live2d-${stage.state}${speaking ? " live2d-speaking" : ""} live2d-runtime-${runtime.status} live2d-render-${renderLifecycle.status} live2d-render-mode-${renderLifecycle.renderMode || "unknown"}`}
         aria-label="桌宠模型"
+        data-live2d-speaking={speaking ? "true" : "false"}
       >
         <div
           className="live2d-pet-stage"
@@ -546,6 +572,7 @@ export function Live2DStage({
           aria-label={`桌宠模型状态：${stage.label}`}
           data-live2d-render={renderLifecycle.status}
           data-live2d-render-mode={renderLifecycle.renderMode || "unknown"}
+          data-live2d-speaking={speaking ? "true" : "false"}
         >
           <div className="live2d-runtime-host" aria-label="Live2D 运行时画布区域">
             <canvas
@@ -627,8 +654,9 @@ export function Live2DStage({
   if (variant === "stage") {
     return (
       <section
-        className={`panel live2d-panel live2d-panel-stage live2d-${stage.state} live2d-runtime-${runtime.status} live2d-render-${renderLifecycle.status} live2d-render-mode-${renderLifecycle.renderMode || "unknown"}`}
+        className={`panel live2d-panel live2d-panel-stage live2d-${stage.state}${speaking ? " live2d-speaking" : ""} live2d-runtime-${runtime.status} live2d-render-${renderLifecycle.status} live2d-render-mode-${renderLifecycle.renderMode || "unknown"}`}
         aria-label="陪伴 Live2D 模型"
+        data-live2d-speaking={speaking ? "true" : "false"}
       >
         <div
           className="live2d-stage"
@@ -636,6 +664,7 @@ export function Live2DStage({
           aria-label={`陪伴模型状态：${stage.label}`}
           data-live2d-render={renderLifecycle.status}
           data-live2d-render-mode={renderLifecycle.renderMode || "unknown"}
+          data-live2d-speaking={speaking ? "true" : "false"}
         >
           <div className="live2d-runtime-host" aria-label="Live2D 运行时画布区域">
             <canvas
@@ -699,8 +728,9 @@ export function Live2DStage({
 
   return (
     <section
-      className={`panel live2d-panel live2d-panel-${variant} live2d-${stage.state} live2d-runtime-${runtime.status} live2d-render-${renderLifecycle.status} live2d-render-mode-${renderLifecycle.renderMode || "unknown"}`}
+      className={`panel live2d-panel live2d-panel-${variant} live2d-${stage.state}${speaking ? " live2d-speaking" : ""} live2d-runtime-${runtime.status} live2d-render-${renderLifecycle.status} live2d-render-mode-${renderLifecycle.renderMode || "unknown"}`}
       aria-label="桌宠模型展示区"
+      data-live2d-speaking={speaking ? "true" : "false"}
     >
       <div className="live2d-copy">
         <p className="eyebrow">桌宠模型</p>
@@ -734,6 +764,7 @@ export function Live2DStage({
         role="img"
         aria-label={`桌宠模型状态：${stage.label}`}
         data-live2d-render={renderLifecycle.status}
+        data-live2d-speaking={speaking ? "true" : "false"}
       >
         <div className="live2d-runtime-host" aria-label="Live2D 运行时画布区域">
           <canvas

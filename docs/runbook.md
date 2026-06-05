@@ -256,7 +256,7 @@ Invoke-RestMethod http://127.0.0.1:8765/api/vaults/init `
   -Method Post `
   -Headers $headers `
   -ContentType "application/json" `
-  -Body (@{ path = "$PWD\.tmp\PetMemoryVault"; create_if_missing = $true } | ConvertTo-Json)
+  -Body (@{ path = "$PWD\.tmp\PetMemoryVault"; create_if_missing = $true; confirmed = $true } | ConvertTo-Json)
 ```
 
 ## Verification Commands

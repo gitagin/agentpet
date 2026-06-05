@@ -13,7 +13,14 @@ import type { DesktopApi } from "../../services/desktopApi";
 import { formatTaskStatus } from "../tasks/taskReducer";
 import { formatVaultStatus } from "./settingsFormatters";
 import { createInitialSettingsState, settingsReducer } from "./settingsReducer";
-import type { AutomationSettingsDraft, GlobalModelDraft, LastIndexRun, NegotiationSettingsDraft } from "./settingsTypes";
+import { broadcastTtsSettingsSaved } from "./settingsSync";
+import type {
+  AutomationSettingsDraft,
+  GlobalModelDraft,
+  LastIndexRun,
+  NegotiationSettingsDraft,
+  TtsSettingsDraft,
+} from "./settingsTypes";
 
 type Notice = {
   tone: "info" | "error" | "success";
@@ -39,6 +46,11 @@ function automationSettingsRequestFromDraft(
     use_negotiation: draft.use_negotiation,
     max_rounds: maxRounds,
   };
+}
+
+function clampFinite(value: number | undefined, fallback: number, min: number, max: number): number {
+  const candidate = typeof value === "number" && Number.isFinite(value) ? value : fallback;
+  return Math.min(max, Math.max(min, candidate));
 }
 
 export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatusLoaded }: UseSettingsOptions) {
@@ -169,6 +181,46 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
       onNotice({ tone: "error", message: describeError(error, "自动整理设置保存失败") });
     }
   }, [api, loadSettingsStatus, onNotice, state.automationSettingsDraft]);
+
+  const updateTtsSettingsDraft = useCallback((patch: Partial<TtsSettingsDraft>) => {
+    dispatch({ type: "updateTtsSettingsDraft", patch });
+  }, []);
+
+  const saveTtsSettings = useCallback(async (apiKey?: string) => {
+    const draft = state.ttsSettingsDraft;
+    const speed = clampFinite(draft.speed, 1, 0.5, 2);
+    const volume = clampFinite(draft.volume, 1, 0, 1);
+
+    dispatch({ type: "setTtsSettingsSaveStatus", status: "loading" });
+    onNotice(null);
+    try {
+      const settings = await api.saveTtsSettings({ ...draft, speed, volume });
+      const trimmedKey = apiKey?.trim();
+      if (trimmedKey) {
+        await api.saveTtsKey({ provider: settings.provider, api_key: trimmedKey });
+      }
+      const refreshed = await loadSettingsStatus({ silent: true });
+      dispatch({ type: "saveTtsSettingsSuccess", settings: refreshed?.tts_settings || settings });
+      broadcastTtsSettingsSaved();
+      onNotice({ tone: "success", message: "语音设置已保存。" });
+    } catch (error) {
+      dispatch({ type: "setTtsSettingsSaveStatus", status: "error" });
+      onNotice({ tone: "error", message: describeError(error, "语音设置保存失败") });
+    }
+  }, [api, loadSettingsStatus, onNotice, state.ttsSettingsDraft]);
+
+  const clearTtsCache = useCallback(async () => {
+    onNotice(null);
+    try {
+      const response = await api.clearTtsCache();
+      onNotice({
+        tone: "success",
+        message: `TTS cache cleared: ${response.cleared_entries} files, ${response.cleared_bytes} bytes.`,
+      });
+    } catch (error) {
+      onNotice({ tone: "error", message: describeError(error, "TTS cache clear failed") });
+    }
+  }, [api, onNotice]);
 
   const updateNegotiationSettingsDraft = useCallback((patch: Partial<NegotiationSettingsDraft>) => {
     dispatch({ type: "updateNegotiationSettingsDraft", patch });
@@ -437,6 +489,7 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
     automationSettingsDraft: state.automationSettingsDraft,
     automationSettingsSaveStatus: state.automationSettingsSaveStatus,
     bindVault,
+    clearTtsCache,
     globalModelDraft: state.globalModelDraft,
     globalModelSaveStatus: state.globalModelSaveStatus,
     globalModelTestResult: state.globalModelTestResult,
@@ -454,6 +507,7 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
     saveAutomationSettings,
     saveGlobalModel,
     saveNegotiationSettings,
+    saveTtsSettings,
     savingAgentModelIds: state.savingAgentModelIds,
     selectVaultDirectory,
     setLastIndexRun,
@@ -462,10 +516,13 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
     testAgentModelConnection,
     testGlobalModelConnection,
     testingAgentModelIds: state.testingAgentModelIds,
+    ttsSettingsDraft: state.ttsSettingsDraft,
+    ttsSettingsSaveStatus: state.ttsSettingsSaveStatus,
     updateAgentModelDraft,
     updateAutomationSettingsDraft,
     updateGlobalModelDraft,
     updateNegotiationSettingsDraft,
+    updateTtsSettingsDraft,
     vaultId: state.vaultId,
     vaultPath: state.vaultPath,
     vaultStatus: state.vaultStatus,

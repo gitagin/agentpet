@@ -136,6 +136,103 @@ def test_automation_settings_api_roundtrip(client: TestClient) -> None:
     assert status.json()["automation"] == patched.json()["automation"]
 
 
+def test_tts_settings_api_roundtrip_without_sensitive_state(client: TestClient) -> None:
+    defaults = client.get("/api/settings/tts", headers=auth())
+    assert defaults.status_code == 200
+    assert defaults.json() == {
+        "enabled": False,
+        "auto_play_assistant_reply": False,
+        "auto_play_reminders": False,
+        "provider": "system",
+        "base_url": None,
+        "model": None,
+        "voice": None,
+        "speed": 1.0,
+        "volume": 1.0,
+        "response_format": "mp3",
+        "requires_api_key": False,
+        "api_style": "generic",
+        "auth_header_name": None,
+        "request_template": None,
+        "audio_json_path": None,
+        "audio_encoding": "base64",
+        "mime_type": None,
+        "cache_enabled": False,
+        "night_quiet_mode": True,
+        "configured": False,
+        "status": "disabled",
+        "key_configured": False,
+        "key_masked": None,
+        "updated_at": None,
+    }
+
+    secret = "sk-tts-secret-should-not-persist"
+    updated = client.put(
+        "/api/settings/tts",
+        headers=auth(),
+        json={
+            "enabled": True,
+            "auto_play_assistant_reply": True,
+            "auto_play_reminders": False,
+            "provider": "system",
+            "base_url": None,
+            "model": None,
+            "voice": {
+                "id": "system-default",
+                "provider": "system",
+                "label": "System default",
+                "locale": "zh-CN",
+            },
+            "speed": 1.2,
+            "volume": 0.6,
+            "response_format": "mp3",
+            "requires_api_key": False,
+            "cache_enabled": True,
+            "night_quiet_mode": True,
+            "api_key": secret,
+        },
+    )
+    assert updated.status_code == 200
+    payload = updated.json()
+    assert payload["enabled"] is True
+    assert payload["auto_play_assistant_reply"] is True
+    assert payload["provider"] == "system"
+    assert payload["voice"]["id"] == "system-default"
+    assert payload["speed"] == 1.2
+    assert payload["volume"] == 0.6
+    assert payload["cache_enabled"] is True
+    assert payload["configured"] is True
+    assert payload["status"] == "ready"
+    assert payload["updated_at"]
+    assert "api_key" not in payload
+    assert secret not in updated.text
+
+    status = client.get("/api/settings", headers=auth())
+    assert status.status_code == 200
+    assert status.json()["tts_settings"] == payload
+
+    with sqlite3.connect(client.app.state.database.path) as conn:
+        stored = conn.execute("SELECT value FROM app_state WHERE key = 'tts_settings'").fetchone()[0]
+    stored_payload = json.loads(stored)
+    assert "api_key" not in stored_payload
+    assert secret not in stored
+
+    cloud = client.put(
+        "/api/settings/tts",
+        headers=auth(),
+        json={
+            "enabled": True,
+            "auto_play_assistant_reply": True,
+            "provider": "custom-http",
+            "base_url": "https://tts.example.test/synthesize",
+            "requires_api_key": True,
+        },
+    )
+    assert cloud.status_code == 200
+    assert cloud.json()["configured"] is False
+    assert cloud.json()["status"] == "credential_missing"
+
+
 def wait_for_file(path: Path, timeout_seconds: float = 2.0) -> Path:
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
@@ -154,7 +251,7 @@ def test_vault_bind_index_and_search_are_wired(client: TestClient, tmp_path: Pat
     bind = client.post(
         "/api/vaults/init",
         headers=auth(),
-        json={"path": str(vault), "create_if_missing": False},
+        json={"path": str(vault), "create_if_missing": False, "confirmed": True},
     )
     assert bind.status_code == 200
     vault_id = bind.json()["vault_id"]
@@ -185,7 +282,7 @@ def test_vault_status_exposes_safe_migration_summary(client: TestClient, tmp_pat
     bind = client.post(
         "/api/vaults/init",
         headers=auth(),
-        json={"path": str(vault), "create_if_missing": False},
+        json={"path": str(vault), "create_if_missing": False, "confirmed": True},
     )
     assert bind.status_code == 200
     vault_id = bind.json()["vault_id"]
@@ -217,7 +314,7 @@ def test_wiki_diagnostics_queue_api_is_read_only_and_auth_required(client: TestC
     bind = client.post(
         "/api/vaults/init",
         headers=auth(),
-        json={"path": str(vault), "create_if_missing": False},
+        json={"path": str(vault), "create_if_missing": False, "confirmed": True},
     )
     assert bind.status_code == 200
 
@@ -260,7 +357,7 @@ def test_companion_consolidation_and_context_report_apis_are_wired(
     bind = client.post(
         "/api/vaults/init",
         headers=auth(),
-        json={"path": str(vault), "create_if_missing": False},
+        json={"path": str(vault), "create_if_missing": False, "confirmed": True},
     )
     assert bind.status_code == 200
     vault_id = bind.json()["vault_id"]
@@ -344,7 +441,7 @@ def test_retrospective_apis_aggregate_local_assets_and_write_reversible_report(
     init = client.post(
         "/api/vaults/init",
         headers=auth(),
-        json={"path": str(vault), "create_if_missing": True},
+        json={"path": str(vault), "create_if_missing": True, "confirmed": True},
     )
     assert init.status_code == 200
     vault_id = init.json()["vault_id"]
@@ -436,14 +533,14 @@ def test_vault_status_recovers_persisted_active_vault_after_restart(
     first = client.post(
         "/api/vaults/init",
         headers=auth(),
-        json={"path": str(first_vault), "create_if_missing": True},
+        json={"path": str(first_vault), "create_if_missing": True, "confirmed": True},
     )
     assert first.status_code == 200
 
     second = client.post(
         "/api/vaults/init",
         headers=auth(),
-        json={"path": str(second_vault), "create_if_missing": True},
+        json={"path": str(second_vault), "create_if_missing": True, "confirmed": True},
     )
     assert second.status_code == 200
     second_payload = second.json()
@@ -467,7 +564,7 @@ def test_memory_proposal_create_confirm_and_reject_are_wired(
     response = client.post(
         "/api/vaults/init",
         headers=auth(),
-        json={"path": str(vault), "create_if_missing": True},
+        json={"path": str(vault), "create_if_missing": True, "confirmed": True},
     )
     assert response.status_code == 200
 
@@ -515,7 +612,7 @@ def test_wiki_page_api_writes_under_wiki_and_lists_pages(client: TestClient, tmp
     response = client.post(
         "/api/vaults/init",
         headers=auth(),
-        json={"path": str(vault), "create_if_missing": True},
+        json={"path": str(vault), "create_if_missing": True, "confirmed": True},
     )
     assert response.status_code == 200
 
@@ -546,7 +643,7 @@ def test_memory_graph_fact_api_actions_are_wired(client: TestClient, tmp_path: P
     client.post(
         "/api/vaults/init",
         headers=auth(),
-        json={"path": str(vault), "create_if_missing": True},
+        json={"path": str(vault), "create_if_missing": True, "confirmed": True},
     )
     enable_automation(client, long_term_memory=True)
 
@@ -625,7 +722,7 @@ def test_local_asset_stats_api_is_local_read_only_and_no_data_safe(
     init = client.post(
         "/api/vaults/init",
         headers=auth(),
-        json={"path": str(vault), "create_if_missing": True},
+        json={"path": str(vault), "create_if_missing": True, "confirmed": True},
     )
     assert init.status_code == 200
     vault_id = init.json()["vault_id"]
@@ -744,7 +841,7 @@ def test_structured_diary_memory_api_search_detail_and_source_scope_are_wired(
     init = client.post(
         "/api/vaults/init",
         headers=auth(),
-        json={"path": str(vault), "create_if_missing": True},
+        json={"path": str(vault), "create_if_missing": True, "confirmed": True},
     )
     assert init.status_code == 200
     vault_id = init.json()["vault_id"]
@@ -813,7 +910,7 @@ def test_tasks_and_chat_sse_are_wired(client: TestClient, tmp_path: Path) -> Non
     client.post(
         "/api/vaults/init",
         headers=auth(),
-        json={"path": str(vault), "create_if_missing": True},
+        json={"path": str(vault), "create_if_missing": True, "confirmed": True},
     )
     disable_negotiation(client)
 
@@ -997,7 +1094,7 @@ def test_chat_stream_auto_archives_daily_memory_and_records_action(
     bind = client.post(
         "/api/vaults/init",
         headers=auth(),
-        json={"path": str(vault), "create_if_missing": False},
+        json={"path": str(vault), "create_if_missing": False, "confirmed": True},
     )
     assert bind.status_code == 200
     enable_automation(client, chat_diary=True)
@@ -1031,6 +1128,9 @@ def test_chat_stream_auto_archives_daily_memory_and_records_action(
         body = "".join(stream.iter_text())
 
     events = parse_sse_events(body)
+    event_names_for_order = event_names(events)
+    assert event_names_for_order.index("reply_ready") < event_names_for_order.index("agent_action")
+    assert event_names_for_order[-1] == "done"
     assert "agent_action" in event_names(events)
     action_event = next(event for event in events if event["event"] == "agent_action")
     action_payload = json.loads(action_event["data"])
@@ -1067,7 +1167,7 @@ def test_chat_stream_auto_summarizes_useful_answer_to_wiki(
     bind = client.post(
         "/api/vaults/init",
         headers=auth(),
-        json={"path": str(vault), "create_if_missing": False},
+        json={"path": str(vault), "create_if_missing": False, "confirmed": True},
     )
     assert bind.status_code == 200
     enable_automation(client, chat_diary=True, wiki_organize=True)
@@ -1142,7 +1242,7 @@ def test_retrieval_chat_stream_emits_citation_event(client: TestClient, tmp_path
     bind = client.post(
         "/api/vaults/init",
         headers=auth(),
-        json={"path": str(vault), "create_if_missing": False},
+        json={"path": str(vault), "create_if_missing": False, "confirmed": True},
     )
     assert bind.status_code == 200
     indexed = client.post(f"/api/vaults/{bind.json()['vault_id']}/index", headers=auth())
@@ -1167,7 +1267,7 @@ def test_plain_chat_stream_answers_without_citation(client: TestClient, tmp_path
     client.post(
         "/api/vaults/init",
         headers=auth(),
-        json={"path": str(vault), "create_if_missing": True},
+        json={"path": str(vault), "create_if_missing": True, "confirmed": True},
     )
 
     events = stream_chat(client, "我喜欢什么")
@@ -1188,7 +1288,7 @@ def test_chat_done_auto_writes_daily_memory_file(client: TestClient, tmp_path: P
     client.post(
         "/api/vaults/init",
         headers=auth(),
-        json={"path": str(vault), "create_if_missing": True},
+        json={"path": str(vault), "create_if_missing": True, "confirmed": True},
     )
     enable_automation(client, chat_diary=True)
 
@@ -1222,7 +1322,7 @@ def test_chat_done_auto_writes_long_term_memory_for_explicit_preference(
     client.post(
         "/api/vaults/init",
         headers=auth(),
-        json={"path": str(vault), "create_if_missing": True},
+        json={"path": str(vault), "create_if_missing": True, "confirmed": True},
     )
     enable_automation(client, long_term_memory=True)
 
@@ -1245,7 +1345,7 @@ def test_chat_auto_memory_records_low_value_wiki_skip_without_raw_content(
     client.post(
         "/api/vaults/init",
         headers=auth(),
-        json={"path": str(vault), "create_if_missing": True},
+        json={"path": str(vault), "create_if_missing": True, "confirmed": True},
     )
     enable_automation(client, chat_diary=True, wiki_organize=True)
 
@@ -1294,7 +1394,7 @@ def test_empty_memory_chat_stream_still_answers_naturally(client: TestClient, tm
     client.post(
         "/api/vaults/init",
         headers=auth(),
-        json={"path": str(vault), "create_if_missing": True},
+        json={"path": str(vault), "create_if_missing": True, "confirmed": True},
     )
 
     events = stream_chat(client, "你记得我喜欢什么吗")
@@ -1314,7 +1414,7 @@ def test_task_chat_stream_emits_task_event(client: TestClient, tmp_path: Path) -
     client.post(
         "/api/vaults/init",
         headers=auth(),
-        json={"path": str(vault), "create_if_missing": True},
+        json={"path": str(vault), "create_if_missing": True, "confirmed": True},
     )
     disable_negotiation(client)
 
@@ -1336,7 +1436,7 @@ def test_sensitive_memory_chat_stream_rejects_without_proposal(
     client.post(
         "/api/vaults/init",
         headers=auth(),
-        json={"path": str(vault), "create_if_missing": True},
+        json={"path": str(vault), "create_if_missing": True, "confirmed": True},
     )
     disable_negotiation(client)
     secret = "sk-chat-memory-secret-1234567890"

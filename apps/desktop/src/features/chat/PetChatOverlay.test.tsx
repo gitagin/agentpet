@@ -20,12 +20,18 @@ function renderOverlay({
   input = "",
   inputVisible = true,
   connected = true,
+  streaming = false,
+  ttsActive = false,
+  onStopTts = vi.fn(),
 }: {
   bubble?: PetBubbleState;
   mode?: PetInputMode;
   input?: string;
   inputVisible?: boolean;
   connected?: boolean;
+  streaming?: boolean;
+  ttsActive?: boolean;
+  onStopTts?: () => void;
 } = {}) {
   const onModeChange = vi.fn();
   const onSubmit = vi.fn();
@@ -39,7 +45,7 @@ function renderOverlay({
       mode={mode}
       modes={petInputModes}
       connected={connected}
-      streaming={false}
+      streaming={streaming}
       onPreviousPage={vi.fn()}
       onAdvancePage={vi.fn()}
       onPausePaging={vi.fn()}
@@ -52,10 +58,12 @@ function renderOverlay({
         onSubmit();
       }}
       onStopStreaming={vi.fn()}
+      ttsActive={ttsActive}
+      onStopTts={onStopTts}
     />,
   );
 
-  return { ...view, onModeChange, onSubmit };
+  return { ...view, onModeChange, onSubmit, onStopTts };
 }
 
 describe("PetChatOverlay", () => {
@@ -117,5 +125,28 @@ describe("PetChatOverlay", () => {
 
     expect(container.querySelector(".pet-agent-bubble")).toHaveClass("has-pagination");
     expect(screen.getByText("1/3")).toBeInTheDocument();
+  });
+
+  it("shows a lightweight stop button while a reply bubble is being read", () => {
+    const onStopTts = vi.fn();
+    const { container } = renderOverlay({
+      bubble: {
+        visible: true,
+        title: "",
+        message: "A reply is being spoken.",
+        tone: "reply",
+        phase: "complete",
+      },
+      inputVisible: false,
+      ttsActive: true,
+      onStopTts,
+    });
+
+    expect(container.querySelector(".pet-agent-bubble")).toHaveClass("has-header");
+    const stopButton = container.querySelector(".pet-agent-bubble-stop-button");
+    expect(stopButton).toBeInTheDocument();
+    fireEvent.click(stopButton!);
+
+    expect(onStopTts).toHaveBeenCalledTimes(1);
   });
 });

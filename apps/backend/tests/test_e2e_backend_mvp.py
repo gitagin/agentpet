@@ -133,7 +133,7 @@ def test_vault_init_creates_and_binds_temp_vault(client: TestClient, tmp_path: P
     response = client.post(
         "/api/vaults/init",
         headers=AUTH_HEADERS,
-        json={"path": str(vault_root), "create_if_missing": True},
+        json={"path": str(vault_root), "create_if_missing": True, "confirmed": True},
     )
     skip_if_unwired(response, "vault init")
 
@@ -166,7 +166,7 @@ def test_markdown_index_then_memory_search_returns_citation(
     init_response = client.post(
         "/api/vaults/init",
         headers=AUTH_HEADERS,
-        json={"path": str(vault_root), "create_if_missing": False},
+        json={"path": str(vault_root), "create_if_missing": False, "confirmed": True},
     )
     skip_if_unwired(init_response, "vault init")
     assert init_response.status_code in {200, 201}
@@ -312,7 +312,7 @@ def test_memory_proposal_create_confirm_and_reject_behavior(
     init_response = client.post(
         "/api/vaults/init",
         headers=AUTH_HEADERS,
-        json={"path": str(vault_root), "create_if_missing": False},
+        json={"path": str(vault_root), "create_if_missing": False, "confirmed": True},
     )
     skip_if_unwired(init_response, "vault init")
     assert init_response.status_code in {200, 201}

@@ -38,7 +38,7 @@ def _bind_vault(client: TestClient, vault: Path) -> str:
     response = client.post(
         "/api/vaults/init",
         headers=_auth(),
-        json={"path": str(vault), "create_if_missing": True},
+        json={"path": str(vault), "create_if_missing": True, "confirmed": True},
     )
     assert response.status_code == 200
     return str(response.json()["vault_id"])
@@ -343,7 +343,7 @@ def test_vault_init_rejects_file_path_target(client: TestClient, tmp_path: Path)
     response = client.post(
         "/api/vaults/init",
         headers=_auth(),
-        json={"path": str(not_a_directory), "create_if_missing": False},
+        json={"path": str(not_a_directory), "create_if_missing": False, "confirmed": True},
     )
 
     assert response.status_code == 400

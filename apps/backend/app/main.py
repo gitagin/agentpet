@@ -78,7 +78,7 @@ def create_app() -> FastAPI:
         ],
         allow_origin_regex=r"^file://.*$",
         allow_credentials=False,
-        allow_methods=["GET", "POST", "PUT", "PATCH", "OPTIONS"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type", "Accept", "X-Request-ID"],
     )
     app.state.database = database
