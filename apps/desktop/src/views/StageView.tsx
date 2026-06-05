@@ -1,6 +1,5 @@
 import { useState, useCallback } from "react";
 import type { CSSProperties, FormEvent, RefObject } from "react";
-import { VolumeX } from "lucide-react";
 import { Live2DStage } from "../components/Live2DStage";
 import type { Live2DStageView } from "../components/Live2DStage";
 import type { Live2DAssetInfo, Live2DRuntimeBoundary } from "../services/live2dRuntime";
@@ -22,9 +21,7 @@ type StageViewProps = {
   onAdvancePage?: () => void;
   onPausePaging?: () => void;
   onResumePaging?: () => void;
-  ttsActive?: boolean;
   ttsSpeaking?: boolean;
-  onStopTts?: () => void;
   active?: boolean;
 };
 
@@ -44,9 +41,7 @@ export default function StageView({
   onAdvancePage,
   onPausePaging,
   onResumePaging,
-  ttsActive = false,
   ttsSpeaking = false,
-  onStopTts,
   active = true,
 }: StageViewProps) {
   const [chatInput, setChatInput] = useState("");
@@ -84,8 +79,6 @@ export default function StageView({
           onAdvancePage={() => onAdvancePage?.()}
           onPausePaging={() => onPausePaging?.()}
           onResumePaging={() => onResumePaging?.()}
-          ttsActive={ttsActive}
-          onStopTts={onStopTts}
         />
       )}
 
@@ -114,16 +107,6 @@ export default function StageView({
             disabled={streaming}
             aria-label="聊天输入"
           />
-          <button
-            type="button"
-            style={S.voiceBtn}
-            disabled={!ttsActive}
-            aria-label={ttsActive ? "停止朗读" : "语音未播放"}
-            onClick={onStopTts}
-          >
-            <VolumeX size={14} aria-hidden="true" />
-            {ttsActive ? "停止朗读" : "语音"}
-          </button>
           {streaming ? (
             <button type="button" style={S.stopBtn} onClick={onStopStreaming}>
               停止
@@ -319,21 +302,6 @@ const S: Record<string, CSSProperties> = {
     fontFamily: "inherit",
     fontSize: 13.5,
     outline: "none",
-  },
-  voiceBtn: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    border: "1px solid rgba(172,124,141,0.2)",
-    borderRadius: 999,
-    padding: "0 14px",
-    color: "var(--muted, #7a6670)",
-    background: "rgba(255,255,255,0.68)",
-    cursor: "default",
-    fontSize: 13,
-    fontWeight: 600,
-    whiteSpace: "nowrap",
   },
   sendBtn: {
     border: "none",

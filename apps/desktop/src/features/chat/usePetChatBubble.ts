@@ -599,8 +599,8 @@ export function usePetChatBubble({
     }
 
     const message = streamReceivedEventRef.current
-      ? "回复流已经结束，但没有收到可显示的模型回复。"
-      : "回复流已经结束，但没有收到任何事件。";
+      ? "这次没有收到可显示的回复。"
+      : "这次没有收到回复。";
     failStream(messageId, "没有收到回复", message);
   }
 

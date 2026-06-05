@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { ChatMessage } from "../types";
@@ -37,6 +37,47 @@ function appearsBefore(first: Element, second: Element) {
 }
 
 describe("ChatWindowView", () => {
+  it("exposes focused actions and allows an empty daily review", () => {
+    const onModeChange = vi.fn();
+    const onSend = vi.fn((event) => event.preventDefault());
+    const { container, rerender } = render(
+      <ChatWindowView
+        input=""
+        messages={[]}
+        connected
+        streaming={false}
+        mode="chat"
+        onModeChange={onModeChange}
+        onInputChange={vi.fn()}
+        onSend={onSend}
+        onStopStreaming={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("tab", { name: "切换到新任务模式" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "切换到今日复盘模式" }));
+    expect(onModeChange).toHaveBeenCalledWith("review");
+
+    rerender(
+      <ChatWindowView
+        input=""
+        messages={[]}
+        connected
+        streaming={false}
+        mode="review"
+        onModeChange={onModeChange}
+        onInputChange={vi.fn()}
+        onSend={onSend}
+        onStopStreaming={vi.fn()}
+      />,
+    );
+
+    fireEvent.submit(container.querySelector(".chat-form") as HTMLFormElement);
+
+    expect(onSend).toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "复盘" })).not.toBeDisabled();
+  });
+
   it("keeps first-use onboarding first for a blank uninitialized chat", () => {
     const { container } = renderChatWindow();
 

@@ -45,10 +45,10 @@ export function taskHandler({ messageId, payload, context }: StreamHandlerInput,
       tone: "reminder",
     });
     petChat.scheduleStreamWatchdog(
-      "等待回复内容",
-      "提醒已记录，正在等待模型生成最终回复。",
-      12000,
-      () => petChat.failStream(messageId, "模型回复超时", "提醒已记录，但模型长时间没有返回最终回复。"),
+      "还在想",
+      "提醒已记录，这次需要多等一会儿。",
+      14000,
+      () => petChat.failStream(messageId, "没有等到回复", "提醒已记录，但这次没有等到可显示的回复。"),
     );
   }
 }

@@ -62,6 +62,7 @@ import { ChatMessageList } from "./features/chat/ChatMessageList";
 import { PetChatOverlay } from "./features/chat/PetChatOverlay";
 import {
   buildPetInputIntentMessage,
+  getPetInputModeOption,
   normalizePetInputMode,
   petInputModes,
   type PetInputMode,
@@ -100,6 +101,9 @@ type AsyncStatus = "idle" | "loading" | "success" | "empty" | "error";
 type PetShortcutMotion = "idle" | "opening" | "closing";
 type FirstUseOnboardingStatus = "unknown" | "pending" | "completed";
 type PetEntryHintStatus = "unknown" | "pending" | "completed";
+type SendChatTextOptions = {
+  displayText?: string;
+};
 
 type CoreWorkflowItem = {
   label: string;
@@ -116,6 +120,15 @@ const firstUseOnboardingStorageKey = "agent-pet.first-use-onboarding";
 const firstUseOnboardingCompletedValue = "completed:v1";
 const petEntryHintStorageKey = "agent-pet.pet-entry-hint";
 const petEntryHintCompletedValue = "completed:v1";
+
+function displayTextForInputMode(mode: PetInputMode, rawText: string): string {
+  const text = rawText.trim();
+  if (mode === "chat") {
+    return text;
+  }
+  const label = getPetInputModeOption(mode).label;
+  return text ? `${label}：${text}` : label;
+}
 
 function detectDesktopWindowMode(): DesktopWindowMode {
   const mode = window.location.hash.replace("#/", "").replace("#", "") || "control";
@@ -532,6 +545,7 @@ function App() {
   );
   const petTtsPlaybackStartRef = useRef<(item: TtsPlaybackItem) => void>(() => undefined);
   const petTtsPlaybackEndRef = useRef<(item: TtsPlaybackItem, status: TtsProviderPlaybackStatus) => void>(() => undefined);
+  const previousTtsWindowModeRef = useRef<DesktopWindowMode | null>(null);
   const ttsQueue = useTtsPlaybackQueue({
     providers: ttsProviders,
     onPlaybackStart: (item) => petTtsPlaybackStartRef.current(item),
@@ -576,6 +590,38 @@ function App() {
   });
   petTtsPlaybackStartRef.current = petChat.handleTtsPlaybackStart || (() => undefined);
   petTtsPlaybackEndRef.current = petChat.handleTtsPlaybackEnd || (() => undefined);
+
+  useEffect(() => {
+    const previousMode = previousTtsWindowModeRef.current;
+    if (previousMode && previousMode !== windowMode && ttsActive) {
+      ttsQueue.stop("window_mode_changed");
+    }
+    previousTtsWindowModeRef.current = windowMode;
+  }, [ttsActive, ttsQueue.stop, windowMode]);
+
+  useEffect(() => {
+    const stopIfActive = (reason: string) => {
+      if (ttsQueue.state.status === "synthesizing" || ttsQueue.state.status === "playing") {
+        ttsQueue.stop(reason);
+      }
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        stopIfActive("window_hidden");
+      }
+    };
+    const handlePageHide = () => stopIfActive("window_hidden");
+    const handleBeforeUnload = () => stopIfActive("window_unload");
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("pagehide", handlePageHide);
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("pagehide", handlePageHide);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [ttsQueue.state.status, ttsQueue.stop]);
 
   useEffect(() => {
     document.body.dataset.windowMode = windowMode;
@@ -771,11 +817,16 @@ function App() {
     return () => abort.abort();
   }, [loadVaultStatus, sidecarStatus?.state, sidecarStatus?.updatedAt]);
 
-  async function sendChatText(rawText: string, clearInput: () => void): Promise<boolean> {
+  async function sendChatText(
+    rawText: string,
+    clearInput: () => void,
+    options: SendChatTextOptions = {},
+  ): Promise<boolean> {
     const text = rawText.trim();
     if (!text || streaming) {
       return false;
     }
+    const displayText = options.displayText?.trim() || text;
     if (agentActionsStatus !== "loading") {
       void loadAgentActions({ silent: true });
     }
@@ -783,7 +834,7 @@ function App() {
     const userMessage: ChatMessage = {
       id: crypto.randomUUID(),
       role: "user",
-      content: text,
+      content: displayText,
       status: "completed",
     };
     const assistantId = crypto.randomUUID();
@@ -802,15 +853,15 @@ function App() {
     setNotice(null);
     petChat.resetStreamState();
     petChat.showBubble({
-      title: "正在发送",
-      message: "我正在把你的话交给后端。",
+      title: "",
+      message: "我在想。",
       tone: "thinking",
     });
     petChat.scheduleStreamWatchdog(
-      "请求仍在处理中",
-      "后端还没有返回回复流地址，可能正在启动或等待模型服务。",
-      8000,
-      () => petChat.failStream(assistantId, "请求超时", "后端长时间没有返回回复流地址，本次请求已停止。"),
+      "还在想",
+      "这次需要多等一会儿。",
+      14000,
+      () => petChat.failStream(assistantId, "没有等到回复", "这次没有等到可显示的回复，本轮已停止。"),
     );
 
     const abort = new AbortController();
@@ -830,16 +881,11 @@ function App() {
           message.id === assistantId ? { ...message, agent_run_id: accepted.agent_run_id } : message,
         ),
       );
-      petChat.showBubble({
-        title: "正在连接回复流",
-        message: "后端已接收请求，我正在等待实时回复。",
-        tone: "thinking",
-      });
       petChat.scheduleStreamWatchdog(
-        "回复流连接较慢",
-        "后端已创建会话，但回复流还没有打开，请再等一下。",
-        8000,
-        () => petChat.failStream(assistantId, "回复流超时", "后端已接收请求，但长时间没有打开回复流。"),
+        "还在想",
+        "这次需要多等一会儿。",
+        14000,
+        () => petChat.failStream(assistantId, "没有等到回复", "这次没有等到可显示的回复，本轮已停止。"),
       );
 
       await fetchSseStream(
@@ -850,16 +896,11 @@ function App() {
             petChat.streamOpenedRef.current = true;
             petChat.clearStreamWatchdogTimer();
             if (!petChat.replyStartedRef.current && !petChat.streamReceivedEventRef.current) {
-              petChat.showBubble({
-                title: "等待回复",
-                message: "回复流已连接，我在等模型返回第一段内容。",
-                tone: "thinking",
-              });
               petChat.scheduleStreamWatchdog(
-                "仍在等待模型",
-                "后端连接正常，但模型还没有返回第一段回复。",
-                12000,
-                () => petChat.failStream(assistantId, "模型回复超时", "回复流已连接，但模型长时间没有返回可显示内容。"),
+                "还在想",
+                "这次需要多等一会儿。",
+                14000,
+                () => petChat.failStream(assistantId, "没有等到回复", "这次没有等到可显示的回复，本轮已停止。"),
               );
             }
           },
@@ -943,7 +984,9 @@ function App() {
 
   async function sendPetMessage(event: FormEvent) {
     event.preventDefault();
-    await sendChatText(buildPetInputIntentMessage(petInputMode, petChat.input), () => petChat.setInput(""));
+    await sendChatText(buildPetInputIntentMessage(petInputMode, petChat.input), () => petChat.setInput(""), {
+      displayText: displayTextForInputMode(petInputMode, petChat.input),
+    });
   }
 
   async function submitFirstUseOnboarding(event: FormEvent) {
@@ -957,7 +1000,7 @@ function App() {
       return;
     }
     setSubmittingFirstUseOnboarding(true);
-    const completed = await sendChatText(message, () => undefined);
+    const completed = await sendChatText(message, () => undefined, { displayText: "首次偏好整理" });
     setSubmittingFirstUseOnboarding(false);
     if (!completed) {
       return;
@@ -1758,9 +1801,7 @@ function App() {
       onAdvancePage={petChat.advancePageManually}
       onPausePaging={petChat.pausePaging}
       onResumePaging={petChat.resumePaging}
-      ttsActive={ttsActive}
       ttsSpeaking={ttsSpeaking}
-      onStopTts={() => ttsQueue.stop("user_stopped_tts")}
       active={!isStageHostWindow || windowMode === "stage"}
     />
   );
@@ -1775,10 +1816,15 @@ function App() {
           messages={messages}
           connected={hasConnection}
           streaming={streaming}
+          mode={petInputMode}
+          modes={petInputModes}
           onInputChange={setControlInput}
+          onModeChange={setPetInputMode}
           onSend={(event) => {
             event.preventDefault();
-            void sendChatText(controlInput, () => setControlInput(""));
+            void sendChatText(buildPetInputIntentMessage(petInputMode, controlInput), () => setControlInput(""), {
+              displayText: displayTextForInputMode(petInputMode, controlInput),
+            });
           }}
           onStopStreaming={stopStreaming}
           revertingActionIds={revertingAgentActionIds}
@@ -1845,10 +1891,15 @@ function App() {
         messages={messages}
         connected={hasConnection}
         streaming={streaming}
+        mode={petInputMode}
+        modes={petInputModes}
         onInputChange={setControlInput}
+        onModeChange={setPetInputMode}
         onSend={(event) => {
           event.preventDefault();
-          void sendChatText(controlInput, () => setControlInput(""));
+          void sendChatText(buildPetInputIntentMessage(petInputMode, controlInput), () => setControlInput(""), {
+            displayText: displayTextForInputMode(petInputMode, controlInput),
+          });
         }}
         onStopStreaming={stopStreaming}
         revertingActionIds={revertingAgentActionIds}
@@ -1965,8 +2016,6 @@ function App() {
           onInputClose={() => petChat.setInputVisible(false)}
           onSubmit={sendPetMessage}
           onStopStreaming={stopStreaming}
-          ttsActive={ttsActive}
-          onStopTts={() => ttsQueue.stop("user_stopped_tts")}
         />
         <nav
           className={`pet-shortcut-bar${petShortcutsVisible ? " is-visible" : ""}`}

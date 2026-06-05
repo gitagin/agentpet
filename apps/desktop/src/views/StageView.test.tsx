@@ -1,5 +1,5 @@
 import { createRef } from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import StageView from "./StageView";
@@ -56,7 +56,7 @@ const live2dAsset: Live2DAssetInfo = {
 
 function renderStageView(
   bubble: PetBubbleState,
-  options: { active?: boolean; ttsActive?: boolean; ttsSpeaking?: boolean; onStopTts?: () => void } = {},
+  options: { active?: boolean; ttsSpeaking?: boolean } = {},
 ) {
   return render(
     <StageView
@@ -72,9 +72,7 @@ function renderStageView(
       onAdvancePage={vi.fn()}
       onPausePaging={vi.fn()}
       onResumePaging={vi.fn()}
-      ttsActive={options.ttsActive}
       ttsSpeaking={options.ttsSpeaking}
-      onStopTts={options.onStopTts}
       active={options.active}
     />,
   );
@@ -93,24 +91,25 @@ describe("StageView", () => {
       canPageForward: true,
     });
 
-    expect(container.querySelector(".stage-agent-bubble")).toHaveClass("pet-agent-bubble", "has-pagination");
+    expect(container.querySelector(".stage-agent-bubble")).toHaveClass("pet-agent-bubble", "no-header");
     expect(container.querySelector(".stage-bubble")).not.toBeInTheDocument();
-    expect(screen.getByText("1/3")).toBeInTheDocument();
+    expect(screen.queryByText("1/3")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "上一页回复" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "下一页回复" })).not.toBeInTheDocument();
+    expect(screen.getByText("Paged stage reply")).toBeInTheDocument();
   });
 
-  it("lets users stop active TTS playback from the stage footer", () => {
-    const onStopTts = vi.fn();
+  it("does not render a manual TTS stop control in the stage footer", () => {
     renderStageView({
       visible: false,
       title: "",
       message: "",
       tone: "thinking",
       phase: "idle",
-    }, { ttsActive: true, onStopTts });
+    }, { ttsSpeaking: true });
 
-    fireEvent.click(screen.getByRole("button", { name: "停止朗读" }));
-
-    expect(onStopTts).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: "停止朗读" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "语音未播放" })).not.toBeInTheDocument();
   });
 
   it("passes active TTS playback state to the Live2D stage", () => {
@@ -120,7 +119,7 @@ describe("StageView", () => {
       message: "",
       tone: "thinking",
       phase: "idle",
-    }, { ttsActive: true, ttsSpeaking: true });
+    }, { ttsSpeaking: true });
 
     expect(screen.getByLabelText("mock live2d stage")).toHaveAttribute("data-speaking", "true");
   });
@@ -132,7 +131,7 @@ describe("StageView", () => {
       message: "",
       tone: "thinking",
       phase: "idle",
-    }, { ttsActive: true, ttsSpeaking: false });
+    }, { ttsSpeaking: false });
 
     expect(screen.getByLabelText("mock live2d stage")).toHaveAttribute("data-speaking", "false");
   });

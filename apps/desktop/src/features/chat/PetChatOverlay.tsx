@@ -31,8 +31,6 @@ type PetChatOverlayProps = {
   onInputClose: () => void;
   onSubmit: (event: FormEvent) => void;
   onStopStreaming: () => void;
-  ttsActive?: boolean;
-  onStopTts?: () => void;
 };
 
 function renderPetInputModeIcon(mode: PetInputMode) {
@@ -69,8 +67,6 @@ export function PetChatOverlay({
   onInputClose,
   onSubmit,
   onStopStreaming,
-  ttsActive = false,
-  onStopTts,
 }: PetChatOverlayProps) {
   const activeMode = modes.find((option) => option.id === mode) ?? modes[0];
 
@@ -82,8 +78,6 @@ export function PetChatOverlay({
         onAdvancePage={onAdvancePage}
         onPausePaging={onPausePaging}
         onResumePaging={onResumePaging}
-        ttsActive={ttsActive}
-        onStopTts={onStopTts}
       />
       {inputVisible ? (
         <form

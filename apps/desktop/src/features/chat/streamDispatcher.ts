@@ -203,16 +203,11 @@ function applyTextOrCitationEvent({ messageId, sseEvent, payload, context }: Str
     petChat.assistantReplyRef.current = `${petChat.assistantReplyRef.current}${token}`;
     petChat.setReplyPagesFromText(petChat.assistantReplyRef.current, { preserveCurrentPage: true });
   } else if (citations?.length && !petChat.replyStartedRef.current) {
-    petChat.showBubble({
-      title: "找到记忆线索",
-      message: citations[0]?.relative_path ? `参考：${citations[0].relative_path}` : "我正在引用本地记忆回答。",
-      tone: "tool",
-    });
     petChat.scheduleStreamWatchdog(
-      "等待回复内容",
-      "已经找到参考内容，正在等待模型生成最终回复。",
-      12000,
-      () => petChat.failStream(messageId, "模型回复超时", "已经找到参考内容，但模型长时间没有返回最终回复。"),
+      "还在想",
+      "这次需要多等一会儿。",
+      14000,
+      () => petChat.failStream(messageId, "没有等到回复", "这次没有等到可显示的回复，本轮已停止。"),
     );
   }
   setMessages((current) =>

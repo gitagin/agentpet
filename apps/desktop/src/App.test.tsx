@@ -8,6 +8,8 @@ import type { DesktopSidecarStatus } from "./types";
 import type { Live2DAssetInfo, Live2DRuntimeBoundary } from "./services/live2dRuntime";
 
 const mockPetShowInput = vi.hoisted(() => vi.fn());
+const mockTtsStop = vi.hoisted(() => vi.fn());
+const mockTtsQueueStatus = vi.hoisted(() => ({ current: "idle" }));
 const live2dStageRenderProps = vi.hoisted(() => [] as Array<{
   variant: "panel" | "pet" | "stage";
   canvasRef: unknown;
@@ -42,6 +44,28 @@ vi.mock("./components/Live2DStage", () => ({
 
 vi.mock("./features/chat/PetChatOverlay", () => ({
   PetChatOverlay: () => <section aria-label="mock pet chat overlay" />,
+}));
+
+vi.mock("./features/tts", () => ({
+  createBackendTtsProvider: vi.fn(() => ({ id: "custom-http" })),
+  createMockTtsProvider: vi.fn(() => ({ id: "mock" })),
+  createSystemTtsProvider: vi.fn(() => ({ id: "system" })),
+  useTtsPlaybackQueue: () => ({
+    state: {
+      status: mockTtsQueueStatus.current,
+      current: null,
+      queue: [],
+      error: null,
+      volume: 1,
+      updatedAt: null,
+    },
+    enqueue: vi.fn(),
+    play: vi.fn(),
+    stop: mockTtsStop,
+    cancelMessage: vi.fn(),
+    clear: vi.fn(),
+    setVolume: vi.fn(),
+  }),
 }));
 
 vi.mock("./features/connection/ConnectionPanel", () => ({
@@ -336,6 +360,7 @@ describe("App", () => {
     window.location.hash = "";
     delete window.agentDesktop;
     sessionStorage.clear();
+    mockTtsQueueStatus.current = "idle";
     live2dStageRenderProps.length = 0;
     vi.clearAllMocks();
   });
@@ -545,6 +570,45 @@ describe("App", () => {
     expect(panelRef).not.toBe(petRef);
     expect(panelRef).not.toBe(stageRef);
     expect(petRef).not.toBe(stageRef);
+  });
+
+  it("stops active TTS when the renderer document is hidden", async () => {
+    mockTtsQueueStatus.current = "playing";
+    const visibilitySpy = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+
+    try {
+      render(<App />);
+      expect(await screen.findByLabelText("mock panel stage")).toBeInTheDocument();
+
+      act(() => {
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+
+      expect(mockTtsStop).toHaveBeenCalledWith("window_hidden");
+    } finally {
+      visibilitySpy.mockRestore();
+    }
+  });
+
+  it("stops active TTS when the stage window route changes", async () => {
+    mockTtsQueueStatus.current = "playing";
+    window.location.hash = "#stage";
+    window.agentDesktop = {
+      platform: "win32",
+      versions: {},
+      getWindowMode: vi.fn().mockResolvedValue("stage"),
+      onStageRouteRequested: vi.fn(() => () => undefined),
+    };
+
+    render(<App />);
+    expect(await screen.findByLabelText("stage persistent route")).toHaveAttribute("aria-hidden", "false");
+
+    act(() => {
+      window.location.hash = "#chat";
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    });
+
+    await waitFor(() => expect(mockTtsStop).toHaveBeenCalledWith("window_mode_changed"));
   });
 
   it("keeps the stage Live2D route mounted while navigating inside the stage window", async () => {

@@ -7,16 +7,11 @@ export function statusHandler({ messageId, payload, context }: StreamHandlerInpu
   const stageLabel = formatAgentStage(payload?.stage);
   const statusMessage = formatAgentStatusMessage(payload?.message);
   if (!petChat.replyStartedRef.current) {
-    petChat.showBubble({
-      title: stageLabel || "智能体状态",
-      message: statusMessage,
-      tone: "thinking",
-    });
     petChat.scheduleStreamWatchdog(
-      "仍在等待回复",
-      "后端还在处理，模型暂时没有返回第一段内容。",
-      12000,
-      () => petChat.failStream(messageId, "模型回复超时", "后端仍在处理，但模型长时间没有返回可显示内容。"),
+      "还在想",
+      "这次需要多等一会儿。",
+      14000,
+      () => petChat.failStream(messageId, "没有等到回复", "这次没有等到可显示的回复，本轮已停止。"),
     );
   }
   appendChatEvent(messageId, {

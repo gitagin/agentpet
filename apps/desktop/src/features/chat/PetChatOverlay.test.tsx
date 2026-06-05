@@ -21,8 +21,7 @@ function renderOverlay({
   inputVisible = true,
   connected = true,
   streaming = false,
-  ttsActive = false,
-  onStopTts = vi.fn(),
+  onAdvancePage = vi.fn(),
 }: {
   bubble?: PetBubbleState;
   mode?: PetInputMode;
@@ -30,8 +29,7 @@ function renderOverlay({
   inputVisible?: boolean;
   connected?: boolean;
   streaming?: boolean;
-  ttsActive?: boolean;
-  onStopTts?: () => void;
+  onAdvancePage?: () => void;
 } = {}) {
   const onModeChange = vi.fn();
   const onSubmit = vi.fn();
@@ -47,7 +45,7 @@ function renderOverlay({
       connected={connected}
       streaming={streaming}
       onPreviousPage={vi.fn()}
-      onAdvancePage={vi.fn()}
+      onAdvancePage={onAdvancePage}
       onPausePaging={vi.fn()}
       onResumePaging={vi.fn()}
       onInputChange={vi.fn()}
@@ -58,12 +56,10 @@ function renderOverlay({
         onSubmit();
       }}
       onStopStreaming={vi.fn()}
-      ttsActive={ttsActive}
-      onStopTts={onStopTts}
     />,
   );
 
-  return { ...view, onModeChange, onSubmit, onStopTts };
+  return { ...view, onModeChange, onSubmit, onAdvancePage };
 }
 
 describe("PetChatOverlay", () => {
@@ -108,7 +104,8 @@ describe("PetChatOverlay", () => {
     expect(screen.getByText("A short reply should use the full bubble body.")).toBeInTheDocument();
   });
 
-  it("keeps compact page metadata for paged reply bubbles", () => {
+  it("keeps paged reply bubbles focused on reply text", () => {
+    const onAdvancePage = vi.fn();
     const { container } = renderOverlay({
       bubble: {
         visible: true,
@@ -121,14 +118,20 @@ describe("PetChatOverlay", () => {
         canPageForward: true,
       },
       inputVisible: false,
+      onAdvancePage,
     });
 
-    expect(container.querySelector(".pet-agent-bubble")).toHaveClass("has-pagination");
-    expect(screen.getByText("1/3")).toBeInTheDocument();
+    expect(container.querySelector(".pet-agent-bubble")).toHaveClass("no-header");
+    expect(container.querySelector(".pet-agent-bubble-header")).not.toBeInTheDocument();
+    expect(screen.queryByText("1/3")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "上一页回复" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "下一页回复" })).not.toBeInTheDocument();
+    expect(screen.getByText("A paged reply keeps controls compact.")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("A paged reply keeps controls compact."));
+    expect(onAdvancePage).toHaveBeenCalledTimes(1);
   });
 
-  it("shows a lightweight stop button while a reply bubble is being read", () => {
-    const onStopTts = vi.fn();
+  it("does not render a manual TTS stop control in reply bubbles", () => {
     const { container } = renderOverlay({
       bubble: {
         visible: true,
@@ -138,15 +141,11 @@ describe("PetChatOverlay", () => {
         phase: "complete",
       },
       inputVisible: false,
-      ttsActive: true,
-      onStopTts,
     });
 
-    expect(container.querySelector(".pet-agent-bubble")).toHaveClass("has-header");
-    const stopButton = container.querySelector(".pet-agent-bubble-stop-button");
-    expect(stopButton).toBeInTheDocument();
-    fireEvent.click(stopButton!);
-
-    expect(onStopTts).toHaveBeenCalledTimes(1);
+    expect(container.querySelector(".pet-agent-bubble")).toHaveClass("no-header");
+    expect(container.querySelector(".pet-agent-bubble-stop-button")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "停止朗读" })).not.toBeInTheDocument();
+    expect(screen.getByText("A reply is being spoken.")).toBeInTheDocument();
   });
 });

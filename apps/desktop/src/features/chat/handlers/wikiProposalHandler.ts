@@ -23,10 +23,10 @@ export function wikiProposalHandler({ messageId, sseEvent, payload, context }: S
       tone: "tool",
     });
     petChat.scheduleStreamWatchdog(
-      "等待回复内容",
-      "Vault 维护确认项已展示，正在等待模型生成最终回复。",
-      12000,
-      () => petChat.failStream(messageId, "模型回复超时", "Vault 维护确认项已展示，但模型长时间没有返回最终回复。"),
+      "还在想",
+      "Vault 维护确认项已展示，这次需要多等一会儿。",
+      14000,
+      () => petChat.failStream(messageId, "没有等到回复", "Vault 维护确认项已展示，但这次没有等到可显示的回复。"),
     );
   }
 }
