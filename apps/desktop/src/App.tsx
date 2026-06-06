@@ -44,6 +44,7 @@ import type { LastIndexRun } from "./features/settings/settingsTypes";
 import { useSettings } from "./features/settings/useSettings";
 import { AgentActionActivityCard } from "./features/memory/AgentActionActivityCard";
 import { MemoryProposalActivityCard } from "./features/memory/MemoryProposalActivityCard";
+import { normalizeMemoryProposalPayload } from "./features/memory/memoryUtils";
 import { useMemory } from "./features/memory/useMemory";
 import { ChatWikiProposalCard } from "./features/wiki/ChatWikiProposalCard";
 import { WikiBrowserPanel } from "./features/wiki/WikiBrowserPanel";
@@ -114,7 +115,8 @@ type CoreWorkflowItem = {
 
 const petShortcutButtonSize = 38;
 const petShortcutButtonGap = 8;
-const petShortcutButtonCount = 5;
+const petShortcutButtonCount = 6;
+const petShortcutColumnCount = 2;
 const petShortcutButtonStyles = buildPetShortcutButtonStyles();
 const firstUseOnboardingStorageKey = "agent-pet.first-use-onboarding";
 const firstUseOnboardingCompletedValue = "completed:v1";
@@ -191,15 +193,22 @@ function buildPetShortcutButtonStyles(): CSSProperties[] {
     petHitboxConfig.window.height -
     petHitboxConfig.hitboxes.shortcutBar.bottom -
     petHitboxConfig.hitboxes.shortcutBar.height;
+  const rowCount = Math.ceil(petShortcutButtonCount / petShortcutColumnCount);
+  const stackWidth =
+    petShortcutColumnCount * petShortcutButtonSize +
+    (petShortcutColumnCount - 1) * petShortcutButtonGap;
   const stackHeight =
-    petShortcutButtonCount * petShortcutButtonSize +
-    (petShortcutButtonCount - 1) * petShortcutButtonGap;
+    rowCount * petShortcutButtonSize +
+    (rowCount - 1) * petShortcutButtonGap;
+  const stackLeft = shortcutBarLeft + (petHitboxConfig.hitboxes.shortcutBar.width - stackWidth) / 2;
   const stackTop = shortcutBarTop + (petHitboxConfig.hitboxes.shortcutBar.height - stackHeight) / 2;
 
   return Array.from({ length: petShortcutButtonCount }, (_, index) => {
+    const column = index % petShortcutColumnCount;
+    const row = Math.floor(index / petShortcutColumnCount);
     const buttonCenter = {
-      x: shortcutBarLeft + petHitboxConfig.hitboxes.shortcutBar.width / 2,
-      y: stackTop + petShortcutButtonSize / 2 + index * (petShortcutButtonSize + petShortcutButtonGap),
+      x: stackLeft + petShortcutButtonSize / 2 + column * (petShortcutButtonSize + petShortcutButtonGap),
+      y: stackTop + petShortcutButtonSize / 2 + row * (petShortcutButtonSize + petShortcutButtonGap),
     };
     return {
       "--pet-shortcut-origin-x": `${Math.round(modelCenter.x - buttonCenter.x)}px`,
@@ -308,8 +317,8 @@ function FirstUseOnboardingCard({
         </div>
         <p className="field-note">
           {hasVaultInitialized
-            ? "当前已有 active Vault；低风险内容可按设置进入自动整理，高风险或敏感内容仍需确认或会被跳过。"
-            : "当前没有 active Vault；这不会阻止聊天，也不会偷偷绑定真实知识库。"}
+            ? "当前已有活动 Vault；低风险内容可按设置进入自动整理，高风险或敏感内容仍需确认或会被跳过。"
+            : "当前没有活动 Vault；这不会阻止聊天，也不会偷偷绑定真实知识库。"}
         </p>
       </form>
     </section>
@@ -455,12 +464,20 @@ function App() {
 
   const {
     actOnProposal,
+    createProposal,
+    lastSearchQuery,
     loadingProposals,
     loadPendingProposals,
     proposalActionIds,
+    proposalDraft,
     proposals,
     resetMemoryState,
+    runMemorySearch,
+    searchQuery,
     searchResults,
+    searchStatus,
+    setSearchQuery,
+    updateProposalDraft,
     upsertProposalFromPayload,
   } = useMemory({
     api,
@@ -854,12 +871,12 @@ function App() {
     petChat.resetStreamState();
     petChat.showBubble({
       title: "",
-      message: "我在想。",
+      message: "我先看一下。",
       tone: "thinking",
     });
     petChat.scheduleStreamWatchdog(
-      "还在想",
-      "这次需要多等一会儿。",
+      "正在整理",
+      "资料多一点，我继续看。",
       14000,
       () => petChat.failStream(assistantId, "没有等到回复", "这次没有等到可显示的回复，本轮已停止。"),
     );
@@ -882,8 +899,8 @@ function App() {
         ),
       );
       petChat.scheduleStreamWatchdog(
-        "还在想",
-        "这次需要多等一会儿。",
+        "正在整理",
+        "资料多一点，我继续看。",
         14000,
         () => petChat.failStream(assistantId, "没有等到回复", "这次没有等到可显示的回复，本轮已停止。"),
       );
@@ -897,8 +914,8 @@ function App() {
             petChat.clearStreamWatchdogTimer();
             if (!petChat.replyStartedRef.current && !petChat.streamReceivedEventRef.current) {
               petChat.scheduleStreamWatchdog(
-                "还在想",
-                "这次需要多等一会儿。",
+                "正在整理",
+                "资料多一点，我继续看。",
                 14000,
                 () => petChat.failStream(assistantId, "没有等到回复", "这次没有等到可显示的回复，本轮已停止。"),
               );
@@ -918,6 +935,24 @@ function App() {
               normalizeContinuityProposal,
               formatContinuityKind,
               upsertProposalFromPayload,
+              upsertChatMemoryProposal: (targetMessageId, proposalId, payload) => {
+                const proposal = normalizeMemoryProposalPayload(proposalId, payload);
+                setMessages((current) =>
+                  current.map((message) => {
+                    if (message.id !== targetMessageId) {
+                      return message;
+                    }
+                    const proposalsForMessage = message.memory_proposals || [];
+                    return {
+                      ...message,
+                      memory_proposals: [
+                        proposal,
+                        ...proposalsForMessage.filter((item) => item.proposal_id !== proposal.proposal_id),
+                      ],
+                    };
+                  }),
+                );
+              },
               upsertChatWikiProposal,
               addTaskFromChat,
               triggerLive2DTaskStage,
@@ -1178,6 +1213,27 @@ function App() {
     } catch (error) {
       setNotice({ tone: "error", message: describeError(error, "打开 Vault 目标失败") });
     }
+  }
+
+  function openArtifactTarget(mode: "memory" | "world", relativePath?: string) {
+    setWindowMode(mode);
+    if (relativePath) {
+      void revealAgentActionTarget(relativePath, "open");
+    }
+  }
+
+  function fillKnowledgeSnippetTrial() {
+    setWindowMode("world");
+    onWikiDraftChange({
+      title: "决策记忆",
+      content:
+        "决策记忆会把项目选择、理由和后续任务放在一起，方便之后复盘时解释为什么选择了某条路径。",
+      source_type: "concept",
+      source_uri: "trial:decision-memory",
+      target_path: "Wiki/Concepts/Decision-Memory.md",
+      tags: ["concept", "trial"],
+    });
+    setWikiTagInput("concept, trial");
   }
 
   function upsertContinuityProposal(proposal: ContinuityProposal) {
@@ -1476,6 +1532,9 @@ function App() {
   function togglePetShortcuts() {
     completePetEntryHint();
     setPetShortcutsVisible((visible) => {
+      if (!visible) {
+        petChat.setInputVisible(false);
+      }
       setPetShortcutMotion(visible ? "closing" : "opening");
       return !visible;
     });
@@ -1665,6 +1724,8 @@ function App() {
   );
   const wikiBrowserPanel = (
     <WikiBrowserPanel
+      vaultConfigured={hasVaultInitialized}
+      indexRequired={hasVaultInitialized && !hasIndexSignal && !wikiIndexStatus}
       schemaStatus={wikiSchemaStatus}
       indexStatus={wikiIndexStatus}
       logStatus={wikiLogStatus}
@@ -1683,6 +1744,7 @@ function App() {
       onLoadArchiveHistory={() => void loadWikiArchiveHistory()}
       onLoadDiagnosticsQueue={() => void loadWikiDiagnosticsQueue()}
       onOpenArchive={(archiveId) => void openWikiQueryArchive(archiveId)}
+      onTryKnowledgeSnippet={fillKnowledgeSnippetTrial}
     />
   );
   const wikiWorkflowPanel = (
@@ -1829,7 +1891,10 @@ function App() {
           onStopStreaming={stopStreaming}
           revertingActionIds={revertingAgentActionIds}
           onRevertAgentAction={(action) => void revertAgentAction(action)}
+          onOpenTask={() => setWindowMode("agent")}
           onOpenMemory={() => setWindowMode("memory")}
+          onOpenWiki={(path) => openArtifactTarget("world", path)}
+          onOpenReport={(path) => openArtifactTarget("memory", path)}
           onboardingPanel={firstUseOnboardingPanel}
           hasVaultInitialized={hasVaultInitialized}
         />
@@ -1839,14 +1904,28 @@ function App() {
           loading={agentActionsStatus === "loading" || loadingProposals || loadingContinuity}
           error={agentActionsError}
           entries={agentActivityEntries}
+          memorySearchQuery={searchQuery}
+          memorySearchStatus={searchStatus}
+          memorySearchResults={searchResults}
+          memoryLastSearchQuery={lastSearchQuery}
+          onMemorySearchQueryChange={setSearchQuery}
+          onRunMemorySearch={(event) => void runMemorySearch(event)}
+          memoryProposalDraft={proposalDraft}
+          memoryProposals={proposals}
+          memoryProposalActionIds={proposalActionIds}
+          loadingMemoryProposals={loadingProposals}
+          onMemoryProposalDraftChange={updateProposalDraft}
+          onCreateMemoryProposal={(event) => void createProposal(event)}
+          onActOnMemoryProposal={(proposalId, action) => void actOnProposal(proposalId, action)}
+          onLoadMemoryProposals={() => void loadPendingProposals()}
           onRefresh={refreshActivity}
           renderEntry={renderAgentActivityEntry}
         />
       ) : windowMode === "world" ? (
         <WorldWindowView>
           <div className="feature-page-stack">
-            {wikiBrowserPanel}
             {wikiWorkflowPanel}
+            {wikiBrowserPanel}
           </div>
         </WorldWindowView>
       ) : windowMode === "settings" ? (
@@ -1862,13 +1941,13 @@ function App() {
       <div className="stage-host-routes" data-active-route={windowMode}>
         <div
           className={`stage-host-route${windowMode === "stage" ? " is-active" : ""}`}
-          aria-label="stage persistent route"
+          aria-label="首页常驻路由"
           aria-hidden={windowMode !== "stage"}
         >
           {stageView}
         </div>
         {windowMode !== "stage" ? (
-          <div className="stage-host-route is-active" aria-label="stage active route">
+          <div className="stage-host-route is-active" aria-label="当前活动路由">
             {activeRoute}
           </div>
         ) : null}
@@ -1904,7 +1983,10 @@ function App() {
         onStopStreaming={stopStreaming}
         revertingActionIds={revertingAgentActionIds}
         onRevertAgentAction={(action) => void revertAgentAction(action)}
+        onOpenTask={() => setWindowMode("agent")}
         onOpenMemory={() => setWindowMode("memory")}
+        onOpenWiki={(path) => openArtifactTarget("world", path)}
+        onOpenReport={(path) => openArtifactTarget("memory", path)}
         onboardingPanel={firstUseOnboardingPanel}
         hasVaultInitialized={hasVaultInitialized}
       />
@@ -1918,6 +2000,20 @@ function App() {
         loading={agentActionsStatus === "loading" || loadingProposals || loadingContinuity}
         error={agentActionsError}
         entries={agentActivityEntries}
+        memorySearchQuery={searchQuery}
+        memorySearchStatus={searchStatus}
+        memorySearchResults={searchResults}
+        memoryLastSearchQuery={lastSearchQuery}
+        onMemorySearchQueryChange={setSearchQuery}
+        onRunMemorySearch={(event) => void runMemorySearch(event)}
+        memoryProposalDraft={proposalDraft}
+        memoryProposals={proposals}
+        memoryProposalActionIds={proposalActionIds}
+        loadingMemoryProposals={loadingProposals}
+        onMemoryProposalDraftChange={updateProposalDraft}
+        onCreateMemoryProposal={(event) => void createProposal(event)}
+        onActOnMemoryProposal={(proposalId, action) => void actOnProposal(proposalId, action)}
+        onLoadMemoryProposals={() => void loadPendingProposals()}
         onRefresh={refreshActivity}
         renderEntry={renderAgentActivityEntry}
       />
@@ -1927,9 +2023,9 @@ function App() {
   if (windowMode === "world") {
     return (
       <WorldWindowView>
-        <div className="feature-page-stack">
-          {wikiBrowserPanel}
+        <div className="feature-page-stack wiki-page-stack">
           {wikiWorkflowPanel}
+          {wikiBrowserPanel}
         </div>
       </WorldWindowView>
     );
@@ -2025,20 +2121,23 @@ function App() {
           onContextMenu={(event) => event.preventDefault()}
           onAnimationEnd={finishPetShortcutMotion}
         >
-          <button type="button" className="pet-shortcut-button" style={petShortcutButtonStyles[0]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="打开桌宠主舞台" onClick={() => void window.agentDesktop?.openStage?.()}>
-            桌宠
-          </button>
-          <button type="button" className="pet-shortcut-button" style={petShortcutButtonStyles[1]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="开始聊天" onClick={() => openPetInputMode("chat")}>
+          <button type="button" className="pet-shortcut-button" style={petShortcutButtonStyles[0]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="开始聊天" onClick={() => openPetInputMode("chat")}>
             聊天
           </button>
-          <button type="button" className="pet-shortcut-button" style={petShortcutButtonStyles[2]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="打开任务工作台" onClick={() => void window.agentDesktop?.openStage?.("agent")}>
+          <button type="button" className="pet-shortcut-button" style={petShortcutButtonStyles[1]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="打开任务工作台" onClick={() => void window.agentDesktop?.openStage?.("agent")}>
             任务
           </button>
-          <button type="button" className="pet-shortcut-button" style={petShortcutButtonStyles[3]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="打开配置" onClick={() => void window.agentDesktop?.openStage?.("settings")}>
-            配置
+          <button type="button" className="pet-shortcut-button" style={petShortcutButtonStyles[2]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="打开记忆工作台" onClick={() => void window.agentDesktop?.openStage?.("memory")}>
+            记忆
           </button>
-          <button type="button" className="pet-shortcut-button danger" style={petShortcutButtonStyles[4]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="退出应用" onClick={() => void window.agentDesktop?.quitApp?.()}>
-            退出
+          <button type="button" className="pet-shortcut-button" style={petShortcutButtonStyles[3]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="打开知识库" onClick={() => void window.agentDesktop?.openStage?.("world")}>
+            知识
+          </button>
+          <button type="button" className="pet-shortcut-button" style={petShortcutButtonStyles[4]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="开始今日复盘" onClick={() => openPetInputMode("review")}>
+            复盘
+          </button>
+          <button type="button" className="pet-shortcut-button" style={petShortcutButtonStyles[5]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="打开设置" onClick={() => void window.agentDesktop?.openStage?.("settings")}>
+            设置
           </button>
         </nav>
       </main>
@@ -2147,7 +2246,10 @@ function App() {
               messages={recentControlMessages}
               revertingActionIds={revertingAgentActionIds}
               onRevertAgentAction={(action) => void revertAgentAction(action)}
+              onOpenTask={() => setWindowMode("agent")}
               onOpenMemory={() => setWindowMode("memory")}
+              onOpenWiki={(path) => openArtifactTarget("world", path)}
+              onOpenReport={(path) => openArtifactTarget("memory", path)}
             />
             <div className="workflow-grid" aria-label="助手与 Obsidian 工作流状态">
               {coreWorkflowItems.map((item) => (

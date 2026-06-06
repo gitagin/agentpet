@@ -17,7 +17,7 @@ import {
   type PetInputMode,
   type PetInputModeOption,
 } from "../features/chat/petInputModes";
-import type { AgentAction, ChatMessage } from "../types";
+import type { AgentAction, ChatMessage, TaskItem } from "../types";
 import { FeatureWindowShell } from "./FeatureWindowShell";
 
 const modeDescriptions: Record<PetInputMode, string> = {
@@ -44,6 +44,29 @@ function renderModeIcon(mode: PetInputMode) {
   }
 }
 
+const chatTrialPrompts: Array<{ label: string; mode: PetInputMode; text: string }> = [
+  {
+    label: "创建明天的提醒",
+    mode: "task",
+    text: "请在明天上午 9:00 提醒我检查发布清单。",
+  },
+  {
+    label: "保存一个偏好",
+    mode: "note",
+    text: "请记住我偏好简洁的发布清单。",
+  },
+  {
+    label: "粘贴知识片段",
+    mode: "wiki",
+    text: "请整理成 Wiki 页面：决策记忆会把项目选择、理由和后续任务放在一起。",
+  },
+  {
+    label: "生成今日复盘",
+    mode: "review",
+    text: "",
+  },
+];
+
 export default function ChatWindowView({
   input,
   messages,
@@ -54,7 +77,10 @@ export default function ChatWindowView({
   onStopStreaming,
   revertingActionIds,
   onRevertAgentAction,
+  onOpenTask,
   onOpenMemory,
+  onOpenWiki,
+  onOpenReport,
   onboardingPanel,
   hasVaultInitialized = false,
   mode = "chat",
@@ -70,7 +96,10 @@ export default function ChatWindowView({
   onStopStreaming: () => void;
   revertingActionIds?: Set<string>;
   onRevertAgentAction?: (action: AgentAction) => void;
+  onOpenTask?: (task?: TaskItem) => void;
   onOpenMemory?: () => void;
+  onOpenWiki?: (path?: string) => void;
+  onOpenReport?: (path?: string) => void;
   onboardingPanel?: ReactNode;
   hasVaultInitialized?: boolean;
   mode?: PetInputMode;
@@ -87,15 +116,19 @@ export default function ChatWindowView({
       {onboardingPanel}
     </details>
   ) : null;
+  function fillTrialPrompt(mode: PetInputMode, text: string) {
+    onModeChange(mode);
+    onInputChange(text);
+  }
 
   return (
     <FeatureWindowShell
-      eyebrow="本地助手"
+      eyebrow="对话"
       title="聊天"
-      description="和桌宠聊天、检索记忆库和知识库，并把高价值内容交给自动整理。"
+      description="在这里提问、创建提醒、保存偏好，或把片段整理成 Wiki 上下文。"
       activeTab="聊天"
     >
-      <Panel icon={<MessageSquareText size={18} />} title="聊天与检索" className="feature-window-panel chat-panel">
+      <Panel icon={<MessageSquareText size={18} />} title="聊天" className="feature-window-panel chat-panel">
         {shouldDeferOnboarding ? null : onboardingPanel}
         <div className="chat-action-board" role="tablist" aria-label="聊天能力">
           {modes.map((option) => (
@@ -114,6 +147,20 @@ export default function ChatWindowView({
                 <strong>{option.label}</strong>
                 <small>{modeDescriptions[option.id]}</small>
               </span>
+            </button>
+          ))}
+        </div>
+        <div className="guided-trial-actions chat-guided-trials" aria-label="聊天快捷示例">
+          {chatTrialPrompts.map((trial) => (
+            <button
+              key={trial.label}
+              type="button"
+              className="secondary"
+              onClick={() => fillTrialPrompt(trial.mode, trial.text)}
+              disabled={streaming}
+            >
+              {renderModeIcon(trial.mode)}
+              {trial.label}
             </button>
           ))}
         </div>
@@ -139,14 +186,17 @@ export default function ChatWindowView({
         </form>
         {streaming ? (
           <p className="field-note">
-            <Loader2 className="spin" size={14} /> 正在想...
+            <Loader2 className="spin" size={14} /> 正在整理回答...
           </p>
         ) : null}
         <ChatMessageList
           messages={visibleMessages}
           revertingActionIds={revertingActionIds}
           onRevertAgentAction={onRevertAgentAction}
+          onOpenTask={onOpenTask}
           onOpenMemory={onOpenMemory}
+          onOpenWiki={onOpenWiki}
+          onOpenReport={onOpenReport}
         />
         {deferredOnboarding}
       </Panel>

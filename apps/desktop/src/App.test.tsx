@@ -196,24 +196,47 @@ vi.mock("./features/settings/useSettings", () => ({
 
 vi.mock("./features/tasks/useTasks", () => ({
   useTasks: () => ({
+    actOnTask: vi.fn(),
     addTaskFromChat: vi.fn(),
     clearTasks: vi.fn(),
+    createTask: vi.fn(),
     lastReminderNotification: null,
+    loadingTasks: false,
+    loadTasks: vi.fn().mockResolvedValue(null),
+    taskActionIds: new Set(),
+    taskDraft: {
+      title: "",
+      description: "",
+      due_at: "",
+      remind_at: "",
+      timezone: "Asia/Shanghai",
+    },
     tasks: [],
+    updateTaskDraft: vi.fn(),
   }),
 }));
 
 vi.mock("./features/memory/useMemory", () => ({
   useMemory: () => ({
     actOnProposal: vi.fn(),
+    createProposal: vi.fn(),
     lastSearchQuery: "",
     loadingProposals: false,
     loadPendingProposals: vi.fn().mockResolvedValue(null),
     proposalActionIds: new Set(),
+    proposalDraft: {
+      type: "fact",
+      content: "",
+      target_path: "Inbox/Pending Memories.md",
+    },
     proposals: [],
     resetMemoryState: vi.fn(),
+    runMemorySearch: vi.fn(),
+    searchQuery: "",
     searchResults: [],
     searchStatus: "idle",
+    setSearchQuery: vi.fn(),
+    updateProposalDraft: vi.fn(),
     upsertProposalFromPayload: vi.fn(),
   }),
 }));
@@ -445,6 +468,37 @@ describe("App", () => {
     expect(screen.queryByRole("heading", { name: "桌面记忆助手" })).not.toBeInTheDocument();
   });
 
+  it("renders stage feature entries from the stage route", async () => {
+    window.location.hash = "#stage";
+
+    render(<App />);
+
+    expect(await screen.findByLabelText("功能指挥中心")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /新建任务/ })).toHaveAttribute("data-stage-route", "agent");
+    expect(screen.getByRole("button", { name: /记住这件事/ })).toHaveAttribute("data-stage-route", "memory");
+    expect(screen.getByRole("button", { name: /整理知识/ })).toHaveAttribute("data-stage-route", "world");
+    expect(screen.getByRole("button", { name: /今日复盘/ })).toHaveAttribute("data-stage-route", "memory");
+    expect(screen.getByRole("button", { name: /搜索记忆/ })).toHaveAttribute("data-stage-route", "memory");
+  });
+
+  it("renders core product routes as dedicated workspaces instead of chat-only surfaces", async () => {
+    const routes = [
+      { hash: "#agent", query: () => screen.findByLabelText("任务工作区") },
+      { hash: "#memory", query: () => screen.findByLabelText("记忆工作台") },
+      { hash: "#world", query: () => screen.findByRole("heading", { name: "知识" }) },
+    ];
+
+    for (const route of routes) {
+      window.location.hash = route.hash;
+      const { unmount } = render(<App />);
+
+      expect(await route.query()).toBeInTheDocument();
+      expect(screen.queryByLabelText("mock chat message list")).not.toBeInTheDocument();
+
+      unmount();
+    }
+  });
+
   it("toggles pet shortcut buttons from the Live2D right-click menu gesture", async () => {
     window.location.hash = "#pet";
     window.agentDesktop = {
@@ -467,7 +521,7 @@ describe("App", () => {
     expect(shortcutBar).toHaveAttribute("data-shortcut-motion", "idle");
     expect(shortcutBar).not.toHaveClass("is-visible");
     expect(await screen.findByLabelText("桌宠入口提示")).toHaveTextContent("右键我打开功能");
-    expect(screen.getByLabelText("打开桌宠主舞台")).toHaveAttribute("tabindex", "-1");
+    expect(screen.getByLabelText("开始聊天")).toHaveAttribute("tabindex", "-1");
 
     const finishShortcutAnimation = (animationName: string) => {
       const event = new Event("animationend", { bubbles: true });
@@ -481,17 +535,9 @@ describe("App", () => {
     expect(shortcutBar).toHaveAttribute("data-shortcut-motion", "opening");
     expect(shortcutBar).toHaveClass("is-visible");
     expect(screen.queryByLabelText("桌宠入口提示")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("打开桌宠主舞台")).toHaveAttribute("tabindex", "0");
+    expect(screen.getByLabelText("开始聊天")).toHaveAttribute("tabindex", "0");
     expect(window.agentDesktop.setPetShortcutBarVisible).toHaveBeenLastCalledWith(true);
     expect(window.agentDesktop.setUiState).toHaveBeenCalledWith("agent-pet.pet-entry-hint", "completed:v1");
-
-    fireEvent.click(screen.getByLabelText("打开任务工作台"));
-    fireEvent.click(screen.getByLabelText("打开配置"));
-
-    expect(window.agentDesktop.openStage).toHaveBeenCalledWith("agent");
-    expect(window.agentDesktop.openStage).toHaveBeenCalledWith("settings");
-    expect(window.agentDesktop.openAgent).not.toHaveBeenCalled();
-    expect(window.agentDesktop.openFeatureWindow).not.toHaveBeenCalled();
 
     finishShortcutAnimation("pet-shortcut-roll-out");
     expect(shortcutBar).toHaveAttribute("data-shortcut-motion", "idle");
@@ -502,11 +548,31 @@ describe("App", () => {
     expect(shortcutBar).toHaveAttribute("data-shortcut-motion", "closing");
     expect(shortcutBar).not.toHaveClass("is-visible");
     expect(screen.queryByLabelText("桌宠入口提示")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("打开桌宠主舞台")).toHaveAttribute("tabindex", "-1");
+    expect(screen.getByLabelText("开始聊天")).toHaveAttribute("tabindex", "-1");
     expect(window.agentDesktop.setPetShortcutBarVisible).toHaveBeenLastCalledWith(false);
 
     finishShortcutAnimation("pet-shortcut-roll-in");
     expect(shortcutBar).toHaveAttribute("data-shortcut-motion", "idle");
+
+    fireEvent.contextMenu(petStage);
+
+    fireEvent.click(screen.getByLabelText("打开任务工作台"));
+    fireEvent.click(screen.getByLabelText("打开记忆工作台"));
+    fireEvent.click(screen.getByLabelText("打开知识库"));
+    fireEvent.click(screen.getByLabelText("打开设置"));
+
+    expect(window.agentDesktop.openStage).toHaveBeenCalledWith("agent");
+    expect(window.agentDesktop.openStage).toHaveBeenCalledWith("memory");
+    expect(window.agentDesktop.openStage).toHaveBeenCalledWith("world");
+    expect(window.agentDesktop.openStage).toHaveBeenCalledWith("settings");
+    expect(window.agentDesktop.openAgent).not.toHaveBeenCalled();
+    expect(window.agentDesktop.openFeatureWindow).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByLabelText("开始今日复盘"));
+
+    expect(mockPetShowInput).toHaveBeenCalledTimes(1);
+    expect(shortcutBar).toHaveAttribute("aria-hidden", "true");
+    expect(shortcutBar).not.toHaveClass("is-visible");
   });
 
   it("opens the stage window instead of the inline input when double-clicking the pet", async () => {
@@ -601,7 +667,7 @@ describe("App", () => {
     };
 
     render(<App />);
-    expect(await screen.findByLabelText("stage persistent route")).toHaveAttribute("aria-hidden", "false");
+    expect(await screen.findByLabelText("首页常驻路由")).toHaveAttribute("aria-hidden", "false");
 
     act(() => {
       window.location.hash = "#chat";
@@ -626,15 +692,15 @@ describe("App", () => {
 
     render(<App />);
 
-    expect(await screen.findByLabelText("stage persistent route")).toHaveAttribute("aria-hidden", "false");
+    expect(await screen.findByLabelText("首页常驻路由")).toHaveAttribute("aria-hidden", "false");
 
     act(() => {
       window.location.hash = "#chat";
       window.dispatchEvent(new HashChangeEvent("hashchange"));
     });
 
-    await waitFor(() => expect(screen.getByLabelText("stage persistent route")).toHaveAttribute("aria-hidden", "true"));
-    expect(screen.getByLabelText("stage persistent route")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText("首页常驻路由")).toHaveAttribute("aria-hidden", "true"));
+    expect(screen.getByLabelText("首页常驻路由")).toBeInTheDocument();
     expect(live2dStageRenderProps.at(-1)).toMatchObject({ variant: "stage", active: false });
 
     act(() => {
@@ -642,8 +708,8 @@ describe("App", () => {
     });
 
     await waitFor(() => expect(window.location.hash).toBe("#settings"));
-    expect(screen.getByLabelText("stage persistent route")).toHaveAttribute("aria-hidden", "true");
-    expect(screen.getByLabelText("stage persistent route")).toBeInTheDocument();
+    expect(screen.getByLabelText("首页常驻路由")).toHaveAttribute("aria-hidden", "true");
+    expect(screen.getByLabelText("首页常驻路由")).toBeInTheDocument();
     expect(live2dStageRenderProps.at(-1)).toMatchObject({ variant: "stage", active: false });
 
     act(() => {
@@ -651,8 +717,8 @@ describe("App", () => {
       window.dispatchEvent(new HashChangeEvent("hashchange"));
     });
 
-    await waitFor(() => expect(screen.getByLabelText("stage persistent route")).toHaveAttribute("aria-hidden", "false"));
-    expect(screen.getByLabelText("stage persistent route")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText("首页常驻路由")).toHaveAttribute("aria-hidden", "false"));
+    expect(screen.getByLabelText("首页常驻路由")).toBeInTheDocument();
     expect(live2dStageRenderProps.at(-1)).toMatchObject({ variant: "stage", active: true });
   });
 });

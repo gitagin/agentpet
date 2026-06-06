@@ -14,6 +14,18 @@ from .wiring import refresh_retrieval_vector_index, reminder_scheduler, reset_ch
 
 router = APIRouter(prefix="/diagnostics", tags=["diagnostics"])
 
+AGENT_OUTCOME_LABELS = {
+    "task_agent": "task/reminder",
+    "wiki_manager_agent": "knowledge page",
+    "memory_proposal_agent": "memory review",
+    "diary_memory_extractor_agent": "memory review",
+    "memory_retrieval_agent": "cited answer",
+    "knowledge_retrieval_agent": "cited answer",
+    "continuity_agent": "relationship/state continuity",
+    "chat_agent": "chat answer",
+    "semantic_analysis_agent": "chat answer",
+}
+
 
 @router.get("/export", response_model=DiagnosticsExportResponse)
 async def export_diagnostics(
@@ -41,6 +53,7 @@ async def negotiation_stats(request: Request) -> NegotiationStatsResponse:
     total = len(rows)
     fallback_count = 0
     agent_counter: Counter[str] = Counter()
+    outcome_counter: Counter[str] = Counter()
     total_rounds = 0
     total_latency_ms = 0
     for row in rows:
@@ -51,13 +64,17 @@ async def negotiation_stats(request: Request) -> NegotiationStatsResponse:
             fallback_count += 1
         agents_invoked = metadata.get("agents_invoked")
         if isinstance(agents_invoked, list):
-            agent_counter.update(str(agent) for agent in agents_invoked if isinstance(agent, str))
+            agents = [str(agent) for agent in agents_invoked if isinstance(agent, str)]
+            agent_counter.update(agents)
+            outcome_counter.update(AGENT_OUTCOME_LABELS.get(agent, "chat answer") for agent in agents)
 
     return NegotiationStatsResponse(
         avg_rounds=total_rounds / total,
         avg_latency_ms=total_latency_ms / total,
         fallback_rate=fallback_count / total,
         top_agents_invoked=[agent for agent, _count in agent_counter.most_common(3)],
+        top_outcomes_supported=[outcome for outcome, _count in outcome_counter.most_common(3)],
+        outcome_support_counts=dict(outcome_counter),
     )
 
 

@@ -1,290 +1,364 @@
-import { CheckCircle2, CircleAlert, Clock3, Loader2, RotateCcw, SkipForward } from "lucide-react";
-import type { AgentAction, TaskItem } from "../../types";
 import {
+  BookOpenText,
+  Brain,
+  CheckCircle2,
+  CircleAlert,
+  ClipboardList,
+  FileText,
+  Loader2,
+  RotateCcw,
+} from "lucide-react";
+import type { AgentAction, ChatWikiProposal, MemoryProposal, TaskItem } from "../../types";
+import {
+  buildAgentOutcomeActivities,
   canRevertAgentAction,
-  formatAgentActionSkippedReason,
+  classifyAgentActionArtifact,
+  type AgentOutcomeActivity,
   getAgentActionDisplayFields,
 } from "../../services/agentActivity";
+import { formatProposalStatus } from "../memory/memoryUtils";
 import { formatTaskStatus } from "../tasks/taskReducer";
 
 type ChatAgentActionSummaryProps = {
   actions: AgentAction[];
   tasks?: TaskItem[];
+  memoryProposals?: MemoryProposal[];
+  wikiProposals?: ChatWikiProposal[];
   showEmpty?: boolean;
   revertingActionIds?: Set<string>;
   onRevertAgentAction?: (action: AgentAction) => void;
+  onOpenTask?: (task?: TaskItem) => void;
   onOpenMemory?: () => void;
+  onOpenWiki?: (path?: string) => void;
+  onOpenReport?: (path?: string) => void;
 };
 
-type SummaryBucketKey =
-  | "chat_diary"
-  | "structured_diary"
-  | "long_term_memory"
-  | "wiki_summary"
-  | "tasks"
-  | "skipped";
+type ArtifactKind = "task" | "memory" | "wiki" | "review";
+type ArtifactTone = "success" | "pending" | "failed" | "reverted";
 
-type SummaryBucket = {
-  key: SummaryBucketKey;
-  label: string;
-  emptyText: string;
-  actions: AgentAction[];
-  tasks: TaskItem[];
+type ArtifactCard = {
+  id: string;
+  kind: ArtifactKind;
+  tone: ArtifactTone;
+  eyebrow: string;
+  title: string;
+  summary: string;
+  meta: string[];
+  path?: string;
+  action?: AgentAction;
+  task?: TaskItem;
 };
-
-const bucketDefinitions: Array<Omit<SummaryBucket, "actions" | "tasks">> = [
-  {
-    key: "chat_diary",
-    label: "写入日记",
-    emptyText: "本轮没有聊天日记写入事件。",
-  },
-  {
-    key: "structured_diary",
-    label: "结构化记忆",
-    emptyText: "本轮没有结构化日记事件。",
-  },
-  {
-    key: "long_term_memory",
-    label: "长期记忆",
-    emptyText: "本轮没有长期记忆写入事件。",
-  },
-  {
-    key: "wiki_summary",
-    label: "Wiki 摘要",
-    emptyText: "本轮没有 Wiki 摘要写入事件。",
-  },
-  {
-    key: "tasks",
-    label: "任务/提醒",
-    emptyText: "本轮没有任务或提醒事件。",
-  },
-  {
-    key: "skipped",
-    label: "已跳过",
-    emptyText: "本轮没有跳过记录。",
-  },
-];
-
-function isPendingConfirmation(action: AgentAction): boolean {
-  return action.decision === "ask" && action.status !== "completed" && action.status !== "reverted";
-}
 
 export function ChatAgentActionSummary({
   actions,
   tasks = [],
+  memoryProposals = [],
+  wikiProposals = [],
   showEmpty = false,
   revertingActionIds,
   onRevertAgentAction,
+  onOpenTask,
   onOpenMemory,
+  onOpenWiki,
+  onOpenReport,
 }: ChatAgentActionSummaryProps) {
-  const hasResults = actions.length > 0 || tasks.length > 0;
-  if (!hasResults && !showEmpty) {
+  const artifacts = buildArtifactCards(actions, tasks, memoryProposals, wikiProposals);
+  const teamActivities = buildAgentOutcomeActivities(actions, tasks, memoryProposals, wikiProposals);
+  if (artifacts.length === 0 && !showEmpty) {
     return null;
   }
 
-  const buckets = buildSummaryBuckets(actions, tasks);
-  const pendingCount = actions.filter(isPendingConfirmation).length;
-  const failedCount = actions.filter((action) => action.status === "failed" || Boolean(action.error)).length;
-  const skippedCount = actions.filter((action) => classifyAction(action) === "skipped").length;
-  const completedCount = actions.filter((action) => action.status === "completed").length + tasks.length;
+  const pendingCount = artifacts.filter((artifact) => artifact.tone === "pending").length;
+  const failedCount = artifacts.filter((artifact) => artifact.tone === "failed").length;
 
   return (
-    <section className="message-agent-actions" aria-label="本轮整理结果">
+    <section className="message-agent-actions chat-artifacts" aria-label="聊天整理结果">
       <div className="message-agent-actions-head">
         <div>
-          <strong>本轮整理结果</strong>
+          <strong>整理结果</strong>
           <span>
-            {completedCount > 0 ? `${completedCount} 项已整理` : "未产生可保存内容"}
-            {skippedCount > 0 ? ` / ${skippedCount} 项已跳过` : ""}
-            {pendingCount > 0 ? ` / ${pendingCount} 项需要确认` : ""}
-            {failedCount > 0 ? ` / ${failedCount} 项失败` : ""}
+            {artifacts.length > 0 ? `${artifacts.length} 个结果` : "没有整理结果"}
+            {pendingCount > 0 ? ` / ${pendingCount} 个待确认` : ""}
+            {failedCount > 0 ? ` / ${failedCount} 个失败` : ""}
           </span>
         </div>
-        {onOpenMemory ? (
-          <button type="button" className="secondary" onClick={onOpenMemory}>
-            查看活动
-          </button>
-        ) : null}
       </div>
-      {!hasResults ? (
+      {artifacts.length === 0 ? (
         <p className="message-agent-action-empty-reason">
-          未产生可保存内容。本轮没有收到可追踪的自动整理活动或任务事件。
+          本轮没有创建任务、记忆、Wiki 页面或复盘报告。
         </p>
-      ) : null}
-
-      <div className="message-agent-action-buckets">
-        {buckets.map((bucket) => (
-          <SummaryBucketCard
-            key={bucket.key}
-            bucket={bucket}
-            revertingActionIds={revertingActionIds}
-            onRevertAgentAction={onRevertAgentAction}
-          />
-        ))}
-      </div>
+      ) : (
+        <>
+          <div className="chat-artifact-grid">
+            {artifacts.map((artifact) => (
+              <ArtifactResultCard
+                key={artifact.id}
+                artifact={artifact}
+                reverting={Boolean(artifact.action && revertingActionIds?.has(artifact.action.action_id))}
+                onRevertAgentAction={onRevertAgentAction}
+                onOpenTask={onOpenTask}
+                onOpenMemory={onOpenMemory}
+                onOpenWiki={onOpenWiki}
+                onOpenReport={onOpenReport}
+              />
+            ))}
+          </div>
+          <AiTeamActivity activities={teamActivities} />
+        </>
+      )}
     </section>
   );
 }
 
-function SummaryBucketCard({
-  bucket,
-  revertingActionIds,
-  onRevertAgentAction,
-}: {
-  bucket: SummaryBucket;
-  revertingActionIds?: Set<string>;
-  onRevertAgentAction?: (action: AgentAction) => void;
-}) {
-  const hasEntries = bucket.actions.length > 0 || bucket.tasks.length > 0;
-  const tone = bucketTone(bucket);
+function AiTeamActivity({ activities }: { activities: AgentOutcomeActivity[] }) {
+  if (activities.length === 0) {
+    return null;
+  }
+
   return (
-    <article className={`message-agent-action-bucket ${tone}`}>
-      <div className="message-agent-action-bucket-head">
-        {bucketIcon(tone)}
-        <strong>{bucket.label}</strong>
-        <span>{hasEntries ? bucket.actions.length + bucket.tasks.length : 0}</span>
+    <details className="ai-team-activity">
+      <summary>
+        <strong>自动整理活动</strong>
+        <span>{activities.length} 个结果支持区域</span>
+      </summary>
+      <div className="ai-team-activity-list">
+        {activities.map((activity) => (
+          <article key={activity.key}>
+            <strong>{activity.label}</strong>
+            <span>{activity.description}</span>
+            <small>{activity.detail}</small>
+          </article>
+        ))}
       </div>
-      {hasEntries ? (
-        <div className="message-agent-action-list">
-          {bucket.actions.map((action) => (
-            <ActionResultRow
-              key={action.action_id}
-              action={action}
-              reverting={Boolean(revertingActionIds?.has(action.action_id))}
-              onRevertAgentAction={onRevertAgentAction}
-            />
-          ))}
-          {bucket.tasks.map((task) => (
-            <TaskResultRow key={task.task_id} task={task} />
-          ))}
+    </details>
+  );
+}
+
+function ArtifactResultCard({
+  artifact,
+  reverting,
+  onRevertAgentAction,
+  onOpenTask,
+  onOpenMemory,
+  onOpenWiki,
+  onOpenReport,
+}: {
+  artifact: ArtifactCard;
+  reverting: boolean;
+  onRevertAgentAction?: (action: AgentAction) => void;
+  onOpenTask?: (task?: TaskItem) => void;
+  onOpenMemory?: () => void;
+  onOpenWiki?: (path?: string) => void;
+  onOpenReport?: (path?: string) => void;
+}) {
+  const canRevert = artifact.action ? canRevertAgentAction(artifact.action) : false;
+  const primary = primaryArtifactAction(artifact, onOpenTask, onOpenMemory, onOpenWiki, onOpenReport);
+
+  return (
+    <article
+      className={`chat-artifact-card ${artifact.kind} ${artifact.tone}`}
+      aria-label={`${artifact.eyebrow}: ${artifact.title}`}
+      data-artifact-kind={artifact.kind}
+    >
+      <div className="chat-artifact-card-head">
+        {artifactIcon(artifact.kind, artifact.tone)}
+        <div>
+          <span>{artifact.eyebrow}</span>
+          <strong>{artifact.title}</strong>
         </div>
-      ) : (
-        <p>{bucket.emptyText}</p>
-      )}
+      </div>
+      <p>{artifact.summary}</p>
+      {artifact.path ? <code>{artifact.path}</code> : null}
+      <div className="chat-artifact-meta">
+        {artifact.meta.map((item) => (
+          <small key={item}>{item}</small>
+        ))}
+      </div>
+      <div className="chat-artifact-actions">
+        {primary ? (
+          <button type="button" onClick={primary.onClick}>
+            {primary.label}
+          </button>
+        ) : null}
+        {canRevert && artifact.action && onRevertAgentAction ? (
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => onRevertAgentAction(artifact.action!)}
+            disabled={reverting}
+            title={`撤销 ${artifact.title}`}
+          >
+            {reverting ? <Loader2 className="spin" size={16} /> : <RotateCcw size={16} />}
+            撤销
+          </button>
+        ) : null}
+      </div>
     </article>
   );
 }
 
-function ActionResultRow({
-  action,
-  reverting,
-  onRevertAgentAction,
-}: {
-  action: AgentAction;
-  reverting: boolean;
-  onRevertAgentAction?: (action: AgentAction) => void;
-}) {
-  const display = getAgentActionDisplayFields(action);
-  const canRevert = canRevertAgentAction(action);
-  const pending = isPendingConfirmation(action);
-  const skippedReason = action.metadata?.skipped_reason ? formatAgentActionSkippedReason(action) : "";
-  return (
-    <div className={`message-agent-action ${pending ? "pending" : action.status}`}>
-      <div>
-        <strong>{display.actionName}</strong>
-        <small>
-          {display.riskTierLabel} / {display.statusLabel}
-        </small>
-      </div>
-      <p>{display.summary}</p>
-      <small>目标：{display.targetPathLabel}</small>
-      {skippedReason && skippedReason !== display.summary ? <small>原因：{skippedReason}</small> : null}
-      {action.error ? <small className="error">错误：{action.error}</small> : null}
-      {pending ? <small className="error">需要确认后才会执行，请在整理页处理。</small> : null}
-      {canRevert && onRevertAgentAction ? (
-        <button
-          type="button"
-          className="secondary"
-          onClick={() => onRevertAgentAction(action)}
-          disabled={reverting}
-          title={`撤销 ${display.actionName}`}
-        >
-          {reverting ? <Loader2 className="spin" size={16} /> : <RotateCcw size={16} />}
-          撤销
-        </button>
-      ) : null}
-    </div>
-  );
+function buildArtifactCards(
+  actions: AgentAction[],
+  tasks: TaskItem[],
+  memoryProposals: MemoryProposal[],
+  wikiProposals: ChatWikiProposal[],
+): ArtifactCard[] {
+  const cards: ArtifactCard[] = [];
+
+  tasks.forEach((task) => {
+    cards.push({
+      id: `task-${task.task_id}`,
+      kind: "task",
+      tone: task.status === "failed" ? "failed" : "success",
+      eyebrow: "已创建任务",
+      title: task.title,
+      summary: task.remind_at ? `提醒：${task.remind_at}` : "已从本轮聊天创建。",
+      meta: [formatTaskStatus(task.status), task.timezone_label || task.timezone || ""].filter(Boolean),
+      task,
+    });
+  });
+
+  memoryProposals.forEach((proposal) => {
+    cards.push({
+      id: `memory-proposal-${proposal.proposal_id}`,
+      kind: "memory",
+      tone: proposal.status === "failed" ? "failed" : proposal.status === "pending" ? "pending" : "success",
+      eyebrow: proposal.status === "pending" ? "记忆待确认" : "已写入记忆",
+      title: proposal.target_path || "长期记忆",
+      summary: proposal.content || proposal.preview_markdown || "有一条记忆候选正在等待复核。",
+      meta: [formatProposalStatus(proposal.status), proposal.type].filter(Boolean),
+      path: proposal.target_path,
+    });
+  });
+
+  wikiProposals
+    .filter((proposal) => proposal.state !== "rejected")
+    .forEach((proposal) => {
+      const path = firstPath(proposal.target_paths, proposal.selected_targets, proposal.recommended_targets);
+      cards.push({
+        id: `wiki-proposal-${proposal.id}`,
+        kind: "wiki",
+        tone: proposal.state === "failed" ? "failed" : proposal.state === "applied" ? "success" : "pending",
+        eyebrow: proposal.state === "applied" ? "已写入 Wiki 页面" : "Wiki 页面待确认",
+        title: proposal.title || path || "Wiki 页面",
+        summary: proposal.review_summary || proposal.summary || proposal.error || "有一条 Wiki 更新正在等待复核。",
+        meta: [formatWikiProposalState(proposal.state), proposal.proposal_type].filter(Boolean),
+        path,
+      });
+    });
+
+  actions.forEach((action) => {
+    const kind = classifyAgentActionArtifact(action);
+    if (!kind) {
+      return;
+    }
+    if (kind === "task" && tasks.length > 0) {
+      return;
+    }
+
+    const display = getAgentActionDisplayFields(action);
+    const path = firstPath(action.target_paths);
+    cards.push({
+      id: `agent-action-${action.action_id}`,
+      kind,
+      tone: actionTone(action),
+      eyebrow: actionEyebrow(action, kind),
+      title: display.actionName,
+      summary: display.summary,
+      meta: [display.statusLabel, display.riskTierLabel].filter(Boolean),
+      path,
+      action,
+    });
+  });
+
+  return cards;
 }
 
-function TaskResultRow({ task }: { task: TaskItem }) {
-  return (
-    <div className="message-agent-action completed">
-      <div>
-        <strong>{task.title}</strong>
-        <small>{formatTaskStatus(task.status)}</small>
-      </div>
-      {task.remind_at ? <small>提醒：{task.remind_at}</small> : null}
-      {task.timezone_label || task.timezone ? <small>时区：{task.timezone_label || task.timezone}</small> : null}
-    </div>
-  );
+function primaryArtifactAction(
+  artifact: ArtifactCard,
+  onOpenTask?: (task?: TaskItem) => void,
+  onOpenMemory?: () => void,
+  onOpenWiki?: (path?: string) => void,
+  onOpenReport?: (path?: string) => void,
+): { label: string; onClick: () => void } | null {
+  if (artifact.kind === "task" && onOpenTask) {
+    return { label: "打开任务", onClick: () => onOpenTask(artifact.task) };
+  }
+  if (artifact.kind === "memory" && onOpenMemory) {
+    return { label: "打开记忆", onClick: onOpenMemory };
+  }
+  if (artifact.kind === "wiki" && onOpenWiki) {
+    return { label: "打开 Wiki 页面", onClick: () => onOpenWiki(artifact.path) };
+  }
+  if (artifact.kind === "review" && onOpenReport) {
+    return { label: "打开报告", onClick: () => onOpenReport(artifact.path) };
+  }
+  return null;
 }
 
-function buildSummaryBuckets(actions: AgentAction[], tasks: TaskItem[]): SummaryBucket[] {
-  const buckets = bucketDefinitions.map((definition) => ({
-    ...definition,
-    actions: [] as AgentAction[],
-    tasks: [] as TaskItem[],
-  }));
-  const byKey = new Map(buckets.map((bucket) => [bucket.key, bucket]));
-  for (const action of actions) {
-    byKey.get(classifyAction(action))?.actions.push(action);
+function actionEyebrow(action: AgentAction, kind: ArtifactKind): string {
+  if (kind === "task") {
+    return "已创建任务";
   }
-  byKey.get("tasks")?.tasks.push(...tasks);
-  return buckets;
+  if (kind === "review") {
+    return "已生成复盘";
+  }
+  if (kind === "memory") {
+    return action.decision === "ask" || action.status === "pending" ? "记忆待确认" : "已写入记忆";
+  }
+  return action.decision === "ask" || action.status === "pending" ? "Wiki 页面待确认" : "已写入 Wiki 页面";
 }
 
-function classifyAction(action: AgentAction): SummaryBucketKey {
-  const actionType = action.action_type.toLocaleLowerCase();
-  if (action.status === "skipped" || actionType.endsWith(".skip") || actionType.includes(".skip.")) {
-    return "skipped";
-  }
-  if (actionType === "chat.daily_archive") {
-    return "chat_diary";
-  }
-  if (actionType === "diary.structured_memory") {
-    return "structured_diary";
-  }
-  if (actionType.startsWith("memory.long_term") || actionType.startsWith("continuity.")) {
-    return "long_term_memory";
-  }
-  if (actionType.startsWith("wiki.")) {
-    return "wiki_summary";
-  }
-  if (actionType.startsWith("task.")) {
-    return "tasks";
-  }
-  return "skipped";
-}
-
-function bucketTone(bucket: SummaryBucket): "empty" | "success" | "pending" | "failed" | "skipped" {
-  if (bucket.actions.some((action) => action.status === "failed" || Boolean(action.error))) {
+function actionTone(action: AgentAction): ArtifactTone {
+  if (action.status === "failed" || Boolean(action.error)) {
     return "failed";
   }
-  if (bucket.actions.some(isPendingConfirmation)) {
+  if (action.status === "reverted") {
+    return "reverted";
+  }
+  if (action.decision === "ask" || action.status === "pending" || action.status === "applying") {
     return "pending";
   }
-  if (bucket.key === "skipped" && bucket.actions.length > 0) {
-    return "skipped";
-  }
-  if (bucket.actions.length > 0 || bucket.tasks.length > 0) {
-    return "success";
-  }
-  return "empty";
+  return "success";
 }
 
-function bucketIcon(tone: "empty" | "success" | "pending" | "failed" | "skipped") {
-  if (tone === "success") {
-    return <CheckCircle2 size={15} />;
+function firstPath(...groups: Array<string[] | undefined>): string | undefined {
+  for (const group of groups) {
+    const value = group?.find((item) => item.trim().length > 0);
+    if (value) {
+      return value;
+    }
   }
-  if (tone === "pending") {
-    return <Clock3 size={15} />;
-  }
+  return undefined;
+}
+
+function formatWikiProposalState(state: ChatWikiProposal["state"]): string {
+  const labels: Record<ChatWikiProposal["state"], string> = {
+    pending: "待确认",
+    confirmed: "已确认",
+    rejected: "已拒绝",
+    applying: "写入中",
+    applied: "已写入",
+    failed: "失败",
+  };
+  return labels[state] || state;
+}
+
+function artifactIcon(kind: ArtifactKind, tone: ArtifactTone) {
   if (tone === "failed") {
-    return <CircleAlert size={15} />;
+    return <CircleAlert size={17} />;
   }
-  if (tone === "skipped") {
-    return <SkipForward size={15} />;
+  if (kind === "task") {
+    return <ClipboardList size={17} />;
   }
-  return <Clock3 size={15} />;
+  if (kind === "memory") {
+    return <Brain size={17} />;
+  }
+  if (kind === "wiki") {
+    return <BookOpenText size={17} />;
+  }
+  if (kind === "review") {
+    return <FileText size={17} />;
+  }
+  return <CheckCircle2 size={17} />;
 }

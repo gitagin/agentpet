@@ -59,7 +59,7 @@ async def _chat_node(
         elif state.semantic_analysis and state.semantic_analysis.needs_context:
             response = _local_knowledge_not_found_response()
         else:
-            response = state.response_text or "我可以陪你聊天、帮你翻记忆本、创建待确认记忆提案，也可以记录任务和提醒。"
+            response = state.response_text or "我在呀。你先丢给我一句想法，我陪你慢慢整理。"
 
         state.response_text = response
         for chunk in _chunk_text(response):

@@ -1070,7 +1070,7 @@ def _normalize_tts_preset_settings(raw_settings: dict) -> dict:
             "label": voice_id,
             "locale": raw_voice.get("locale") if isinstance(raw_voice, dict) else None,
             "gender": raw_voice.get("gender") if isinstance(raw_voice, dict) else None,
-            "description": "MiMo built-in voice",
+            "description": "MiMo 内置声音",
         },
     }
     return raw_settings

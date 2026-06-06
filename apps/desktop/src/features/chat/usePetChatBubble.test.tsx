@@ -199,6 +199,31 @@ describe("usePetChatBubble", () => {
     expect(secondItem.text).toBe(result.current.bubble.message);
   });
 
+  it("keeps streamed reply text out of the bubble until the final reply is ready", () => {
+    const { result } = renderPetChatBubbleHook();
+
+    act(() => {
+      result.current.showBubble({
+        title: "",
+        message: "我先看一下。",
+        tone: "thinking",
+      });
+      result.current.assistantReplyRef.current = "Streaming answer text.";
+      result.current.setReplyPagesFromText(result.current.assistantReplyRef.current);
+    });
+
+    expect(result.current.replyText).toBe("Streaming answer text.");
+    expect(result.current.bubble.tone).toBe("thinking");
+    expect(result.current.bubble.message).toBe("我先看一下。");
+
+    act(() => {
+      result.current.startReplyPaging("assistant-final");
+    });
+
+    expect(result.current.bubble.tone).toBe("reply");
+    expect(result.current.bubble.message).toBe("Streaming answer text.");
+  });
+
   it("waits for TTS playback to finish before turning the page", () => {
     const tts = createTtsQueueMock();
     const { result } = renderPetChatBubbleHook(tts);

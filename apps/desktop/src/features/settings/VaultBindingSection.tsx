@@ -101,7 +101,7 @@ export function VaultBindingSection({
             <dd>{wikiPageCount}</dd>
           </div>
           <div>
-            <dt>Diary</dt>
+            <dt>日记</dt>
             <dd>{diaryPageCount}</dd>
           </div>
         </dl>

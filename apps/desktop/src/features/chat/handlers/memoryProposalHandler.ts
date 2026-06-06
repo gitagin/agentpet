@@ -1,9 +1,10 @@
 import type { StreamHandlerInput } from "../streamDispatcher";
 
 export function memoryProposalHandler({ messageId, payload, context }: StreamHandlerInput, proposalId: string) {
-  const { petChat, appendChatEvent, upsertProposalFromPayload } = context;
+  const { petChat, appendChatEvent, upsertChatMemoryProposal, upsertProposalFromPayload } = context;
   if (payload) {
     upsertProposalFromPayload(proposalId, payload);
+    upsertChatMemoryProposal(messageId, proposalId, payload);
   }
   appendChatEvent(messageId, {
     label: "记忆确认项",

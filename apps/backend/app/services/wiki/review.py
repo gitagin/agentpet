@@ -17,7 +17,7 @@ def _deterministic_review_response(
         WikiIngestReviewFinding(
             severity="info",
             code="source_claims_extracted",
-            message=f"Source has {_non_empty_line_count(run.raw_content)} non-empty lines and {len(run.page_plans)} planned page updates.",
+            message=f"来源包含 {_non_empty_line_count(run.raw_content)} 行非空内容，并规划了 {len(run.page_plans)} 个页面更新。",
             target_path=targets[0] if targets else None,
         )
     ]
@@ -26,7 +26,7 @@ def _deterministic_review_response(
         WikiIngestReviewFinding(
             severity="warning",
             code="missing_link_review_needed",
-            message=f"Planned content references [[{target}]]. Confirm whether this page should exist or be created.",
+            message=f"规划内容引用了 [[{target}]]。请确认该页面是否应存在或需要创建。",
             target_path=None,
         )
         for target in missing_link_targets[:5]
@@ -36,7 +36,7 @@ def _deterministic_review_response(
             WikiIngestReviewFinding(
                 severity="error",
                 code="no_page_plans",
-                message="No page plans were generated for this ingest run.",
+                message="本次导入运行没有生成页面计划。",
             )
         )
     return WikiIngestReviewResponse(

@@ -2,6 +2,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { DesktopApi } from "../../services/desktopApi";
+import { defaultAgentModelDrafts } from "../../services/agentModelDrafts";
 import type { TtsSettingsResponse } from "../../types";
 import { SettingsPanel } from "./SettingsPanel";
 import type {
@@ -81,11 +82,13 @@ function renderSettingsPanel(
   const onUpdateTtsSettingsDraft = vi.fn();
   const onSaveTtsSettings = vi.fn();
   const onRefreshSettings = vi.fn();
+  const onTestGlobalModel = vi.fn();
+  const onSelectVaultDirectory = vi.fn();
 
-  render(
+  const rendered = render(
     <SettingsPanel
       api={{} as DesktopApi}
-      agentModelDrafts={[]}
+      agentModelDrafts={defaultAgentModelDrafts()}
       agentModelTestResults={{}}
       globalModelDraft={globalModelDraft}
       globalModelSaveStatus="idle"
@@ -105,11 +108,11 @@ function renderSettingsPanel(
       vaultStatus={null}
       lastIndexRun={null}
       indexingVault={false}
-      canSelectVaultDirectory={false}
+      canSelectVaultDirectory
       onRefreshSettings={onRefreshSettings}
       onUpdateGlobalModelDraft={vi.fn()}
       onSaveGlobalModel={vi.fn()}
-      onTestGlobalModel={vi.fn()}
+      onTestGlobalModel={onTestGlobalModel}
       onUpdateAutomationSettingsDraft={vi.fn()}
       onSaveAutomationSettings={vi.fn()}
       onUpdateTtsSettingsDraft={onUpdateTtsSettingsDraft}
@@ -120,17 +123,51 @@ function renderSettingsPanel(
       onSaveAgentModel={vi.fn()}
       onTestAgentModel={vi.fn()}
       onVaultPathChange={vi.fn()}
-      onSelectVaultDirectory={vi.fn()}
+      onSelectVaultDirectory={onSelectVaultDirectory}
       onBindVault={(event) => event.preventDefault()}
       onLoadVaultStatus={vi.fn()}
       onRebuildIndex={vi.fn()}
     />,
   );
 
-  return { onUpdateTtsSettingsDraft, onSaveTtsSettings, onRefreshSettings };
+  return {
+    ...rendered,
+    onUpdateTtsSettingsDraft,
+    onSaveTtsSettings,
+    onRefreshSettings,
+    onTestGlobalModel,
+    onSelectVaultDirectory,
+  };
 }
 
 describe("SettingsPanel", () => {
+  it("shows action-first settings trials without binding or saving automatically", () => {
+    const { onRefreshSettings, onTestGlobalModel, onSelectVaultDirectory } = renderSettingsPanel();
+
+    fireEvent.click(screen.getByRole("button", { name: "Test model" }));
+    fireEvent.click(screen.getByRole("button", { name: "Choose memory folder" }));
+    fireEvent.click(screen.getByRole("button", { name: "Refresh settings" }));
+
+    expect(onTestGlobalModel).toHaveBeenCalledTimes(1);
+    expect(onSelectVaultDirectory).toHaveBeenCalledTimes(1);
+    expect(onRefreshSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps specialist model configuration behind advanced outcome-oriented settings", () => {
+    const { container } = renderSettingsPanel();
+
+    const advanced = screen.getByText("Advanced model routing").closest("details");
+
+    expect(advanced).not.toHaveAttribute("open");
+    expect(screen.getByText("Optional per-outcome overrides; most users can keep everything on the global model.")).toBeInTheDocument();
+    expect(screen.getByText("Outcome model overrides")).toBeInTheDocument();
+    expect(screen.getAllByText("Tasks").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Knowledge").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Memory").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Cited answers").length).toBeGreaterThan(0);
+    expect(container.textContent).not.toMatch(/9 agents|9 个智能体|9个智能体/);
+  });
+
   it("updates and saves TTS voice settings", () => {
     const { onUpdateTtsSettingsDraft, onSaveTtsSettings, onRefreshSettings } = renderSettingsPanel();
     const ttsRegion = within(screen.getByRole("region", { name: "语音朗读设置" }));

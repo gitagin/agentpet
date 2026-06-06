@@ -146,6 +146,7 @@ export type ChatMessage = {
   negotiation_steps?: ChatNegotiationStep[];
   negotiation_done?: ChatNegotiationDone;
   wiki_proposals?: ChatWikiProposal[];
+  memory_proposals?: MemoryProposal[];
   continuity_proposals?: ChatContinuityProposal[];
   continuity_signal?: ChatContinuitySignal;
   agent_actions?: AgentAction[];

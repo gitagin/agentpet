@@ -303,7 +303,7 @@ def _build_request_payload(
         return {
             "model": XIAOMI_MIMO_MODEL,
             "messages": [
-                {"role": "user", "content": "Please read the assistant text naturally."},
+                {"role": "user", "content": "请自然朗读助手文本。"},
                 {"role": "assistant", "content": request.text},
             ],
             "audio": {
@@ -390,12 +390,12 @@ def _extract_audio_from_json(
     mime_type = str(configured_mime_type or payload.get("mime_type") or payload.get("mimeType") or MIME_BY_FORMAT[fallback_format])
     normalized_encoding = audio_encoding.strip().lower()
     if normalized_encoding not in SUPPORTED_AUDIO_ENCODINGS:
-        raise TtsServiceError("Unsupported TTS audio encoding.", code="unsupported_format", status_code=422)
+        raise TtsServiceError("不支持的 TTS 音频编码。", code="unsupported_format", status_code=422)
     if audio_json_path:
         candidate = _get_json_path(payload, audio_json_path)
         if isinstance(candidate, str) and candidate.strip():
             return _decode_audio_string(candidate, mime_type=mime_type)
-        raise TtsServiceError("TTS JSON path did not resolve to audio.", code="invalid_audio", status_code=502)
+        raise TtsServiceError("TTS JSON 路径未解析到音频内容。", code="invalid_audio", status_code=502)
     candidates = (
         payload.get("audio_base64"),
         payload.get("audioBase64"),

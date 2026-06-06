@@ -94,6 +94,8 @@ def test_negotiation_stats_returns_aggregates(client: TestClient) -> None:
         "avg_latency_ms": 150.0,
         "fallback_rate": 0.5,
         "top_agents_invoked": ["memory_retrieval_agent", "wiki_manager_agent"],
+        "top_outcomes_supported": ["cited answer", "knowledge page"],
+        "outcome_support_counts": {"cited answer": 2, "knowledge page": 1},
     }
 
 

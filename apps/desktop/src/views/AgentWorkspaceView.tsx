@@ -1,13 +1,28 @@
-import { BellRing, CalendarDays, Check, CircleAlert, ListChecks, Loader2, MessageSquareText, ShieldCheck, X } from "lucide-react";
+import {
+  BellRing,
+  CalendarDays,
+  Check,
+  CircleAlert,
+  ClipboardList,
+  ListChecks,
+  Loader2,
+  LocateFixed,
+  MessageSquareText,
+  PlusCircle,
+  ShieldCheck,
+  X,
+} from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import type { FormEvent } from "react";
 import { EmptyState, Panel } from "../components/layout";
 import type { DesktopApi } from "../services/desktopApi";
 import { describeError } from "../services/apiErrorMessages";
 import type { TaskItem, TaskLogItem, TaskStepItem, TaskWorkspaceItem } from "../types";
 import { formatTaskStatus } from "../features/tasks/taskReducer";
+import { useTasks } from "../features/tasks/useTasks";
 import { FeatureWindowShell } from "./FeatureWindowShell";
 
-type AgentTaskStatus = "idle" | "running" | "approval" | "completed" | "failed";
+type AgentTaskStatus = "idle" | "running" | "approval" | "completed" | "cancelled" | "failed";
 type AgentStepStatus = "done" | "running" | "failed" | "pending";
 
 type WorkspaceTask = {
@@ -31,21 +46,27 @@ type ExecutionLog = {
   content: string;
 };
 
+type Notice = {
+  tone: "info" | "error" | "success";
+  message: string;
+};
+
 type AgentWorkspaceViewProps = {
   api: DesktopApi;
 };
 
 const statusLabels: Record<AgentTaskStatus, string> = {
   idle: "空闲",
-  running: "进行中",
-  approval: "等待审批",
-  completed: "完成",
+  running: "运行中",
+  approval: "需要确认",
+  completed: "已完成",
+  cancelled: "已取消",
   failed: "失败",
 };
 
 const stepStatusLabels: Record<AgentStepStatus, string> = {
   done: "已完成",
-  running: "执行中",
+  running: "运行中",
   failed: "失败",
   pending: "等待中",
 };
@@ -56,10 +77,13 @@ function mapTaskStatus(task: TaskWorkspaceItem): AgentTaskStatus {
   if (task.needs_approval) {
     return "approval";
   }
-  if (task.status === "done") {
+  if (task.status === "done" || task.status === "completed") {
     return "completed";
   }
   if (task.status === "cancelled") {
+    return "cancelled";
+  }
+  if (task.status === "failed") {
     return "failed";
   }
   return "running";
@@ -100,7 +124,7 @@ function toWorkspaceTask(task: TaskWorkspaceItem): WorkspaceTask {
     description: task.description || task.source_text || task.due_at || "暂无任务说明。",
     status: mapTaskStatus(task),
     needsApproval: task.needs_approval,
-    pendingAction: task.approval_action || "等待人工确认",
+    pendingAction: task.approval_action || "等待确认",
   };
 }
 
@@ -152,6 +176,18 @@ function formatTaskDateTime(value?: string | null): string {
     minute: "2-digit",
     hour12: false,
   }).format(new Date(time));
+}
+
+function formatDateTimeLocal(value: Date): string {
+  const pad = (part: number) => String(part).padStart(2, "0");
+  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}T${pad(value.getHours())}:${pad(value.getMinutes())}`;
+}
+
+function tomorrowMorningLocal(): string {
+  const date = new Date();
+  date.setDate(date.getDate() + 1);
+  date.setHours(9, 0, 0, 0);
+  return formatDateTimeLocal(date);
 }
 
 function localDateKey(value: string | null | undefined, timezone: string): string {
@@ -214,6 +250,10 @@ function formatReminderStatus(status?: string | null): string {
   return status ? labels[status] || status : "无提醒";
 }
 
+function isTaskClosed(task: TaskItem): boolean {
+  return task.status === "done" || task.status === "completed" || task.status === "cancelled";
+}
+
 function TaskDigestCard({ task, tone = "normal" }: { task: TaskItem; tone?: "normal" | "warning" | "success" }) {
   const primaryTime = task.due_at || task.remind_at;
   return (
@@ -233,16 +273,94 @@ function TaskDigestCard({ task, tone = "normal" }: { task: TaskItem; tone?: "nor
   );
 }
 
+function TaskManagementCard({
+  task,
+  busy,
+  onComplete,
+  onCancel,
+  onLocate,
+}: {
+  task: TaskItem;
+  busy: boolean;
+  onComplete: () => void;
+  onCancel: () => void;
+  onLocate: () => void;
+}) {
+  const closed = isTaskClosed(task);
+  return (
+    <article id={`task-card-${task.task_id}`} className={`task-management-card ${task.status}`}>
+      <div className="task-management-main">
+        <div className="task-digest-head">
+          <strong>{task.title}</strong>
+          <span>{formatTaskStatus(task.status)}</span>
+        </div>
+        {task.description || task.source_text ? <p>{task.description || task.source_text}</p> : null}
+        <div className="task-digest-meta">
+          {task.due_at ? <small>截止：{formatTaskDateTime(task.due_at)}</small> : null}
+          {task.remind_at ? <small>提醒：{formatTaskDateTime(task.remind_at)} / {formatReminderStatus(task.reminder_status)}</small> : null}
+          {task.timezone_label || task.timezone ? <small>时区：{task.timezone_label || task.timezone}</small> : null}
+          {!task.due_at && !task.remind_at ? <small>未设置截止时间或提醒。</small> : null}
+        </div>
+      </div>
+      <div className="task-management-actions">
+        <button type="button" className="secondary" onClick={onComplete} disabled={busy || closed}>
+          {busy ? <Loader2 className="spin" size={15} /> : <Check size={15} />}
+          完成
+        </button>
+        <button type="button" className="secondary" onClick={onCancel} disabled={busy || closed}>
+          {busy ? <Loader2 className="spin" size={15} /> : <X size={15} />}
+          取消
+        </button>
+        <button type="button" className="secondary" onClick={onLocate}>
+          <LocateFixed size={15} />
+          定位日志/步骤
+        </button>
+      </div>
+    </article>
+  );
+}
+
 export default function AgentWorkspaceView({ api }: AgentWorkspaceViewProps) {
   const [currentTask, setCurrentTask] = useState<WorkspaceTask | null>(null);
-  const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [todayTasks, setTodayTasks] = useState<TaskItem[]>([]);
   const [agentSteps, setAgentSteps] = useState<AgentStep[]>([]);
   const [executionLogs, setExecutionLogs] = useState<ExecutionLog[]>([]);
+  const [traceTask, setTraceTask] = useState<{ id: string; title: string } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [traceLoading, setTraceLoading] = useState(false);
   const [error, setError] = useState("");
-  const [actionBusy, setActionBusy] = useState<"approve" | "reject" | null>(null);
+  const [taskNotice, setTaskNotice] = useState<Notice | null>(null);
+  const [approvalBusy, setApprovalBusy] = useState<"approve" | "reject" | null>(null);
+  const [creatingTask, setCreatingTask] = useState(false);
   const localTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+
+  const loadTaskTrace = useCallback(
+    async (taskId: string, title: string, options: { silent?: boolean; signal?: AbortSignal } = {}) => {
+      if (!options.silent) {
+        setTraceLoading(true);
+      }
+      setError("");
+      try {
+        const [steps, logs] = await Promise.all([
+          api.fetchTaskSteps(taskId, options.signal),
+          api.fetchTaskLogs(taskId, options.signal),
+        ]);
+        setTraceTask({ id: taskId, title });
+        setAgentSteps(steps.steps.map(toAgentStep));
+        setExecutionLogs(logs.logs.map(toExecutionLog));
+      } catch (requestError) {
+        if (requestError instanceof DOMException && requestError.name === "AbortError") {
+          return;
+        }
+        setError(describeError(requestError, "任务日志和步骤加载失败"));
+      } finally {
+        if (!options.silent) {
+          setTraceLoading(false);
+        }
+      }
+    },
+    [api],
+  );
 
   const loadWorkspace = useCallback(
     async (options: { silent?: boolean; signal?: AbortSignal } = {}) => {
@@ -251,57 +369,106 @@ export default function AgentWorkspaceView({ api }: AgentWorkspaceViewProps) {
       }
       setError("");
       try {
-        const [current, allTasks, today] = await Promise.all([
+        const [current, today] = await Promise.all([
           api.fetchCurrentTask(options.signal),
-          api.listTasks(options.signal),
           api.listTodayTasks(localTimezone, options.signal),
         ]);
-        setTasks(allTasks.tasks);
         setTodayTasks(today.tasks);
         if (!current.task) {
           setCurrentTask(null);
+          setTraceTask(null);
           setAgentSteps([]);
           setExecutionLogs([]);
           return;
         }
-        const [steps, logs] = await Promise.all([
-          api.fetchTaskSteps(current.task.task_id, options.signal),
-          api.fetchTaskLogs(current.task.task_id, options.signal),
-        ]);
-        setCurrentTask(toWorkspaceTask(current.task));
-        setAgentSteps(steps.steps.map(toAgentStep));
-        setExecutionLogs(logs.logs.map(toExecutionLog));
+        const workspaceTask = toWorkspaceTask(current.task);
+        setCurrentTask(workspaceTask);
+        await loadTaskTrace(workspaceTask.id, workspaceTask.name, { silent: true, signal: options.signal });
       } catch (requestError) {
         if (requestError instanceof DOMException && requestError.name === "AbortError") {
           return;
         }
-        setError(describeError(requestError, "任务加载失败"));
+        setError(describeError(requestError, "任务工作区加载失败"));
       } finally {
         if (!options.silent) {
           setLoading(false);
         }
       }
     },
-    [api, localTimezone],
+    [api, loadTaskTrace, localTimezone],
+  );
+
+  const {
+    actOnTask,
+    createTask,
+    loadTasks,
+    loadingTasks,
+    taskActionIds,
+    taskDraft,
+    tasks,
+    updateTaskDraft,
+  } = useTasks({
+    api,
+    pollingEnabled: false,
+    sidecarReady: true,
+    onNotice: setTaskNotice,
+    onTaskStage: () => void loadWorkspace({ silent: true }),
+  });
+
+  const refreshTaskPage = useCallback(
+    async (options: { silent?: boolean; signal?: AbortSignal } = {}) => {
+      await Promise.all([loadWorkspace(options), loadTasks({ silent: options.silent })]);
+    },
+    [loadTasks, loadWorkspace],
   );
 
   useEffect(() => {
     const abort = new AbortController();
-    void loadWorkspace({ signal: abort.signal });
+    void refreshTaskPage({ signal: abort.signal });
     const timer = window.setInterval(() => {
-      void loadWorkspace({ silent: true, signal: abort.signal });
+      void refreshTaskPage({ silent: true, signal: abort.signal });
     }, pollIntervalMs);
     return () => {
       abort.abort();
       window.clearInterval(timer);
     };
-  }, [loadWorkspace]);
+  }, [refreshTaskPage]);
 
-  async function actOnTask(action: "approve" | "reject") {
+  async function handleCreateTask(event: FormEvent) {
+    setCreatingTask(true);
+    await createTask(event);
+    await refreshTaskPage({ silent: true });
+    setCreatingTask(false);
+  }
+
+  async function handleTaskAction(taskId: string, action: "complete" | "cancel") {
+    await actOnTask(taskId, action);
+    await refreshTaskPage({ silent: true });
+  }
+
+  async function locateTaskLogs(task: TaskItem) {
+    await loadTaskTrace(task.task_id, task.title);
+    window.requestAnimationFrame(() => {
+      document.getElementById("task-steps-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+
+  function fillTomorrowReminderTrial() {
+    const remindAt = tomorrowMorningLocal();
+    updateTaskDraft({
+      title: "检查发布清单",
+      description: "从任务工作区创建的快捷试用提醒。",
+      due_at: remindAt,
+      remind_at: remindAt,
+      timezone: localTimezone,
+    });
+  }
+
+  async function actOnApproval(action: "approve" | "reject") {
     if (!currentTask) {
       return;
     }
-    setActionBusy(action);
+    setApprovalBusy(action);
     setError("");
     try {
       if (action === "approve") {
@@ -309,18 +476,18 @@ export default function AgentWorkspaceView({ api }: AgentWorkspaceViewProps) {
       } else {
         await api.rejectTask(currentTask.id);
       }
-      await loadWorkspace({ silent: true });
+      await refreshTaskPage({ silent: true });
     } catch (requestError) {
-      setError(describeError(requestError, action === "approve" ? "任务批准失败" : "任务拒绝失败"));
+      setError(describeError(requestError, action === "approve" ? "任务确认失败" : "任务拒绝失败"));
     } finally {
-      setActionBusy(null);
+      setApprovalBusy(null);
     }
   }
 
-  const title = loading && !currentTask ? "正在加载任务" : currentTask?.name || "暂无当前任务";
+  const title = loading && !currentTask ? "正在加载当前任务" : currentTask?.name || "暂无当前任务";
   const statusLabel = currentTask ? statusLabels[currentTask.status] : loading ? statusLabels.running : statusLabels.idle;
   const statusTone = currentTask?.status || (loading ? "running" : "idle");
-  const description = currentTask?.description || (loading ? "正在从后端读取任务状态。" : "当前没有待展示的任务。");
+  const description = currentTask?.description || (loading ? "正在从本地 sidecar 读取任务状态。" : "当前没有正在运行的任务。");
   const mergedTodayTasks = mergeTodayTasks(todayTasks, tasks, localTimezone);
   const upcomingReminders = upcomingReminderTasks(tasks);
   const triggeredReminders = triggeredReminderTasks(tasks);
@@ -330,10 +497,102 @@ export default function AgentWorkspaceView({ api }: AgentWorkspaceViewProps) {
     <FeatureWindowShell
       eyebrow="本地执行"
       title="任务"
-      description="查看当前任务、执行步骤、审批动作和运行日志。"
+      description="直接创建提醒、管理任务卡片，并保留执行步骤和日志作为辅助细节。"
       activeTab="任务"
     >
-      <div className="task-workspace-grid" aria-label="任务工作台">
+      <div className="task-workspace-grid" aria-label="任务工作区">
+        <Panel icon={<PlusCircle size={18} />} title="创建任务" className="feature-window-panel task-create-panel">
+          <div className="guided-trial-actions" aria-label="任务快捷示例">
+            <button type="button" className="secondary" onClick={fillTomorrowReminderTrial} disabled={creatingTask}>
+              <BellRing size={16} />
+              创建明天的提醒
+            </button>
+          </div>
+          <form className="task-create-form" aria-label="任务创建表单" onSubmit={(event) => void handleCreateTask(event)}>
+            <label>
+              <span>任务标题</span>
+              <input
+                value={taskDraft.title}
+                onChange={(event) => updateTaskDraft({ title: event.target.value })}
+                placeholder="支付账单、回电话、检查笔记..."
+                disabled={creatingTask}
+                required
+              />
+            </label>
+            <label>
+              <span>说明</span>
+              <textarea
+                rows={3}
+                value={taskDraft.description}
+                onChange={(event) => updateTaskDraft({ description: event.target.value })}
+                placeholder="补充背景、预期结果，或希望助手记住的内容。"
+                disabled={creatingTask}
+              />
+            </label>
+            <div className="task-create-time-grid">
+              <label>
+                <span>截止时间</span>
+                <input
+                  type="datetime-local"
+                  value={taskDraft.due_at || ""}
+                  onChange={(event) => updateTaskDraft({ due_at: event.target.value })}
+                  disabled={creatingTask}
+                />
+              </label>
+              <label>
+                <span>提醒时间</span>
+                <input
+                  type="datetime-local"
+                  value={taskDraft.remind_at || ""}
+                  onChange={(event) => updateTaskDraft({ remind_at: event.target.value })}
+                  disabled={creatingTask}
+                />
+              </label>
+              <label>
+                <span>时区</span>
+                <input
+                  value={taskDraft.timezone}
+                  onChange={(event) => updateTaskDraft({ timezone: event.target.value })}
+                  placeholder="Asia/Shanghai"
+                  disabled={creatingTask}
+                />
+              </label>
+            </div>
+            {taskNotice ? <p className={`field-note ${taskNotice.tone === "error" ? "error" : ""}`}>{taskNotice.message}</p> : null}
+            <div className="button-row task-button-row">
+              <button type="submit" disabled={creatingTask || !taskDraft.title.trim()}>
+                {creatingTask ? <Loader2 className="spin" size={16} /> : <PlusCircle size={16} />}
+                {creatingTask ? "正在创建" : "创建任务"}
+              </button>
+              <button type="button" className="secondary" onClick={() => void refreshTaskPage()} disabled={loading || loadingTasks}>
+                {loading || loadingTasks ? <Loader2 className="spin" size={16} /> : <ClipboardList size={16} />}
+                刷新任务
+              </button>
+            </div>
+          </form>
+        </Panel>
+
+        <Panel icon={<ClipboardList size={18} />} title="管理任务" className="feature-window-panel task-list-panel">
+          <div className="task-management-list" aria-label="任务卡片">
+            {tasks.length > 0 ? (
+              tasks.map((task) => (
+                <TaskManagementCard
+                  key={task.task_id}
+                  task={task}
+                  busy={taskActionIds.has(task.task_id)}
+                  onComplete={() => void handleTaskAction(task.task_id, "complete")}
+                  onCancel={() => void handleTaskAction(task.task_id, "cancel")}
+                  onLocate={() => void locateTaskLogs(task)}
+                />
+              ))
+            ) : loadingTasks ? (
+              <EmptyState text="正在加载任务卡片。" />
+            ) : (
+              <EmptyState text="还没有任务。可以用上方表单创建第一个任务。" />
+            )}
+          </div>
+        </Panel>
+
         <Panel icon={<ListChecks size={18} />} title="当前任务" className="feature-window-panel task-current-panel">
           <div className="task-current-header">
             <div className="section-heading">
@@ -350,8 +609,8 @@ export default function AgentWorkspaceView({ api }: AgentWorkspaceViewProps) {
                 <dd>{statusLabels[currentTask.status]}</dd>
               </div>
               <div>
-                <dt>审批</dt>
-                <dd>{currentTask.needsApproval ? currentTask.pendingAction : "无需人工确认"}</dd>
+                <dt>确认</dt>
+                <dd>{currentTask.needsApproval ? currentTask.pendingAction : "无需确认"}</dd>
               </div>
             </dl>
           ) : (
@@ -360,36 +619,36 @@ export default function AgentWorkspaceView({ api }: AgentWorkspaceViewProps) {
         </Panel>
 
         {currentTask?.needsApproval ? (
-          <Panel icon={<ShieldCheck size={18} />} title="审批操作" className="feature-window-panel task-approval-panel">
-            <p className="field-note">即将执行：{currentTask.pendingAction}</p>
+          <Panel icon={<ShieldCheck size={18} />} title="确认操作" className="feature-window-panel task-approval-panel">
+            <p className="field-note">待确认操作：{currentTask.pendingAction}</p>
             <div className="button-row task-button-row">
               <button
                 type="button"
                 className="secondary"
-                disabled={actionBusy !== null}
-                onClick={() => void actOnTask("reject")}
+                disabled={approvalBusy !== null}
+                onClick={() => void actOnApproval("reject")}
               >
-                {actionBusy === "reject" ? <Loader2 className="spin" size={16} /> : <X size={16} />}
-                {actionBusy === "reject" ? "正在拒绝" : "拒绝"}
+                {approvalBusy === "reject" ? <Loader2 className="spin" size={16} /> : <X size={16} />}
+                {approvalBusy === "reject" ? "正在拒绝" : "拒绝"}
               </button>
               <button
                 type="button"
-                disabled={actionBusy !== null}
-                onClick={() => void actOnTask("approve")}
+                disabled={approvalBusy !== null}
+                onClick={() => void actOnApproval("approve")}
               >
-                {actionBusy === "approve" ? <Loader2 className="spin" size={16} /> : <ShieldCheck size={16} />}
-                {actionBusy === "approve" ? "正在批准" : "批准"}
+                {approvalBusy === "approve" ? <Loader2 className="spin" size={16} /> : <ShieldCheck size={16} />}
+                {approvalBusy === "approve" ? "正在确认" : "确认"}
               </button>
             </div>
           </Panel>
         ) : null}
 
-        <Panel icon={<CalendarDays size={18} />} title="今天任务" className="feature-window-panel task-daily-panel">
-          <div className="task-digest-list" aria-label="今天任务列表">
+        <Panel icon={<CalendarDays size={18} />} title="今天" className="feature-window-panel task-daily-panel">
+          <div className="task-digest-list" aria-label="今日任务列表">
             {mergedTodayTasks.length > 0 ? (
               mergedTodayTasks.map((task) => <TaskDigestCard key={`today-${task.task_id}`} task={task} />)
             ) : (
-              <EmptyState text={loading ? "正在加载今天任务。" : "今天没有到期任务或提醒。"} />
+              <EmptyState text={loading || loadingTasks ? "正在加载今天的任务。" : "今天没有到期任务或提醒。"} />
             )}
           </div>
         </Panel>
@@ -399,37 +658,37 @@ export default function AgentWorkspaceView({ api }: AgentWorkspaceViewProps) {
             {upcomingReminders.length > 0 ? (
               upcomingReminders.map((task) => <TaskDigestCard key={`upcoming-${task.task_id}`} task={task} />)
             ) : (
-              <EmptyState text={loading ? "正在加载即将提醒。" : "暂无已安排的即将提醒。"} />
+              <EmptyState text={loadingTasks ? "正在加载即将提醒。" : "没有已安排的即将提醒。"} />
             )}
           </div>
         </Panel>
 
         <Panel icon={<Check size={18} />} title="已触发提醒" className="feature-window-panel task-triggered-panel">
-          <div className="task-digest-list" aria-label="已触发提醒状态">
+          <div className="task-digest-list" aria-label="已触发提醒列表">
             {triggeredReminders.length > 0 ? (
               triggeredReminders.map((task) => (
                 <TaskDigestCard key={`triggered-${task.task_id}`} task={task} tone="success" />
               ))
             ) : (
-              <EmptyState text={loading ? "正在加载已触发提醒。" : "还没有已触发提醒。"} />
+              <EmptyState text={loadingTasks ? "正在加载已触发提醒。" : "还没有已触发提醒。"} />
             )}
           </div>
         </Panel>
 
-        <Panel icon={<CircleAlert size={18} />} title="需要处理" className="feature-window-panel task-reminder-alert-panel">
+        <Panel icon={<CircleAlert size={18} />} title="需要关注" className="feature-window-panel task-reminder-alert-panel">
           <div className="task-reminder-alert">
             <strong>
               {reminderProblems.length > 0
                 ? `${reminderProblems.length} 条提醒未安排或失败`
-                : "没有未调度或失败提醒"}
+                : "没有未安排或失败的提醒"}
             </strong>
             <span>
               {reminderProblems.length > 0
-                ? "这些任务仍保留在本地列表中，但提醒未进入可靠调度。"
-                : "调度器当前没有报告需要人工处理的提醒。"}
+                ? "这些任务仍保留在本地列表中，但提醒没有进入可靠调度。"
+                : "提醒调度器当前没有需要手动处理的问题。"}
             </span>
           </div>
-          <div className="task-digest-list" aria-label="未调度或失败提醒">
+          <div className="task-digest-list" aria-label="未安排或失败的提醒">
             {reminderProblems.length > 0 ? (
               reminderProblems.map((task) => (
                 <TaskDigestCard key={`problem-${task.task_id}`} task={task} tone="warning" />
@@ -438,7 +697,11 @@ export default function AgentWorkspaceView({ api }: AgentWorkspaceViewProps) {
           </div>
         </Panel>
 
-        <Panel icon={<ListChecks size={18} />} title="执行步骤" className="feature-window-panel task-steps-panel">
+        <Panel id="task-steps-panel" icon={<ListChecks size={18} />} title="执行步骤" className="feature-window-panel task-steps-panel">
+          <div className="section-heading compact">
+            <strong>{traceTask ? traceTask.title : "未选择任务"}</strong>
+            <span>{traceLoading ? "正在加载任务步骤和日志。" : "在任务卡片中点击“定位日志/步骤”即可查看轨迹。"}</span>
+          </div>
           <div className="task-step-list" aria-label="工具步骤列表">
             {agentSteps.length > 0 ? (
               agentSteps.map((step) => (
@@ -449,13 +712,15 @@ export default function AgentWorkspaceView({ api }: AgentWorkspaceViewProps) {
                   <span className="task-step-duration">{step.duration}</span>
                 </article>
               ))
+            ) : traceLoading ? (
+              <EmptyState text="正在加载执行步骤。" />
             ) : (
-              <EmptyState text={loading ? "正在加载执行步骤。" : "暂无执行步骤。"} />
+              <EmptyState text="未选择执行步骤。" />
             )}
           </div>
         </Panel>
 
-        <Panel icon={<MessageSquareText size={18} />} title="执行日志" className="feature-window-panel task-log-panel">
+        <Panel id="task-log-panel" icon={<MessageSquareText size={18} />} title="执行日志" className="feature-window-panel task-log-panel">
           <div className="task-log-list" aria-label="执行日志">
             {executionLogs.length > 0 ? (
               executionLogs.map((log) => (
@@ -464,8 +729,10 @@ export default function AgentWorkspaceView({ api }: AgentWorkspaceViewProps) {
                   {log.content}
                 </p>
               ))
+            ) : traceLoading ? (
+              <EmptyState text="正在加载执行日志。" />
             ) : (
-              <EmptyState text={loading ? "正在加载执行日志。" : "暂无执行日志。"} />
+              <EmptyState text="未选择执行日志。" />
             )}
           </div>
         </Panel>

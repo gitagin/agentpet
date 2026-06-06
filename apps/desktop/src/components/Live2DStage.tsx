@@ -107,8 +107,8 @@ function getLive2DSpeakingRuntimeDirective(
     expression: "2mic",
     motionGroup,
     motionIndex: motionGroup ? defaultMotionIndex : -1,
-    petHint: "TTS speaking feedback is active.",
-    controlSummary: "TTS speaking overlay: expression 2mic with the default loop motion.",
+    petHint: "TTS 朗读反馈已开启。",
+    controlSummary: "TTS 朗读叠加层：表情 2mic，使用默认循环动作。",
   };
 }
 

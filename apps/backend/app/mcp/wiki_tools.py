@@ -56,7 +56,7 @@ class McpToolUnavailableError(Exception):
 
     def __init__(self, tool_name: str) -> None:
         self.tool_name = tool_name
-        super().__init__(f"{tool_name} is not configured.")
+        super().__init__(f"{tool_name} 未配置。")
 
 
 class WikiSearchInput(BaseModel):
@@ -102,43 +102,43 @@ class WikiMcpToolAdapter:
         return [
             McpToolSpec(
                 name="search_wiki",
-                description="Search indexed Wiki knowledge-base pages.",
+                description="搜索已索引的 Wiki 知识库页面。",
                 input_schema=WikiSearchInput,
                 call=self.search_wiki,
             ),
             McpToolSpec(
                 name="read_page",
-                description="Read one Markdown page from Wiki/.",
+                description="读取 Wiki/ 下的一个 Markdown 页面。",
                 input_schema=WikiReadPageInput,
                 call=self.read_page,
             ),
             McpToolSpec(
                 name="plan_ingest",
-                description="Plan Wiki ingest without writing target pages.",
+                description="规划 Wiki 导入，但不写入目标页面。",
                 input_schema=WikiIngestPreviewRequest,
                 call=self.plan_ingest,
             ),
             McpToolSpec(
                 name="plan_query_archive",
-                description="Plan query archive Markdown without writing it.",
+                description="规划问答归档 Markdown，但不写入文件。",
                 input_schema=QueryArchiveRequest,
                 call=self.plan_query_archive,
             ),
             McpToolSpec(
                 name="plan_synthesis",
-                description="Plan Wiki synthesis Markdown without writing it.",
+                description="规划 Wiki 综合整理 Markdown，但不写入文件。",
                 input_schema=WikiSynthesizeRequest,
                 call=self.plan_synthesis,
             ),
             McpToolSpec(
                 name="plan_lint",
-                description="Plan Wiki lint/report action without writing a report.",
+                description="规划 Wiki lint 或报告操作，但不写入报告。",
                 input_schema=WikiLintRequest,
                 call=self.plan_lint,
             ),
             McpToolSpec(
                 name="agent_context",
-                description="Build compact Wiki context for an agent prompt.",
+                description="为 Agent 提示构建紧凑 Wiki 上下文。",
                 input_schema=WikiAgentContextInput,
                 call=self.agent_context,
             ),
@@ -318,7 +318,7 @@ def _dump_payload(value) -> dict[str, Any]:
 def _wiki_relative_path(target_path: str) -> str:
     normalized = target_path.replace("\\", "/").strip("/")
     if not normalized.startswith(f"{WIKI_ROOT}/"):
-        raise MarkdownWriteError("wiki read target_path must be under Wiki/")
+        raise MarkdownWriteError("Wiki 读取 target_path 必须位于 Wiki/ 下")
     return resolve_wiki_path(normalized.removesuffix(".md"), normalized)
 
 

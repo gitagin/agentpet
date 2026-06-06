@@ -748,7 +748,7 @@ def test_lint_proposal_does_not_write_report(tmp_path: Path) -> None:
     assert proposal.write_report is True
     assert proposal.target_path is not None
     assert proposal.target_path.startswith("Wiki/Reports/Lint-")
-    assert "This proposal does not run a Markdown write" in proposal.markdown_preview
+    assert "此提案不会立即执行 Markdown 写入" in proposal.markdown_preview
     assert not (vault_root / "Wiki" / "Reports").exists()
 
 

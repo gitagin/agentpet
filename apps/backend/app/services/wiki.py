@@ -465,11 +465,11 @@ def resolve_wiki_path(title: str, target_path: str | None = None) -> str:
         normalized = f"{WIKI_ROOT}/{slugify_wiki_title(title)}.md"
     parts = [part for part in normalized.split("/") if part]
     if not parts or parts[0] != WIKI_ROOT:
-        raise MarkdownWriteError("wiki target_path must be under Wiki/")
+        raise MarkdownWriteError("Wiki target_path 必须位于 Wiki/ 下")
     if any(part in {"..", "."} or part.startswith(".") for part in parts):
-        raise MarkdownWriteError("wiki target_path contains an invalid path segment")
+        raise MarkdownWriteError("Wiki target_path 包含无效路径片段")
     if not normalized.lower().endswith(".md"):
-        raise MarkdownWriteError("wiki target_path must point to a Markdown file")
+        raise MarkdownWriteError("Wiki target_path 必须指向 Markdown 文件")
     return "/".join(parts)
 
 

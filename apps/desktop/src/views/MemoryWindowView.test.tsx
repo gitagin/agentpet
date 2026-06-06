@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import MemoryWindowView from "./MemoryWindowView";
 import type { DesktopApi } from "../services/desktopApi";
-import type { LocalAssetStatsResponse, MemoryGraphFact, RetrospectiveResponse } from "../types";
+import type { AgentAction, LocalAssetStatsResponse, MemoryGraphFact, MemoryProposalDraft, MemorySearchResult, RetrospectiveReportResponse, RetrospectiveResponse } from "../types";
 
 function memoryFact(overrides: Partial<MemoryGraphFact> = {}): MemoryGraphFact {
   return {
@@ -30,22 +30,139 @@ function memoryFact(overrides: Partial<MemoryGraphFact> = {}): MemoryGraphFact {
   };
 }
 
+function searchResult(overrides: Partial<MemorySearchResult> = {}): MemorySearchResult {
+  return {
+    note_id: "note-1",
+    chunk_id: "chunk-1",
+    relative_path: "Memories/Preferences.md",
+    title: "偏好记忆",
+    snippet: "用户偏好发布清单。",
+    score: 0.92,
+    source_scope: "personal_memory",
+    retrieval_mode: "graph",
+    ...overrides,
+  };
+}
+
+function agentAction(overrides: Partial<AgentAction> = {}): AgentAction {
+  return {
+    action_id: "action-review-1",
+    action_type: "wiki.retrospective_report.write",
+    risk_tier: "low",
+    decision: "auto",
+    status: "completed",
+    title: "已生成复盘",
+    summary: "已保存复盘报告。",
+    target_paths: ["Wiki/Companion/Reports/2026-06-02-1d.md"],
+    reversible: true,
+    source: {},
+    diff_summary: "",
+    metadata: {},
+    created_at: "2026-06-02T00:00:00Z",
+    updated_at: "2026-06-02T00:00:00Z",
+    completed_at: "2026-06-02T00:00:00Z",
+    ...overrides,
+  };
+}
+
+function reportResponse(relativePath: string, overrides: Partial<RetrospectiveReportResponse> = {}): RetrospectiveReportResponse {
+  return {
+    page: {
+      title: "复盘报告",
+      relative_path: relativePath,
+      operation: "replace",
+      status: "created",
+      index_job_id: "index-1",
+    },
+    action: agentAction({ target_paths: [relativePath] }),
+    markdown: "# 复盘报告\n",
+    ...overrides,
+  };
+}
+
 const retrospectives: RetrospectiveResponse = {
   generated_at: "2026-06-02T00:00:00Z",
   windows: [
+    {
+      days: 1,
+      label: "今天",
+      start_at: "2026-06-01T00:00:00Z",
+      end_at: "2026-06-02T00:00:00Z",
+      summary: { diary_objects: 1, long_term_memories: 1, wiki_updates: 1 },
+      topics: [
+        {
+          name: "发布复盘",
+          count: 1,
+          sources: [{ kind: "diary_memory", id: "diary-1", label: "每日笔记", path: "Memories/Daily/2026-06-01.md" }],
+        },
+      ],
+      diary_summaries: [
+        {
+          id: "diary-1",
+          summary: "复盘了发布计划。",
+          topic: "发布复盘",
+          source_path: "Memories/Daily/2026-06-01.md",
+          occurred_at: "2026-06-01T09:00:00Z",
+        },
+      ],
+      long_term_memories: [
+        {
+          id: "memory-1",
+          summary: "用户偏好简洁的发布清单",
+          category: "preference",
+          status: "active",
+          confidence: 0.91,
+          source_path: "Memories/Profile.md",
+          created_at: "2026-06-01T10:00:00Z",
+        },
+      ],
+      tasks: {
+        total: 1,
+        completed: 1,
+        pending: 0,
+        cancelled: 0,
+        overdue: 0,
+        sources: [{ kind: "task", id: "task-1", label: "交付 task04", created_at: "2026-06-01T11:00:00Z" }],
+      },
+      wiki_updates: [
+        {
+          path: "Wiki/Companion/Summaries/Release.md",
+          title: "发布摘要",
+          action_type: "wiki.answer_summary.write",
+          created_at: "2026-06-01T12:00:00Z",
+          action_id: "action-wiki-1",
+        },
+      ],
+      repeated_preferences: [],
+      has_data: true,
+    },
     {
       days: 7,
       label: "7 天",
       start_at: "2026-05-26T00:00:00Z",
       end_at: "2026-06-02T00:00:00Z",
-      summary: { diary_objects: 0, long_term_memories: 0, wiki_updates: 0 },
+      summary: { diary_objects: 2, long_term_memories: 2, wiki_updates: 1 },
       topics: [],
       diary_summaries: [],
       long_term_memories: [],
-      tasks: { total: 0, completed: 0, pending: 0, cancelled: 0, overdue: 0, sources: [] },
+      tasks: { total: 3, completed: 2, pending: 1, cancelled: 0, overdue: 0, sources: [] },
       wiki_updates: [],
       repeated_preferences: [],
-      has_data: false,
+      has_data: true,
+    },
+    {
+      days: 30,
+      label: "30 天",
+      start_at: "2026-05-03T00:00:00Z",
+      end_at: "2026-06-02T00:00:00Z",
+      summary: { diary_objects: 4, long_term_memories: 3, wiki_updates: 2 },
+      topics: [],
+      diary_summaries: [],
+      long_term_memories: [],
+      tasks: { total: 5, completed: 3, pending: 2, cancelled: 0, overdue: 1, sources: [] },
+      wiki_updates: [],
+      repeated_preferences: [],
+      has_data: true,
     },
   ],
 };
@@ -65,10 +182,22 @@ const localAssetStats: LocalAssetStatsResponse = {
 
 function createApi(facts: MemoryGraphFact[], stats: LocalAssetStatsResponse = localAssetStats) {
   return {
+    searchMemory: vi.fn().mockResolvedValue({ results: [searchResult()], metadata: { semantic_available: false } }),
+    createMemoryProposal: vi.fn().mockResolvedValue({
+      proposal_id: "proposal-1",
+      status: "pending",
+      preview_markdown: "我偏好简洁的发布清单。",
+      target_path: "Inbox/Pending Memories.md",
+      diff: null,
+      target_content_hash: "hash-1",
+    }),
+    listMemoryProposals: vi.fn().mockResolvedValue({ proposals: [] }),
+    confirmMemoryProposal: vi.fn().mockResolvedValue({ proposal_id: "proposal-1", status: "confirmed", written_path: "Memories/Profile.md" }),
+    rejectMemoryProposal: vi.fn().mockResolvedValue({ proposal_id: "proposal-1", status: "rejected" }),
     getLocalAssetStats: vi.fn().mockResolvedValue(stats),
     getRetrospectives: vi.fn().mockResolvedValue(retrospectives),
-    writeRetrospectiveReport: vi.fn(),
-    writeRetrospectivePeriodReport: vi.fn(),
+    writeRetrospectiveReport: vi.fn((days: number) => Promise.resolve(reportResponse(`Wiki/Companion/Reports/2026-06-02-${days}d-review.md`))),
+    writeRetrospectivePeriodReport: vi.fn((period: string) => Promise.resolve(reportResponse(`Wiki/Companion/Reports/2026-06-02-${period}-review.md`))),
     listMemoryGraphFacts: vi.fn().mockResolvedValue({ facts }),
     markMemoryGraphFactWrong: vi.fn().mockResolvedValue({ fact_id: "fact-1", status: "wrong" }),
     archiveMemoryGraphFact: vi.fn(),
@@ -80,19 +209,55 @@ function createApi(facts: MemoryGraphFact[], stats: LocalAssetStatsResponse = lo
       item_count: 1,
       items: [{ ...facts[0], metadata: {}, source_text: undefined }],
       json_preview: '[{"fact_id":"fact-1","subject":"fruit"}]',
-      markdown_preview: "# Long-term memory export preview\n\n## fruit is apple\n",
-      redaction_note: "Raw source evidence is omitted from this preview.",
+      markdown_preview: "# 长期记忆导出预览\n\n## fruit is apple\n",
+      redaction_note: "原始来源证据已从此预览中省略。",
     }),
   } as unknown as DesktopApi;
 }
 
-function renderView(api: DesktopApi, onRefresh = vi.fn()) {
+function renderView(
+  api: DesktopApi,
+  onRefresh = vi.fn(),
+  overrides: Partial<{
+    memorySearchQuery: string;
+    memorySearchResults: MemorySearchResult[];
+    memorySearchStatus: "idle" | "loading" | "success" | "empty" | "error";
+    memoryProposalDraft: MemoryProposalDraft;
+    onMemorySearchQueryChange: (query: string) => void;
+    onMemoryProposalDraftChange: (patch: Partial<MemoryProposalDraft>) => void;
+  }> = {},
+) {
+  const proposalDraft = overrides.memoryProposalDraft || {
+    type: "fact" as const,
+    content: "",
+    target_path: "Inbox/Pending Memories.md",
+  };
   render(
     <MemoryWindowView
       api={api}
       loading={false}
       error=""
       entries={[]}
+      memorySearchQuery={overrides.memorySearchQuery || ""}
+      memorySearchStatus={overrides.memorySearchStatus || "idle"}
+      memorySearchResults={overrides.memorySearchResults || []}
+      memoryLastSearchQuery=""
+      onMemorySearchQueryChange={overrides.onMemorySearchQueryChange || vi.fn()}
+      onRunMemorySearch={(event) => {
+        event.preventDefault();
+        void api.searchMemory(overrides.memorySearchQuery || "发布清单");
+      }}
+      memoryProposalDraft={proposalDraft}
+      memoryProposals={[]}
+      memoryProposalActionIds={new Set()}
+      loadingMemoryProposals={false}
+      onMemoryProposalDraftChange={overrides.onMemoryProposalDraftChange || vi.fn()}
+      onCreateMemoryProposal={(event) => {
+        event.preventDefault();
+        void api.createMemoryProposal(proposalDraft);
+      }}
+      onActOnMemoryProposal={vi.fn()}
+      onLoadMemoryProposals={vi.fn()}
       onRefresh={onRefresh}
       renderEntry={() => <article />}
     />,
@@ -113,10 +278,9 @@ describe("MemoryWindowView", () => {
 
     renderView(api);
 
-    const dashboard = await screen.findByLabelText("本地资产仪表盘");
+    const dashboard = (await screen.findByRole("button", { name: /刷新资产/ })).closest("section") as HTMLElement;
     expect(dashboard).toBeInTheDocument();
     expect(within(dashboard).getByText("聊天日记天数")).toBeInTheDocument();
-    expect(within(dashboard).getByText("3 条记录")).toBeInTheDocument();
     expect(within(dashboard).getByText("Wiki 页面")).toBeInTheDocument();
     expect(within(dashboard).getByText("5")).toBeInTheDocument();
     expect(within(dashboard).getByText("任务完成")).toBeInTheDocument();
@@ -124,6 +288,73 @@ describe("MemoryWindowView", () => {
     expect(within(dashboard).getByText("可撤销操作")).toBeInTheDocument();
     expect(within(dashboard).getByText("尚未撤销")).toBeInTheDocument();
     expect(api.getLocalAssetStats).toHaveBeenCalled();
+  });
+
+  it("shows direct memory search and add-memory controls before local assets", async () => {
+    const api = createApi([memoryFact()]);
+
+    renderView(api, vi.fn(), {
+      memorySearchQuery: "发布清单",
+      memorySearchStatus: "success",
+      memorySearchResults: [searchResult()],
+    });
+
+    const workbench = screen.getByLabelText("记忆工作台");
+    const localAssets = (await screen.findByRole("button", { name: /刷新资产/ })).closest("section") as HTMLElement;
+    expect(workbench.compareDocumentPosition(localAssets) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(workbench).getByLabelText("记忆搜索")).toBeInTheDocument();
+    expect(within(workbench).getByLabelText("新增记忆表单")).toBeInTheDocument();
+    expect(screen.getByText("偏好记忆")).toBeInTheDocument();
+    expect(screen.getByText("用户偏好发布清单。")).toBeInTheDocument();
+    expect(screen.getByLabelText("复盘助手")).toBeInTheDocument();
+    expect(screen.getByLabelText("已确认记忆")).toBeInTheDocument();
+    expect(screen.queryByLabelText(/chat/i)).not.toBeInTheDocument();
+  });
+
+  it("offers guided trials for memory search, saving a preference, and today's review", async () => {
+    const api = createApi([memoryFact()]);
+    const onMemorySearchQueryChange = vi.fn();
+    const onMemoryProposalDraftChange = vi.fn();
+
+    renderView(api, vi.fn(), { onMemorySearchQueryChange, onMemoryProposalDraftChange });
+
+    fireEvent.click(screen.getByRole("button", { name: "搜索记忆" }));
+    expect(onMemorySearchQueryChange).toHaveBeenCalledWith("发布清单");
+
+    fireEvent.click(screen.getByRole("button", { name: "保存一个偏好" }));
+    expect(onMemoryProposalDraftChange).toHaveBeenCalledWith({
+      type: "preference",
+      content: "我偏好简洁的发布清单。",
+      target_path: "Inbox/Pending Memories.md",
+    });
+
+    fireEvent.click(within(screen.getByLabelText("复盘快捷操作")).getByRole("button", { name: "生成今日复盘" }));
+    await waitFor(() => expect(api.writeRetrospectiveReport).toHaveBeenCalledWith(1));
+  });
+
+  it("runs memory search without opening chat", async () => {
+    const api = createApi([memoryFact()]);
+
+    renderView(api, vi.fn(), { memorySearchQuery: "发布清单" });
+
+    fireEvent.click(screen.getByRole("button", { name: "搜索" }));
+
+    await waitFor(() => expect(api.searchMemory).toHaveBeenCalledWith("发布清单"));
+  });
+
+  it("creates a memory proposal without opening chat", async () => {
+    const api = createApi([memoryFact()]);
+    const draft: MemoryProposalDraft = {
+      type: "preference",
+      content: "我偏好简洁的发布清单。",
+      target_path: "Inbox/Pending Memories.md",
+    };
+
+    renderView(api, vi.fn(), { memoryProposalDraft: draft });
+
+    fireEvent.click(screen.getByRole("button", { name: "新增记忆" }));
+
+    await waitFor(() => expect(api.createMemoryProposal).toHaveBeenCalledWith(draft));
   });
 
   it("shows an empty local asset guide when there is no accumulated data", async () => {
@@ -142,8 +373,45 @@ describe("MemoryWindowView", () => {
 
     renderView(api);
 
-    expect(await screen.findByText("还没有本地资产。完成一次聊天、记录长期记忆或生成复盘后，这里会显示积累情况。")).toBeInTheDocument();
-    expect(screen.getByText("尚未绑定 Vault；先显示本地数据库中的积累。")).toBeInTheDocument();
+    const dashboard = await screen.findByText("聊天日记天数");
+    expect(dashboard).toBeInTheDocument();
+    expect(screen.getAllByText("0").length).toBeGreaterThan(3);
+  });
+
+  it("splits memory facts into review sections and manages them directly", async () => {
+    const api = createApi([
+      memoryFact({ fact_id: "fact-active", subject: "fruit", object: "apple", status: "active" }),
+      memoryFact({ fact_id: "fact-candidate", subject: "drink", object: "tea", status: "candidate" }),
+      memoryFact({ fact_id: "fact-diary", subject: "topic", predicate: "mentions", object: "planning", source_type: "chat_diary", memory_type: "diary", status: "active" }),
+      memoryFact({ fact_id: "fact-archived", subject: "tool", object: "old", status: "archived" }),
+    ]);
+    const onRefresh = vi.fn();
+
+    renderView(api, onRefresh);
+
+    const confirmed = await screen.findByLabelText("已确认记忆");
+    expect(within(confirmed).getByText("fruit is apple")).toBeInTheDocument();
+    const candidates = screen.getByLabelText("待复核候选");
+    expect(within(candidates).getByText("drink is tea")).toBeInTheDocument();
+    const diary = screen.getByLabelText("日记来源记忆");
+    expect(within(diary).getByText("topic mentions planning")).toBeInTheDocument();
+    const archived = screen.getByLabelText("已归档或封存事实");
+    expect(within(archived).getByText("tool is old")).toBeInTheDocument();
+    const activeFactCard = within(confirmed).getByText("fruit is apple").closest("article");
+    expect(activeFactCard).not.toBeNull();
+
+    fireEvent.click(within(candidates).getByRole("button", { name: "确认" }));
+    await waitFor(() => expect(api.confirmMemoryGraphFact).toHaveBeenCalledWith("fact-candidate"));
+
+    fireEvent.click(within(activeFactCard as HTMLElement).getByRole("button", { name: "标为不准确" }));
+    await waitFor(() => expect(api.markMemoryGraphFactWrong).toHaveBeenCalledWith("fact-active"));
+
+    fireEvent.click(within(activeFactCard as HTMLElement).getByRole("button", { name: "归档" }));
+    await waitFor(() => expect(api.archiveMemoryGraphFact).toHaveBeenCalledWith("fact-active"));
+
+    fireEvent.click(within(activeFactCard as HTMLElement).getByRole("button", { name: "敏感封存" }));
+    await waitFor(() => expect(api.sensitiveBlockMemoryGraphFact).toHaveBeenCalledWith("fact-active"));
+    expect(onRefresh).toHaveBeenCalled();
   });
 
   it("marks an active long-term memory as inaccurate from the UI", async () => {
@@ -174,19 +442,83 @@ describe("MemoryWindowView", () => {
     expect(screen.queryByText("raw evidence is not rendered")).not.toBeInTheDocument();
   });
 
-  it("manually generates weekly and monthly Markdown reports from the retrospective toolbar", async () => {
+  it("shows review coach cards with source coverage before local assets", async () => {
+    const api = createApi([memoryFact()]);
+
+    renderView(api);
+
+    const coach = await screen.findByLabelText("复盘助手");
+    const localAssets = (await screen.findByRole("button", { name: /刷新资产/ })).closest("section") as HTMLElement;
+    expect(coach.compareDocumentPosition(localAssets) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(coach).getByText("今日复盘")).toBeInTheDocument();
+    expect(within(coach).getByText("7 天复盘")).toBeInTheDocument();
+    expect(within(coach).getByText("月度复盘")).toBeInTheDocument();
+
+    const todayCard = within(coach).getByText("今日复盘").closest("article");
+    expect(todayCard).not.toBeNull();
+    expect(within(todayCard as HTMLElement).getByText("聊天日记")).toBeInTheDocument();
+    expect(within(todayCard as HTMLElement).getByText("任务")).toBeInTheDocument();
+    expect(within(todayCard as HTMLElement).getByText("长期记忆")).toBeInTheDocument();
+    expect(within(todayCard as HTMLElement).getByText("Wiki")).toBeInTheDocument();
+    expect(within(todayCard as HTMLElement).getByText("使用 1 条日记、1 个任务、1 条记忆事实和 1 次 Wiki 更新。")).toBeInTheDocument();
+  });
+
+  it("generates review reports without chat and exposes report artifacts", async () => {
+    const api = createApi([memoryFact()]);
+
+    renderView(api);
+
+    const coach = await screen.findByLabelText("复盘助手");
+    fireEvent.click(within(coach).getByRole("button", { name: "生成今日复盘" }));
+
+    await waitFor(() => expect(api.writeRetrospectiveReport).toHaveBeenCalledWith(1));
+    expect(screen.getByLabelText("今日复盘报告产物")).toHaveTextContent("Wiki/Companion/Reports/2026-06-02-1d-review.md");
+
+    fireEvent.click(within(coach).getByRole("button", { name: "生成 7 天复盘" }));
+    await waitFor(() => expect(api.writeRetrospectiveReport).toHaveBeenCalledWith(7));
+
+    fireEvent.click(within(coach).getByRole("button", { name: "生成月度复盘" }));
+    await waitFor(() => expect(api.writeRetrospectivePeriodReport).toHaveBeenCalledWith("monthly"));
+  });
+
+  it("routes review report open and locate actions through Vault reveal IPC", async () => {
+    const originalAgentDesktop = window.agentDesktop;
+    const revealVaultPath = vi.fn().mockResolvedValue({ status: "shown", relative_path: "Wiki/Companion/Reports/2026-06-02-1d-review.md" });
+    window.agentDesktop = {
+      platform: "win32",
+      versions: {},
+      revealVaultPath,
+    };
+    const api = createApi([memoryFact()]);
+
+    try {
+      renderView(api);
+
+      const coach = await screen.findByLabelText("复盘助手");
+      fireEvent.click(within(coach).getByRole("button", { name: "生成今日复盘" }));
+      const artifact = await screen.findByLabelText("今日复盘报告产物");
+      fireEvent.click(within(artifact).getByRole("button", { name: "打开报告" }));
+      fireEvent.click(within(artifact).getByRole("button", { name: "定位报告" }));
+
+      await waitFor(() =>
+        expect(revealVaultPath).toHaveBeenCalledWith("Wiki/Companion/Reports/2026-06-02-1d-review.md", "open"),
+      );
+      expect(revealVaultPath).toHaveBeenCalledWith("Wiki/Companion/Reports/2026-06-02-1d-review.md", "show");
+    } finally {
+      window.agentDesktop = originalAgentDesktop;
+    }
+  });
+
+  it("manually generates a monthly Markdown report from the review coach", async () => {
     const api = createApi([memoryFact()]);
     const onRefresh = vi.fn();
 
     renderView(api, onRefresh);
 
     await screen.findByText("fruit is apple");
-    fireEvent.click(screen.getByRole("button", { name: "生成周报" }));
-
-    await waitFor(() => expect(api.writeRetrospectivePeriodReport).toHaveBeenCalledWith("weekly"));
-    fireEvent.click(screen.getByRole("button", { name: "生成月报" }));
+    fireEvent.click(within(screen.getByLabelText("复盘助手")).getByRole("button", { name: "生成月度复盘" }));
 
     await waitFor(() => expect(api.writeRetrospectivePeriodReport).toHaveBeenCalledWith("monthly"));
-    expect(onRefresh).toHaveBeenCalledTimes(2);
+    expect(onRefresh).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,10 +1,11 @@
-import { KeyRound } from "lucide-react";
+import { Bot, FolderOpen, KeyRound, RefreshCw } from "lucide-react";
 import type { FormEvent } from "react";
 import { Panel } from "../../components/layout";
 import type { AgentModelId, ModelTestResponse, TtsSettingsResponse, VaultStatusResponse } from "../../types";
 import type { AgentModelDraft } from "../../services/agentModelDrafts";
 import type { DesktopApi } from "../../services/desktopApi";
 import { AutomationSettingsCard } from "./AutomationSettingsCard";
+import { AgentConfigForm } from "./AgentConfigForm";
 import { GlobalModelCard } from "./GlobalModelCard";
 import { ModelHealthBanner } from "./ModelHealthBanner";
 import type {
@@ -107,29 +108,36 @@ export function SettingsPanel({
   onLoadVaultStatus,
   onRebuildIndex,
 }: SettingsPanelProps) {
-  void agentModelDrafts;
-  void agentModelTestResults;
   void negotiationSettingsDraft;
   void negotiationSettingsSaveStatus;
-  void savingAgentModelIds;
-  void testingAgentModelIds;
   void onUpdateNegotiationSettingsDraft;
   void onSaveNegotiationSettings;
-  void onUpdateAgentModelDraft;
-  void onSaveAgentModel;
-  void onTestAgentModel;
 
   return (
-    <Panel id="settings-panel" icon={<KeyRound size={18} />} title="配置" className="settings-panel-compact">
-      <section className="settings-intro" aria-label="配置引导">
+    <Panel id="settings-panel" icon={<KeyRound size={18} />} title="设置" className="settings-panel-compact">
+      <section className="settings-intro" aria-label="设置引导">
         <div>
-          <p className="eyebrow">开始使用只需要两步</p>
-          <h3>先让桌宠能聊天，再选择它记忆内容的位置。</h3>
+          <p className="eyebrow">先完成两项设置</p>
+          <h3>先连接聊天模型，再选择记忆保存的位置。</h3>
         </div>
         <ol>
-          <li>配置 AI 模型</li>
-          <li>绑定记忆库</li>
+          <li>配置模型</li>
+          <li>选择记忆文件夹</li>
         </ol>
+        <div className="guided-trial-actions settings-guided-trials" aria-label="设置快捷操作">
+          <button type="button" className="secondary" onClick={onTestGlobalModel} disabled={globalModelTestStatus === "loading"}>
+            <Bot size={16} />
+            测试模型
+          </button>
+          <button type="button" className="secondary" onClick={onSelectVaultDirectory} disabled={!canSelectVaultDirectory}>
+            <FolderOpen size={16} />
+            选择记忆文件夹
+          </button>
+          <button type="button" className="secondary" onClick={onRefreshSettings} disabled={loadingSettingsStatus}>
+            <RefreshCw size={16} />
+            刷新设置
+          </button>
+        </div>
       </section>
       <ModelHealthBanner api={api} />
       <GlobalModelCard
@@ -141,6 +149,24 @@ export function SettingsPanel({
         onSave={onSaveGlobalModel}
         onTest={onTestGlobalModel}
       />
+      <details className="agent-model-section settings-card advanced-agent-model-settings">
+        <summary>
+          <strong>高级模型路由</strong>
+          <span>按结果覆盖模型的可选设置；大多数情况下保持全局模型即可。</span>
+        </summary>
+        <AgentConfigForm
+          drafts={agentModelDrafts}
+          globalModelDraft={globalModelDraft}
+          testResults={agentModelTestResults}
+          savingIds={savingAgentModelIds}
+          testingIds={testingAgentModelIds}
+          loadingSettingsStatus={loadingSettingsStatus}
+          onRefreshSettings={onRefreshSettings}
+          onUpdateDraft={onUpdateAgentModelDraft}
+          onSaveAgentModel={onSaveAgentModel}
+          onTestAgentModel={onTestAgentModel}
+        />
+      </details>
       <AutomationSettingsCard
         draft={automationSettingsDraft}
         saveStatus={automationSettingsSaveStatus}

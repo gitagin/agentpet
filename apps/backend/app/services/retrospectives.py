@@ -25,7 +25,7 @@ from app.utils.hash import sha256_hex
 from app.utils.time import utc_now_iso
 
 
-RETROSPECTIVE_WINDOWS = (7, 30, 90)
+RETROSPECTIVE_WINDOWS = (1, 7, 30, 90)
 REPORT_ROOT = "Wiki/Companion/Reports"
 
 
@@ -86,7 +86,7 @@ class RetrospectiveService:
         }
         return RetrospectiveWindow(
             days=safe_days,
-            label=f"{safe_days} 天",
+            label=_window_label(safe_days),
             start_at=start_iso,
             end_at=end_iso,
             summary=summary,
@@ -343,6 +343,12 @@ def _normalize_days(days: int) -> int:
     if days <= 30:
         return 30
     return 90
+
+
+def _window_label(days: int) -> str:
+    if days == 1:
+        return "Today"
+    return f"{days}-day"
 
 
 def _iso(value: datetime) -> str:

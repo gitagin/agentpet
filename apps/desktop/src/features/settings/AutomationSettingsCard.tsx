@@ -46,8 +46,8 @@ const automationToggles: AutomationToggle[] = [
   },
   {
     key: "use_negotiation",
-    title: "多轮协商",
-    description: "让多个专用智能体在复杂请求中复核和合成答案。",
+    title: "多轮结果复核",
+    description: "让复杂请求经过多轮检查和合成，再输出最终答案。",
   },
 ];
 

@@ -502,11 +502,18 @@ export function usePetChatBubble({
 
   function setReplyPagesFromText(
     text: string,
-    options: { preserveCurrentPage?: boolean; phase?: Extract<PetBubblePhase, "speaking" | "complete"> } = {},
+    options: {
+      preserveCurrentPage?: boolean;
+      phase?: Extract<PetBubblePhase, "speaking" | "complete">;
+      renderDuringStream?: boolean;
+    } = {},
   ) {
     const pages = paginatePetBubbleReply(text);
     replyPagesRef.current = pages;
     setPetReplyText(text);
+    if (!replyCompleteRef.current && !options.renderDuringStream) {
+      return;
+    }
     clearHideTimer();
     if (pages.length === 0) {
       setPetBubble({ visible: false, title: "", message: "", tone: "reply", phase: "idle" });
@@ -516,9 +523,6 @@ export function usePetChatBubble({
     const nextIndex = options.preserveCurrentPage
       ? Math.min(replyPageIndexRef.current, pages.length - 1)
       : 0;
-    if (ttsEnabledRef.current && !replyCompleteRef.current) {
-      return;
-    }
     renderPage(nextIndex, options.phase || "speaking");
   }
 

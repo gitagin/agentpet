@@ -190,7 +190,7 @@ def test_xiaomi_mimo_tts_preset_uses_user_selected_api_shape(
     assert captured["body"] == {
         "model": "mimo-v2.5-tts",
         "messages": [
-            {"role": "user", "content": "Please read the assistant text naturally."},
+            {"role": "user", "content": "请自然朗读助手文本。"},
             {"role": "assistant", "content": "hello"},
         ],
         "audio": {"voice": "Chloe", "format": "wav"},

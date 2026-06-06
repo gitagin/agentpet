@@ -68,6 +68,8 @@ class NegotiationStatsResponse(BaseModel):
     avg_latency_ms: float = 0.0
     fallback_rate: float = 0.0
     top_agents_invoked: list[str] = Field(default_factory=list)
+    top_outcomes_supported: list[str] = Field(default_factory=list)
+    outcome_support_counts: dict[str, int] = Field(default_factory=dict)
 
 
 class LocalStateResetRequest(BaseModel):

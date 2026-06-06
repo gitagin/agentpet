@@ -1,4 +1,6 @@
-import type { AgentAction, ChatMessage, ChatWikiProposal, ContinuityProposal, MemoryProposal } from "../types";
+import type { AgentAction, ChatMessage, ChatWikiProposal, ContinuityProposal, MemoryProposal, TaskItem } from "../types";
+import type { AgentOutcomeKey } from "./agentModelDrafts";
+import { agentOutcomeDefinitions } from "./agentModelDrafts";
 
 export type AgentActivityLogEntry =
   | { kind: "agent_action"; id: string; sortAt: string; sortKey: number; action: AgentAction }
@@ -19,6 +21,13 @@ export type MemoryTrustGroup = {
   label: string;
   description: string;
   entries: AgentActivityLogEntry[];
+};
+
+export type AgentOutcomeActivity = {
+  key: AgentOutcomeKey;
+  label: string;
+  description: string;
+  detail: string;
 };
 
 export const memoryTrustGroupDefinitions: Array<Omit<MemoryTrustGroup, "entries">> = [
@@ -232,6 +241,116 @@ export function canRevertAgentAction(action: AgentAction): boolean {
 
 export function isAttentionAgentAction(action: AgentAction): boolean {
   return action.risk_tier === "high" || action.decision === "ask" || action.status === "failed" || Boolean(action.error);
+}
+
+export type AgentActionArtifactKind = "task" | "memory" | "wiki" | "review" | null;
+
+export function isReviewReportAgentAction(action: AgentAction): boolean {
+  const actionType = action.action_type.toLocaleLowerCase();
+  return (
+    (actionType.startsWith("wiki.") && actionType.includes("report")) ||
+    actionType.includes("retrospective_report") ||
+    action.target_paths.some((path) => path.toLocaleLowerCase().startsWith("wiki/companion/reports/"))
+  );
+}
+
+export function classifyAgentActionArtifact(action: AgentAction): AgentActionArtifactKind {
+  const actionType = action.action_type.toLocaleLowerCase();
+  if (isSkippedAgentAction(action)) {
+    return null;
+  }
+  if (isReviewReportAgentAction(action)) {
+    return "review";
+  }
+  if (actionType.startsWith("task.")) {
+    return "task";
+  }
+  if (
+    actionType === "diary.structured_memory" ||
+    actionType.startsWith("memory.long_term") ||
+    actionType.startsWith("memory.proposal") ||
+    actionType.startsWith("memory.promote") ||
+    actionType.startsWith("continuity.")
+  ) {
+    return "memory";
+  }
+  if (actionType.startsWith("wiki.")) {
+    return "wiki";
+  }
+  return null;
+}
+
+export function getAgentActionOutcomeKey(action: AgentAction): AgentOutcomeKey | null {
+  const actionType = action.action_type.toLocaleLowerCase();
+  if (isSkippedAgentAction(action)) {
+    return null;
+  }
+  if (actionType.startsWith("task.")) {
+    return "task_reminder";
+  }
+  if (isReviewReportAgentAction(action) || actionType.startsWith("wiki.")) {
+    return "knowledge_page";
+  }
+  if (
+    actionType === "diary.structured_memory" ||
+    actionType.startsWith("memory.long_term") ||
+    actionType.startsWith("memory.proposal") ||
+    actionType.startsWith("memory.promote")
+  ) {
+    return "memory_review";
+  }
+  if (actionType.startsWith("continuity.")) {
+    return "relationship_continuity";
+  }
+  return null;
+}
+
+export function buildAgentOutcomeActivities(
+  actions: AgentAction[],
+  tasks: TaskItem[] = [],
+  memoryProposals: MemoryProposal[] = [],
+  wikiProposals: ChatWikiProposal[] = [],
+): AgentOutcomeActivity[] {
+  const details = new Map<AgentOutcomeKey, Set<string>>();
+  const add = (key: AgentOutcomeKey, detail: string) => {
+    const value = detail.trim();
+    if (!value) {
+      return;
+    }
+    const existing = details.get(key) ?? new Set<string>();
+    existing.add(value);
+    details.set(key, existing);
+  };
+
+  actions.forEach((action) => {
+    const key = getAgentActionOutcomeKey(action);
+    if (!key) {
+      return;
+    }
+    const display = getAgentActionDisplayFields(action);
+    add(key, `${display.statusLabel} · ${display.actionName}`);
+  });
+
+  tasks.forEach((task) => {
+    add("task_reminder", `${formatAgentActionStatus(task.status)} · ${task.title}`);
+  });
+
+  memoryProposals.forEach((proposal) => {
+    add("memory_review", `${proposal.status === "pending" ? "待确认" : formatAgentActionStatus(proposal.status)} · ${proposal.type}`);
+  });
+
+  wikiProposals
+    .filter((proposal) => proposal.state !== "rejected")
+    .forEach((proposal) => {
+      add("knowledge_page", `${proposal.state === "applied" ? "已写入" : "待确认"} · ${proposal.title || proposal.proposal_type}`);
+    });
+
+  return Array.from(details.entries()).map(([key, values]) => ({
+    key,
+    label: agentOutcomeDefinitions[key].label,
+    description: agentOutcomeDefinitions[key].description,
+    detail: Array.from(values).slice(0, 3).join(" / "),
+  }));
 }
 
 export type AgentActionDisplayFields = {

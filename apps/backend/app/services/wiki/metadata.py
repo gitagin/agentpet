@@ -9,12 +9,12 @@ class WikiMetadataWorkflowMixin:
         target_path = f"Wiki/Reports/Lint-{date}.md" if lint_request.write_report else None
         markdown = "\n".join(
             [
-                "## Wiki Lint Proposal",
+                "## Wiki Lint 提案",
                 "",
                 f"- write_report: `{str(lint_request.write_report).lower()}`",
                 f"- target_path: `{target_path or ''}`",
                 "",
-                "This proposal does not run a Markdown write. Confirm the lint action before writing a report.",
+                "此提案不会立即执行 Markdown 写入。写入报告前请先确认 lint 操作。",
             ]
         ).strip()
         return WikiLintProposal(

@@ -44,7 +44,7 @@ class WikiIngestReviewMixin:
                 reviewer_agent_id=reviewer_agent_id.value,
                 status="failed",
                 model_error=exc.code,
-                summary=f"Model review failed: {exc.code}. Deterministic review was preserved.",
+                summary=f"模型审查失败：{exc.code}。已保留确定性审查结果。",
             )
         except Exception as exc:
             response = _deterministic_review_response(
@@ -52,6 +52,6 @@ class WikiIngestReviewMixin:
                 reviewer_agent_id=reviewer_agent_id.value,
                 status="failed",
                 model_error=getattr(exc, "code", exc.__class__.__name__),
-                summary="Model review failed. Deterministic review was preserved.",
+                summary="模型审查失败。已保留确定性审查结果。",
             )
         return self._insert_review(response)

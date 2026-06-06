@@ -450,7 +450,7 @@ class FakeWikiWorkflow:
                     target="Missing",
                 )
             ],
-            markdown_preview="## Wiki Lint Proposal",
+            markdown_preview="## Wiki Lint 提案",
         )
 
     async def run_lint(self, request):

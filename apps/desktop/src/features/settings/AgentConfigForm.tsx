@@ -1,7 +1,6 @@
 import { Bot, Loader2, RefreshCw, ShieldCheck } from "lucide-react";
 import type { AgentModelId, ModelTestResponse } from "../../types";
 import {
-  agentModelCountLabel,
   agentModelDefinitions,
   hasUnsavedAgentModelDraft,
   isSupportedProviderDraft,
@@ -36,10 +35,10 @@ export function AgentConfigForm({
   onTestAgentModel,
 }: AgentConfigFormProps) {
   return (
-    <section className="agent-model-section" aria-label="智能体模型配置">
+    <section className="agent-model-section" aria-label="高级模型路由">
       <div className="section-heading">
-        <strong>智能体独立模型</strong>
-        <span>{agentModelCountLabel} 分别保存提供方、接口地址、模型和密钥，并分别试连。</span>
+        <strong>按结果覆盖模型</strong>
+        <span>默认使用全局模型；只有某类结果需要单独优化时再覆盖。</span>
       </div>
       <button type="button" className="secondary" onClick={onRefreshSettings} disabled={loadingSettingsStatus}>
         {loadingSettingsStatus ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />}
@@ -58,6 +57,7 @@ export function AgentConfigForm({
             <article key={draft.agent_id} className="agent-model-row">
               <div className="agent-model-title">
                 <strong>{definition?.label || draft.agent_id}</strong>
+                {definition?.outcomeLabel ? <em>{definition.outcomeLabel}</em> : null}
                 <span>{definition?.description}</span>
                 <label className="checkbox-row">
                   <input

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { ModelHealthResponse } from "../../types";
 import type { DesktopApi } from "../../services/desktopApi";
+import { agentModelDefinitions } from "../../services/agentModelDrafts";
 
 type ModelHealthBannerProps = {
   api: DesktopApi;
@@ -13,7 +14,7 @@ type BannerState = {
   message: string;
 };
 
-function getBannerState(health: ModelHealthResponse): BannerState | null {
+export function getModelHealthBannerState(health: ModelHealthResponse): BannerState | null {
   if (!health.global_configured && health.agents_configured === 0) {
     return {
       tone: "warning",
@@ -21,17 +22,36 @@ function getBannerState(health: ModelHealthResponse): BannerState | null {
     };
   }
 
-  if (health.agents_configured === 9) {
+  const specialistCount = health.agent_details.filter((agent) => agent.source === "agent_specific").length;
+  const totalOutcomes = new Set(agentModelDefinitions.map((agent) => agent.outcome)).size;
+  const configuredOutcomes = new Set(
+    health.agent_details.flatMap((detail) => {
+      if (detail.source !== "agent_specific") {
+        return [];
+      }
+      const definition = agentModelDefinitions.find((agent) => agent.id === detail.agent_id);
+      return definition ? [definition.outcome] : [];
+    }),
+  ).size;
+
+  if (health.global_configured && specialistCount === 0) {
     return {
-      tone: "success",
-      message: "所有智能体已独立配置。",
+      tone: "info",
+      message: "所有结果路由正在继承全局模型；任务、记忆、知识库和回答仍会正常工作。",
     };
   }
 
-  if (health.global_configured && health.agents_configured < 9) {
+  if (configuredOutcomes >= totalOutcomes) {
+    return {
+      tone: "success",
+      message: "所有核心结果路由都有独立模型配置；仍会以任务、记忆、知识库和回答呈现。",
+    };
+  }
+
+  if (health.global_configured && specialistCount > 0) {
     return {
       tone: "info",
-      message: `${health.agents_fallback_to_global} 个智能体使用全局模型，${health.agents_configured} 个有独立配置。`,
+      message: `${configuredOutcomes} 个结果路由有独立模型，其他结果路由继承全局模型。`,
     };
   }
 
@@ -75,7 +95,7 @@ export function ModelHealthBanner({ api }: ModelHealthBannerProps) {
     return null;
   }
 
-  const banner = getBannerState(health);
+  const banner = getModelHealthBannerState(health);
   if (!banner) {
     return null;
   }

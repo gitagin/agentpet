@@ -39,6 +39,7 @@ function appearsBefore(first: Element, second: Element) {
 describe("ChatWindowView", () => {
   it("exposes focused actions and allows an empty daily review", () => {
     const onModeChange = vi.fn();
+    const onInputChange = vi.fn();
     const onSend = vi.fn((event) => event.preventDefault());
     const { container, rerender } = render(
       <ChatWindowView
@@ -48,13 +49,21 @@ describe("ChatWindowView", () => {
         streaming={false}
         mode="chat"
         onModeChange={onModeChange}
-        onInputChange={vi.fn()}
+        onInputChange={onInputChange}
         onSend={onSend}
         onStopStreaming={vi.fn()}
       />,
     );
 
     expect(screen.getByRole("tab", { name: "切换到新任务模式" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "创建明天的提醒" }));
+    expect(onModeChange).toHaveBeenCalledWith("task");
+    expect(onInputChange).toHaveBeenCalledWith("请在明天上午 9:00 提醒我检查发布清单。");
+
+    fireEvent.click(screen.getByRole("button", { name: "保存一个偏好" }));
+    expect(onModeChange).toHaveBeenCalledWith("note");
+    expect(onInputChange).toHaveBeenCalledWith("请记住我偏好简洁的发布清单。");
+
     fireEvent.click(screen.getByRole("tab", { name: "切换到今日复盘模式" }));
     expect(onModeChange).toHaveBeenCalledWith("review");
 

@@ -60,7 +60,7 @@ from .wiring import (
 router = APIRouter(prefix="/memory", tags=["memory"])
 
 RAW_EVIDENCE_REDACTION_NOTE = (
-    "Raw source evidence is omitted from this preview. File export must be handled by a confirmed safe path."
+    "原始来源证据已从此预览中省略。文件导出必须通过已确认的安全路径处理。"
 )
 
 
@@ -364,7 +364,7 @@ async def get_retrospectives(request: Request) -> RetrospectiveResponse:
         request,
         action="memory.retrospective.read",
         result="success",
-        reason=audit_reason(request, windows="7,30,90"),
+        reason=audit_reason(request, windows="1,7,30,90"),
     )
     from ..utils.time import utc_now_iso
 
@@ -387,7 +387,7 @@ async def write_retrospective_report(
         if str(exc) == "retrospective_report_requires_vault":
             raise AppError(
                 code="vault_not_configured",
-                message="生成 Markdown 回顾报告前需要先配置 active Vault。",
+                message="生成 Markdown 回顾报告前需要先配置活动 Vault。",
                 status_code=status.HTTP_409_CONFLICT,
             ) from exc
         raise
@@ -635,13 +635,13 @@ def _graph_export_item(fact) -> MemoryGraphExportItem:
 
 def _memory_graph_markdown_preview(items: list[MemoryGraphExportItem]) -> str:
     lines = [
-        "# Long-term memory export preview",
+        "# 长期记忆导出预览",
         "",
         f"> {RAW_EVIDENCE_REDACTION_NOTE}",
         "",
     ]
     if not items:
-        lines.append("_No long-term memory facts matched this export preview._")
+        lines.append("_没有匹配此导出预览的长期记忆事实。_")
         return "\n".join(lines)
     for item in items:
         lines.extend(

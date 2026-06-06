@@ -138,7 +138,7 @@ export function createBackendTtsProvider({
         };
         audio.onended = () => finishPlayback(playback, "played");
         audio.onerror = () =>
-          cleanupAndReject(createTtsProviderError(providerId, "playback_failed", "TTS audio playback failed."));
+          cleanupAndReject(createTtsProviderError(providerId, "playback_failed", "TTS 音频播放失败。"));
         options?.signal?.addEventListener(
           "abort",
           () => finishPlayback(playback, "cancelled", "aborted"),
@@ -149,7 +149,7 @@ export function createBackendTtsProvider({
             createTtsProviderError(
               providerId,
               "playback_blocked",
-              error instanceof Error ? error.message : "TTS audio playback was blocked.",
+              error instanceof Error ? error.message : "TTS 音频播放被阻止。",
             ),
           );
         });
@@ -167,7 +167,7 @@ function responseToBlob(response: TtsSynthesisApiResponse): Blob {
     throw createTtsProviderError(
       response.provider || "custom-http",
       "invalid_audio",
-      "TTS provider returned a non-audio response.",
+      "TTS 服务返回了非音频响应。",
     );
   }
   const audioBuffer = base64ToArrayBuffer(response.audio_base64, response.provider || "custom-http");
@@ -175,7 +175,7 @@ function responseToBlob(response: TtsSynthesisApiResponse): Blob {
     throw createTtsProviderError(
       response.provider || "custom-http",
       "invalid_audio",
-      "TTS provider returned empty audio.",
+      "TTS 服务返回了空音频。",
     );
   }
   return new Blob([audioBuffer], { type: response.mime_type });
@@ -186,7 +186,7 @@ function base64ToArrayBuffer(value: string, providerId: string): ArrayBuffer {
   try {
     binary = atob(value);
   } catch {
-    throw createTtsProviderError(providerId, "invalid_audio", "TTS provider returned invalid audio data.");
+    throw createTtsProviderError(providerId, "invalid_audio", "TTS 服务返回了无效音频数据。");
   }
   const buffer = new ArrayBuffer(binary.length);
   const bytes = new Uint8Array(buffer);
@@ -202,7 +202,7 @@ function mapBackendTtsError(error: unknown, providerId: string) {
     return createTtsProviderError(providerId, code, error.message || fallbackTtsErrorMessage(code));
   }
   if (error instanceof DOMException && error.name === "AbortError") {
-    return createTtsProviderError(providerId, "cancelled", "TTS playback request was cancelled.");
+    return createTtsProviderError(providerId, "cancelled", "TTS 播放请求已取消。");
   }
   return createTtsProviderError(
     providerId,
@@ -252,30 +252,30 @@ function mapBackendTtsErrorCode(code: string | undefined, status: number): TtsPl
 function fallbackTtsErrorMessage(code: TtsPlaybackErrorCode): string {
   switch (code) {
     case "disabled":
-      return "TTS playback is disabled.";
+      return "TTS 播放已关闭。";
     case "provider_not_configured":
-      return "TTS provider is not configured.";
+      return "TTS 服务尚未配置。";
     case "credential_missing":
-      return "TTS provider key is missing.";
+      return "缺少 TTS 服务密钥。";
     case "authentication_failed":
-      return "TTS provider authentication failed.";
+      return "TTS 服务认证失败。";
     case "synthesis_timeout":
-      return "TTS provider request timed out.";
+      return "TTS 服务请求超时。";
     case "provider_unreachable":
-      return "TTS provider is unreachable.";
+      return "TTS 服务不可达。";
     case "rate_limited":
-      return "TTS provider is rate limited.";
+      return "TTS 服务已触发限流。";
     case "unsupported_format":
-      return "TTS audio format is not supported.";
+      return "TTS 音频格式不受支持。";
     case "invalid_audio":
-      return "TTS provider returned invalid audio.";
+      return "TTS 服务返回了无效音频。";
     case "playback_blocked":
-      return "TTS audio playback was blocked.";
+      return "TTS 音频播放被阻止。";
     case "playback_failed":
-      return "TTS audio playback failed.";
+      return "TTS 音频播放失败。";
     case "cancelled":
-      return "TTS playback request was cancelled.";
+      return "TTS 播放请求已取消。";
     default:
-      return "TTS provider failed.";
+      return "TTS 服务调用失败。";
   }
 }

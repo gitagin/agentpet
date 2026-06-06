@@ -296,6 +296,6 @@ def test_retrospective_service_returns_empty_windows_without_history(tmp_path):
 
     windows = service.build_windows()
 
-    assert [window.days for window in windows] == [7, 30, 90]
+    assert [window.days for window in windows] == [1, 7, 30, 90]
     assert all(not window.has_data for window in windows)
     assert all(window.summary["diary_objects"] == 0 for window in windows)

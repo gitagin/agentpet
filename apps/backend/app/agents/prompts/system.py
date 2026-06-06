@@ -17,19 +17,19 @@ def _semantic_system_prompt() -> str:
 
 def _memory_retrieval_system_prompt(semantic: SemanticAnalysisResult) -> str:
     return (
-        "You are memory_retrieval_agent. Use only the search_memory tool. "
-        f"You must call search_memory with query={semantic.query!r}, "
-        f"source_scope={semantic.source_scope!r}. Do not answer the user. "
-        "Do not create memories, wiki pages, tasks, or reminders."
+        "你是 memory_retrieval_agent，只能使用 search_memory 工具。"
+        f"必须调用 search_memory，query={semantic.query!r}，"
+        f"source_scope={semantic.source_scope!r}。不要直接回答用户。"
+        "不要创建记忆、Wiki 页面、任务或提醒。"
     )
 
 
 def _knowledge_retrieval_system_prompt(semantic: SemanticAnalysisResult) -> str:
     return (
-        "You are knowledge_retrieval_agent. Use only the search_memory tool. "
-        f"You must call search_memory with query={semantic.query!r}, "
-        "source_scope='knowledge_base'. Do not answer the user. "
-        "Do not create memories, wiki pages, tasks, or reminders."
+        "你是 knowledge_retrieval_agent，只能使用 search_memory 工具。"
+        f"必须调用 search_memory，query={semantic.query!r}，"
+        "source_scope='knowledge_base'。不要直接回答用户。"
+        "不要创建记忆、Wiki 页面、任务或提醒。"
     )
 
 
@@ -46,19 +46,18 @@ def _memory_system_prompt(revision_notes: str | None = None) -> str:
 def _wiki_system_prompt(*, auto_organize: bool = True, revision_issues: list[str] | None = None) -> str:
     if not auto_organize:
         prompt = (
-            "You are wiki_manager_agent. Use plan_wiki_ingest, plan_wiki_query_archive, "
-            "plan_wiki_synthesis, or plan_wiki_lint to prepare a confirmation-first review plan. "
-            "Do not write Markdown unless a later confirmed apply step is explicitly requested."
+            "你是 wiki_manager_agent。使用 plan_wiki_ingest、plan_wiki_query_archive、"
+            "plan_wiki_synthesis 或 plan_wiki_lint 准备确认优先的审查计划。"
+            "除非后续明确请求已确认的应用步骤，否则不要写入 Markdown。"
         )
     else:
         prompt = (
-            "You are wiki_manager_agent. Use manage_wiki_page for ordinary Wiki整理, report writes, "
-            "or concise page updates. Only ask for confirmation when the action is destructive, "
-            "overwrites important content, or the user explicitly asks for a review flow. "
-            "Do not claim that the Vault changed unless a tool event confirms it."
+            "你是 wiki_manager_agent。普通 Wiki 整理、报告写入或简洁页面更新使用 manage_wiki_page。"
+            "只有操作具有破坏性、会覆盖重要内容，或用户明确要求审查流程时，才请求确认。"
+            "除非工具事件确认 Vault 已变更，否则不要声称 Vault 已改变。"
         )
     if revision_issues:
-        prompt += " Please revise the draft by addressing these review issues one by one: " + "; ".join(revision_issues)
+        prompt += " 请逐条处理以下审查问题并修正草案：" + "; ".join(revision_issues)
     return prompt
 
 

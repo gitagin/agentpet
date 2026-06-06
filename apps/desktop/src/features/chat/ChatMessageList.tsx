@@ -1,4 +1,4 @@
-import type { AgentAction, ChatMessage, ChatNegotiationAction } from "../../types";
+import type { AgentAction, ChatMessage, ChatNegotiationAction, TaskItem } from "../../types";
 import { EmptyState } from "../../components/layout";
 import { ChatAgentActionSummary } from "./ChatAgentActionSummary";
 import { ChatCitationSummary } from "./ChatCitationSummary";
@@ -8,7 +8,10 @@ type ChatMessageListProps = {
   messages: ChatMessage[];
   revertingActionIds?: Set<string>;
   onRevertAgentAction?: (action: AgentAction) => void;
+  onOpenTask?: (task?: TaskItem) => void;
   onOpenMemory?: () => void;
+  onOpenWiki?: (path?: string) => void;
+  onOpenReport?: (path?: string) => void;
 };
 
 const NEGOTIATION_ACTION_LABELS: Record<ChatNegotiationAction, string> = {
@@ -16,6 +19,13 @@ const NEGOTIATION_ACTION_LABELS: Record<ChatNegotiationAction, string> = {
   reviewing: "复核",
   revising: "修订",
   synthesizing: "合成",
+};
+
+type ProgressCard = {
+  id: string;
+  label: string;
+  detail: string;
+  state: "active" | "done" | "queued";
 };
 
 function formatConfidence(confidence: number | undefined): string {
@@ -29,16 +39,20 @@ export function ChatMessageList({
   messages,
   revertingActionIds,
   onRevertAgentAction,
+  onOpenTask,
   onOpenMemory,
+  onOpenWiki,
+  onOpenReport,
 }: ChatMessageListProps) {
   const visibleMessages = messages.filter((message) => message.role !== "system");
 
   return (
-    <div className="message-list" aria-label="Agent 对话记录">
+    <div className="message-list" aria-label="助手对话记录">
       {visibleMessages.length > 0 ? (
         visibleMessages.map((message) => {
           const showMeta = message.status === "failed" || message.status === "cancelled";
-          const isPending = message.status === "partial" && !message.content;
+          const hasContent = message.content.trim().length > 0;
+          const isPending = message.status === "partial" && !hasContent;
           return (
             <article key={message.id} className={`message ${message.role}`}>
               {showMeta ? (
@@ -48,11 +62,23 @@ export function ChatMessageList({
                 </div>
               ) : null}
               <p className={isPending ? "message-pending" : undefined}>
-                {message.content || (message.status === "partial" ? "正在想..." : "没有收到可显示内容。")}
+                {hasContent ? message.content : message.status === "partial" ? "正在整理回答..." : "没有收到可显示内容。"}
               </p>
-              {message.role === "assistant"
-                ? renderAssistantTrace(message, revertingActionIds, onRevertAgentAction, onOpenMemory)
-                : null}
+              {message.role === "assistant" ? (
+                <>
+                  {isPending ? renderAssistantProgress(message) : null}
+                  {renderAssistantArtifacts(
+                    message,
+                    revertingActionIds,
+                    onRevertAgentAction,
+                    onOpenTask,
+                    onOpenMemory,
+                    onOpenWiki,
+                    onOpenReport,
+                  )}
+                  {renderAssistantTrace(message)}
+                </>
+              ) : null}
             </article>
           );
         })
@@ -63,20 +89,155 @@ export function ChatMessageList({
   );
 }
 
-function renderAssistantTrace(
+function renderAssistantProgress(message: ChatMessage) {
+  const cards = buildProgressCards(message);
+  if (cards.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="message-agent-actions" aria-label="聊天进度">
+      <div className="message-agent-action-buckets">
+        {cards.map((card) => (
+          <article key={card.id} className={`message-agent-action-bucket ${progressBucketClass(card.state)}`}>
+            <div className="message-agent-action-bucket-head">
+              <span aria-hidden="true">{progressBucketIcon(card.state)}</span>
+              <strong>{card.label}</strong>
+            </div>
+            <p>{card.detail}</p>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function progressBucketClass(state: ProgressCard["state"]): string {
+  if (state === "done") {
+    return "success";
+  }
+  if (state === "queued") {
+    return "empty";
+  }
+  return "pending";
+}
+
+function progressBucketIcon(state: ProgressCard["state"]): string {
+  if (state === "done") {
+    return "OK";
+  }
+  if (state === "queued") {
+    return "-";
+  }
+  return "...";
+}
+
+function buildProgressCards(message: ChatMessage): ProgressCard[] {
+  const hasRetrieval =
+    Boolean(message.retrieval_attempted) ||
+    Boolean(message.retrieval_context_budget) ||
+    Boolean(message.retrieval_scopes?.length) ||
+    Boolean(message.citations?.length);
+  const artifactCount = countArtifacts(message);
+  const cards: ProgressCard[] = [
+    {
+      id: "context",
+      label: hasRetrieval ? "上下文已就绪" : "正在查上下文",
+      detail: hasRetrieval ? formatProgressScopes(message.retrieval_scopes) : "我在看记忆和资料。",
+      state: hasRetrieval ? "done" : "active",
+    },
+  ];
+
+  if (artifactCount > 0) {
+    cards.push({
+      id: "artifacts",
+      label: "结果卡片已准备",
+      detail: `${artifactCount} 个整理结果会和回答一起显示。`,
+      state: "done",
+    });
+  } else {
+    cards.push({
+      id: "answer",
+      label: "正在写回答",
+      detail: "马上给你一个干净版本。",
+      state: hasRetrieval ? "active" : "queued",
+    });
+  }
+
+  return cards;
+}
+
+function countArtifacts(message: ChatMessage): number {
+  return (
+    (message.agent_actions?.length || 0) +
+    (message.task_actions?.length || 0) +
+    (message.memory_proposals?.length || 0) +
+    (message.wiki_proposals?.length || 0)
+  );
+}
+
+function formatProgressScopes(scopes: string[] | undefined): string {
+  if (!scopes?.length) {
+    return "相关资料已找到。";
+  }
+  const scopeLabels: Record<string, string> = {
+    personal_memory: "长期记忆",
+    diary_objects: "结构化日记",
+    daily_chat: "聊天日记",
+    knowledge_base: "资料库",
+    pending_memory: "待确认记忆",
+  };
+  return scopes
+    .slice(0, 3)
+    .map((scope) => scopeLabels[scope] || scope)
+    .join("、");
+}
+
+function renderAssistantArtifacts(
   message: ChatMessage,
   revertingActionIds?: Set<string>,
   onRevertAgentAction?: (action: AgentAction) => void,
+  onOpenTask?: (task?: TaskItem) => void,
   onOpenMemory?: () => void,
+  onOpenWiki?: (path?: string) => void,
+  onOpenReport?: (path?: string) => void,
 ) {
+  const hasArtifacts = Boolean(
+    message.agent_actions?.length ||
+      message.task_actions?.length ||
+      message.memory_proposals?.length ||
+      message.wiki_proposals?.length,
+  );
+
+  if (!hasArtifacts) {
+    return null;
+  }
+
+  return (
+    <ChatAgentActionSummary
+      actions={message.agent_actions || []}
+      tasks={message.task_actions || []}
+      memoryProposals={message.memory_proposals || []}
+      wikiProposals={message.wiki_proposals || []}
+      showEmpty={false}
+      revertingActionIds={revertingActionIds}
+      onRevertAgentAction={onRevertAgentAction}
+      onOpenTask={onOpenTask}
+      onOpenMemory={onOpenMemory}
+      onOpenWiki={onOpenWiki}
+      onOpenReport={onOpenReport}
+    />
+  );
+}
+
+function renderAssistantTrace(message: ChatMessage) {
   const hasCitationTrace =
     (message.citations?.length || 0) > 0 || Boolean(message.retrieval_attempted && message.status !== "partial");
   const hasEvents = Boolean(message.events?.length);
-  const hasActions = Boolean(message.agent_actions?.length || message.task_actions?.length);
   const hasNegotiation = Boolean(message.negotiation_steps?.length);
   const hasContinuity = Boolean(message.continuity_signal);
 
-  if (!hasCitationTrace && !hasEvents && !hasActions && !hasNegotiation && !hasContinuity) {
+  if (!hasCitationTrace && !hasEvents && !hasNegotiation && !hasContinuity) {
     return null;
   }
 
@@ -97,16 +258,6 @@ function renderAssistantTrace(
           ))}
         </div>
       ) : null}
-      {hasActions ? (
-        <ChatAgentActionSummary
-          actions={message.agent_actions || []}
-          tasks={message.task_actions || []}
-          showEmpty={false}
-          revertingActionIds={revertingActionIds}
-          onRevertAgentAction={onRevertAgentAction}
-          onOpenMemory={onOpenMemory}
-        />
-      ) : null}
       {hasNegotiation ? renderNegotiationTrace(message) : null}
       {message.continuity_signal ? (
         <div className="continuity-presence-hint">
@@ -122,8 +273,8 @@ function renderAssistantTrace(
 function traceSummary(message: ChatMessage): string {
   const parts = [
     message.citations?.length ? `${message.citations.length} 条引用` : "",
-    message.agent_actions?.length ? `${message.agent_actions.length} 条整理` : "",
-    message.task_actions?.length ? `${message.task_actions.length} 个任务` : "",
+    message.events?.length ? `${message.events.length} 条工具事件` : "",
+    message.negotiation_steps?.length ? `${message.negotiation_steps.length} 步协作` : "",
   ].filter(Boolean);
   return parts.length ? `来源与整理 · ${parts.join(" / ")}` : "来源与整理";
 }

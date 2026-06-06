@@ -79,6 +79,21 @@ type WikiWorkflowPanelProps = {
   onOpenArchive: (archiveId: string) => void;
 };
 
+type DailyWikiTargetType = "concept" | "entity" | "comparison" | "report" | "summary";
+
+const dailyWikiTargetTypes: Array<{ value: DailyWikiTargetType; label: string; description: string }> = [
+  { value: "concept", label: "概念", description: "定义一个想法、方法或术语。" },
+  { value: "entity", label: "实体", description: "跟踪人物、项目、论文或组织。" },
+  { value: "comparison", label: "对比", description: "比较两个想法、工具或决策。" },
+  { value: "report", label: "报告", description: "把来源材料整理成更新或复盘页面。" },
+  { value: "summary", label: "摘要", description: "把来源沉淀成可复用的知识摘要。" },
+];
+
+function dailyTargetTypeFromSourceType(sourceType?: string | null): DailyWikiTargetType {
+  const value = sourceType?.trim();
+  return dailyWikiTargetTypes.some((option) => option.value === value) ? (value as DailyWikiTargetType) : "summary";
+}
+
 export function WikiWorkflowPanel({
   draft,
   tagInput,
@@ -129,9 +144,125 @@ export function WikiWorkflowPanel({
   onOpenArchive,
 }: WikiWorkflowPanelProps) {
   const workflowBusy = workflowAction !== null;
+  const dailyTargetType = dailyTargetTypeFromSourceType(draft.source_type);
+  const previewPlans = preview?.page_plans.slice(0, 4) || [];
+  const latestApplySummary = formatWikiWorkflowResult(applyResult, formatTaskStatus);
+
+  function handleDailyTargetChange(value: DailyWikiTargetType) {
+    onDraftChange({ source_type: value });
+    const currentTags = tagInput
+      .split(",")
+      .map((tag) => tag.trim())
+      .filter(Boolean);
+    if (!currentTags.some((tag) => tag.toLowerCase() === value)) {
+      onTagInputChange([...currentTags, value].join(", "));
+    }
+  }
 
   return (
-    <Panel id="wiki-workflow-panel" icon={<FileDown size={18} />} title="高级知识库维护">
+    <Panel id="wiki-workflow-panel" icon={<FileDown size={18} />} title="日常知识整理">
+      <form className="wiki-daily-flow" aria-label="日常 Wiki 整理" onSubmit={onPreview}>
+        <section className="wiki-daily-primary" aria-label="创建或更新 Wiki 页面">
+          <div className="section-heading">
+            <strong>日常整理入口</strong>
+            <span>粘贴来源材料，选择要沉淀的知识类型，先预览计划，再应用到 Wiki 页面。</span>
+          </div>
+          <div className="wiki-flow-steps" aria-label="Wiki 整理步骤">
+            <span>1 粘贴来源</span>
+            <span>2 预览计划</span>
+            <span>3 应用页面</span>
+          </div>
+          <div className="wiki-daily-grid">
+            <label className="wiki-title-field">
+              <span>标题</span>
+              <input
+                value={draft.title}
+                onChange={(event) => onDraftChange({ title: event.target.value })}
+                placeholder="决策笔记、项目简报、论文摘要"
+              />
+            </label>
+          </div>
+          <div className="wiki-target-type-picker" role="group" aria-label="目标类型">
+            {dailyWikiTargetTypes.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                className={`wiki-target-type-button${dailyTargetType === option.value ? " active" : ""}`}
+                aria-pressed={dailyTargetType === option.value}
+                onClick={() => handleDailyTargetChange(option.value)}
+              >
+                <strong>{option.label}</strong>
+                <span>{option.description}</span>
+              </button>
+            ))}
+          </div>
+          <label>
+            <span>来源内容</span>
+            <textarea
+              value={draft.content}
+              onChange={(event) => onDraftChange({ content: event.target.value })}
+              placeholder="粘贴会议纪要、研究摘录、决策记录或一小段知识片段。"
+            />
+          </label>
+          <div className="wiki-daily-grid">
+            <label>
+              <span>来源链接或笔记 ID</span>
+              <input
+                value={draft.source_uri || ""}
+                onChange={(event) => onDraftChange({ source_uri: event.target.value })}
+                placeholder="可选 URL、文件名或聊天引用"
+              />
+            </label>
+            <label>
+              <span>标签</span>
+              <input value={tagInput} onChange={(event) => onTagInputChange(event.target.value)} placeholder="产品, 研究, 决策" />
+            </label>
+          </div>
+          <div className="button-row">
+            <button type="submit" disabled={workflowBusy}>
+              {workflowAction === "preview" ? <Loader2 className="spin" size={16} /> : <Search size={16} />}
+              预览
+            </button>
+            <button type="button" className="secondary" onClick={onApply} disabled={workflowBusy || !preview}>
+              {workflowAction === "apply" ? <Loader2 className="spin" size={16} /> : <Check size={16} />}
+              应用
+            </button>
+          </div>
+        </section>
+
+        <section className="wiki-daily-preview" aria-label="Wiki 预览结果">
+          <div className="section-heading">
+            <strong>预览</strong>
+            <span>
+              {preview
+                ? `${preview.page_plans.length} 个计划页面，确认路径后即可应用。`
+                : "应用任何 Wiki 更新前请先运行预览。"}
+            </span>
+          </div>
+          {preview ? (
+            <div className="wiki-preview-plan-list">
+              {previewPlans.map((plan) => (
+                <article key={`${plan.target_path}-${plan.section || "page"}`} className="wiki-preview-plan-card">
+                  <strong>{plan.title}</strong>
+                  <span>{plan.target_path}</span>
+                  <small>{plan.operation}{plan.section ? ` / ${plan.section}` : ""}</small>
+                </article>
+              ))}
+              {preview.page_plans.length > previewPlans.length ? (
+                <p className="field-note">还有 {preview.page_plans.length - previewPlans.length} 个计划页面。</p>
+              ) : null}
+            </div>
+          ) : (
+            <p className="field-note">还没有预览。应用经过审查的计划前，这里保持只读。</p>
+          )}
+          {applyResult ? (
+            <div className="wiki-apply-summary" aria-label="最近 Wiki 应用结果">
+              <strong>最近输出</strong>
+              <span>{latestApplySummary}</span>
+            </div>
+          ) : null}
+        </section>
+      </form>
       <details className="stack advanced-vault-maintenance" aria-label="高级知识库维护工具">
         <summary>
           <strong>展开高级维护工具</strong>
@@ -409,7 +540,7 @@ export function WikiWorkflowPanel({
               </div>
             </section>
           ) : companionContextReportStatus === "empty" ? (
-            <p className="field-note">还没有 陪伴上下文报告。</p>
+            <p className="field-note">还没有陪伴上下文报告。</p>
           ) : null}
           {openedArchive ? <pre className="diff-preview wiki-opened-archive">{formatWikiArchiveDetail(openedArchive)}</pre> : null}
           <section className="wiki-archive-history" aria-label="资料库查询归档历史">

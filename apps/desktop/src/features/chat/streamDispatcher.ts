@@ -42,6 +42,7 @@ export type StreamDispatcherContext = {
   normalizeContinuityProposal: (payload: Record<string, unknown> | null) => ContinuityProposal | null;
   formatContinuityKind: (kind: ContinuityProposalKind | string) => string;
   upsertProposalFromPayload: (proposalId: string, payload: Record<string, unknown>) => void;
+  upsertChatMemoryProposal: (messageId: string, proposalId: string, payload: Record<string, unknown>) => void;
   upsertChatWikiProposal: (messageId: string, proposal: ChatWikiProposal) => void;
   addTaskFromChat: (task: TaskItem) => void;
   triggerLive2DTaskStage: () => void;
@@ -204,8 +205,8 @@ function applyTextOrCitationEvent({ messageId, sseEvent, payload, context }: Str
     petChat.setReplyPagesFromText(petChat.assistantReplyRef.current, { preserveCurrentPage: true });
   } else if (citations?.length && !petChat.replyStartedRef.current) {
     petChat.scheduleStreamWatchdog(
-      "还在想",
-      "这次需要多等一会儿。",
+      "正在整理",
+      "资料多一点，我继续看。",
       14000,
       () => petChat.failStream(messageId, "没有等到回复", "这次没有等到可显示的回复，本轮已停止。"),
     );

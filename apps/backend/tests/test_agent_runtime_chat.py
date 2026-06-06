@@ -35,6 +35,8 @@ def test_langgraph_runtime_uses_configured_chat_model_for_plain_chat() -> None:
 
     assert chat_model.calls[0][0] == "你好"
     assert "桌宠伙伴" in chat_model.calls[0][1]
+    assert "避免客服式或工具式开场" in chat_model.calls[0][1]
+    assert "有什么可以帮你" in chat_model.calls[0][1]
     assert_langgraph_events(events, ["token", "done"])
     assert first_event(events, "token").text == "LangGraph 聊天回复"
     assert events[-1].text == "LangGraph 聊天回复"

@@ -64,7 +64,7 @@ export function clampTtsSpeed(speed: number | undefined, fallback = 1): number {
 
 export function assertTtsNotAborted(signal: AbortSignal | undefined, provider: TtsProviderId): void {
   if (signal?.aborted) {
-    throw createTtsProviderError(provider, "cancelled", "TTS playback request was cancelled.");
+    throw createTtsProviderError(provider, "cancelled", "TTS 播放请求已取消。");
   }
 }
 
@@ -75,7 +75,7 @@ export function createUnsupportedTtsResultError(
   return createTtsProviderError(
     provider,
     "invalid_audio",
-    `TTS provider ${provider} cannot play synthesis result kind ${result.kind}.`,
+    `TTS 服务 ${provider} 无法播放 ${result.kind} 类型的合成结果。`,
   );
 }
 

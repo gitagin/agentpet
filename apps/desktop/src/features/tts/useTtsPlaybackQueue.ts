@@ -79,7 +79,7 @@ function playbackErrorFromUnknown(
   }
   return {
     code: "provider_failed",
-    message: error instanceof Error ? error.message : "TTS provider failed.",
+    message: error instanceof Error ? error.message : "TTS 服务调用失败。",
     provider,
     itemId,
     recoverable: true,
@@ -165,7 +165,7 @@ export function useTtsPlaybackQueue({
       statusRef.current = "failed";
       errorRef.current = {
         code: "provider_not_configured",
-        message: `TTS provider ${item.synthesis.provider} is not configured.`,
+        message: `TTS 服务 ${item.synthesis.provider} 尚未配置。`,
         provider: item.synthesis.provider,
         itemId: item.id,
         recoverable: true,

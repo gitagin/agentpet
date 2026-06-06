@@ -155,53 +155,53 @@ class CreateTaskInput(AgentToolInput):
 
 
 class ManageWikiPageInput(AgentToolInput):
-    title: str = Field(min_length=1, description="Wiki page title")
-    content: str = Field(min_length=1, description="Markdown content to write into the wiki page")
-    operation: str = Field(default="append", description="create, append, or replace_section")
-    target_path: str | None = Field(default=None, description="Optional Wiki/*.md relative target path")
-    section: str | None = Field(default=None, description="Optional section heading")
-    tags: list[str] = Field(default_factory=list, description="Optional wiki tags")
-    links: list[str] = Field(default_factory=list, description="Optional related wiki links")
-    source_message_id: str | None = Field(default=None, description="Source message ID")
+    title: str = Field(min_length=1, description="Wiki 页面标题")
+    content: str = Field(min_length=1, description="要写入 Wiki 页面的 Markdown 内容")
+    operation: str = Field(default="append", description="写入方式：create、append 或 replace_section")
+    target_path: str | None = Field(default=None, description="可选的 Wiki/*.md 相对目标路径")
+    section: str | None = Field(default=None, description="可选的章节标题")
+    tags: list[str] = Field(default_factory=list, description="可选的 Wiki 标签")
+    links: list[str] = Field(default_factory=list, description="可选的相关 Wiki 链接")
+    source_message_id: str | None = Field(default=None, description="来源消息 ID")
 
 
 class PlanWikiIngestInput(AgentToolInput):
-    title: str = Field(min_length=1, description="Title for the Vault/Wiki ingest plan")
-    content: str = Field(min_length=1, description="Source Markdown or note text to plan into the Vault")
-    source_type: str = Field(default="agent_chat", description="Source type, for example agent_chat or manual")
-    source_uri: str | None = Field(default=None, description="Optional source URI or local reference")
-    tags: list[str] = Field(default_factory=list, description="Optional wiki tags")
-    links: list[str] = Field(default_factory=list, description="Optional related wiki links")
-    max_pages: int = Field(default=5, ge=1, le=15, description="Maximum planned wiki pages")
-    source_message_id: str | None = Field(default=None, description="Source message ID")
+    title: str = Field(min_length=1, description="Vault/Wiki 导入计划标题")
+    content: str = Field(min_length=1, description="要规划进 Vault 的来源 Markdown 或笔记文本")
+    source_type: str = Field(default="agent_chat", description="来源类型，例如 agent_chat 或 manual")
+    source_uri: str | None = Field(default=None, description="可选的来源 URI 或本地引用")
+    tags: list[str] = Field(default_factory=list, description="可选的 Wiki 标签")
+    links: list[str] = Field(default_factory=list, description="可选的相关 Wiki 链接")
+    max_pages: int = Field(default=5, ge=1, le=15, description="最多规划的 Wiki 页面数量")
+    source_message_id: str | None = Field(default=None, description="来源消息 ID")
 
 
 class PlanWikiQueryArchiveInput(AgentToolInput):
-    question: str = Field(min_length=1, description="Question that produced the answer to archive")
-    answer: str = Field(min_length=1, description="Answer markdown/text to archive after user confirmation")
-    citations: list[MemorySearchResult] = Field(default_factory=list, description="Knowledge-base citations")
-    title: str | None = Field(default=None, description="Optional query archive title")
-    target_path: str | None = Field(default=None, description="Optional Wiki/Reports/*.md target path")
-    section: str | None = Field(default=None, description="Optional section heading")
-    tags: list[str] = Field(default_factory=list, description="Optional wiki tags")
-    agent_run_id: str | None = Field(default=None, description="Agent run ID")
-    source_message_id: str | None = Field(default=None, description="Source message ID")
-    allow_mixed_sources: bool = Field(default=False, description="Allow non-knowledge citations")
+    question: str = Field(min_length=1, description="产生待归档回答的问题")
+    answer: str = Field(min_length=1, description="用户确认后要归档的回答 Markdown 或文本")
+    citations: list[MemorySearchResult] = Field(default_factory=list, description="知识库引用")
+    title: str | None = Field(default=None, description="可选的问答归档标题")
+    target_path: str | None = Field(default=None, description="可选的 Wiki/Reports/*.md 目标路径")
+    section: str | None = Field(default=None, description="可选的章节标题")
+    tags: list[str] = Field(default_factory=list, description="可选的 Wiki 标签")
+    agent_run_id: str | None = Field(default=None, description="Agent 运行 ID")
+    source_message_id: str | None = Field(default=None, description="来源消息 ID")
+    allow_mixed_sources: bool = Field(default=False, description="允许非知识库引用")
 
 
 class PlanWikiSynthesisInput(AgentToolInput):
-    title: str = Field(min_length=1, description="Synthesis page title")
-    content: str = Field(min_length=1, description="Synthesis markdown/text to write after confirmation")
-    source_paths: list[str] = Field(default_factory=list, description="Source Wiki page paths")
-    target_path: str | None = Field(default=None, description="Optional Wiki/Syntheses/*.md target path")
-    tags: list[str] = Field(default_factory=list, description="Optional wiki tags")
-    links: list[str] = Field(default_factory=list, description="Optional related wiki links")
-    source_message_id: str | None = Field(default=None, description="Source message ID")
+    title: str = Field(min_length=1, description="综合整理页面标题")
+    content: str = Field(min_length=1, description="确认后要写入的综合整理 Markdown 或文本")
+    source_paths: list[str] = Field(default_factory=list, description="来源 Wiki 页面路径")
+    target_path: str | None = Field(default=None, description="可选的 Wiki/Syntheses/*.md 目标路径")
+    tags: list[str] = Field(default_factory=list, description="可选的 Wiki 标签")
+    links: list[str] = Field(default_factory=list, description="可选的相关 Wiki 链接")
+    source_message_id: str | None = Field(default=None, description="来源消息 ID")
 
 
 class PlanWikiLintInput(AgentToolInput):
-    write_report: bool = Field(default=True, description="Whether confirmation should write a lint report")
-    source_message_id: str | None = Field(default=None, description="Source message ID")
+    write_report: bool = Field(default=True, description="确认后是否写入 lint 报告")
+    source_message_id: str | None = Field(default=None, description="来源消息 ID")
 
 
 class WikiIngestProposal(WikiProposalCoreFields):
@@ -283,8 +283,8 @@ class AgentToolSet:
             coroutine=self.manage_wiki_page,
             name="manage_wiki_page",
             description=(
-                "Create or update a low-risk Markdown page under Wiki/. "
-                "Use this for private desktop-pet auto-organization. Do not use it for deletes, moves, or sensitive content."
+                "在 Wiki/ 下创建或更新低风险 Markdown 页面。"
+                "用于私人桌宠自动整理；不要用于删除、移动或敏感内容。"
             ),
             args_schema=ManageWikiPageInput,
         )
@@ -294,8 +294,8 @@ class AgentToolSet:
             coroutine=self.plan_wiki_ingest,
             name="plan_wiki_ingest",
             description=(
-                "Plan a Vault/Wiki ingest from source text and review it. "
-                "This does not write Markdown; the user must confirm apply separately."
+                "根据来源文本规划 Vault/Wiki 导入并进行审查。"
+                "此工具不写入 Markdown；应用计划必须由用户另行确认。"
             ),
             args_schema=PlanWikiIngestInput,
         )
@@ -305,8 +305,8 @@ class AgentToolSet:
             coroutine=self.plan_wiki_query_archive,
             name="plan_wiki_query_archive",
             description=(
-                "Plan a query-answer archive under Wiki/Reports. "
-                "This only lints and previews Markdown; it does not write files."
+                "规划 Wiki/Reports 下的问答归档。"
+                "此工具只进行 lint 和 Markdown 预览，不写入文件。"
             ),
             args_schema=PlanWikiQueryArchiveInput,
         )
@@ -316,8 +316,8 @@ class AgentToolSet:
             coroutine=self.plan_wiki_synthesis,
             name="plan_wiki_synthesis",
             description=(
-                "Plan a synthesized Wiki page from provided content and source paths. "
-                "This does not write Markdown; the user must confirm separately."
+                "根据提供的内容和来源路径规划综合 Wiki 页面。"
+                "此工具不写入 Markdown；必须由用户另行确认。"
             ),
             args_schema=PlanWikiSynthesisInput,
         )
@@ -327,8 +327,8 @@ class AgentToolSet:
             coroutine=self.plan_wiki_lint,
             name="plan_wiki_lint",
             description=(
-                "Plan a Wiki lint run or lint report write. "
-                "This does not write a report until the user confirms."
+                "规划 Wiki lint 运行或 lint 报告写入。"
+                "用户确认前不会写入报告。"
             ),
             args_schema=PlanWikiLintInput,
         )

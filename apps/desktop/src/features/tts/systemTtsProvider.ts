@@ -37,7 +37,7 @@ export function createSystemTtsProvider(
         ? (text: string) => new globalThis.SpeechSynthesisUtterance(text)
         : null);
     if (!speechSynthesis || !createUtterance) {
-      throw createTtsProviderError("system", "provider_not_configured", "System TTS is not available.");
+      throw createTtsProviderError("system", "provider_not_configured", "系统 TTS 不可用。");
     }
     return { speechSynthesis, createUtterance };
   };
@@ -130,7 +130,7 @@ export function createSystemTtsProvider(
           }
           playback.settled = true;
           active = null;
-          playback.reject(createTtsProviderError("system", "playback_failed", "System TTS playback failed."));
+          playback.reject(createTtsProviderError("system", "playback_failed", "系统 TTS 播放失败。"));
         };
 
         options?.signal?.addEventListener(

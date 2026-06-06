@@ -1,11 +1,28 @@
-import { useState, useCallback } from "react";
+import { useCallback, useState } from "react";
 import type { CSSProperties, FormEvent, RefObject } from "react";
+import {
+  BookOpen,
+  CalendarCheck,
+  ListPlus,
+  Search,
+  Sparkles,
+  type LucideIcon,
+} from "lucide-react";
 import { Live2DStage } from "../components/Live2DStage";
 import type { Live2DStageView } from "../components/Live2DStage";
 import type { Live2DAssetInfo, Live2DRuntimeBoundary } from "../services/live2dRuntime";
 import type { PetBubbleState } from "../features/chat/chatTypes";
 import { PetReplyBubble } from "../features/chat/PetReplyBubble";
 import { BottomNav } from "./BottomNav";
+
+type StageRoute = "agent" | "memory" | "world";
+
+type StageAction = {
+  label: string;
+  detail: string;
+  route: StageRoute;
+  icon: LucideIcon;
+};
 
 type StageViewProps = {
   live2dStage: Live2DStageView;
@@ -25,7 +42,44 @@ type StageViewProps = {
   active?: boolean;
 };
 
-const profile = { name: "小艾", mood: "开心 😊" };
+const profile = { name: "桌面记忆助手", mood: "待命" };
+
+const stageActions: StageAction[] = [
+  {
+    label: "新建任务",
+    detail: "提醒、截止时间、步骤、日志",
+    route: "agent",
+    icon: ListPlus,
+  },
+  {
+    label: "记住这件事",
+    detail: "保存为长期记忆",
+    route: "memory",
+    icon: Sparkles,
+  },
+  {
+    label: "整理知识",
+    detail: "草拟或更新 Wiki 页面",
+    route: "world",
+    icon: BookOpen,
+  },
+  {
+    label: "今日复盘",
+    detail: "今天、周报、月报",
+    route: "memory",
+    icon: CalendarCheck,
+  },
+  {
+    label: "搜索记忆",
+    detail: "事实、日记、Wiki 上下文",
+    route: "memory",
+    icon: Search,
+  },
+];
+
+function openStageRoute(route: StageRoute) {
+  window.location.hash = `#${route}`;
+}
 
 export default function StageView({
   live2dStage,
@@ -58,11 +112,10 @@ export default function StageView({
   const bubbleVisible = Boolean(bubble?.visible);
 
   return (
-    <main style={S.shell} aria-label="桌面记忆助手主舞台">
-      {/* ── Top bar ── */}
+    <main className="stage-command-shell" style={S.shell} aria-label="桌宠主舞台">
       <header style={S.topBar}>
         <div style={S.topLeft}>
-          <span style={S.heartIcon}>♡</span>
+          <span style={S.heartIcon}>*</span>
           <strong>{profile.name}</strong>
           <span style={S.pill}>{profile.mood}</span>
           <span style={S.dot} />
@@ -71,39 +124,67 @@ export default function StageView({
         <time style={S.time}>{now}</time>
       </header>
 
-      {bubbleVisible && (
-        <PetReplyBubble
-          bubble={bubble!}
-          className="stage-agent-bubble"
-          onPreviousPage={() => onPreviousPage?.()}
-          onAdvancePage={() => onAdvancePage?.()}
-          onPausePaging={() => onPausePaging?.()}
-          onResumePaging={() => onResumePaging?.()}
-        />
-      )}
+      <section className="stage-main-view stage-command-layout" style={S.mainStage} aria-label="主舞台">
+        <section className="stage-command-panel" aria-label="功能指挥中心">
+          <div className="stage-command-heading">
+            <p>从真实工作流开始</p>
+            <h1>首页</h1>
+          </div>
+          <div className="stage-action-grid">
+            {stageActions.map((action) => {
+              const Icon = action.icon;
+              return (
+                <button
+                  key={action.label}
+                  type="button"
+                  className="stage-action-card"
+                  data-stage-route={action.route}
+                  onClick={() => openStageRoute(action.route)}
+                >
+                  <Icon aria-hidden="true" size={20} />
+                  <span>
+                    <strong>{action.label}</strong>
+                    <small>{action.detail}</small>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
 
-      {/* ── Main stage: Live2D model centered ── */}
-      <section className="stage-main-view" style={S.mainStage} aria-label="Live2D 陪伴模型主舞台">
-        <Live2DStage
-          key={`stage-${live2dAsset.modelId}`}
-          stage={live2dStage}
-          asset={live2dAsset}
-          runtime={live2dRuntime}
-          canvasRef={live2dCanvasRef}
-          variant="stage"
-          speaking={ttsSpeaking}
-          active={active}
-        />
+        <section className="stage-live2d-zone" aria-label="Live2D 桌宠">
+          <div className="stage-pet-anchor">
+            {bubbleVisible ? (
+              <PetReplyBubble
+                bubble={bubble!}
+                className="stage-agent-bubble"
+                onPreviousPage={() => onPreviousPage?.()}
+                onAdvancePage={() => onAdvancePage?.()}
+                onPausePaging={() => onPausePaging?.()}
+                onResumePaging={() => onResumePaging?.()}
+              />
+            ) : null}
+            <Live2DStage
+              key={`stage-${live2dAsset.modelId}`}
+              stage={live2dStage}
+              asset={live2dAsset}
+              runtime={live2dRuntime}
+              canvasRef={live2dCanvasRef}
+              variant="stage"
+              speaking={ttsSpeaking}
+              active={active}
+            />
+          </div>
+        </section>
       </section>
 
-      {/* ── Footer: input + nav ── */}
       <footer style={S.footer}>
-        <form style={S.chatForm} onSubmit={handleSubmit}>
+        <form style={S.chatForm} onSubmit={handleSubmit} aria-label="舞台聊天表单">
           <input
             style={S.chatInput}
             value={chatInput}
             onChange={(event) => setChatInput(event.target.value)}
-            placeholder="和小艾说点什么..."
+            placeholder="直接提问，或从上方工作流开始..."
             disabled={streaming}
             aria-label="聊天输入"
           />
@@ -118,13 +199,12 @@ export default function StageView({
           )}
         </form>
 
-        <BottomNav activeTab="桌宠" />
+        <BottomNav activeTab="首页" />
       </footer>
     </main>
   );
 }
 
-/* ── Inline style dictionary ── */
 const S: Record<string, CSSProperties> = {
   shell: {
     position: "relative",
@@ -137,8 +217,6 @@ const S: Record<string, CSSProperties> = {
     boxSizing: "border-box",
     overflow: "hidden",
   },
-
-  /* Top bar */
   topBar: {
     height: 44,
     display: "flex",
@@ -190,87 +268,12 @@ const S: Record<string, CSSProperties> = {
     background: "rgba(255,255,255,0.55)",
     border: "1px solid rgba(255,255,255,0.45)",
   },
-
-  /* Main stage */
   mainStage: {
     position: "relative",
     minHeight: 0,
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
     overflow: "visible",
     isolation: "isolate",
   },
-
-  /* Bubble — centered above the model so the model can stay still. */
-  bubble: {
-    position: "absolute",
-    zIndex: 70,
-    top: 19,
-    left: "calc(50% + 22px)",
-    width: "min(420px, calc(50vw - 92px))",
-    maxHeight: 88,
-    padding: "8px 14px",
-    borderRadius: 18,
-    background: "rgba(255,255,255,0.88)",
-    backdropFilter: "blur(18px)",
-    WebkitBackdropFilter: "blur(18px)",
-    boxShadow: "0 14px 36px rgba(119,77,104,0.15)",
-    border: "1px solid rgba(255,255,255,0.6)",
-    cursor: "pointer",
-    userSelect: "none",
-    transition: "opacity 0.22s ease",
-  },
-  bubbleHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 10,
-    marginBottom: 3,
-    fontSize: 12,
-    fontWeight: 700,
-    color: "#1f3f48",
-  },
-  bubblePage: {
-    flex: "0 0 auto",
-    padding: "1px 7px",
-    borderRadius: 999,
-    background: "rgba(49,83,92,0.1)",
-    color: "rgba(49,83,92,0.78)",
-    fontSize: 10,
-    fontWeight: 800,
-  },
-  bubbleControls: {
-    flex: "0 0 auto",
-    display: "none",
-    alignItems: "center",
-    gap: 4,
-  },
-  bubblePageButton: {
-    width: 24,
-    minWidth: 24,
-    height: 24,
-    minHeight: 24,
-    padding: 0,
-    borderRadius: 999,
-    border: "1px solid rgba(49,83,92,0.16)",
-    background: "rgba(255,255,255,0.72)",
-    boxShadow: "none",
-    color: "#31535c",
-  },
-  bubbleText: {
-    fontSize: 12,
-    lineHeight: 1.32,
-    color: "#31535c",
-    whiteSpace: "pre-wrap",
-    wordBreak: "break-word",
-    overflowWrap: "anywhere",
-    maxHeight: 52,
-    overflow: "hidden",
-  },
-  bubbleTapHint: { display: "none" },
-
-  /* Footer */
   footer: {
     display: "grid",
     justifyItems: "center",
@@ -326,5 +329,4 @@ const S: Record<string, CSSProperties> = {
     fontSize: 13,
     whiteSpace: "nowrap",
   },
-
 };

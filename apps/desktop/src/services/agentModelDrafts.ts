@@ -15,19 +15,66 @@ export type AgentModelDraft = {
   saved_model: string;
 };
 
-export const agentModelDefinitions: Array<{ id: AgentModelId; label: string; description: string }> = [
-  { id: "wiki_manager_agent", label: "Vault \u7ef4\u62a4\u667a\u80fd\u4f53", description: "\u7ef4\u62a4\u6301\u4e45\u5316 Vault \u77e5\u8bc6\u5e93\u9875\u9762" },
-  { id: "chat_agent", label: "\u5bf9\u8bdd\u667a\u80fd\u4f53", description: "\u751f\u6210\u684c\u5ba0\u6700\u7ec8\u56de\u590d" },
-  { id: "diary_memory_extractor_agent", label: "\u65e5\u8bb0\u8bb0\u5fc6\u62bd\u53d6\u667a\u80fd\u4f53", description: "\u4ece\u804a\u5929\u65e5\u8bb0\u63d0\u70bc\u7ed3\u6784\u5316\u4e8b\u4ef6\u3001\u4e3b\u9898\u548c\u60c5\u7eea" },
-  { id: "semantic_analysis_agent", label: "\u8bed\u4e49\u5206\u6790\u667a\u80fd\u4f53", description: "\u5224\u65ad\u610f\u56fe\u4e0e\u4e0a\u4e0b\u6587\u9700\u6c42" },
-  { id: "memory_retrieval_agent", label: "\u8bb0\u5fc6\u68c0\u7d22\u667a\u80fd\u4f53", description: "\u641c\u7d22\u4e2a\u4eba\u8bb0\u5fc6\u548c\u65e5\u5e38\u804a\u5929\u8bb0\u5f55" },
-  { id: "knowledge_retrieval_agent", label: "\u77e5\u8bc6\u68c0\u7d22\u667a\u80fd\u4f53", description: "\u641c\u7d22\u6301\u4e45\u5316\u77e5\u8bc6\u5e93\u6587\u6863" },
-  { id: "memory_proposal_agent", label: "\u8bb0\u5fc6\u6574\u7406\u667a\u80fd\u4f53", description: "\u5904\u7406\u9700\u8981\u786e\u8ba4\u7684\u957f\u671f\u8bb0\u5fc6\u6574\u7406" },
-  { id: "continuity_agent", label: "\u8fde\u7eed\u6027\u667a\u80fd\u4f53", description: "\u63d0\u70bc\u8eab\u4efd\u3001\u5173\u7cfb\u548c\u60c5\u7eea\u8fde\u7eed\u6027\uff0c\u9ad8\u98ce\u9669\u65f6\u8fdb\u5165\u786e\u8ba4" },
-  { id: "task_agent", label: "\u4efb\u52a1\u667a\u80fd\u4f53", description: "\u521b\u5efa\u672c\u5730\u4efb\u52a1\u548c\u63d0\u9192" },
+export type AgentOutcomeKey =
+  | "chat"
+  | "task_reminder"
+  | "knowledge_page"
+  | "memory_review"
+  | "cited_answer"
+  | "relationship_continuity";
+
+export type AgentModelDefinition = {
+  id: AgentModelId;
+  label: string;
+  description: string;
+  outcome: AgentOutcomeKey;
+  outcomeLabel: string;
+};
+
+export const agentOutcomeDefinitions: Record<AgentOutcomeKey, { label: string; description: string }> = {
+  chat: {
+    label: "聊天",
+    description: "把检索、记忆和任务结果组织成最终回复。",
+  },
+  task_reminder: {
+    label: "任务",
+    description: "识别待办、时间和提醒需求，并生成本地任务结果。",
+  },
+  knowledge_page: {
+    label: "知识",
+    description: "把可复用来源材料整理为 Wiki 页面、摘要或报告。",
+  },
+  memory_review: {
+    label: "记忆",
+    description: "把高价值内容转为长期记忆候选，并保留复核路径。",
+  },
+  cited_answer: {
+    label: "带引用回答",
+    description: "检索本地记忆、聊天日记和 Wiki 上下文，为回答提供来源。",
+  },
+  relationship_continuity: {
+    label: "连续性",
+    description: "维护身份、关系、情绪和未完话题等长期陪伴状态。",
+  },
+};
+
+export const agentModelDefinitions: AgentModelDefinition[] = [
+  { id: "chat_agent", label: "最终回复", description: "生成用户可见的聊天回复。", outcome: "chat", outcomeLabel: "聊天" },
+  { id: "task_agent", label: "任务创建", description: "创建本地任务和提醒。", outcome: "task_reminder", outcomeLabel: "任务" },
+  { id: "wiki_manager_agent", label: "Wiki 写入", description: "维护持久化 Vault Wiki 页面。", outcome: "knowledge_page", outcomeLabel: "知识" },
+  { id: "memory_proposal_agent", label: "记忆复核", description: "准备可能需要确认的长期记忆项。", outcome: "memory_review", outcomeLabel: "记忆" },
+  { id: "diary_memory_extractor_agent", label: "日记结构化", description: "从聊天日记提取事件、主题和情绪。", outcome: "memory_review", outcomeLabel: "记忆" },
+  { id: "memory_retrieval_agent", label: "记忆检索", description: "搜索个人记忆和每日聊天记录。", outcome: "cited_answer", outcomeLabel: "带引用回答" },
+  { id: "knowledge_retrieval_agent", label: "知识检索", description: "搜索持久化 Wiki 文档。", outcome: "cited_answer", outcomeLabel: "带引用回答" },
+  { id: "continuity_agent", label: "连续性", description: "提取身份、关系和情绪连续性；高风险内容仍需复核。", outcome: "relationship_continuity", outcomeLabel: "连续性" },
+  { id: "semantic_analysis_agent", label: "意图路由", description: "判断意图与上下文需求。", outcome: "chat", outcomeLabel: "聊天" },
 ];
 
-export const agentModelCountLabel = `${agentModelDefinitions.length} \u4e2a\u667a\u80fd\u4f53`;
+export const agentModelCountLabel = "结果路由";
+
+export function agentOutcomeLabel(agentId: AgentModelId | string): string {
+  return agentModelDefinitions.find((agent) => agent.id === agentId)?.outcomeLabel || "路由";
+}
 
 export const defaultAgentModelDrafts = (): AgentModelDraft[] =>
   agentModelDefinitions.map((agent) => ({

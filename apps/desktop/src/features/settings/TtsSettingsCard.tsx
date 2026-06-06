@@ -19,7 +19,7 @@ type TtsSettingsCardProps = {
 const xiaomiMimoTemplate = {
   model: "{{model}}",
   messages: [
-    { role: "user", content: "Please read the assistant text naturally." },
+    { role: "user", content: "请自然朗读助手文本。" },
     { role: "assistant", content: "{{text}}" },
   ],
   audio: {
@@ -42,7 +42,7 @@ function presetPatchForProvider(provider: string, draft: TtsSettingsDraft): Part
         provider,
         locale: "en",
         gender: "female",
-        description: "MiMo built-in voice",
+        description: "MiMo 内置声音",
       },
       response_format: "wav",
       requires_api_key: true,
@@ -185,7 +185,7 @@ export function TtsSettingsCard({
           />
           <span>
             <strong>自动朗读回复</strong>
-            <small>只朗读 assistant 最终回复，不朗读思考、工具和错误状态。</small>
+            <small>只朗读助手最终回复，不朗读思考、工具和错误状态。</small>
           </span>
         </label>
       </div>

@@ -1,5 +1,5 @@
-import { Archive, BarChart3, BookOpen, CalendarRange, CheckCircle2, Copy, Database, FileText, History, Loader2, NotebookTabs, RefreshCw, RotateCcw, Search, ShieldAlert, XCircle } from "lucide-react";
-import type { ReactNode } from "react";
+import { Archive, BarChart3, BookOpen, CalendarRange, Check, CheckCircle2, Copy, Database, ExternalLink, FileText, FolderSearch, History, Loader2, NotebookTabs, PlusCircle, RefreshCw, RotateCcw, Search, ShieldAlert, XCircle } from "lucide-react";
+import type { FormEvent, ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { EmptyState } from "../components/layout";
 import type { DesktopApi } from "../services/desktopApi";
@@ -13,22 +13,64 @@ import type {
   LocalAssetStatsResponse,
   MemoryGraphExportPreviewResponse,
   MemoryGraphFact,
+  MemoryProposal,
+  MemoryProposalDraft,
+  MemoryProposalType,
+  MemorySearchResult,
+  DesktopVaultRevealMode,
   RetrospectiveReportPeriod,
+  RetrospectiveReportResponse,
   RetrospectiveResponse,
   RetrospectiveSourceReference,
   RetrospectiveWindow,
 } from "../types";
+import { MemoryProposalActivityCard } from "../features/memory/MemoryProposalActivityCard";
+import type { MemoryAsyncStatus } from "../features/memory/memoryReducer";
+import { memoryTypeLabels, memoryTypes } from "../features/memory/memoryConstants";
 import { FeatureWindowShell } from "./FeatureWindowShell";
 
 type MemoryActivityFilter = "all" | "auto" | "pending" | "reverted" | "failed";
 type MemoryGraphStatusFilter = "all" | "active" | "candidate" | "quarantined" | "archived" | "rejected" | "wrong" | "sensitive_blocked";
 type RetrospectiveReportTarget = number | RetrospectiveReportPeriod;
+type ReviewCoachKind = "today" | "seven_day" | "monthly";
+
+type ReviewCoachCardConfig = {
+  kind: ReviewCoachKind;
+  title: string;
+  description: string;
+  windowDays: number;
+  target: RetrospectiveReportTarget;
+  buttonLabel: string;
+};
+
+type ReviewReportArtifact = {
+  kind: ReviewCoachKind;
+  title: string;
+  relativePath: string;
+  status: string;
+  actionId?: string | null;
+  generatedAt?: string | null;
+};
 
 type MemoryWindowViewProps = {
   api: DesktopApi;
   loading: boolean;
   error: string;
   entries: AgentActivityLogEntry[];
+  memorySearchQuery: string;
+  memorySearchStatus: MemoryAsyncStatus;
+  memorySearchResults: MemorySearchResult[];
+  memoryLastSearchQuery: string;
+  onMemorySearchQueryChange: (query: string) => void;
+  onRunMemorySearch: (event: FormEvent) => void;
+  memoryProposalDraft: MemoryProposalDraft;
+  memoryProposals: MemoryProposal[];
+  memoryProposalActionIds: Set<string>;
+  loadingMemoryProposals: boolean;
+  onMemoryProposalDraftChange: (patch: Partial<MemoryProposalDraft>) => void;
+  onCreateMemoryProposal: (event: FormEvent) => void;
+  onActOnMemoryProposal: (proposalId: string, action: "confirm" | "reject") => void;
+  onLoadMemoryProposals: () => void;
   onRefresh: () => void;
   renderEntry: (entry: AgentActivityLogEntry) => ReactNode;
 };
@@ -50,6 +92,33 @@ const graphStatusFilters: Array<{ key: MemoryGraphStatusFilter; label: string }>
   { key: "rejected", label: "拒绝" },
   { key: "wrong", label: "不准确" },
   { key: "sensitive_blocked", label: "敏感封存" },
+];
+
+const reviewCoachCards: ReviewCoachCardConfig[] = [
+  {
+    kind: "today",
+    title: "今日复盘",
+    description: "把今天的日记、任务、记忆和 Wiki 更新整理成本地 Markdown 复盘。",
+    windowDays: 1,
+    target: 1,
+    buttonLabel: "生成今日复盘",
+  },
+  {
+    kind: "seven_day",
+    title: "7 天复盘",
+    description: "总结最近一周的工作、重复主题、任务变化和新增知识。",
+    windowDays: 7,
+    target: 7,
+    buttonLabel: "生成 7 天复盘",
+  },
+  {
+    kind: "monthly",
+    title: "月度复盘",
+    description: "生成结合长期记忆、任务状态和 Wiki 输出的月度报告。",
+    windowDays: 30,
+    target: "monthly",
+    buttonLabel: "生成月度复盘",
+  },
 ];
 
 function isPendingStatus(status: string): boolean {
@@ -188,6 +257,40 @@ function formatSources(sources: RetrospectiveSourceReference[]): string {
 
 function windowByDays(data: RetrospectiveResponse | null, days: number): RetrospectiveWindow | null {
   return data?.windows.find((window) => window.days === days) || null;
+}
+
+function countWindowCoverage(window: RetrospectiveWindow | null) {
+  return {
+    chatDiary: window?.summary.diary_objects || 0,
+    tasks: window?.tasks.total || 0,
+    longTermMemory: window?.summary.long_term_memories || 0,
+    wiki: window?.summary.wiki_updates || 0,
+  };
+}
+
+function reportTargetKey(target: RetrospectiveReportTarget): string {
+  return String(target);
+}
+
+function reportArtifactMessage(artifact: ReviewReportArtifact): string {
+  return `${artifact.title} 已保存到 ${artifact.relativePath}`;
+}
+
+function reviewKindForTarget(target: RetrospectiveReportTarget): ReviewCoachKind | null {
+  if (target === 1) {
+    return "today";
+  }
+  if (target === 7) {
+    return "seven_day";
+  }
+  if (target === "monthly") {
+    return "monthly";
+  }
+  return null;
+}
+
+function reviewTitleForKind(kind: ReviewCoachKind): string {
+  return reviewCoachCards.find((card) => card.kind === kind)?.title || "复盘报告";
 }
 
 function hasLocalAssets(stats: LocalAssetStatsResponse): boolean {
@@ -350,11 +453,465 @@ function RetrospectiveWindowPanel({
   );
 }
 
+function ReviewCoverageList({ window }: { window: RetrospectiveWindow | null }) {
+  const coverage = countWindowCoverage(window);
+  const items = [
+    { label: "聊天日记", value: coverage.chatDiary },
+    { label: "任务", value: coverage.tasks },
+    { label: "长期记忆", value: coverage.longTermMemory },
+    { label: "Wiki", value: coverage.wiki },
+  ];
+  return (
+    <dl className="review-coverage-list" aria-label="来源覆盖">
+      {items.map((item) => (
+        <div key={item.label}>
+          <dt>{item.label}</dt>
+          <dd>{item.value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function ReviewReportArtifactCard({
+  artifact,
+  canReveal,
+  onReveal,
+}: {
+  artifact: ReviewReportArtifact;
+  canReveal: boolean;
+  onReveal: (relativePath: string, mode: DesktopVaultRevealMode) => void;
+}) {
+  return (
+    <div className="review-report-artifact" aria-label={`${artifact.title}报告产物`}>
+      <div>
+        <strong>{artifact.relativePath}</strong>
+        <span>{artifact.status}</span>
+      </div>
+      {canReveal ? (
+        <div className="button-row compact-actions">
+          <button type="button" className="secondary" onClick={() => onReveal(artifact.relativePath, "open")}>
+            <ExternalLink size={15} />
+            打开报告
+          </button>
+          <button type="button" className="secondary" onClick={() => onReveal(artifact.relativePath, "show")}>
+            <FolderSearch size={15} />
+            定位报告
+          </button>
+        </div>
+      ) : (
+        <p className="field-note">当前浏览器视图无法打开 Vault 文件位置。</p>
+      )}
+    </div>
+  );
+}
+
+function ReviewCoachCard({
+  config,
+  window,
+  generatingReport,
+  artifact,
+  canRevealReports,
+  onGenerate,
+  onRevealReport,
+}: {
+  config: ReviewCoachCardConfig;
+  window: RetrospectiveWindow | null;
+  generatingReport: RetrospectiveReportTarget | null;
+  artifact?: ReviewReportArtifact;
+  canRevealReports: boolean;
+  onGenerate: (config: ReviewCoachCardConfig) => void;
+  onRevealReport: (relativePath: string, mode: DesktopVaultRevealMode) => void;
+}) {
+  const busy = generatingReport !== null && reportTargetKey(generatingReport) === reportTargetKey(config.target);
+  return (
+    <article className="review-coach-card">
+      <div className="section-heading compact">
+        <strong>{config.title}</strong>
+        <span>{window ? `${formatDate(window.start_at)} - ${formatDate(window.end_at)}` : config.description}</span>
+      </div>
+      <p>{config.description}</p>
+      <ReviewCoverageList window={window} />
+      {window?.has_data ? (
+        <p className="field-note">
+          使用 {window.summary.diary_objects || 0} 条日记、{window.tasks.total} 个任务、{window.summary.long_term_memories || 0} 条记忆事实和 {window.summary.wiki_updates || 0} 次 Wiki 更新。
+        </p>
+      ) : (
+        <p className="field-note">这个复盘窗口还没有本地来源数据。</p>
+      )}
+      <button type="button" onClick={() => onGenerate(config)} disabled={busy}>
+        {busy ? <Loader2 className="spin" size={16} /> : <FileText size={16} />}
+        {config.buttonLabel}
+      </button>
+      {artifact ? (
+        <ReviewReportArtifactCard artifact={artifact} canReveal={canRevealReports} onReveal={onRevealReport} />
+      ) : null}
+    </article>
+  );
+}
+
+function ReviewCoachPanel({
+  retrospectives,
+  loading,
+  error,
+  message,
+  generatingReport,
+  reportArtifacts,
+  canRevealReports,
+  onRefresh,
+  onGenerate,
+  onRevealReport,
+}: {
+  retrospectives: RetrospectiveResponse | null;
+  loading: boolean;
+  error: string;
+  message: string;
+  generatingReport: RetrospectiveReportTarget | null;
+  reportArtifacts: Partial<Record<ReviewCoachKind, ReviewReportArtifact>>;
+  canRevealReports: boolean;
+  onRefresh: () => void;
+  onGenerate: (config: ReviewCoachCardConfig) => void;
+  onRevealReport: (relativePath: string, mode: DesktopVaultRevealMode) => void;
+}) {
+  return (
+    <section className="panel feature-window-panel review-coach-panel" aria-label="复盘助手">
+      <div className="section-heading">
+        <strong>复盘助手</strong>
+        <span>
+          {retrospectives
+            ? `来源快照生成于 ${formatDate(retrospectives.generated_at)}。`
+            : "读取本地活动并生成复盘报告，无需打开聊天。"}
+        </span>
+      </div>
+      <div className="button-row">
+        <button type="button" className="secondary" onClick={onRefresh} disabled={loading}>
+          {loading ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />}
+          刷新复盘来源
+        </button>
+      </div>
+      {error ? <p className="field-note error">{error}</p> : null}
+      {message ? <p className="field-note">{message}</p> : null}
+      <div className="review-coach-grid">
+        {reviewCoachCards.map((config) => (
+          <ReviewCoachCard
+            key={config.kind}
+            config={config}
+            window={windowByDays(retrospectives, config.windowDays)}
+            generatingReport={generatingReport}
+            artifact={reportArtifacts[config.kind]}
+            canRevealReports={canRevealReports}
+            onGenerate={onGenerate}
+            onRevealReport={onRevealReport}
+          />
+        ))}
+      </div>
+      {loading && !retrospectives ? <EmptyState text="正在加载本地复盘来源。" /> : null}
+    </section>
+  );
+}
+
+function SearchResultCard({ result }: { result: MemorySearchResult }) {
+  return (
+    <article className="memory-search-result-card">
+      <strong>{result.title || result.relative_path}</strong>
+      <span>{result.snippet}</span>
+      <small>
+        {result.relative_path}
+        {result.heading ? ` / ${result.heading}` : ""} / {result.source_scope || "memory"} / {Math.round(result.score * 100)}%
+      </small>
+    </article>
+  );
+}
+
+function MemorySearchWorkbench({
+  query,
+  status,
+  results,
+  lastQuery,
+  onQueryChange,
+  onTrySearch,
+  onSearch,
+}: {
+  query: string;
+  status: MemoryAsyncStatus;
+  results: MemorySearchResult[];
+  lastQuery: string;
+  onQueryChange: (query: string) => void;
+  onTrySearch?: () => void;
+  onSearch: (event: FormEvent) => void;
+}) {
+  const searching = status === "loading";
+  return (
+    <section className="memory-workbench-search" aria-label="记忆搜索">
+      {onTrySearch ? (
+        <div className="guided-trial-actions" aria-label="记忆搜索快捷操作">
+          <button type="button" className="secondary" onClick={onTrySearch}>
+            <Search size={16} />
+            搜索记忆
+          </button>
+        </div>
+      ) : null}
+      <form className="memory-workbench-search-form" onSubmit={onSearch}>
+        <label>
+          <span>搜索记忆</span>
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => onQueryChange(event.target.value)}
+            placeholder="搜索偏好、日记、事实或 Wiki 上下文"
+          />
+        </label>
+        <button type="submit" disabled={searching || !query.trim()}>
+          {searching ? <Loader2 className="spin" size={16} /> : <Search size={16} />}
+          搜索
+        </button>
+      </form>
+      <div className="memory-search-results" aria-label="记忆搜索结果">
+        {results.length > 0 ? (
+          results.map((result) => <SearchResultCard key={`${result.note_id}-${result.chunk_id}`} result={result} />)
+        ) : status === "empty" ? (
+          <EmptyState text={`没有找到“${lastQuery}”的匹配记忆。`} />
+        ) : status === "error" ? (
+          <EmptyState text="记忆搜索失败，请稍后重试。" />
+        ) : (
+          <EmptyState text="输入关键词后可直接搜索记忆，不需要打开聊天。" />
+        )}
+      </div>
+    </section>
+  );
+}
+
+function AddMemoryForm({
+  draft,
+  onDraftChange,
+  onTryPreference,
+  onSubmit,
+}: {
+  draft: MemoryProposalDraft;
+  onDraftChange: (patch: Partial<MemoryProposalDraft>) => void;
+  onTryPreference?: () => void;
+  onSubmit: (event: FormEvent) => void;
+}) {
+  return (
+    <form className="memory-add-form" aria-label="新增记忆表单" onSubmit={onSubmit}>
+      <div className="section-heading compact">
+        <strong>新增记忆</strong>
+        <span>不经过聊天也可以创建一条可复核的记忆候选。</span>
+      </div>
+      {onTryPreference ? (
+        <div className="guided-trial-actions" aria-label="记忆快捷操作">
+          <button type="button" className="secondary" onClick={onTryPreference}>
+            <PlusCircle size={16} />
+            保存一个偏好
+          </button>
+        </div>
+      ) : null}
+      <div className="memory-add-grid">
+        <label>
+          <span>类型</span>
+          <select
+            value={draft.type}
+            onChange={(event) => onDraftChange({ type: event.target.value as MemoryProposalType })}
+          >
+            {memoryTypes.map((type) => (
+              <option key={type} value={type}>
+                {memoryTypeLabels[type]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>目标笔记</span>
+          <input
+            value={draft.target_path}
+            onChange={(event) => onDraftChange({ target_path: event.target.value })}
+            placeholder="Inbox/Pending Memories.md"
+          />
+        </label>
+      </div>
+      <label>
+        <span>记忆内容</span>
+        <textarea
+          value={draft.content}
+          onChange={(event) => onDraftChange({ content: event.target.value })}
+          placeholder="我偏好简洁的发布检查清单。"
+        />
+      </label>
+      <button type="submit" disabled={!draft.content.trim() || !draft.target_path.trim()}>
+        <PlusCircle size={16} />
+        新增记忆
+      </button>
+    </form>
+  );
+}
+
+function MemoryProposalReviewList({
+  proposals,
+  loading,
+  actionIds,
+  onAct,
+  onRefresh,
+}: {
+  proposals: MemoryProposal[];
+  loading: boolean;
+  actionIds: Set<string>;
+  onAct: (proposalId: string, action: "confirm" | "reject") => void;
+  onRefresh: () => void;
+}) {
+  const pending = proposals.filter((proposal) => proposal.status === "pending");
+  return (
+    <section className="memory-review-list" aria-label="待复核记忆候选">
+      <div className="section-heading compact">
+        <strong>待复核候选</strong>
+        <span>{pending.length} 条待确认 / 共 {proposals.length} 条候选。</span>
+      </div>
+      <button type="button" className="secondary" onClick={onRefresh} disabled={loading}>
+        {loading ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />}
+        刷新候选
+      </button>
+      <div className="proposal-list memory-proposal-review-list">
+        {proposals.length > 0 ? (
+          proposals.map((proposal) => (
+            <MemoryProposalActivityCard
+              key={proposal.proposal_id}
+              entry={{
+                kind: "memory_proposal",
+                id: `memory-proposal-${proposal.proposal_id}`,
+                sortAt: proposal.proposal_id,
+                sortKey: 0,
+                proposal,
+              }}
+              busy={actionIds.has(proposal.proposal_id)}
+              onAct={onAct}
+            />
+          ))
+        ) : loading ? (
+          <EmptyState text="正在加载待确认记忆。" />
+        ) : (
+          <EmptyState text="没有待确认记忆。上方“新增记忆”会创建新的候选项。" />
+        )}
+      </div>
+    </section>
+  );
+}
+
+function MemoryFactCard({
+  fact,
+  busy,
+  onAction,
+}: {
+  fact: MemoryGraphFact;
+  busy: boolean;
+  onAction: (factId: string, action: "wrong" | "archive" | "sensitive_block" | "confirm") => void;
+}) {
+  return (
+    <article className={`memory-graph-fact ${fact.status}`}>
+      <div className="memory-graph-fact-main">
+        <strong>{memoryFactSentence(fact)}</strong>
+        <div className="memory-graph-fact-meta">
+          <span>{formatMemoryFactStatus(fact.status)}</span>
+          <span>{fact.category}</span>
+          <span>置信度 {Math.round(fact.confidence * 100)}%</span>
+          <span>支持 {fact.support_count}</span>
+        </div>
+        <p>
+          {fact.source_type}
+          {fact.memory_type ? ` / ${fact.memory_type}` : ""}
+          {fact.updated_at ? ` / ${formatDate(fact.updated_at)}` : ""}
+        </p>
+      </div>
+      <div className="memory-graph-fact-actions">
+        {fact.status !== "active" ? (
+          <button type="button" className="secondary" onClick={() => onAction(fact.fact_id, "confirm")} disabled={busy}>
+            {busy ? <Loader2 className="spin" size={15} /> : <Check size={15} />}
+            确认
+          </button>
+        ) : null}
+        {fact.status !== "wrong" ? (
+          <button type="button" className="secondary" onClick={() => onAction(fact.fact_id, "wrong")} disabled={busy}>
+            {busy ? <Loader2 className="spin" size={15} /> : <XCircle size={15} />}
+            标为不准确
+          </button>
+        ) : null}
+        {fact.status !== "archived" ? (
+          <button type="button" className="secondary" onClick={() => onAction(fact.fact_id, "archive")} disabled={busy}>
+            {busy ? <Loader2 className="spin" size={15} /> : <Archive size={15} />}
+            归档
+          </button>
+        ) : null}
+        {fact.status !== "sensitive_blocked" ? (
+          <button type="button" className="secondary" onClick={() => onAction(fact.fact_id, "sensitive_block")} disabled={busy}>
+            {busy ? <Loader2 className="spin" size={15} /> : <ShieldAlert size={15} />}
+            敏感封存
+          </button>
+        ) : null}
+      </div>
+    </article>
+  );
+}
+
+function MemoryFactSection({
+  title,
+  description,
+  facts,
+  loading,
+  emptyText,
+  busyId,
+  onAction,
+}: {
+  title: string;
+  description: string;
+  facts: MemoryGraphFact[];
+  loading: boolean;
+  emptyText: string;
+  busyId: string | null;
+  onAction: (factId: string, action: "wrong" | "archive" | "sensitive_block" | "confirm") => void;
+}) {
+  return (
+    <section className="memory-fact-section" aria-label={title}>
+      <div className="section-heading compact">
+        <strong>{title}</strong>
+        <span>{description}</span>
+      </div>
+      <div className="memory-graph-list">
+        {facts.length > 0 ? (
+          facts.map((fact) => (
+            <MemoryFactCard
+              key={fact.fact_id}
+              fact={fact}
+              busy={busyId === fact.fact_id}
+              onAction={onAction}
+            />
+          ))
+        ) : loading ? (
+          <EmptyState text="正在加载长期记忆。" />
+        ) : (
+          <EmptyState text={emptyText} />
+        )}
+      </div>
+    </section>
+  );
+}
+
 export default function MemoryWindowView({
   api,
   loading,
   error,
   entries,
+  memorySearchQuery,
+  memorySearchStatus,
+  memorySearchResults,
+  memoryLastSearchQuery,
+  onMemorySearchQueryChange,
+  onRunMemorySearch,
+  memoryProposalDraft,
+  memoryProposals,
+  memoryProposalActionIds,
+  loadingMemoryProposals,
+  onMemoryProposalDraftChange,
+  onCreateMemoryProposal,
+  onActOnMemoryProposal,
+  onLoadMemoryProposals,
   onRefresh,
   renderEntry,
 }: MemoryWindowViewProps) {
@@ -367,7 +924,9 @@ export default function MemoryWindowView({
   const [retrospectives, setRetrospectives] = useState<RetrospectiveResponse | null>(null);
   const [retrospectiveLoading, setRetrospectiveLoading] = useState(true);
   const [retrospectiveError, setRetrospectiveError] = useState("");
+  const [reviewReportMessage, setReviewReportMessage] = useState("");
   const [generatingReport, setGeneratingReport] = useState<RetrospectiveReportTarget | null>(null);
+  const [reviewReportArtifacts, setReviewReportArtifacts] = useState<Partial<Record<ReviewCoachKind, ReviewReportArtifact>>>({});
   const [memoryFacts, setMemoryFacts] = useState<MemoryGraphFact[]>([]);
   const [memoryFactsLoading, setMemoryFactsLoading] = useState(true);
   const [memoryFactsError, setMemoryFactsError] = useState("");
@@ -400,6 +959,17 @@ export default function MemoryWindowView({
   const memoryGroups = useMemo(() => buildMemoryTrustGroups(filteredEntries), [filteredEntries]);
   const populatedGroups = memoryGroups.filter((group) => group.entries.length > 0);
   const activeRetrospective = windowByDays(retrospectives, activeRetrospectiveDays);
+  const canRevealReports = Boolean(window.agentDesktop?.revealVaultPath);
+  const confirmedFacts = filteredMemoryFacts.filter((fact) => fact.status === "active");
+  const candidateFacts = filteredMemoryFacts.filter((fact) => ["candidate", "quarantined"].includes(fact.status));
+  const diaryDerivedFacts = filteredMemoryFacts.filter((fact) =>
+    [fact.source_type, fact.memory_type, fact.category]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes("diary") || String(value).toLowerCase().includes("chat")),
+  );
+  const managedStatusFacts = filteredMemoryFacts.filter((fact) =>
+    ["archived", "wrong", "sensitive_blocked", "rejected"].includes(fact.status),
+  );
 
   async function loadLocalAssets(signal?: AbortSignal) {
     setLocalAssetsLoading(true);
@@ -461,11 +1031,30 @@ export default function MemoryWindowView({
     return () => abort.abort();
   }, [api, memoryFactStatus, memoryFactQuery]);
 
+  function rememberReviewArtifact(target: RetrospectiveReportTarget, response: RetrospectiveReportResponse) {
+    const kind = reviewKindForTarget(target);
+    if (!kind) {
+      return;
+    }
+    const artifact: ReviewReportArtifact = {
+      kind,
+      title: reviewTitleForKind(kind),
+      relativePath: response.page.relative_path,
+      status: response.page.status,
+      actionId: response.action.action_id,
+      generatedAt: response.action.completed_at || response.action.created_at,
+    };
+    setReviewReportArtifacts((current) => ({ ...current, [kind]: artifact }));
+    setReviewReportMessage(reportArtifactMessage(artifact));
+  }
+
   async function generateReport(days: number) {
     setGeneratingReport(days);
     setRetrospectiveError("");
+    setReviewReportMessage("");
     try {
-      await api.writeRetrospectiveReport(days);
+      const response = await api.writeRetrospectiveReport(days);
+      rememberReviewArtifact(days, response);
       await loadLocalAssets();
       await loadRetrospectives();
       onRefresh();
@@ -479,8 +1068,10 @@ export default function MemoryWindowView({
   async function generatePeriodReport(period: RetrospectiveReportPeriod) {
     setGeneratingReport(period);
     setRetrospectiveError("");
+    setReviewReportMessage("");
     try {
-      await api.writeRetrospectivePeriodReport(period);
+      const response = await api.writeRetrospectivePeriodReport(period);
+      rememberReviewArtifact(period, response);
       await loadLocalAssets();
       await loadRetrospectives();
       onRefresh();
@@ -488,6 +1079,40 @@ export default function MemoryWindowView({
       setRetrospectiveError(describeError(requestError, period === "weekly" ? "周报生成失败" : "月报生成失败"));
     } finally {
       setGeneratingReport(null);
+    }
+  }
+
+  function generateReviewFromCard(config: ReviewCoachCardConfig) {
+    if (typeof config.target === "number") {
+      void generateReport(config.target);
+    } else {
+      void generatePeriodReport(config.target);
+    }
+  }
+
+  function fillMemorySearchTrial() {
+    onMemorySearchQueryChange("发布清单");
+  }
+
+  function fillPreferenceTrial() {
+    onMemoryProposalDraftChange({
+      type: "preference",
+      content: "我偏好简洁的发布清单。",
+      target_path: "Inbox/Pending Memories.md",
+    });
+  }
+
+  async function revealReviewReport(relativePath: string, mode: DesktopVaultRevealMode) {
+    if (!window.agentDesktop?.revealVaultPath) {
+      setRetrospectiveError("当前浏览器视图无法打开 Vault 文件位置。");
+      return;
+    }
+    const result = await window.agentDesktop.revealVaultPath(relativePath, mode);
+    if (result.status === "failed" || result.status === "rejected") {
+      setRetrospectiveError(result.reason || "报告打开失败。");
+    } else {
+      setRetrospectiveError("");
+      setReviewReportMessage(mode === "open" ? `已打开 ${relativePath}` : `已定位 ${relativePath}`);
     }
   }
 
@@ -541,80 +1166,38 @@ export default function MemoryWindowView({
 
   return (
     <FeatureWindowShell
-      eyebrow="自动整理"
-      title="整理"
-      description="查看自动写入、撤销记录，以及需要你确认的长期记忆和状态更新。"
-      activeTab="整理"
+      eyebrow="记忆"
+      title="记忆"
+      description="无需打开聊天，也可以搜索、新增、复核、更正、归档和导出长期记忆。"
+      activeTab="记忆"
     >
-      <LocalAssetDashboard
-        stats={localAssets}
-        loading={localAssetsLoading}
-        error={localAssetsError}
-        onRefresh={() => void loadLocalAssets()}
-      />
-
-      <section className="panel feature-window-panel" aria-label="长期回顾">
-        <div className="section-heading">
-          <strong>回顾</strong>
-          <span>
-            {retrospectives
-              ? `按 7 / 30 / 90 天汇总本地资产，生成于 ${formatDate(retrospectives.generated_at)}。`
-              : "正在读取本地长期回顾。"}
-          </span>
-        </div>
-        <div className="retrospective-toolbar" aria-label="回顾时间窗口">
-          {[7, 30, 90].map((days) => (
-            <button
-              key={days}
-              type="button"
-              className={`secondary memory-activity-filter ${activeRetrospectiveDays === days ? "active" : ""}`}
-              onClick={() => setActiveRetrospectiveDays(days)}
-              aria-pressed={activeRetrospectiveDays === days}
-            >
-              <CalendarRange size={15} />
-              {days} 天
-            </button>
-          ))}
-          <button type="button" className="secondary" onClick={() => void loadRetrospectives()} disabled={retrospectiveLoading}>
-            {retrospectiveLoading ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />}
-            刷新回顾
-          </button>
-          <button
-            type="button"
-            className="secondary"
-            onClick={() => void generatePeriodReport("weekly")}
-            disabled={generatingReport === "weekly"}
-          >
-            {generatingReport === "weekly" ? <Loader2 className="spin" size={16} /> : <FileText size={16} />}
-            生成周报
-          </button>
-          <button
-            type="button"
-            className="secondary"
-            onClick={() => void generatePeriodReport("monthly")}
-            disabled={generatingReport === "monthly"}
-          >
-            {generatingReport === "monthly" ? <Loader2 className="spin" size={16} /> : <FileText size={16} />}
-            生成月报
+      <section className="panel feature-window-panel memory-workbench-panel" aria-label="记忆工作台">
+        <MemorySearchWorkbench
+          query={memorySearchQuery}
+          status={memorySearchStatus}
+          results={memorySearchResults}
+          lastQuery={memoryLastSearchQuery}
+          onQueryChange={onMemorySearchQueryChange}
+          onTrySearch={fillMemorySearchTrial}
+          onSearch={onRunMemorySearch}
+        />
+        <AddMemoryForm
+          draft={memoryProposalDraft}
+          onDraftChange={onMemoryProposalDraftChange}
+          onTryPreference={fillPreferenceTrial}
+          onSubmit={onCreateMemoryProposal}
+        />
+        <div className="guided-trial-actions memory-review-trial-actions" aria-label="复盘快捷操作">
+          <button type="button" className="secondary" onClick={() => void generateReport(1)} disabled={generatingReport !== null}>
+            {generatingReport === 1 ? <Loader2 className="spin" size={16} /> : <FileText size={16} />}
+            生成今日复盘
           </button>
         </div>
-        {retrospectiveError ? <p className="field-note error">{retrospectiveError}</p> : null}
-        {retrospectiveLoading && !activeRetrospective ? (
-          <EmptyState text="正在加载本地回顾数据。" />
-        ) : activeRetrospective ? (
-          <RetrospectiveWindowPanel
-            window={activeRetrospective}
-            generatingReport={generatingReport}
-            onGenerateReport={(days) => void generateReport(days)}
-          />
-        ) : (
-          <EmptyState text="暂时没有回顾数据。先完成一次聊天、任务或 Wiki 整理后再回来查看。" />
-        )}
       </section>
 
-      <section className="panel feature-window-panel" aria-label="长期记忆控制">
+      <section className="panel feature-window-panel memory-management-panel" aria-label="记忆复核与管理">
         <div className="section-heading">
-          <strong>长期记忆控制</strong>
+          <strong>复核并管理记忆事实</strong>
           <span>
             {memoryFacts.length > 0
               ? `显示 ${filteredMemoryFacts.length} / ${memoryFacts.length} 条结构化长期记忆。`
@@ -668,81 +1251,44 @@ export default function MemoryWindowView({
         {memoryFactsError ? <p className="field-note error">{memoryFactsError}</p> : null}
         {exportMessage ? <p className={`field-note ${exportMessage.includes("失败") ? "error" : ""}`}>{exportMessage}</p> : null}
 
-        {filteredMemoryFacts.length > 0 ? (
-          <div className="memory-graph-list">
-            {filteredMemoryFacts.map((fact) => {
-              const busy = memoryFactBusyId === fact.fact_id;
-              return (
-                <article key={fact.fact_id} className={`memory-graph-fact ${fact.status}`}>
-                  <div className="memory-graph-fact-main">
-                    <strong>{memoryFactSentence(fact)}</strong>
-                    <div className="memory-graph-fact-meta">
-                      <span>{formatMemoryFactStatus(fact.status)}</span>
-                      <span>{fact.category}</span>
-                      <span>置信度 {Math.round(fact.confidence * 100)}%</span>
-                      <span>支持 {fact.support_count}</span>
-                    </div>
-                    <p>
-                      {fact.source_type}
-                      {fact.memory_type ? ` / ${fact.memory_type}` : ""}
-                      {fact.updated_at ? ` / ${formatDate(fact.updated_at)}` : ""}
-                    </p>
-                  </div>
-                  <div className="memory-graph-fact-actions">
-                    {fact.status !== "active" ? (
-                      <button
-                        type="button"
-                        className="secondary"
-                        onClick={() => void updateMemoryFactStatus(fact.fact_id, "confirm")}
-                        disabled={busy}
-                      >
-                        {busy ? <Loader2 className="spin" size={15} /> : <RotateCcw size={15} />}
-                        恢复使用
-                      </button>
-                    ) : null}
-                    {fact.status !== "wrong" ? (
-                      <button
-                        type="button"
-                        className="secondary"
-                        onClick={() => void updateMemoryFactStatus(fact.fact_id, "wrong")}
-                        disabled={busy}
-                      >
-                        {busy ? <Loader2 className="spin" size={15} /> : <XCircle size={15} />}
-                        标为不准确
-                      </button>
-                    ) : null}
-                    {fact.status !== "archived" ? (
-                      <button
-                        type="button"
-                        className="secondary"
-                        onClick={() => void updateMemoryFactStatus(fact.fact_id, "archive")}
-                        disabled={busy}
-                      >
-                        {busy ? <Loader2 className="spin" size={15} /> : <Archive size={15} />}
-                        归档
-                      </button>
-                    ) : null}
-                    {fact.status !== "sensitive_blocked" ? (
-                      <button
-                        type="button"
-                        className="secondary"
-                        onClick={() => void updateMemoryFactStatus(fact.fact_id, "sensitive_block")}
-                        disabled={busy}
-                      >
-                        {busy ? <Loader2 className="spin" size={15} /> : <ShieldAlert size={15} />}
-                        敏感封存
-                      </button>
-                    ) : null}
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        ) : memoryFactsLoading ? (
-          <EmptyState text="正在加载长期记忆。" />
-        ) : (
-          <EmptyState text="没有匹配的长期记忆。" />
-        )}
+        <div className="memory-fact-section-grid">
+          <MemoryFactSection
+            title="已确认记忆"
+            description={`${confirmedFacts.length} 条可用于检索的使用中事实。`}
+            facts={confirmedFacts}
+            loading={memoryFactsLoading}
+            emptyText="当前筛选下没有匹配的已确认记忆。"
+            busyId={memoryFactBusyId}
+            onAction={(factId, action) => void updateMemoryFactStatus(factId, action)}
+          />
+          <MemoryFactSection
+            title="待复核候选"
+            description={`${candidateFacts.length} 条图谱事实正在等待置信度或冲突复核。`}
+            facts={candidateFacts}
+            loading={memoryFactsLoading}
+            emptyText="当前筛选下没有匹配的图谱候选。"
+            busyId={memoryFactBusyId}
+            onAction={(factId, action) => void updateMemoryFactStatus(factId, action)}
+          />
+          <MemoryFactSection
+            title="日记来源记忆"
+            description={`${diaryDerivedFacts.length} 条事实来自日记或聊天提取路径。`}
+            facts={diaryDerivedFacts}
+            loading={memoryFactsLoading}
+            emptyText="当前筛选下没有匹配的日记来源记忆事实。"
+            busyId={memoryFactBusyId}
+            onAction={(factId, action) => void updateMemoryFactStatus(factId, action)}
+          />
+          <MemoryFactSection
+            title="已归档或封存事实"
+            description={`${managedStatusFacts.length} 条事实已归档、标错、拒绝或敏感封存。`}
+            facts={managedStatusFacts}
+            loading={memoryFactsLoading}
+            emptyText="当前筛选下没有匹配的已归档或封存事实。"
+            busyId={memoryFactBusyId}
+            onAction={(factId, action) => void updateMemoryFactStatus(factId, action)}
+          />
+        </div>
 
         {exportPreview ? (
           <div className="memory-export-preview" aria-label="长期记忆导出预览">
@@ -755,7 +1301,69 @@ export default function MemoryWindowView({
         ) : null}
       </section>
 
-      <section className="panel feature-window-panel" aria-label="最近整理活动">
+      <section className="panel feature-window-panel memory-review-queue-panel" aria-label="记忆复核队列">
+        <MemoryProposalReviewList
+          proposals={memoryProposals}
+          loading={loadingMemoryProposals}
+          actionIds={memoryProposalActionIds}
+          onAct={onActOnMemoryProposal}
+          onRefresh={onLoadMemoryProposals}
+        />
+      </section>
+
+      <ReviewCoachPanel
+        retrospectives={retrospectives}
+        loading={retrospectiveLoading}
+        error={retrospectiveError}
+        message={reviewReportMessage}
+        generatingReport={generatingReport}
+        reportArtifacts={reviewReportArtifacts}
+        canRevealReports={canRevealReports}
+        onRefresh={() => void loadRetrospectives()}
+        onGenerate={generateReviewFromCard}
+        onRevealReport={(relativePath, mode) => void revealReviewReport(relativePath, mode)}
+      />
+
+      <section className="panel feature-window-panel memory-source-details-panel" aria-label="复盘来源详情">
+        <div className="section-heading">
+          <strong>复盘来源详情</strong>
+          <span>生成报告前后都可以检查每次复盘背后的本地证据。</span>
+        </div>
+        <div className="retrospective-toolbar" aria-label="复盘来源窗口">
+          {[1, 7, 30, 90].map((days) => (
+            <button
+              key={days}
+              type="button"
+              className={`secondary memory-activity-filter ${activeRetrospectiveDays === days ? "active" : ""}`}
+              onClick={() => setActiveRetrospectiveDays(days)}
+              aria-pressed={activeRetrospectiveDays === days}
+            >
+              <CalendarRange size={15} />
+              {days === 1 ? "今天" : `${days} 天`}
+            </button>
+          ))}
+        </div>
+        {retrospectiveLoading && !activeRetrospective ? (
+          <EmptyState text="正在加载本地复盘数据。" />
+        ) : activeRetrospective ? (
+          <RetrospectiveWindowPanel
+            window={activeRetrospective}
+            generatingReport={generatingReport}
+            onGenerateReport={(days) => void generateReport(days)}
+          />
+        ) : (
+          <EmptyState text="还没有复盘数据。请先完成一次聊天、任务或 Wiki 整理。" />
+        )}
+      </section>
+
+      <LocalAssetDashboard
+        stats={localAssets}
+        loading={localAssetsLoading}
+        error={localAssetsError}
+        onRefresh={() => void loadLocalAssets()}
+      />
+
+      <section className="panel feature-window-panel memory-activity-panel" aria-label="最近整理活动">
         <div className="section-heading">
           <strong>最近整理活动</strong>
           <span>
