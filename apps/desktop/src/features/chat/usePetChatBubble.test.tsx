@@ -80,6 +80,8 @@ function renderPetChatBubbleHookWithTtsEnabled(
 
 const multiPageReply =
   "First I will keep this reply moving like spoken dialogue. Then I will continue with the next thought after a short pause. Finally I will wrap it up naturally.";
+const twoPageReply =
+  "First I will keep this reply moving like spoken dialogue. Then I will wrap it up naturally.";
 const longMultiPageReply = [
   "First I will open the story with a calm scene, so the first page has enough detail to stand on its own.",
   "Then the character notices a small clue on the table, and the next thought should already be ready to speak.",
@@ -211,10 +213,12 @@ describe("usePetChatBubble", () => {
     });
 
     expect(result.current.bubble.message).toBe(firstItem.text);
-    expect(tts.enqueue).toHaveBeenCalledTimes(1);
-    const secondItem = vi.mocked(tts.enqueue).mock.calls[0][0] as TtsPlaybackItem;
-    expect(secondItem.messageId).toBe("assistant-1");
-    expect(secondItem.pageIndex).toBe(1);
+    expect(tts.enqueue).not.toHaveBeenCalled();
+    expect(tts.prefetchMany).toHaveBeenCalled();
+    const prefetchedPageIndexes = vi.mocked(tts.prefetchMany).mock.calls.flatMap(([items]) =>
+      items.map((item) => item.pageIndex),
+    );
+    expect(prefetchedPageIndexes).toContain(1);
 
     act(() => {
       vi.advanceTimersByTime(getPetBubblePageDelay(firstItem.text));
@@ -225,10 +229,20 @@ describe("usePetChatBubble", () => {
 
     act(() => {
       result.current.handleTtsPlaybackEnd(firstItem, "played");
-      vi.advanceTimersByTime(80);
+      vi.advanceTimersByTime(299);
     });
 
     expect(tts.play).toHaveBeenCalledTimes(1);
+    expect(result.current.bubble.message).toBe(firstItem.text);
+
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+
+    expect(tts.play).toHaveBeenCalledTimes(2);
+    const secondItem = vi.mocked(tts.play).mock.calls[1][0] as TtsPlaybackItem;
+    expect(secondItem.messageId).toBe("assistant-1");
+    expect(secondItem.pageIndex).toBe(1);
     expect(result.current.bubble.message).toBe(firstItem.text);
 
     act(() => {
@@ -326,7 +340,7 @@ describe("usePetChatBubble", () => {
       vi.advanceTimersByTime(getPetBubblePageDelay(firstItem.text) * 3);
     });
 
-    expect(tts.enqueue).toHaveBeenCalledTimes(1);
+    expect(tts.enqueue).not.toHaveBeenCalled();
     expect(tts.play).toHaveBeenCalledTimes(1);
     expect(result.current.bubble.message).toBe(firstItem.text);
 
@@ -344,7 +358,7 @@ describe("usePetChatBubble", () => {
     const { result } = renderPetChatBubbleHook(tts);
 
     act(() => {
-      result.current.assistantReplyRef.current = multiPageReply;
+      result.current.assistantReplyRef.current = twoPageReply;
       result.current.startReplyPaging("assistant-catchup");
     });
 
@@ -354,13 +368,20 @@ describe("usePetChatBubble", () => {
       result.current.handleTtsPlaybackStart(firstItem);
     });
 
-    const secondItem = vi.mocked(tts.enqueue).mock.calls[0][0] as TtsPlaybackItem;
-
     act(() => {
       result.current.handleTtsPlaybackEnd(firstItem, "played");
-      vi.advanceTimersByTime(getPetBubblePageDelay(firstItem.text) * 3);
+      vi.advanceTimersByTime(299);
     });
 
+    expect(tts.play).toHaveBeenCalledTimes(1);
+    expect(result.current.bubble.message).toBe(firstItem.text);
+
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+
+    expect(tts.play).toHaveBeenCalledTimes(2);
+    const secondItem = vi.mocked(tts.play).mock.calls[1][0] as TtsPlaybackItem;
     expect(result.current.bubble.message).toBe(firstItem.text);
 
     act(() => {
@@ -368,6 +389,14 @@ describe("usePetChatBubble", () => {
     });
 
     expect(result.current.bubble.message).toBe(secondItem.text);
+
+    act(() => {
+      result.current.handleTtsPlaybackEnd(secondItem, "played");
+      vi.advanceTimersByTime(0);
+    });
+
+    expect(result.current.bubble.visible).toBe(false);
+    expect(result.current.bubble.phase).toBe("fading");
   });
 
   it("waits to show the final TTS reply page until voice playback starts", () => {

@@ -31,6 +31,8 @@ export type PetChatBubbleController = ReturnType<typeof usePetChatBubble>;
 
 type RenderPageResult = "visible" | "pending" | false;
 
+const ttsNextPagePlaybackDelayMs = 300;
+
 export function usePetChatBubble({
   messages,
   latestContinuitySignal,
@@ -305,6 +307,12 @@ export function usePetChatBubble({
     return nextIndex < replyPagesRef.current.length && isReplyPageStableForTts(nextIndex);
   }
 
+  function setPendingTtsPageTiming(pageIndex: number) {
+    pendingTtsAutoAdvanceRef.current = shouldAutoAdvanceTtsFromPage(pageIndex);
+    pendingTtsHideDelayRef.current =
+      replyCompleteRef.current && pageIndex >= replyPagesRef.current.length - 1 ? 9000 : null;
+  }
+
   function prefetchTtsPagesFrom(pageIndex: number, lookahead = Number.POSITIVE_INFINITY) {
     const config = ttsRef.current;
     if (!config?.enabled || lookahead <= 0) {
@@ -364,7 +372,7 @@ export function usePetChatBubble({
     if (renderResult !== "pending") {
       return false;
     }
-    pendingTtsAutoAdvanceRef.current = shouldAutoAdvanceTtsFromPage(nextIndex);
+    setPendingTtsPageTiming(nextIndex);
     return true;
   }
 
@@ -511,7 +519,7 @@ export function usePetChatBubble({
       pageTimerRef.current = window.setTimeout(() => {
         pageTimerRef.current = null;
         advanceToNextPageFromAuto();
-      }, 80);
+      }, ttsNextPagePlaybackDelayMs);
       return;
     }
     if (visible.hideDelay !== null) {
@@ -566,35 +574,7 @@ export function usePetChatBubble({
     if (renderResult !== "pending") {
       return false;
     }
-    if (pageIndex < replyPagesRef.current.length - 1) {
-      pendingTtsAutoAdvanceRef.current = true;
-    } else {
-      pendingTtsHideDelayRef.current = 9000;
-    }
-    return true;
-  }
-
-  function queueTtsPageForAutoAdvance(
-    pageIndex: number,
-    phase: Extract<PetBubblePhase, "speaking" | "complete">,
-  ) {
-    if (!isReplyPageStableForTts(pageIndex)) {
-      return false;
-    }
-    const item = ttsItemForReplyPage(pageIndex);
-    if (!item || !ttsRef.current?.enabled) {
-      return false;
-    }
-    if (pendingTtsDisplayRef.current?.itemId === item.id) {
-      prefetchTtsPagesFrom(pageIndex + 1);
-      return true;
-    }
-    pendingTtsDisplayRef.current = { itemId: item.id, pageIndex, phase, fallbackOnIdle: false };
-    pendingTtsAutoAdvanceRef.current = pageIndex < replyPagesRef.current.length - 1;
-    pendingTtsHideDelayRef.current =
-      replyCompleteRef.current && pageIndex >= replyPagesRef.current.length - 1 ? 9000 : null;
-    ttsRef.current.queue.enqueue(item);
-    prefetchTtsPagesFrom(pageIndex + 1);
+    setPendingTtsPageTiming(pageIndex);
     return true;
   }
 
@@ -612,7 +592,7 @@ export function usePetChatBubble({
     if (!isReplyPageStableForTts(nextIndex)) {
       return;
     }
-    queueTtsPageForAutoAdvance(nextIndex, replyCompleteRef.current ? "complete" : "speaking");
+    prefetchTtsPagesFrom(nextIndex);
   }
 
   function advanceToNextPageFromAuto() {
@@ -632,7 +612,7 @@ export function usePetChatBubble({
     }
     const renderResult = renderPage(nextIndex, replyCompleteRef.current ? "complete" : "speaking", { playTts: true });
     if (renderResult === "pending") {
-      pendingTtsAutoAdvanceRef.current = shouldAutoAdvanceTtsFromPage(nextIndex);
+      setPendingTtsPageTiming(nextIndex);
       return;
     }
     scheduleAutoAdvancePage();
@@ -739,7 +719,7 @@ export function usePetChatBubble({
         const nextIndex = safeIndex + 1;
         const nextRenderResult = renderPage(nextIndex, "complete", { playTts: true });
         if (nextRenderResult === "pending") {
-          pendingTtsAutoAdvanceRef.current = shouldAutoAdvanceTtsFromPage(nextIndex);
+          setPendingTtsPageTiming(nextIndex);
           return;
         }
       }
@@ -753,7 +733,7 @@ export function usePetChatBubble({
       }
     } else {
       if (renderResult === "pending") {
-        pendingTtsAutoAdvanceRef.current = shouldAutoAdvanceTtsFromPage(safeIndex);
+        setPendingTtsPageTiming(safeIndex);
       } else {
         scheduleAutoAdvancePage();
       }
