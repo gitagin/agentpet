@@ -18,6 +18,7 @@ function createTtsQueueMock(): TtsPlaybackQueueController {
     },
     enqueue: vi.fn(),
     prefetch: vi.fn(),
+    prefetchMany: vi.fn(),
     play: vi.fn(),
     stop: vi.fn(),
     cancelMessage: vi.fn(),
@@ -237,7 +238,7 @@ describe("usePetChatBubble", () => {
     expect(secondItem.text).toBe(result.current.bubble.message);
   });
 
-  it("prefetches lookahead TTS pages when a long final reply starts", () => {
+  it("prefetches all remaining TTS pages when a long final reply starts", () => {
     const tts = createTtsQueueMock();
     const { result } = renderPetChatBubbleHook(tts);
 
@@ -247,8 +248,12 @@ describe("usePetChatBubble", () => {
     });
 
     expect(tts.play).toHaveBeenCalledTimes(1);
-    const prefetchedPageIndexes = vi.mocked(tts.prefetch).mock.calls.map(([item]) => item.pageIndex);
-    expect(prefetchedPageIndexes).toEqual([1, 2, 3]);
+    const prefetchedPageIndexes = vi.mocked(tts.prefetchMany).mock.calls.flatMap(([items]) =>
+      items.map((item) => item.pageIndex),
+    );
+    expect(prefetchedPageIndexes).toEqual(
+      Array.from({ length: result.current.replyPagesRef.current.length - 1 }, (_, index) => index + 1),
+    );
   });
 
   it("starts and prefetches stable TTS pages while a long reply is still streaming", () => {
@@ -263,7 +268,7 @@ describe("usePetChatBubble", () => {
 
     expect(tts.play).toHaveBeenCalledTimes(1);
     expect(tts.enqueue).not.toHaveBeenCalled();
-    expect(tts.prefetch).toHaveBeenCalled();
+    expect(tts.prefetchMany).toHaveBeenCalled();
     expect(result.current.bubble.tone).toBe("thinking");
     const firstPlaybackItem = vi.mocked(tts.play).mock.calls[0][0] as TtsPlaybackItem;
     expect(firstPlaybackItem).toMatchObject({

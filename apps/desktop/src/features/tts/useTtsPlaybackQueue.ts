@@ -25,6 +25,7 @@ export type TtsPlaybackQueueController = {
   state: TtsPlaybackState;
   enqueue: (item: TtsPlaybackItem) => void;
   prefetch: (item: TtsPlaybackItem) => void;
+  prefetchMany: (items: TtsPlaybackItem[]) => void;
   play: (item: TtsPlaybackItem) => void;
   stop: (reason?: string) => void;
   cancelMessage: (messageId: string) => void;
@@ -40,6 +41,8 @@ type PrefetchedSynthesis = {
   provider: TtsProvider<TtsSynthesisResult>;
   used: boolean;
 };
+
+const maxConcurrentPrefetches = 3;
 
 function currentIsoTime() {
   return new Date().toISOString();
@@ -127,7 +130,10 @@ export function useTtsPlaybackQueue({
   const activeAbortControllerRef = useRef<AbortController | null>(null);
   const activeProviderRef = useRef<TtsProvider<TtsSynthesisResult> | null>(null);
   const prefetchedSynthesisRef = useRef<Map<string, PrefetchedSynthesis>>(new Map());
+  const pendingPrefetchQueueRef = useRef<TtsPlaybackItem[]>([]);
+  const activePrefetchCountRef = useRef(0);
   const startNextRef = useRef<() => void>(() => undefined);
+  const pumpPrefetchRef = useRef<() => void>(() => undefined);
   const [state, setState] = useState<TtsPlaybackState>(() =>
     createPlaybackState("idle", null, [], null, clampTtsVolume(initialVolume), now),
   );
@@ -173,6 +179,9 @@ export function useTtsPlaybackQueue({
   );
 
   const clearPrefetchedItems = useCallback((predicate?: (item: TtsPlaybackItem) => boolean) => {
+    pendingPrefetchQueueRef.current = predicate
+      ? pendingPrefetchQueueRef.current.filter((item) => !predicate(item))
+      : [];
     Array.from(prefetchedSynthesisRef.current.entries()).forEach(([itemId, entry]) => {
       if (!predicate || predicate(entry.item)) {
         prefetchedSynthesisRef.current.delete(itemId);
@@ -181,6 +190,53 @@ export function useTtsPlaybackQueue({
       }
     });
   }, [disposePrefetchedResult]);
+
+  const startPrefetch = useCallback((item: TtsPlaybackItem) => {
+    const provider = providersRef.current[item.synthesis.provider];
+    if (!provider) {
+      return;
+    }
+    const key = synthesisKeyForItem(item);
+    const controller = new AbortController();
+    const promise = provider.synthesize({ ...item.synthesis, text: item.text }, controller.signal);
+    void promise.catch(() => undefined);
+    activePrefetchCountRef.current += 1;
+    const entry: PrefetchedSynthesis = {
+      controller,
+      item,
+      key,
+      promise,
+      provider,
+      used: false,
+    };
+    prefetchedSynthesisRef.current.set(item.id, entry);
+    void promise.finally(() => {
+      activePrefetchCountRef.current = Math.max(0, activePrefetchCountRef.current - 1);
+      pumpPrefetchRef.current();
+    }).catch(() => undefined);
+  }, []);
+
+  const pumpPrefetchQueue = useCallback(() => {
+    while (activePrefetchCountRef.current < maxConcurrentPrefetches && pendingPrefetchQueueRef.current.length > 0) {
+      const item = pendingPrefetchQueueRef.current.shift();
+      if (!item || !hasPlayableText(item)) {
+        continue;
+      }
+      const provider = providersRef.current[item.synthesis.provider];
+      if (!provider) {
+        continue;
+      }
+      const existing = prefetchedSynthesisRef.current.get(item.id);
+      if (existing && existing.key === synthesisKeyForItem(item)) {
+        continue;
+      }
+      startPrefetch(item);
+    }
+  }, [startPrefetch]);
+
+  useEffect(() => {
+    pumpPrefetchRef.current = pumpPrefetchQueue;
+  }, [pumpPrefetchQueue]);
 
   const prefetchQueuedItem = useCallback((item: TtsPlaybackItem) => {
     if (!hasPlayableText(item)) {
@@ -196,23 +252,20 @@ export function useTtsPlaybackQueue({
       existing.controller.abort();
       disposePrefetchedResult(existing);
     }
-    const provider = providersRef.current[item.synthesis.provider];
-    if (!provider) {
+    const pendingIndex = pendingPrefetchQueueRef.current.findIndex((pendingItem) => pendingItem.id === item.id);
+    if (pendingIndex !== -1) {
+      const pendingItem = pendingPrefetchQueueRef.current[pendingIndex];
+      if (synthesisKeyForItem(pendingItem) === key) {
+        return;
+      }
+      pendingPrefetchQueueRef.current.splice(pendingIndex, 1);
+    }
+    if (!providersRef.current[item.synthesis.provider]) {
       return;
     }
-    const controller = new AbortController();
-    const promise = provider.synthesize({ ...item.synthesis, text: item.text }, controller.signal);
-    void promise.catch(() => undefined);
-    const entry: PrefetchedSynthesis = {
-      controller,
-      item,
-      key,
-      promise,
-      provider,
-      used: false,
-    };
-    prefetchedSynthesisRef.current.set(item.id, entry);
-  }, []);
+    pendingPrefetchQueueRef.current.push(item);
+    pumpPrefetchRef.current();
+  }, [disposePrefetchedResult]);
 
   const stopActivePlayback = useCallback((reason: string, status: TtsPlaybackStatus) => {
     activeRunIdRef.current += 1;
@@ -250,6 +303,9 @@ export function useTtsPlaybackQueue({
       return;
     }
 
+    pendingPrefetchQueueRef.current = pendingPrefetchQueueRef.current.filter(
+      (pendingItem) => pendingItem.id !== item.id,
+    );
     const prefetchedCandidate = prefetchedSynthesisRef.current.get(item.id);
     const prefetched =
       prefetchedCandidate && prefetchedCandidate.key === synthesisKeyForItem(item)
@@ -378,6 +434,15 @@ export function useTtsPlaybackQueue({
     prefetchQueuedItem(item);
   }, [prefetchQueuedItem]);
 
+  const prefetchMany = useCallback((items: TtsPlaybackItem[]) => {
+    for (const item of items) {
+      if (currentItemRef.current?.id === item.id || itemAlreadyScheduled(item, currentItemRef.current, queueRef.current)) {
+        continue;
+      }
+      prefetchQueuedItem(item);
+    }
+  }, [prefetchQueuedItem]);
+
   const play = useCallback((item: TtsPlaybackItem) => {
     if (!hasPlayableText(item)) {
       stopActivePlayback("blank_item", "cancelled");
@@ -444,6 +509,7 @@ export function useTtsPlaybackQueue({
     state,
     enqueue,
     prefetch,
+    prefetchMany,
     play,
     stop,
     cancelMessage,

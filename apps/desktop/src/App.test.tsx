@@ -73,6 +73,7 @@ vi.mock("./features/tts", () => ({
     },
     enqueue: vi.fn(),
     prefetch: vi.fn(),
+    prefetchMany: vi.fn(),
     play: vi.fn(),
     stop: mockTtsStop,
     cancelMessage: vi.fn(),

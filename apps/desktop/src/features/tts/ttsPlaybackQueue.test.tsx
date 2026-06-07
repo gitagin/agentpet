@@ -135,6 +135,60 @@ function createProviderThatFailsFirstRequest(requestId: string) {
   return controlled;
 }
 
+function createDeferredSynthesisProvider() {
+  const requests: Array<{
+    request: TtsSynthesisRequest;
+    resolve: (result: TtsSynthesisResult) => void;
+  }> = [];
+  const synthesize = vi.fn(
+    (request: TtsSynthesisRequest, signal?: AbortSignal): Promise<TtsSynthesisResult> =>
+      new Promise((resolve, reject) => {
+        if (signal?.aborted) {
+          reject(createTtsProviderError("mock", "cancelled", "cancelled"));
+          return;
+        }
+        signal?.addEventListener(
+          "abort",
+          () => reject(createTtsProviderError("mock", "cancelled", "cancelled")),
+          { once: true },
+        );
+        requests.push({ request, resolve });
+      }),
+  );
+  const play = vi.fn(
+    (result: TtsSynthesisResult): Promise<TtsProviderPlaybackResult> =>
+      Promise.resolve({
+        provider: "mock",
+        result,
+        status: "played",
+      }),
+  );
+  const provider: TtsProvider<TtsSynthesisResult> = {
+    id: "mock",
+    synthesize,
+    play,
+    stop: vi.fn(),
+  };
+
+  return {
+    provider,
+    requests,
+    synthesize,
+    resolveRequest(index: number) {
+      const request = requests[index]?.request;
+      if (!request) {
+        throw new Error(`No synthesis request at index ${index}.`);
+      }
+      requests[index].resolve({
+        kind: "mock",
+        requestId: request.requestId,
+        provider: "mock",
+        durationMs: 100,
+      });
+    },
+  };
+}
+
 function renderQueue(
   provider: TtsProvider<TtsSynthesisResult>,
   options: {
@@ -259,6 +313,38 @@ describe("useTtsPlaybackQueue", () => {
     expect(result.current.state.queue).toEqual([]);
     expect(controlled.synthesize).toHaveBeenCalledTimes(1);
     expect(controlled.play).not.toHaveBeenCalled();
+  });
+
+  it("prefetches many pages with a bounded concurrent synthesis pool", async () => {
+    const controlled = createDeferredSynthesisProvider();
+    const { result } = renderQueue(controlled.provider);
+    const items = Array.from({ length: 5 }, (_, index) => playbackItem(`page-${index + 1}`));
+
+    act(() => {
+      result.current.prefetchMany(items);
+    });
+
+    expect(controlled.synthesize.mock.calls.map(([request]) => request.requestId)).toEqual([
+      "request-page-1",
+      "request-page-2",
+      "request-page-3",
+    ]);
+
+    await act(async () => {
+      controlled.resolveRequest(0);
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(controlled.synthesize).toHaveBeenCalledTimes(4));
+    expect(controlled.synthesize.mock.calls[3][0].requestId).toBe("request-page-4");
+
+    await act(async () => {
+      controlled.resolveRequest(1);
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(controlled.synthesize).toHaveBeenCalledTimes(5));
+    expect(controlled.synthesize.mock.calls[4][0].requestId).toBe("request-page-5");
   });
 
   it("reuses same-message prefetched synthesis when the page is later enqueued", async () => {

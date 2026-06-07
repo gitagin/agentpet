@@ -31,8 +31,6 @@ export type PetChatBubbleController = ReturnType<typeof usePetChatBubble>;
 
 type RenderPageResult = "visible" | "pending" | false;
 
-const ttsPrefetchLookaheadPages = 3;
-
 export function usePetChatBubble({
   messages,
   latestContinuitySignal,
@@ -307,20 +305,28 @@ export function usePetChatBubble({
     return nextIndex < replyPagesRef.current.length && isReplyPageStableForTts(nextIndex);
   }
 
-  function prefetchTtsPagesFrom(pageIndex: number, lookahead = ttsPrefetchLookaheadPages) {
+  function prefetchTtsPagesFrom(pageIndex: number, lookahead = Number.POSITIVE_INFINITY) {
     const config = ttsRef.current;
     if (!config?.enabled || lookahead <= 0) {
       return;
     }
-    const pages = replyPagesRef.current;
     const startIndex = Math.max(0, pageIndex);
-    const endIndex = Math.min(pages.length, startIndex + lookahead);
+    const endIndex = Math.min(stableTtsPageCount(), startIndex + lookahead);
+    const items: TtsPlaybackItem[] = [];
     for (let index = startIndex; index < endIndex; index += 1) {
       const item = ttsItemForReplyPage(index);
       if (item) {
-        config.queue.prefetch(item);
+        items.push(item);
       }
     }
+    if (items.length === 0) {
+      return;
+    }
+    if (config.queue.prefetchMany) {
+      config.queue.prefetchMany(items);
+      return;
+    }
+    items.forEach((item) => config.queue.prefetch(item));
   }
 
   function prefetchStableTtsPagesDuringStream() {
@@ -331,7 +337,7 @@ export function usePetChatBubble({
     if (stablePageCount <= 0) {
       return;
     }
-    prefetchTtsPagesFrom(0, Math.min(ttsPrefetchLookaheadPages, stablePageCount));
+    prefetchTtsPagesFrom(0, stablePageCount);
   }
 
   function startOrAdvanceStableTtsDuringStream(
