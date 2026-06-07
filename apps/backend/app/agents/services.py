@@ -135,6 +135,22 @@ class AgentActionRecorderProtocol(Protocol):
     def __call__(self, action: Any) -> AgentActionResponse: ...
 
 
+class MemoryActivationRecorderProtocol(Protocol):
+    def record_usage(
+        self,
+        *,
+        result: Any,
+        conversation_id: str,
+        message_id: str,
+        agent_run_id: str,
+        used_for_style: bool,
+        used_for_answer_context: bool,
+        used_for_proactive_mention: bool,
+        used_for_action_suggestion: bool,
+        filtered_reason: str | None = None,
+    ) -> None: ...
+
+
 @dataclass(slots=True)
 class AgentRuntimeServices:
     retrieval: RetrievalServiceProtocol | None = None
@@ -148,6 +164,7 @@ class AgentRuntimeServices:
     model_registry: AgentModelRegistry | None = None
     automation_settings: Any | None = None
     agent_action_recorder: AgentActionRecorderProtocol | None = None
+    memory_activation_recorder: MemoryActivationRecorderProtocol | None = None
 
 
 class AgentServices(Protocol):

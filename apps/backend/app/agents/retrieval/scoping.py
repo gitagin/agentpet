@@ -79,6 +79,8 @@ def _source_scope_from_memory_route(route: MemoryRoute) -> str:
     if not scopes or scopes == ("none",):
         return "none"
     first = route.primary_scopes[0] if route.primary_scopes else scopes[0]
+    if first == "graph_facts":
+        return "personal_memory" if len(scopes) == 1 else route.legacy_source_scope
     if first in {"knowledge_base", "personal_memory", "diary_objects", "daily_chat"}:
         return first
     return route.legacy_source_scope
@@ -95,7 +97,7 @@ def _memory_aggregation_scopes(state: AgentState, semantic: SemanticAnalysisResu
         "personal_experience_or_emotional_continuity",
     }:
         return ()
-    scopes = tuple(scope for scope in route.all_scopes if scope != "none")
+    scopes = _tool_scopes_from_memory_route(route)
     if len(scopes) <= 1:
         return ()
     effective_scope = _effective_retrieval_source_scope(state, semantic)
@@ -169,8 +171,21 @@ def _source_scope_from_prompt(system_prompt: str) -> str | None:
     return None
 
 
+def _tool_scopes_from_memory_route(route: MemoryRoute) -> tuple[str, ...]:
+    scopes: list[str] = []
+    for scope in route.all_scopes:
+        if scope == "none":
+            continue
+        tool_scope = "personal_memory" if scope == "graph_facts" else scope
+        if tool_scope in scopes:
+            continue
+        scopes.append(tool_scope)
+    return tuple(scopes)
+
+
 def _context_source_weight(source_scope: str) -> int:
     return {
+        "graph_facts": 5,
         "personal_memory": 4,
         "diary_objects": 3,
         "daily_chat": 2,

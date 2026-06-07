@@ -8,6 +8,8 @@ from tests.agent_runtime_fakes import (
     FakeContinuity,
     FakeContinuityWithSignal,
     FakeEmptyRetrieval,
+    FakeMemory,
+    FakeMultiScopeRetrieval,
     FakeNonToolCallingChatModel,
     FakeRetrieval,
     FakeToolCallingChatModel,
@@ -112,6 +114,63 @@ def test_langgraph_runtime_does_not_inject_pending_continuity_when_adapter_is_em
     assert_langgraph_events(events, ["token", "done"])
 
 
+def test_langgraph_runtime_injects_immediate_understanding_for_current_reply() -> None:
+    async def run_case():
+        chat_model = FakeChatModel("direct critique")
+        runtime = LangGraphAgentRuntime(AgentRuntimeServices(chat_model=chat_model))
+
+        events = [
+            event
+            async for event in runtime.run(
+                make_state("For this turn only, be blunt and review this backend migration.")
+            )
+        ]
+        return chat_model, events
+
+    chat_model, events = asyncio.run(run_case())
+
+    user_message = chat_model.calls[0][0]
+    assert "Current-turn understanding (state-only, not durable memory)" in user_message
+    assert "interaction_style: direct" in user_message
+    assert "current_task:" in user_message
+    assert "scope: this turn only" in user_message
+    assert "Current user message:" in user_message
+    assert "source_hash:" in user_message
+    assert_langgraph_events(events, ["token", "done"])
+
+
+def test_langgraph_runtime_does_not_carry_this_turn_style_to_new_state_or_write_memory() -> None:
+    async def run_case():
+        first_model = FakeChatModel("first")
+        first_memory = FakeMemory()
+        first_runtime = LangGraphAgentRuntime(
+            AgentRuntimeServices(chat_model=first_model, memory=first_memory)
+        )
+        first_events = [
+            event
+            async for event in first_runtime.run(
+                make_state("Only this time, be blunt with the critique.")
+            )
+        ]
+
+        second_model = FakeChatModel("second")
+        second_memory = FakeMemory()
+        second_runtime = LangGraphAgentRuntime(
+            AgentRuntimeServices(chat_model=second_model, memory=second_memory)
+        )
+        second_events = [event async for event in second_runtime.run(make_state("Let's continue normally."))]
+        return first_model, second_model, first_memory, second_memory, first_events, second_events
+
+    first_model, second_model, first_memory, second_memory, first_events, second_events = asyncio.run(run_case())
+
+    assert "interaction_style: direct" in first_model.calls[0][0]
+    assert "interaction_style: direct" not in second_model.calls[0][0]
+    assert first_memory.requests == []
+    assert second_memory.requests == []
+    assert_langgraph_events(first_events, ["token", "done"])
+    assert_langgraph_events(second_events, ["token", "done"])
+
+
 def test_langgraph_runtime_emits_error_without_done_when_chat_model_fails() -> None:
     async def run_case():
         runtime = LangGraphAgentRuntime(
@@ -195,7 +254,7 @@ def test_langgraph_chat_agent_does_not_search_for_plain_question_when_model_skip
             )
         )
 
-        events = [event async for event in runtime.run(make_state("What does Ada prefer?"))]
+        events = [event async for event in runtime.run(make_state("Tell me a tiny greeting."))]
 
         return retrieval, chat_model, events
 
@@ -207,6 +266,38 @@ def test_langgraph_chat_agent_does_not_search_for_plain_question_when_model_skip
     assert events[-1].event == "done"
     token_text = "".join(event.text for event in events if event.event == "token")
     assert token_text == "model-only answer"
+
+
+def test_langgraph_chat_agent_retrieves_memory_route_before_default_negotiation_local_synthesis() -> None:
+    async def run_case():
+        retrieval = FakeMultiScopeRetrieval()
+        runtime = LangGraphAgentRuntime(
+            AgentRuntimeServices(
+                retrieval=retrieval,
+            )
+        )
+
+        events = [
+            event
+            async for event in runtime.run(make_state("Do I prefer concise status updates?"))
+        ]
+
+        return retrieval, events
+
+    retrieval, events = asyncio.run(run_case())
+
+    assert retrieval.calls == [
+        ("Do I prefer concise status updates?", 5, "fts", "personal_memory"),
+        ("Do I prefer concise status updates?", 5, "fts", "diary_objects"),
+        ("Do I prefer concise status updates?", 5, "fts", "daily_chat"),
+    ]
+    assert events[0].event == "status"
+    assert events[-1].event == "done"
+    assert first_event(events, "context_budget").selected_count == 4
+    assert len([event for event in events if event.event == "citation"]) == 4
+    assert any(event.event == "token" for event in events)
+    token_text = "".join(event.text for event in events if event.event == "token")
+    assert "Ada prefers concise status updates." in token_text
 
 
 def test_langgraph_chat_agent_can_surface_wiki_manager_for_obsidian_note_request() -> None:

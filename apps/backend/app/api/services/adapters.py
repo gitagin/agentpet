@@ -32,7 +32,15 @@ from app.models.api import (
 from app.models.enums import MemoryFactStatus
 from app.services.agent_actions import AgentActionCreate, markdown_snapshot
 from app.services.diary_memory import DiaryMemorySearch, diary_records_to_search_results
+from app.services.memory_activation import (
+    MemoryActivationContext,
+    MemoryActivationDecision,
+    MemoryActivationService,
+    activation_item_from_graph_fact,
+    rank_activation_decisions,
+)
 from app.services.memory_graph import MemoryGraphFact
+from app.services.memory_permissions import result_with_activation_permissions
 from app.services.tasks import display_timezone_name
 from app.services.wiki import resolve_wiki_path
 
@@ -43,6 +51,7 @@ from .factory import (
     companion_retrieval_report_store,
     continuity_service,
     diary_memory_service,
+    memory_activation_recorder,
     memory_graph_store,
     memory_service,
     record_agent_action,
@@ -99,24 +108,29 @@ def prepend_graph_memory_results(
 ) -> MemorySearchResponse:
     store = memory_graph_store(request)
     try:
-        facts = store.search_active(query, limit=top_k)
-        inactive_facts = store.list_facts(query=query, limit=200)
+        inactive_facts = _graph_fact_candidates(store, query=query, limit=200)
+        decisions = _activated_graph_facts(inactive_facts, query=query, top_k=top_k)
     finally:
         store.close()
     inactive_signatures = _inactive_long_term_signatures(inactive_facts)
     graph_results = [
-        MemorySearchResult(
-            note_id=fact.id,
-            chunk_id=fact.id,
-            relative_path="MemoryGraph/LongTerm",
-            title="Structured Long-Term Memory",
-            heading=fact.subject,
-            snippet=f"{fact.subject} {fact.predicate} {fact.object}",
-            score=fact.confidence + min(fact.support_count, 10) / 100,
-            source_scope="personal_memory",
-            retrieval_mode="graph",
+        result_with_activation_permissions(
+            MemorySearchResult(
+                note_id=fact.id,
+                chunk_id=fact.id,
+                relative_path="MemoryGraph/LongTerm",
+                title="Structured Long-Term Memory",
+                heading=fact.subject,
+                snippet=_graph_result_snippet(fact),
+                score=decision.activation_score,
+                source_scope="personal_memory",
+                retrieval_mode="graph_activation",
+            ),
+            decision,
+            query=query,
+            fact_id=fact.id,
         )
-        for fact in facts
+        for fact, decision in decisions
     ]
     seen = {(result.relative_path, result.heading or "", result.snippet) for result in graph_results}
     merged = [*graph_results]
@@ -134,7 +148,9 @@ def prepend_graph_memory_results(
 def _inactive_long_term_signatures(facts: list[MemoryGraphFact]) -> set[tuple[str, str]]:
     inactive_statuses = {
         MemoryFactStatus.ARCHIVED,
+        MemoryFactStatus.FORGOTTEN,
         MemoryFactStatus.REJECTED,
+        MemoryFactStatus.SUPERSEDED,
         MemoryFactStatus.WRONG,
         MemoryFactStatus.SENSITIVE_BLOCKED,
     }
@@ -153,6 +169,76 @@ def _matches_inactive_long_term_fact(result: MemorySearchResult, signatures: set
         return False
     haystack = " ".join([result.title, result.heading or "", result.snippet]).casefold()
     return any(subject in haystack and object_value in haystack for subject, object_value in signatures)
+
+
+def _graph_fact_candidates(store, *, query: str, limit: int) -> list[MemoryGraphFact]:
+    candidate_limit = max(1, min(limit, 200))
+    facts = _dedupe_graph_facts(store.list_facts(query=query.strip() or None, limit=candidate_limit))
+    for term in _significant_terms(query):
+        if len(facts) >= candidate_limit:
+            break
+        facts = _dedupe_graph_facts(
+            (
+                *facts,
+                *store.list_facts(query=term, limit=candidate_limit),
+            )
+        )
+    return facts[:candidate_limit]
+
+
+def _activated_graph_facts(
+    facts: list[MemoryGraphFact],
+    *,
+    query: str,
+    top_k: int,
+) -> list[tuple[MemoryGraphFact, MemoryActivationDecision]]:
+    service = MemoryActivationService()
+    context = MemoryActivationContext(query=query, route_scopes=("graph_facts", "personal_memory"))
+    decisions = [
+        service.score(activation_item_from_graph_fact(fact), context)
+        for fact in facts
+    ]
+    ranked = rank_activation_decisions(decisions, limit=top_k, require_answer_context=False)
+    facts_by_id = {fact.id: fact for fact in facts}
+    return [
+        (facts_by_id[decision.item.memory_id], decision)
+        for decision in ranked
+        if decision.item.memory_id in facts_by_id
+    ]
+
+
+def _graph_result_snippet(fact: MemoryGraphFact) -> str:
+    status_part = "" if fact.status is MemoryFactStatus.ACTIVE else f" (status={fact.status.value})"
+    return f"{fact.subject} {fact.predicate} {fact.object}{status_part}"
+
+
+def _significant_terms(query: str) -> tuple[str, ...]:
+    stop_words = {
+        "about",
+        "does",
+        "what",
+        "when",
+        "where",
+        "which",
+    }
+    terms = []
+    for raw in query.replace("?", " ").replace(",", " ").split():
+        term = raw.strip().casefold()
+        if len(term) < 3 or term in stop_words:
+            continue
+        terms.append(term)
+    return tuple(dict.fromkeys(terms))
+
+
+def _dedupe_graph_facts(facts):
+    seen: set[str] = set()
+    deduped = []
+    for fact in facts:
+        if fact.id in seen:
+            continue
+        seen.add(fact.id)
+        deduped.append(fact)
+    return deduped
 
 
 def _prepend_diary_memory_results(
@@ -452,5 +538,6 @@ def agent_runtime(request: Request) -> LangGraphAgentRuntime:
             model_registry=registry if registry.clients else None,
             automation_settings=automation,
             agent_action_recorder=lambda action: record_agent_action(request, action),
+            memory_activation_recorder=memory_activation_recorder(request),
         )
     )

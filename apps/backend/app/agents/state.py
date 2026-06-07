@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from app.models.api import MemorySearchResult
 from app.models.enums import AgentIntent, AgentRunStatus
 
+from .immediate_understanding import ImmediateUnderstanding
 from .memory_router import MemoryRoute
 
 
@@ -34,6 +35,7 @@ class AgentState(BaseModel):
     route: AgentRoute | None = None
     memory_route: MemoryRoute | None = None
     semantic_analysis: SemanticAnalysisResult | None = None
+    immediate_understanding: ImmediateUnderstanding | None = None
     citations: list[MemorySearchResult] = Field(default_factory=list)
     response_text: str = ""
     proposal_id: str | None = None

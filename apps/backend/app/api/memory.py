@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Request, status
 
@@ -6,6 +7,7 @@ from ..errors import AppError
 from ..models.api import (
     CompanionConsolidationRunRequest,
     CompanionConsolidationRunResponse,
+    CompanionRetrievalExplainabilityResponse,
     CompanionRetrievalReportListResponse,
     CompanionRetrievalReportResponse,
     DiaryMemoryObjectResponse,
@@ -13,6 +15,8 @@ from ..models.api import (
     DiaryMemorySearchResponse,
     DiaryMemorySourceResponse,
     LocalAssetStatsResponse,
+    MemoryFeedbackRequest,
+    MemoryFeedbackResponse,
     MemoryGraphFactActionResponse,
     MemoryGraphExportItem,
     MemoryGraphExportPreviewResponse,
@@ -22,6 +26,10 @@ from ..models.api import (
     MemoryProposalCreateRequest,
     MemoryProposalListResponse,
     MemoryProposalResponse,
+    MemoryReviewActionRequest,
+    MemoryReviewItemResponse,
+    MemoryReviewResponse,
+    MemoryReviewSummaryResponse,
     MemorySearchRequest,
     MemorySearchResponse,
     RejectProposalRequest,
@@ -29,6 +37,7 @@ from ..models.api import (
     RetrospectiveReportResponse,
     RetrospectiveResponse,
 )
+from ..models.common import new_id
 from ..models.enums import MemoryFactStatus
 from ..services.agent_actions import AgentActionCreate
 from ..services.diary_memory import (
@@ -37,6 +46,7 @@ from ..services.diary_memory import (
     diary_records_to_search_results,
 )
 from ..services.memory import MemoryService
+from ..services.memory_lifecycle import MemoryLifecycleTransitionError
 from ..services.memory_policy import evaluate_memory_content
 from ..services.local_assets import LocalAssetStatsService
 from .wiring import (
@@ -50,6 +60,7 @@ from .wiring import (
     map_memory_error,
     memory_service_dependency,
     memory_graph_store,
+    memory_lifecycle_service,
     record_audit,
     record_agent_action,
     prepend_graph_memory_results,
@@ -310,6 +321,111 @@ async def archive_memory_graph_fact(fact_id: str, request: Request) -> MemoryGra
     return MemoryGraphFactActionResponse(fact_id=fact.id, status=fact.status.value)
 
 
+@router.post("/feedback", response_model=MemoryFeedbackResponse)
+async def apply_memory_feedback(
+    feedback_request: MemoryFeedbackRequest,
+    request: Request,
+) -> MemoryFeedbackResponse:
+    action_id = new_id()
+    service = memory_lifecycle_service(request)
+    try:
+        result = service.apply_feedback(
+            target_type=feedback_request.target_type,
+            target_id=feedback_request.target_id,
+            operation=feedback_request.operation,
+            feedback_text=feedback_request.feedback_text,
+            replacement_text=feedback_request.replacement_text,
+            replacement_subject=feedback_request.replacement_subject,
+            replacement_predicate=feedback_request.replacement_predicate,
+            replacement_object=feedback_request.replacement_object,
+            expires_at=feedback_request.expires_at,
+            source_conversation_id=feedback_request.source_conversation_id,
+            source_message_id=feedback_request.source_message_id,
+            source_agent_run_id=feedback_request.source_agent_run_id,
+        )
+    except KeyError as exc:
+        record_audit(
+            request,
+            action="memory.feedback.apply",
+            result="failed",
+            reason=audit_reason(
+                request,
+                code="memory_feedback_target_not_found",
+                target_type=feedback_request.target_type,
+                target_id=feedback_request.target_id,
+            ),
+        )
+        raise AppError(
+            code="memory_feedback_target_not_found",
+            message="Memory feedback target was not found.",
+            status_code=status.HTTP_404_NOT_FOUND,
+            details={"target_type": feedback_request.target_type, "target_id": feedback_request.target_id},
+        ) from exc
+    except MemoryLifecycleTransitionError as exc:
+        error_code = str(exc) or "memory_feedback_invalid"
+        record_audit(
+            request,
+            action="memory.feedback.apply",
+            result="failed",
+            reason=audit_reason(
+                request,
+                code=error_code,
+                target_type=feedback_request.target_type,
+                target_id=feedback_request.target_id,
+                operation=feedback_request.operation,
+            ),
+        )
+        raise AppError(
+            code=error_code,
+            message="Memory feedback could not be applied.",
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            details={"operation": feedback_request.operation, "target_type": feedback_request.target_type},
+        ) from exc
+    finally:
+        service.close()
+
+    record_audit(
+        request,
+        action="memory.feedback.apply",
+        result="success",
+        reason=audit_reason(
+            request,
+            target_type=result.target_type,
+            target_id=result.target_id,
+            operation=result.operation,
+            feedback_event_id=result.feedback_event_id,
+        ),
+    )
+    action = record_agent_action(
+        request,
+        AgentActionCreate(
+            action_id=action_id,
+            action_type="memory.feedback.apply",
+            title="Memory feedback applied",
+            summary=f"{result.operation} {result.target_type}:{result.target_id} -> {result.status.value}",
+            source_agent_run_id=feedback_request.source_agent_run_id,
+            source_conversation_id=feedback_request.source_conversation_id,
+            source_message_id=feedback_request.source_message_id,
+            risk_tier="low",
+            decision="auto",
+            status="completed",
+            target_paths=(),
+            metadata=_memory_feedback_action_metadata(feedback_request, result),
+            reversible=False,
+        ),
+    )
+    _link_memory_feedback_event_to_action(request, feedback_event_id=result.feedback_event_id, action_id=action.action_id)
+    return MemoryFeedbackResponse(
+        target_type=result.target_type,
+        target_id=result.target_id,
+        operation=result.operation,
+        status=result.status.value,
+        feedback_event_id=result.feedback_event_id,
+        replacement_target_id=result.replacement_target_id,
+        action_id=action.action_id,
+    )
+
+
 @router.post("/companion/consolidation/runs", response_model=CompanionConsolidationRunResponse)
 async def run_companion_consolidation(
     run_request: CompanionConsolidationRunRequest,
@@ -349,6 +465,97 @@ async def list_companion_context_reports(
     return CompanionRetrievalReportListResponse(
         reports=[_companion_retrieval_report_response(report) for report in reports]
     )
+
+
+@router.get("/reviews/weekly", response_model=MemoryReviewResponse)
+async def get_weekly_memory_review(
+    request: Request,
+    days: int = 7,
+    limit: int = 30,
+) -> MemoryReviewResponse:
+    window_days = max(1, min(days, 31))
+    item_limit = max(1, min(limit, 100))
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=window_days)).isoformat()
+    with database(request).connect() as conn:
+        candidate_rows = conn.execute(
+            """
+            SELECT *
+            FROM memory_candidates
+            WHERE created_at >= ? OR updated_at >= ?
+            ORDER BY updated_at DESC, id DESC
+            LIMIT ?
+            """,
+            (cutoff, cutoff, item_limit),
+        ).fetchall()
+        fact_rows = conn.execute(
+            """
+            SELECT *
+            FROM memory_graph_facts
+            WHERE created_at >= ? OR updated_at >= ?
+            ORDER BY updated_at DESC, id DESC
+            LIMIT ?
+            """,
+            (cutoff, cutoff, item_limit),
+        ).fetchall()
+    items = [
+        *[_memory_review_candidate_item(row) for row in candidate_rows],
+        *[_memory_review_fact_item(row) for row in fact_rows],
+    ]
+    items.sort(key=lambda item: (item.updated_at, item.review_id), reverse=True)
+    items = items[:item_limit]
+    summary_counts = {"kept": 0, "temporary": 0, "ignored": 0}
+    for item in items:
+        summary_counts[item.category] += 1
+    record_audit(
+        request,
+        action="memory.review.read",
+        result="success",
+        reason=audit_reason(request, days=str(window_days), item_count=str(len(items))),
+    )
+    return MemoryReviewResponse(
+        generated_at=datetime.now(timezone.utc).isoformat(),
+        window_days=window_days,
+        summary=MemoryReviewSummaryResponse(**summary_counts),
+        items=items,
+    )
+
+
+@router.post("/reviews/weekly/actions", response_model=MemoryFeedbackResponse)
+async def apply_weekly_memory_review_action(
+    action_request: MemoryReviewActionRequest,
+    request: Request,
+) -> MemoryFeedbackResponse:
+    operation = "make_temporary" if action_request.action == "only_this_week" else action_request.action
+    expires_at = None
+    if action_request.action == "only_this_week":
+        expires_at = (datetime.now(timezone.utc) + timedelta(days=7)).isoformat()
+    response = await apply_memory_feedback(
+        MemoryFeedbackRequest(
+            target_type=action_request.target_type,
+            target_id=action_request.target_id,
+            operation=operation,
+            feedback_text=action_request.feedback_text or f"weekly_review:{action_request.action}",
+            replacement_text=action_request.replacement_text,
+            replacement_subject=action_request.replacement_subject,
+            replacement_predicate=action_request.replacement_predicate,
+            replacement_object=action_request.replacement_object,
+            expires_at=expires_at,
+        ),
+        request,
+    )
+    record_audit(
+        request,
+        action="memory.review.action",
+        result="success",
+        reason=audit_reason(
+            request,
+            target_type=action_request.target_type,
+            target_id=action_request.target_id,
+            action=action_request.action,
+            feedback_event_id=response.feedback_event_id,
+        ),
+    )
+    return response
 
 
 @router.get("/retrospectives", response_model=RetrospectiveResponse)
@@ -594,11 +801,13 @@ def _graph_fact_response(fact) -> MemoryGraphFactResponse:
         predicate=fact.predicate,
         object=fact.object,
         status=fact.status.value,
+        lifecycle_status=_graph_lifecycle_status(fact.status.value),
         confidence=fact.confidence,
         source_text=fact.source_text,
         source_type=fact.source_type,
         support_count=fact.support_count,
         conflicts_with=fact.conflicts_with,
+        superseded_by=fact.superseded_by,
         memory_type=fact.memory_type,
         entity_type=fact.entity_type,
         occurred_at=fact.occurred_at,
@@ -618,10 +827,12 @@ def _graph_export_item(fact) -> MemoryGraphExportItem:
         predicate=_safe_export_value(fact.predicate),
         object=_safe_export_value(fact.object),
         status=fact.status.value,
+        lifecycle_status=_graph_lifecycle_status(fact.status.value),
         confidence=fact.confidence,
         source_type=_safe_export_value(fact.source_type),
         support_count=fact.support_count,
         conflicts_with=fact.conflicts_with,
+        superseded_by=fact.superseded_by,
         memory_type=_safe_export_optional(fact.memory_type),
         entity_type=_safe_export_optional(fact.entity_type),
         occurred_at=fact.occurred_at,
@@ -703,6 +914,150 @@ def _safe_export_value(value: str) -> str:
     return value
 
 
+def _graph_lifecycle_status(status: str) -> str | None:
+    if status == MemoryFactStatus.QUARANTINED.value:
+        return "candidate"
+    if status in {MemoryFactStatus.WRONG.value, MemoryFactStatus.SENSITIVE_BLOCKED.value}:
+        return "rejected"
+    if status in {
+        MemoryFactStatus.CANDIDATE.value,
+        MemoryFactStatus.ACTIVE.value,
+        MemoryFactStatus.STALE.value,
+        MemoryFactStatus.ARCHIVED.value,
+        MemoryFactStatus.FORGOTTEN.value,
+        MemoryFactStatus.REJECTED.value,
+        MemoryFactStatus.SUPERSEDED.value,
+    }:
+        return status
+    return None
+
+
+def _memory_feedback_action_metadata(feedback_request: MemoryFeedbackRequest, result) -> dict[str, object]:
+    metadata: dict[str, object] = {
+        "operation": result.operation,
+        "target_type": result.target_type,
+        "target_id": result.target_id,
+        "status": result.status.value,
+        "feedback_event_id": result.feedback_event_id,
+    }
+    if result.replacement_target_id:
+        metadata["replacement_target_id"] = result.replacement_target_id
+    if feedback_request.expires_at:
+        metadata["expires_at"] = feedback_request.expires_at
+    if feedback_request.replacement_subject:
+        metadata["replacement_subject"] = feedback_request.replacement_subject
+    if feedback_request.replacement_predicate:
+        metadata["replacement_predicate"] = feedback_request.replacement_predicate
+    return metadata
+
+
+def _link_memory_feedback_event_to_action(request: Request, *, feedback_event_id: str, action_id: str) -> None:
+    with database(request).connect() as conn:
+        with conn:
+            conn.execute(
+                "UPDATE memory_feedback_events SET agent_action_id = ? WHERE id = ?",
+                (action_id, feedback_event_id),
+            )
+
+
+def _memory_review_candidate_item(row) -> MemoryReviewItemResponse:
+    category = _memory_review_category(
+        status=str(row["status"]),
+        memory_kind=str(row["memory_kind"]),
+        memory_scope=str(row["memory_scope"]),
+        expires_at=row["expires_at"],
+        target_type="candidate",
+    )
+    summary = _safe_review_summary(str(row["summary"]))
+    return MemoryReviewItemResponse(
+        review_id=f"candidate:{row['id']}",
+        target_type="candidate",
+        target_id=str(row["id"]),
+        category=category,
+        summary=summary,
+        memory_kind=str(row["memory_kind"]),
+        memory_scope=str(row["memory_scope"]),
+        lifecycle_status=str(row["status"]),
+        risk_tier=str(row["risk_tier"]),
+        confidence=float(row["confidence"]),
+        importance=float(row["importance"]),
+        evidence_count=int(row["evidence_count"]),
+        expires_at=row["expires_at"],
+        updated_at=str(row["updated_at"]),
+        source=str(row["source_track"]),
+        allowed_actions=_memory_review_allowed_actions(
+            target_type="candidate",
+            status=str(row["status"]),
+            memory_kind=str(row["memory_kind"]),
+        ),
+    )
+
+
+def _memory_review_fact_item(row) -> MemoryReviewItemResponse:
+    memory_kind = row["memory_type"] or row["category"]
+    lifecycle_status = _graph_lifecycle_status(str(row["status"])) or str(row["status"])
+    category = _memory_review_category(
+        status=lifecycle_status,
+        memory_kind=str(memory_kind or ""),
+        memory_scope=None,
+        expires_at=row["expires_at"],
+        target_type="fact",
+    )
+    summary = _safe_review_summary(f"{row['subject']} {row['predicate']} {row['object']}")
+    return MemoryReviewItemResponse(
+        review_id=f"fact:{row['id']}",
+        target_type="fact",
+        target_id=str(row["id"]),
+        category=category,
+        summary=summary,
+        memory_kind=str(memory_kind) if memory_kind else None,
+        memory_scope=None,
+        lifecycle_status=lifecycle_status,
+        risk_tier=None,
+        confidence=float(row["confidence"]),
+        importance=float(row["importance"]),
+        evidence_count=int(row["support_count"]),
+        expires_at=row["expires_at"],
+        updated_at=str(row["updated_at"]),
+        source=str(row["source_type"]),
+        allowed_actions=_memory_review_allowed_actions(
+            target_type="fact",
+            status=lifecycle_status,
+            memory_kind=str(memory_kind or ""),
+        ),
+    )
+
+
+def _memory_review_category(
+    *,
+    status: str,
+    memory_kind: str,
+    memory_scope: str | None,
+    expires_at: str | None,
+    target_type: str,
+) -> str:
+    if expires_at or memory_kind == "recent_state" or memory_scope == "temporary":
+        return "temporary"
+    if status in {"candidate", "quarantined", "rejected", "wrong", "sensitive_blocked", "forgotten"}:
+        return "ignored"
+    if target_type == "candidate" and status == "stale":
+        return "ignored"
+    return "kept"
+
+
+def _memory_review_allowed_actions(*, target_type: str, status: str, memory_kind: str) -> list[str]:
+    actions = ["keep", "edit", "forget", "only_this_week"]
+    if target_type == "candidate" and status in {"candidate", "quarantined"}:
+        actions.append("forget")
+    if memory_kind == "project_context":
+        actions.append("mark_completed")
+    return list(dict.fromkeys(actions))
+
+
+def _safe_review_summary(value: str) -> str:
+    return _safe_export_value(value)
+
+
 def _companion_consolidation_response(result) -> CompanionConsolidationRunResponse:
     return CompanionConsolidationRunResponse(
         run_id=result.run_id,
@@ -734,6 +1089,7 @@ def _companion_retrieval_report_response(report) -> CompanionRetrievalReportResp
         source_counts=report.source_counts,
         selected_scopes=list(report.selected_scopes),
         created_at=report.created_at,
+        explainability=CompanionRetrievalExplainabilityResponse.model_validate(report.explainability),
     )
 
 

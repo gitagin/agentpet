@@ -155,6 +155,30 @@ def test_drops_low_confidence_and_sensitive_fields() -> None:
     assert result[0].status == MemoryFactStatus.ACTIVE
 
 
+def test_quarantines_model_personality_inference() -> None:
+    model = FakeDiaryModel(
+        json.dumps(
+            [
+                {
+                    "summary": "The user is an anxious person.",
+                    "topic": "model inference",
+                    "emotion": "anxious",
+                    "people": [],
+                    "keywords": ["inference"],
+                    "source_text": "The user is an anxious person.",
+                    "importance": 0.8,
+                    "confidence": 0.95,
+                }
+            ]
+        )
+    )
+
+    result = asyncio.run(DiaryMemoryExtractor(model).extract("Diary text"))
+
+    assert len(result) == 1
+    assert result[0].status == MemoryFactStatus.QUARANTINED
+
+
 def test_returns_no_objects_on_unparseable_model_output() -> None:
     model = FakeDiaryModel("Here are the memories: none.")
 

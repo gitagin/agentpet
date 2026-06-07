@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 import time
 from collections.abc import Iterator
@@ -216,3 +217,70 @@ def test_diagnostics_export_exposes_redacted_runtime_audit_logs(client: TestClie
     assert "audit-secret-token" not in body
     assert "sk-audit-secret" not in body
     assert str(secret_path) not in body
+
+
+def test_context_report_explainability_redacts_sensitive_runtime_details(client: TestClient) -> None:
+    with sqlite3.connect(client.app.state.database.path) as conn:
+        conn.execute(
+            """
+            INSERT INTO companion_retrieval_reports (
+                id, agent_run_id, strategy, query_hash, candidate_count, selected_count,
+                duplicate_drop_count, per_scope_drop_count, budget_drop_count,
+                item_budget, per_scope_limit, char_budget, used_chars,
+                source_counts_json, selected_scopes_json, created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "report-redaction",
+                "run-redaction",
+                "deterministic_v1",
+                "hash-only",
+                1,
+                1,
+                0,
+                0,
+                0,
+                5,
+                2,
+                1200,
+                12,
+                '{"personal_memory":1}',
+                '["personal_memory"]',
+                "2026-06-07T00:00:00Z",
+            ),
+        )
+        conn.execute(
+            """
+            INSERT INTO memory_activation_events (
+                id, candidate_id, fact_id, agent_run_id, activation_score,
+                permissions_json, score_breakdown_json, used_for_style,
+                used_for_answer_context, used_for_proactive_mention,
+                used_for_action_suggestion, filtered_reason, created_at
+            )
+            VALUES (?, ?, NULL, ?, ?, ?, ?, 0, 0, 0, 0, ?, ?)
+            """,
+            (
+                "activation-redaction",
+                "candidate-redaction",
+                "run-redaction",
+                0.4,
+                json.dumps({"can_answer_context": False}),
+                json.dumps({"expired_penalty": -0.22}),
+                "sensitive_memory token=sk-report-secret-1234567890 -----BEGIN PRIVATE KEY-----abc-----END PRIVATE KEY-----",
+                "2026-06-07T00:00:01Z",
+            ),
+        )
+        conn.commit()
+
+    response = client.get("/api/memory/companion/context-reports?agent_run_id=run-redaction", headers=auth("audit-context-report"))
+
+    assert response.status_code == 200
+    body = response.text
+    payload = response.json()["reports"][0]
+    assert payload["explainability"]["candidate_recall_count"] == 1
+    assert payload["explainability"]["gates"]["expired"] == 1
+    assert payload["explainability"]["gates"]["sensitive"] == 1
+    assert "sk-report-secret" not in body
+    assert "BEGIN PRIVATE KEY" not in body
+    assert "token=" not in body

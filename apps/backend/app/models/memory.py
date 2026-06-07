@@ -10,8 +10,15 @@ class MemorySearchRequest(BaseModel):
     query: str = Field(min_length=1); top_k: int = Field(default=8, ge=1, le=20); mode: str = "hybrid"; source_scope: str = "all"
 
 
+class MemoryRecallPermissions(BaseModel):
+    can_style_response: bool = False
+    can_answer_context: bool = True
+    can_proactively_mention: bool = False
+    can_suggest_action: bool = False
+
+
 class MemorySearchResult(BaseModel):
-    note_id: str; chunk_id: str; relative_path: str; title: str; heading: str | None = None; snippet: str; score: float; source_scope: str = "knowledge_base"; retrieval_mode: str = "fts"
+    note_id: str; chunk_id: str; relative_path: str; title: str; heading: str | None = None; snippet: str; score: float; source_scope: str = "knowledge_base"; retrieval_mode: str = "fts"; recall_permissions: MemoryRecallPermissions = Field(default_factory=MemoryRecallPermissions); activation_score: float | None = None; score_breakdown: dict[str, float] = Field(default_factory=dict); filtered_reason: str | None = None; memory_kind: str | None = None; memory_scope: str | None = None; lifecycle_status: str | None = None; risk_tier: str | None = None; fact_id: str | None = None; candidate_id: str | None = None
 
 
 class MemorySearchResponse(BaseModel):
@@ -100,11 +107,11 @@ class AgentActionRevertResponse(BaseModel):
 
 
 class MemoryGraphFactResponse(BaseModel):
-    fact_id: str; category: str; subject: str; predicate: str; object: str; status: str; confidence: float; source_text: str; source_type: str; support_count: int = 1; conflicts_with: str | None = None; memory_type: str | None = None; entity_type: str | None = None; occurred_at: str | None = None; expires_at: str | None = None; metadata_json: str | None = None; importance: float = 0.5; created_at: str; updated_at: str
+    fact_id: str; category: str; subject: str; predicate: str; object: str; status: str; lifecycle_status: str | None = None; confidence: float; source_text: str; source_type: str; support_count: int = 1; conflicts_with: str | None = None; superseded_by: str | None = None; memory_type: str | None = None; entity_type: str | None = None; occurred_at: str | None = None; expires_at: str | None = None; metadata_json: str | None = None; importance: float = 0.5; created_at: str; updated_at: str
 
 
 class MemoryGraphExportItem(BaseModel):
-    fact_id: str; category: str; subject: str; predicate: str; object: str; status: str; confidence: float; source_type: str; support_count: int = 1; conflicts_with: str | None = None; memory_type: str | None = None; entity_type: str | None = None; occurred_at: str | None = None; expires_at: str | None = None; metadata: dict[str, object] = Field(default_factory=dict); importance: float = 0.5; created_at: str; updated_at: str
+    fact_id: str; category: str; subject: str; predicate: str; object: str; status: str; lifecycle_status: str | None = None; confidence: float; source_type: str; support_count: int = 1; conflicts_with: str | None = None; superseded_by: str | None = None; memory_type: str | None = None; entity_type: str | None = None; occurred_at: str | None = None; expires_at: str | None = None; metadata: dict[str, object] = Field(default_factory=dict); importance: float = 0.5; created_at: str; updated_at: str
 
 
 class MemoryGraphExportPreviewResponse(BaseModel):
@@ -119,6 +126,89 @@ class MemoryGraphFactActionResponse(BaseModel):
     fact_id: str; status: str
 
 
+MemoryFeedbackTargetType = Literal["candidate", "fact"]
+MemoryFeedbackOperation = Literal[
+    "keep",
+    "edit",
+    "forget",
+    "make_temporary",
+    "mark_completed",
+    "mark_stale",
+    "reject_candidate",
+]
+MemoryReviewCategory = Literal["kept", "temporary", "ignored"]
+MemoryReviewAction = Literal["keep", "edit", "forget", "only_this_week", "mark_completed"]
+
+
+class MemoryFeedbackRequest(BaseModel):
+    target_type: MemoryFeedbackTargetType
+    target_id: str = Field(min_length=1)
+    operation: MemoryFeedbackOperation
+    feedback_text: str = ""
+    replacement_text: str | None = None
+    replacement_subject: str | None = None
+    replacement_predicate: str | None = None
+    replacement_object: str | None = None
+    expires_at: str | None = None
+    source_conversation_id: str | None = None
+    source_message_id: str | None = None
+    source_agent_run_id: str | None = None
+
+
+class MemoryFeedbackResponse(BaseModel):
+    target_type: MemoryFeedbackTargetType
+    target_id: str
+    operation: MemoryFeedbackOperation
+    status: str
+    feedback_event_id: str
+    replacement_target_id: str | None = None
+    action_id: str
+
+
+class MemoryReviewSummaryResponse(BaseModel):
+    kept: int = 0
+    temporary: int = 0
+    ignored: int = 0
+
+
+class MemoryReviewItemResponse(BaseModel):
+    review_id: str
+    target_type: MemoryFeedbackTargetType
+    target_id: str
+    category: MemoryReviewCategory
+    summary: str
+    memory_kind: str | None = None
+    memory_scope: str | None = None
+    lifecycle_status: str
+    risk_tier: str | None = None
+    confidence: float
+    importance: float
+    evidence_count: int = 0
+    expires_at: str | None = None
+    updated_at: str
+    source: str
+    allowed_actions: list[MemoryReviewAction] = Field(default_factory=list)
+
+
+class MemoryReviewResponse(BaseModel):
+    generated_at: str
+    window_days: int
+    summary: MemoryReviewSummaryResponse
+    items: list[MemoryReviewItemResponse] = Field(default_factory=list)
+    redaction_note: str = "Sensitive text, credentials, raw evidence, and full Authorization headers are not included."
+
+
+class MemoryReviewActionRequest(BaseModel):
+    target_type: MemoryFeedbackTargetType
+    target_id: str = Field(min_length=1)
+    action: MemoryReviewAction
+    feedback_text: str = ""
+    replacement_text: str | None = None
+    replacement_subject: str | None = None
+    replacement_predicate: str | None = None
+    replacement_object: str | None = None
+
+
 class CompanionConsolidationRunRequest(BaseModel):
     from_: str | None = Field(default=None, alias="from"); to: str | None = None; limit: int = Field(default=50, ge=1, le=200)
 
@@ -127,8 +217,19 @@ class CompanionConsolidationRunResponse(BaseModel):
     run_id: str; status: str; source_count: int; output_count: int; skipped_count: int; reason: str | None = None; fact_ids: list[str] = Field(default_factory=list); started_at: str; completed_at: str | None = None
 
 
+class CompanionRetrievalExplainabilityResponse(BaseModel):
+    candidate_recall_count: int = 0
+    prompt_memory_ids: list[str] = Field(default_factory=list)
+    prompt_items: list[dict[str, object]] = Field(default_factory=list)
+    permissions_used: dict[str, int] = Field(default_factory=dict)
+    activation_score_breakdowns: list[dict[str, object]] = Field(default_factory=list)
+    filtered_item_reasons: list[dict[str, str]] = Field(default_factory=list)
+    gates: dict[str, int] = Field(default_factory=lambda: {"expired": 0, "conflict": 0, "sensitive": 0})
+    safety_note: str = "Sensitive text, credentials, raw snippets, and full Authorization headers are not included."
+
+
 class CompanionRetrievalReportResponse(ContextBudgetFields):
-    id: str; agent_run_id: str; created_at: str
+    id: str; agent_run_id: str; created_at: str; explainability: CompanionRetrievalExplainabilityResponse = Field(default_factory=CompanionRetrievalExplainabilityResponse)
 
 
 class CompanionRetrievalReportListResponse(BaseModel):

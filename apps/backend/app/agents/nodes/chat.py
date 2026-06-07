@@ -4,10 +4,15 @@ from typing import Any, Callable
 
 from app.models.api import MemorySearchResponse
 from app.models.enums import AgentId
+from app.services.memory_permissions import (
+    MemoryPromptSections,
+    record_prompt_section_usage,
+    split_recall_prompt_sections,
+)
 
 from ..events import AgentTokenEvent
 from ..events_helpers import _agent_state, _append_status, _emit_tool_results, _events, _record_node_error
-from ..prompts.system import _knowledge_not_found_chat_prompt
+from ..prompts.system import _immediate_understanding_context_prompt, _knowledge_not_found_chat_prompt
 from ..retrieval.router import _chat_agent_tool_names
 from ..retrieval.scoping import _source_scope_label
 from ..runtime_helpers import (
@@ -165,7 +170,19 @@ async def _fallback_grounded_search(
 
 
 def _message_with_runtime_context(services: AgentRuntimeServices, state: AgentState) -> str:
-    user_message = _message_with_citation_context(state)
+    sections = split_recall_prompt_sections(state.citations, query=state.user_message) if state.citations else None
+    if sections is not None:
+        record_prompt_section_usage(
+            services.memory_activation_recorder,
+            sections=sections,
+            conversation_id=state.conversation_id,
+            message_id=state.message_id,
+            agent_run_id=state.agent_run_id,
+        )
+    user_message = _message_with_citation_context(state, sections=sections)
+    immediate_block = _immediate_understanding_context_prompt(state.immediate_understanding)
+    if immediate_block:
+        user_message = f"{immediate_block}\n\nCurrent user message:\n{user_message}"
     return _message_with_continuity_context(user_message, _continuity_presence_context_block(services.continuity))
 
 
@@ -174,7 +191,11 @@ def _grounded_response_from_search(search_response: MemorySearchResponse) -> str
 
 
 def _grounded_response_from_citations(results) -> str:
-    snippets = [result.snippet.strip() for result in results[:3] if result.snippet.strip()]
+    snippets = [
+        result.snippet.strip()
+        for result in results[:3]
+        if result.snippet.strip() and result.recall_permissions.can_answer_context
+    ]
     if not snippets:
         return _local_knowledge_not_found_response()
     summary = "；".join(snippets)
@@ -186,14 +207,11 @@ def _local_knowledge_not_found_response() -> str:
     return "我翻了下记忆本，暂时没有找到能引用的记录，所以这部分我不装懂。你可以告诉我一点背景，我也可以先按一般经验陪你分析。"
 
 
-def _message_with_citation_context(state: AgentState) -> str:
+def _message_with_citation_context(state: AgentState, *, sections: MemoryPromptSections | None = None) -> str:
     if not state.citations:
         return state.user_message
-    snippets = "\n".join(
-        f"- {citation.relative_path}"
-        f"{f' / {citation.heading}' if citation.heading else ''}: {citation.snippet}"
-        for citation in state.citations[:5]
-    )
+    sections = sections or split_recall_prompt_sections(state.citations, query=state.user_message)
+    prompt_sections = _recall_prompt_sections_text(sections)
     semantic = state.semantic_analysis
     answer_style = semantic.answer_style if semantic else "grounded"
     source_scope = semantic.source_scope if semantic else "all"
@@ -207,10 +225,35 @@ def _message_with_citation_context(state: AgentState) -> str:
         f"用户问题：{state.user_message}\n\n"
         f"上下文范围：{source_scope}（{source_label}）\n"
         f"回答风格：{answer_style}\n"
-        f"已检索到的上下文片段：\n{snippets}\n\n"
+        f"已检索到的上下文片段：\n{prompt_sections}\n\n"
         "请用桌宠口吻给出简短自然回答。不要逐条展开引用路径或原始 snippet；"
         f"{source_instruction}"
     )
+
+
+def _recall_prompt_sections_text(sections: MemoryPromptSections) -> str:
+    blocks: list[str] = []
+    if sections.style_hints:
+        blocks.append(
+            "Style memory (tone only; do not mention as facts):\n"
+            + "\n".join(f"- {hint}" for hint in sections.style_hints)
+        )
+    if sections.answer_context_lines:
+        blocks.append(
+            "Answer context (may be used as answer evidence):\n"
+            + "\n".join(sections.answer_context_lines)
+        )
+    if sections.proactive_mention_lines:
+        blocks.append(
+            "Proactive mention candidates (may be directly mentioned if useful):\n"
+            + "\n".join(sections.proactive_mention_lines)
+        )
+    if sections.action_suggestion_lines:
+        blocks.append(
+            "Action suggestion support (may support suggestions):\n"
+            + "\n".join(sections.action_suggestion_lines)
+        )
+    return "\n\n".join(blocks) if blocks else "No recalled item has permission to enter the reply prompt."
 
 
 def _model_for_chat(services: AgentRuntimeServices, agent_id: AgentId):

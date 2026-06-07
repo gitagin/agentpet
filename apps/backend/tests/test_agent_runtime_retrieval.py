@@ -17,7 +17,98 @@ from tests.agent_runtime_fakes import (
 )
 
 from app.agents import AgentRuntimeServices, LangGraphAgentRuntime
+from app.models.api import MemoryRecallPermissions, MemorySearchResponse, MemorySearchResult
 from app.services.chat_model import AgentId, AgentModelRegistry
+
+
+class PermissionedRetrieval:
+    def __init__(self) -> None:
+        self.calls = []
+
+    async def search(
+        self,
+        query: str,
+        top_k: int = 5,
+        mode: str = "fts",
+        source_scope: str = "all",
+    ) -> MemorySearchResponse:
+        self.calls.append((query, top_k, mode, source_scope))
+        if source_scope == "personal_memory":
+            return MemorySearchResponse(
+                results=[
+                    MemorySearchResult(
+                        note_id="fact-pressure",
+                        chunk_id="fact-pressure",
+                        relative_path="MemoryGraph/LongTerm",
+                        title="Structured Long-Term Memory",
+                        heading="pressure",
+                        snippet="Ada has been under pressure recently.",
+                        score=0.86,
+                        source_scope="personal_memory",
+                        retrieval_mode="graph_activation",
+                        recall_permissions=MemoryRecallPermissions(can_style_response=True, can_answer_context=False),
+                        activation_score=0.86,
+                        score_breakdown={"query_relevance": 0.1},
+                        memory_kind="recent_state",
+                        fact_id="fact-pressure",
+                    ),
+                    MemorySearchResult(
+                        note_id="fact-project",
+                        chunk_id="fact-project",
+                        relative_path="MemoryGraph/LongTerm",
+                        title="Structured Long-Term Memory",
+                        heading="project",
+                        snippet="Ada is working on project Atlas.",
+                        score=0.82,
+                        source_scope="personal_memory",
+                        retrieval_mode="graph_activation",
+                        recall_permissions=MemoryRecallPermissions(
+                            can_answer_context=True,
+                            can_proactively_mention=True,
+                            can_suggest_action=True,
+                        ),
+                        activation_score=0.82,
+                        score_breakdown={"query_relevance": 0.2},
+                        memory_kind="project_context",
+                        fact_id="fact-project",
+                    ),
+                ]
+            )
+        if source_scope == "diary_objects":
+            return MemorySearchResponse(
+                results=[
+                    MemorySearchResult(
+                        note_id="fact-style",
+                        chunk_id="fact-style",
+                        relative_path="DiaryMemory/fact-style",
+                        title="Structured Diary Memory",
+                        heading="style",
+                        snippet="Ada prefers concise status updates.",
+                        score=0.95,
+                        source_scope="diary_objects",
+                        retrieval_mode="diary_object",
+                        recall_permissions=MemoryRecallPermissions(
+                            can_style_response=True,
+                            can_answer_context=True,
+                            can_proactively_mention=True,
+                            can_suggest_action=True,
+                        ),
+                        activation_score=0.95,
+                        score_breakdown={"query_relevance": 0.3},
+                        memory_kind="preference",
+                        fact_id="fact-style",
+                    )
+                ]
+            )
+        return MemorySearchResponse(results=[])
+
+
+class FakeActivationRecorder:
+    def __init__(self) -> None:
+        self.records = []
+
+    def record_usage(self, **kwargs) -> None:
+        self.records.append(kwargs)
 
 
 def test_langgraph_runtime_preserves_core_search_event_contract() -> None:
@@ -277,3 +368,78 @@ def test_langgraph_aggregates_and_compresses_companion_memory_route_scopes() -> 
     assert reports.records[0][1] == "What do you remember about my coding style?"
     assert reports.records[0][2].selected_count == 4
     assert_langgraph_events(events, ["context_budget", "citation", "citation", "citation", "citation", "token", "done"])
+
+
+def test_langgraph_splits_recalled_memory_by_permissions_and_records_usage() -> None:
+    async def run_case():
+        retrieval = PermissionedRetrieval()
+        recorder = FakeActivationRecorder()
+        chat_model = FakeRegistryChatModel(None, "permissioned answer")
+        runtime = LangGraphAgentRuntime(
+            AgentRuntimeServices(
+                retrieval=retrieval,
+                memory_activation_recorder=recorder,
+                model_registry=AgentModelRegistry({AgentId.CHAT_AGENT: chat_model}),
+                automation_settings=SimpleNamespace(use_negotiation=False),
+            )
+        )
+
+        events = [
+            event
+            async for event in runtime.run(make_state("What do you remember about my coding style?"))
+        ]
+        return retrieval, recorder, chat_model, events
+
+    retrieval, recorder, chat_model, events = asyncio.run(run_case())
+
+    assert retrieval.calls == [
+        ("What do you remember about my coding style?", 5, "fts", "personal_memory"),
+        ("What do you remember about my coding style?", 5, "fts", "diary_objects"),
+        ("What do you remember about my coding style?", 5, "fts", "daily_chat"),
+    ]
+    prompt = chat_model.calls[-1][0]
+    assert "Style memory (tone only; do not mention as facts):" in prompt
+    assert "Use a softer, low-pressure tone" in prompt
+    assert "Ada has been under pressure recently." not in prompt
+    assert "Answer context (may be used as answer evidence):" in prompt
+    assert "Ada prefers concise status updates." in prompt
+    assert "Ada is working on project Atlas." not in prompt
+
+    by_fact_id = {record["result"].fact_id: record for record in recorder.records}
+    assert by_fact_id["fact-pressure"]["used_for_style"] is True
+    assert by_fact_id["fact-pressure"]["used_for_answer_context"] is False
+    assert by_fact_id["fact-style"]["used_for_answer_context"] is True
+    assert by_fact_id["fact-style"]["used_for_proactive_mention"] is True
+    assert by_fact_id["fact-project"]["filtered_reason"] == "permission_gate_no_prompt_section"
+    assert_langgraph_events(events, ["context_budget", "citation", "citation", "citation", "token", "done"])
+
+
+def test_langgraph_project_context_only_enters_prompt_for_relevant_project_queries() -> None:
+    async def run_case():
+        retrieval = PermissionedRetrieval()
+        recorder = FakeActivationRecorder()
+        chat_model = FakeRegistryChatModel(None, "project answer")
+        runtime = LangGraphAgentRuntime(
+            AgentRuntimeServices(
+                retrieval=retrieval,
+                memory_activation_recorder=recorder,
+                model_registry=AgentModelRegistry({AgentId.CHAT_AGENT: chat_model}),
+                automation_settings=SimpleNamespace(use_negotiation=False),
+            )
+        )
+
+        events = [
+            event
+            async for event in runtime.run(make_state("What do you remember about my coding style project Atlas?"))
+        ]
+        return recorder, chat_model, events
+
+    recorder, chat_model, events = asyncio.run(run_case())
+
+    prompt = chat_model.calls[-1][0]
+    assert "Ada is working on project Atlas." in prompt
+    by_fact_id = {record["result"].fact_id: record for record in recorder.records}
+    assert by_fact_id["fact-project"]["used_for_answer_context"] is True
+    assert by_fact_id["fact-project"]["used_for_proactive_mention"] is True
+    assert by_fact_id["fact-project"]["used_for_action_suggestion"] is True
+    assert_langgraph_events(events, ["context_budget", "citation", "citation", "citation", "token", "done"])

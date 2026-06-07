@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+from ..immediate_understanding import ImmediateUnderstanding, immediate_understanding_context_block
 from ..runtime_helpers import _chat_system_prompt, _task_title
 from ..state import AgentState, SemanticAnalysisResult
 
 # 从 graph_runtime.py 迁移，原函数名：_semantic_system_prompt, _memory_retrieval_system_prompt, _knowledge_retrieval_system_prompt, _memory_system_prompt, _wiki_system_prompt, _task_system_prompt, _task_confirmation_system_prompt, _task_confirmation_prompt, _knowledge_not_found_chat_prompt
+
+
+def _immediate_understanding_context_prompt(understanding: ImmediateUnderstanding | None) -> str:
+    return immediate_understanding_context_block(understanding)
 
 
 def _semantic_system_prompt() -> str:
@@ -57,6 +62,7 @@ def _wiki_system_prompt(*, auto_organize: bool = True, revision_issues: list[str
             "除非工具事件确认 Vault 已变更，否则不要声称 Vault 已改变。"
         )
     if revision_issues:
+        prompt += " Continue addressing these review issues: "
         prompt += " 请逐条处理以下审查问题并修正草案：" + "; ".join(revision_issues)
     return prompt
 

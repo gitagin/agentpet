@@ -197,11 +197,14 @@ def _normalize_object(raw: dict[str, Any]) -> DiaryMemoryObject | None:
     ):
         return None
 
-    status = (
-        MemoryFactStatus.QUARANTINED
-        if confidence <= QUARANTINE_CONFIDENCE_MAX
-        else MemoryFactStatus.ACTIVE
-    )
+    if _looks_like_personality_inference(summary=summary, source_text=source_text):
+        status = MemoryFactStatus.QUARANTINED
+    else:
+        status = (
+            MemoryFactStatus.QUARANTINED
+            if confidence <= QUARANTINE_CONFIDENCE_MAX
+            else MemoryFactStatus.ACTIVE
+        )
     return DiaryMemoryObject(
         summary=summary,
         topic=topic,
@@ -226,6 +229,26 @@ def _passes_memory_policy(
 ) -> bool:
     values = [summary, topic, emotion, *people, *keywords, source_text]
     return all(evaluate_memory_content(value).allowed for value in values if value)
+
+
+def _looks_like_personality_inference(*, summary: str, source_text: str) -> bool:
+    text = f"{summary} {source_text}".casefold()
+    if "user is" not in text and "the user is" not in text:
+        return False
+    labels = (
+        "anxious person",
+        "depressed person",
+        "lazy person",
+        "avoidant person",
+        "needy person",
+        "angry person",
+        "emotional person",
+        "introvert",
+        "perfectionist",
+        "unreliable person",
+        "insecure person",
+    )
+    return any(label in text for label in labels)
 
 
 def _coerce_text(value: Any, *, limit: int) -> str:

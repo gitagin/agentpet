@@ -1,17 +1,25 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterable, Protocol
 
-from app.models.api import MemorySearchResponse, MemorySearchResult
+from app.models.api import MemoryRecallPermissions, MemorySearchResponse, MemorySearchResult
 from app.models.common import new_id
 from app.models.enums import MemoryFactStatus
 from app.models.event_payloads import ContextBudgetData
 from app.services.diary_memory import DiaryMemorySearch, DiaryMemoryStore, diary_records_to_search_results
-from app.services.memory_graph import MemoryGraphStore, facts_to_context_lines
+from app.services.memory_activation import (
+    MemoryActivationContext,
+    MemoryActivationService,
+    activation_item_from_graph_fact,
+    rank_activation_decisions,
+)
+from app.services.memory_graph import MemoryGraphFact, MemoryGraphStore
+from app.services.memory_permissions import permissions_from_activation_decision, style_hint_from_text
 from app.services.memory_policy import evaluate_memory_content
 from app.utils.hash import sha256_hex
 from app.utils.time import utc_now_iso
@@ -68,6 +76,10 @@ class CompanionRetrievedItem:
     text: str
     score: float
     retrieval_mode: str
+    recall_permissions: MemoryRecallPermissions = field(default_factory=MemoryRecallPermissions)
+    memory_kind: str | None = None
+    memory_scope: str | None = None
+    lifecycle_status: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,11 +112,13 @@ class CompanionRetrievalService:
         vault_retrieval: VaultRetrievalService | None = None,
         diary_store: DiaryMemoryStore | None = None,
         graph_store: MemoryGraphStore | None = None,
+        activation_service: MemoryActivationService | None = None,
         telemetry_db: str | Path | sqlite3.Connection | None = None,
     ):
         self.vault_retrieval = vault_retrieval
         self.diary_store = diary_store
         self.graph_store = graph_store
+        self.activation_service = activation_service or MemoryActivationService()
         if telemetry_db is None and graph_store is not None:
             telemetry_db = graph_store.conn
         self._owns_connection = not isinstance(telemetry_db, sqlite3.Connection)
@@ -128,21 +142,27 @@ class CompanionRetrievalService:
         scopes = _normalize_scopes(active_route.all_scopes)
         raw_items: list[CompanionRetrievedItem] = []
         skipped_sensitive = 0
+        activation_filtered = 0
+        raw_items_seen = 0
 
         if "graph_facts" in scopes or "personal_memory" in scopes or "diary_objects" in scopes:
-            graph_items, skipped = self._graph_items(query, budget=active_budget)
+            graph_items, skipped, filtered, seen = self._graph_items(query, budget=active_budget, route_scopes=scopes)
             raw_items.extend(graph_items)
             skipped_sensitive += skipped
+            activation_filtered += filtered
+            raw_items_seen += seen
         if "diary_objects" in scopes:
             diary_items, skipped = self._diary_items(vault_id, query, budget=active_budget)
             raw_items.extend(diary_items)
             skipped_sensitive += skipped
+            raw_items_seen += len(diary_items) + skipped
         for scope in ("personal_memory", "daily_chat", "knowledge_base"):
             if scope not in scopes:
                 continue
             vault_items, skipped = self._vault_items(vault_id, query, scope=scope, budget=active_budget)
             raw_items.extend(vault_items)
             skipped_sensitive += skipped
+            raw_items_seen += len(vault_items) + skipped
 
         items = tuple(_rerank_and_dedupe(raw_items, budget=active_budget))
         context_block = _context_block(items, budget=active_budget)
@@ -152,7 +172,8 @@ class CompanionRetrievalService:
             items=items,
             budget=active_budget,
             skipped_sensitive=skipped_sensitive,
-            raw_count=len(raw_items),
+            activation_filtered=activation_filtered,
+            raw_count=raw_items_seen,
         )
         return CompanionRetrievalResult(
             event_id=telemetry.event_id,
@@ -177,24 +198,31 @@ class CompanionRetrievalService:
         query: str,
         *,
         budget: CompanionRetrievalBudget,
-    ) -> tuple[list[CompanionRetrievedItem], int]:
+        route_scopes: tuple[str, ...],
+    ) -> tuple[list[CompanionRetrievedItem], int, int, int]:
         if self.graph_store is None:
-            return [], 0
-        facts = self.graph_store.search_active(query, limit=budget.max_graph_facts)
-        if not facts:
-            facts = _dedupe_graph_facts(
-                fact
-                for term in _significant_terms(query)
-                for fact in self.graph_store.search_active(term, limit=budget.max_graph_facts)
-            )[: budget.max_graph_facts]
-        active_facts = [fact for fact in facts if fact.status == MemoryFactStatus.ACTIVE]
-        lines = facts_to_context_lines(active_facts)
+            return [], 0, 0, 0
+        candidate_limit = max(budget.max_graph_facts * 4, budget.max_graph_facts)
+        facts = _graph_fact_candidates(self.graph_store, query=query, limit=candidate_limit)
+        context = MemoryActivationContext(query=query, route_scopes=route_scopes)
+        decisions = [
+            self.activation_service.score(activation_item_from_graph_fact(fact), context)
+            for fact in facts
+        ]
+        ranked = rank_activation_decisions(decisions, limit=budget.max_graph_facts, require_answer_context=False)
+        facts_by_id = {fact.id: fact for fact in facts}
         items: list[CompanionRetrievedItem] = []
-        skipped = 0
-        for fact, line in zip(active_facts, lines):
+        skipped_sensitive = sum(1 for decision in decisions if decision.filtered_reason == "sensitive_memory")
+        activation_filtered = sum(1 for decision in decisions if not decision.allowed)
+        for decision in ranked:
+            fact = facts_by_id.get(decision.item.memory_id)
+            if fact is None:
+                continue
+            permissions = permissions_from_activation_decision(decision, query=query)
+            line = _graph_activation_context_line(fact, activation_score=decision.activation_score)
             text = _context_text(line, limit=budget.max_item_chars)
             if _is_sensitive(text):
-                skipped += 1
+                skipped_sensitive += 1
                 continue
             items.append(
                 CompanionRetrievedItem(
@@ -204,11 +232,15 @@ class CompanionRetrievalService:
                     source_hash=_hash_text(fact.fact_key),
                     title="Memory Graph Fact",
                     text=text,
-                    score=fact.importance + fact.confidence + min(fact.support_count, 5) * 0.05,
-                    retrieval_mode="graph_active",
+                    score=decision.activation_score,
+                    retrieval_mode="graph_activation",
+                    recall_permissions=permissions,
+                    memory_kind=decision.item.memory_kind.value,
+                    memory_scope=decision.item.memory_scope.value,
+                    lifecycle_status=decision.item.lifecycle_status.value,
                 )
             )
-        return items, skipped
+        return items, skipped_sensitive, activation_filtered, len(decisions)
 
     def _diary_items(
         self,
@@ -254,6 +286,7 @@ class CompanionRetrievalService:
         items: tuple[CompanionRetrievedItem, ...],
         budget: CompanionRetrievalBudget,
         skipped_sensitive: int,
+        activation_filtered: int,
         raw_count: int,
     ) -> CompanionRetrievalTelemetry:
         event_id = new_id()
@@ -269,6 +302,7 @@ class CompanionRetrievalService:
                 "raw_items_seen": raw_count,
                 "items_returned": len(items),
                 "sensitive_items_skipped": skipped_sensitive,
+                "activation_filtered_items": activation_filtered,
                 "context_chars": len(_context_block(items, budget=budget)),
             },
             created_at=now,
@@ -332,6 +366,10 @@ def _items_from_memory_results(
                 text=text,
                 score=float(result.score),
                 retrieval_mode=result.retrieval_mode,
+                recall_permissions=result.recall_permissions,
+                memory_kind=result.memory_kind,
+                memory_scope=result.memory_scope,
+                lifecycle_status=result.lifecycle_status,
             )
         )
     return items, skipped
@@ -360,7 +398,12 @@ def _context_block(items: tuple[CompanionRetrievedItem, ...], *, budget: Compani
     lines = ["陪伴检索上下文："]
     remaining = max(0, budget.max_context_chars - len(lines[0]))
     for item in items:
-        line = f"- [{item.source_scope}] {item.text}"
+        if item.recall_permissions.can_answer_context:
+            line = f"- [{item.source_scope}] {item.text}"
+        elif item.recall_permissions.can_style_response:
+            line = f"- [style_memory] {style_hint_from_text(item.text)}"
+        else:
+            continue
         if len(line) + 1 > remaining:
             if remaining <= 8:
                 break
@@ -409,6 +452,34 @@ def _dedupe_graph_facts(facts):
         seen.add(fact.id)
         deduped.append(fact)
     return deduped
+
+
+def _graph_fact_candidates(
+    store: MemoryGraphStore,
+    *,
+    query: str,
+    limit: int,
+) -> list[MemoryGraphFact]:
+    candidate_limit = max(1, min(limit, 200))
+    facts = _dedupe_graph_facts(store.list_facts(query=query.strip() or None, limit=candidate_limit))
+    for term in _significant_terms(query):
+        if len(facts) >= candidate_limit:
+            break
+        facts = _dedupe_graph_facts(
+            (
+                *facts,
+                *store.list_facts(query=term, limit=candidate_limit),
+            )
+        )
+    return facts[:candidate_limit]
+
+
+def _graph_activation_context_line(fact: MemoryGraphFact, *, activation_score: float) -> str:
+    status_part = "" if fact.status is MemoryFactStatus.ACTIVE else f", status={fact.status.value}"
+    return (
+        f"{fact.subject} {fact.predicate} {fact.object} "
+        f"(confidence={fact.confidence:.2f}, support={fact.support_count}, activation={activation_score:.2f}{status_part})"
+    )
 
 
 def _significant_terms(query: str) -> tuple[str, ...]:
@@ -470,6 +541,77 @@ def _json_object_value(value: str) -> dict[str, object]:
     return parsed if isinstance(parsed, dict) else {}
 
 
+def _activation_memory_ref(row: sqlite3.Row) -> tuple[str, str]:
+    fact_id = row["fact_id"]
+    candidate_id = row["candidate_id"]
+    if fact_id:
+        return _redact_secret_text(str(fact_id)), "fact"
+    if candidate_id:
+        return _redact_secret_text(str(candidate_id)), "candidate"
+    return "unknown", "unknown"
+
+
+def _safe_permissions(value: dict[str, object]) -> dict[str, bool]:
+    return {
+        "can_style_response": bool(value.get("can_style_response", False)),
+        "can_answer_context": bool(value.get("can_answer_context", False)),
+        "can_proactively_mention": bool(value.get("can_proactively_mention", False)),
+        "can_suggest_action": bool(value.get("can_suggest_action", False)),
+    }
+
+
+def _safe_score_breakdown(value: dict[str, object]) -> dict[str, float]:
+    safe: dict[str, float] = {}
+    for key, raw in value.items():
+        try:
+            safe[_redact_secret_text(str(key))] = float(raw)
+        except (TypeError, ValueError):
+            continue
+    return safe
+
+
+def _safe_float(value: object) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _accumulate_gate_counts(
+    gates: dict[str, int],
+    *,
+    filtered_reason: str,
+    score_breakdown: dict[str, float],
+) -> None:
+    reason = filtered_reason.casefold()
+    if "expired" in reason or score_breakdown.get("expired_penalty", 0.0) < 0:
+        gates["expired"] += 1
+    if "conflict" in reason or score_breakdown.get("conflict_penalty", 0.0) < 0:
+        gates["conflict"] += 1
+    if "sensitive" in reason or "credential" in reason:
+        gates["sensitive"] += 1
+
+
+def _dedupe_strings(values: Iterable[str]) -> list[str]:
+    return list(dict.fromkeys(values))
+
+
+SECRET_TEXT_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"(?i)\bAuthorization:\s*Bearer\s+[A-Za-z0-9._~+/=-]+"),
+    re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{12,}"),
+    re.compile(r"\b(?:sk|pk|rk|ghp|gho|ghu|github_pat|xox[baprs]|AKIA)[A-Za-z0-9_\-]{8,}\b", re.IGNORECASE),
+    re.compile(r"(?i)\b(?:password|passwd|pwd|secret|token|api[_ -]?key)\s*[:=]\s*\S+"),
+    re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----", re.IGNORECASE | re.DOTALL),
+)
+
+
+def _redact_secret_text(value: str) -> str:
+    redacted = value
+    for pattern in SECRET_TEXT_PATTERNS:
+        redacted = pattern.sub("[REDACTED]", redacted)
+    return redacted
+
+
 DEFAULT_CONTEXT_STRATEGY = "deterministic_v1"
 DEFAULT_CONTEXT_CHAR_BUDGET = 1200
 
@@ -502,6 +644,7 @@ class CompanionRetrievalReport:
     source_counts: dict[str, int]
     selected_scopes: tuple[str, ...]
     created_at: str
+    explainability: dict[str, object] = field(default_factory=dict)
 
 
 class CompanionRetrievalReportStore:
@@ -590,13 +733,14 @@ class CompanionRetrievalReportStore:
             raise KeyError(report_id)
         return self._map_report(row)
 
-    @staticmethod
-    def _map_report(row: sqlite3.Row) -> CompanionRetrievalReport:
+    def _map_report(self, row: sqlite3.Row) -> CompanionRetrievalReport:
+        agent_run_id = str(row["agent_run_id"])
+        candidate_count = int(row["candidate_count"])
         return CompanionRetrievalReport(
             id=str(row["id"]),
-            agent_run_id=str(row["agent_run_id"]),
+            agent_run_id=agent_run_id,
             strategy=str(row["strategy"]),
-            candidate_count=int(row["candidate_count"]),
+            candidate_count=candidate_count,
             selected_count=int(row["selected_count"]),
             duplicate_drop_count=int(row["duplicate_drop_count"]),
             per_scope_drop_count=int(row["per_scope_drop_count"]),
@@ -608,7 +752,78 @@ class CompanionRetrievalReportStore:
             source_counts={key: int(value) for key, value in _json_object_value(row["source_counts_json"]).items()},
             selected_scopes=tuple(_json_list_value(row["selected_scopes_json"])),
             created_at=str(row["created_at"]),
+            explainability=self._explainability_for_run(agent_run_id=agent_run_id, candidate_count=candidate_count),
         )
+
+    def _explainability_for_run(self, *, agent_run_id: str, candidate_count: int) -> dict[str, object]:
+        rows = self.conn.execute(
+            """
+            SELECT *
+            FROM memory_activation_events
+            WHERE agent_run_id = ?
+            ORDER BY created_at ASC, id ASC
+            """,
+            (agent_run_id,),
+        ).fetchall()
+        prompt_memory_ids: list[str] = []
+        prompt_items: list[dict[str, object]] = []
+        score_breakdowns: list[dict[str, object]] = []
+        filtered_item_reasons: list[dict[str, str]] = []
+        permissions_used = {
+            "style": 0,
+            "answer_context": 0,
+            "proactive_mention": 0,
+            "action_suggestion": 0,
+        }
+        gates = {"expired": 0, "conflict": 0, "sensitive": 0}
+
+        for row in rows:
+            memory_id, target_type = _activation_memory_ref(row)
+            permissions = _safe_permissions(_json_object_value(row["permissions_json"]))
+            score_breakdown = _safe_score_breakdown(_json_object_value(row["score_breakdown_json"]))
+            used = {
+                "style": bool(row["used_for_style"]),
+                "answer_context": bool(row["used_for_answer_context"]),
+                "proactive_mention": bool(row["used_for_proactive_mention"]),
+                "action_suggestion": bool(row["used_for_action_suggestion"]),
+            }
+            for key, value in used.items():
+                if value:
+                    permissions_used[key] += 1
+            if any(used.values()):
+                prompt_memory_ids.append(memory_id)
+                prompt_items.append(
+                    {
+                        "memory_id": memory_id,
+                        "target_type": target_type,
+                        "permissions": permissions,
+                        "used": used,
+                        "activation_score": _safe_float(row["activation_score"]),
+                    }
+                )
+            score_breakdowns.append(
+                {
+                    "memory_id": memory_id,
+                    "target_type": target_type,
+                    "activation_score": _safe_float(row["activation_score"]),
+                    "score_breakdown": score_breakdown,
+                }
+            )
+            filtered_reason = _redact_secret_text(str(row["filtered_reason"] or ""))
+            if filtered_reason:
+                filtered_item_reasons.append({"memory_id": memory_id, "target_type": target_type, "reason": filtered_reason})
+            _accumulate_gate_counts(gates, filtered_reason=filtered_reason, score_breakdown=score_breakdown)
+
+        return {
+            "candidate_recall_count": candidate_count,
+            "prompt_memory_ids": _dedupe_strings(prompt_memory_ids),
+            "prompt_items": prompt_items,
+            "permissions_used": permissions_used,
+            "activation_score_breakdowns": score_breakdowns,
+            "filtered_item_reasons": filtered_item_reasons,
+            "gates": gates,
+            "safety_note": "Sensitive text, credentials, raw snippets, and full Authorization headers are not included.",
+        }
 
 
 def rerank_memory_context(

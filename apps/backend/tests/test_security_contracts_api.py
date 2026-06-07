@@ -31,6 +31,7 @@ def test_health_endpoint_is_unauthenticated_and_does_not_leak_vault_state(client
         ("POST", "/api/chat"),
         ("GET", "/api/chat/runs/test-run-id/events"),
         ("POST", "/api/memory/search"),
+        ("POST", "/api/memory/feedback"),
         ("POST", "/api/memory/proposals"),
         ("POST", "/api/tasks"),
         ("PUT", "/api/settings/model-key"),

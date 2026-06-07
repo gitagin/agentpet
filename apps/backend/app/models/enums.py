@@ -50,9 +50,12 @@ class MemoryProposalStatus(StrEnum):
 class MemoryFactStatus(StrEnum):
     CANDIDATE = "candidate"
     ACTIVE = "active"
+    STALE = "stale"
     QUARANTINED = "quarantined"
     ARCHIVED = "archived"
+    FORGOTTEN = "forgotten"
     REJECTED = "rejected"
+    SUPERSEDED = "superseded"
     WRONG = "wrong"
     SENSITIVE_BLOCKED = "sensitive_blocked"
 

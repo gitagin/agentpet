@@ -12,6 +12,7 @@ from app.models.enums import AgentId
 from .agent_runner import run_agent
 from .events import AgentStatusEvent, NegotiationDoneEvent, NegotiationStepEvent
 from .events_helpers import _agent_state, _append_status, _events
+from .immediate_understanding import extract_immediate_understanding
 from .intent import route_intent
 from .memory_router import route_memory
 from .negotiation_graph import build_negotiation_graph
@@ -127,6 +128,10 @@ class LangGraphAgentRuntime:
     async def _route_node(self, graph_state: dict[str, Any]) -> dict[str, Any]:
         state = _agent_state(graph_state)
         state.route = route_intent(state.user_message)
+        state.immediate_understanding = extract_immediate_understanding(
+            state.user_message,
+            existing=state.immediate_understanding,
+        )
         _events(graph_state).append(
             AgentStatusEvent(
                 agent_run_id=state.agent_run_id,
@@ -323,7 +328,29 @@ class LangGraphAgentRuntime:
         return None
 
     async def _chat_node_adapter(self, graph_state: dict[str, Any]) -> dict[str, Any]:
+        await self._ensure_pre_chat_context(graph_state)
+        if graph_state.get("failed"):
+            return graph_state
         return await _chat_node(graph_state, self.services, _has_empty_search_result)
+
+    async def _ensure_pre_chat_context(self, graph_state: dict[str, Any]) -> None:
+        state = _agent_state(graph_state)
+        if state.citations or graph_state.get("pre_chat_context_attempted") or graph_state.get("retrieval_plan"):
+            return
+        if not _needs_chat_context(state):
+            return
+
+        graph_state["pre_chat_context_attempted"] = True
+        entry_node = _select_retrieval_entry_node(graph_state)
+        if entry_node == "memory_retrieval_agent":
+            await self._memory_retrieval_node_adapter(graph_state)
+            if graph_state.get("failed"):
+                return
+            if _select_after_memory_retrieval(graph_state) == "knowledge_retrieval_agent":
+                await self._knowledge_retrieval_node_adapter(graph_state)
+            return
+        if entry_node == "knowledge_retrieval_agent":
+            await self._knowledge_retrieval_node_adapter(graph_state)
 
     async def _memory_retrieval_node_adapter(self, graph_state: dict[str, Any]) -> dict[str, Any]:
         return await _memory_retrieval_node(
@@ -498,6 +525,21 @@ def _should_call_semantic_agent(state: AgentState) -> bool:
     if state.route and state.route.intent == AgentIntent.SEARCH_MEMORY:
         return True
     return False
+
+
+def _needs_chat_context(state: AgentState) -> bool:
+    semantic = state.semantic_analysis
+    if semantic is not None and semantic.needs_context and semantic.source_scope != "none":
+        return True
+    if state.route is not None and state.route.intent == AgentIntent.SEARCH_MEMORY:
+        return True
+    route = state.memory_route
+    return (
+        route is not None
+        and not route.semantic_fallback
+        and bool(route.all_scopes)
+        and route.all_scopes != ("none",)
+    )
 
 
 def _has_tool_result(results: list[AgentToolResult], name: str) -> bool:

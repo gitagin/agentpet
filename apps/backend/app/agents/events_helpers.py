@@ -15,6 +15,7 @@ from app.models.api import (
     WikiSynthesizeResponse,
 )
 from app.models.enums import AgentRunStatus
+from app.services.memory_permissions import ensure_recall_permissions
 
 from .events import (
     AgentActionEvent,
@@ -65,8 +66,9 @@ def _emit_tool_results(graph_state: dict[str, Any], results: list[AgentToolResul
     for result in results:
         value = result.value
         if result.name == "search_memory" and isinstance(value, MemorySearchResponse):
-            state.citations = [*state.citations, *value.results]
-            for citation in value.results:
+            citations = [ensure_recall_permissions(citation) for citation in value.results]
+            state.citations = [*state.citations, *citations]
+            for citation in citations:
                 _events(graph_state).append(
                     AgentCitationEvent(agent_run_id=state.agent_run_id, citation=citation)
                 )

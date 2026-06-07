@@ -26,7 +26,11 @@ from app.services.diary_memory_extractor import DiaryMemoryExtractor
 from app.services.health import component_health_from_vector_index
 from app.services.long_term_memory import LongTermMemoryService
 from app.services.memory import MemoryProposalStore, MemoryService, SafeMarkdownWriter
+from app.services.memory_candidates import MemoryCandidateStore
+from app.services.memory_consolidation import MemoryConsolidationService
 from app.services.memory_graph import MemoryGraphStore
+from app.services.memory_lifecycle import MemoryLifecycleService
+from app.services.memory_permissions import MemoryActivationEventRecorder
 from app.services.retrieval import RetrievalService
 from app.services.retrieval_factory import build_vector_index
 from app.services.retrospectives import RetrospectiveService
@@ -363,6 +367,21 @@ def diary_memory_service(request: Request | AppContext) -> DiaryMemoryService:
 
 def long_term_memory_service(request: Request | AppContext) -> LongTermMemoryService:
     return vault_services(request).long_term_memory_service()
+
+
+def memory_consolidation_service(request: Request | AppContext) -> MemoryConsolidationService:
+    return MemoryConsolidationService(MemoryCandidateStore(database(request).path))
+
+
+def memory_activation_recorder(request: Request | AppContext) -> MemoryActivationEventRecorder:
+    return MemoryActivationEventRecorder(database(request).path)
+
+
+def memory_lifecycle_service(request: Request | AppContext) -> MemoryLifecycleService:
+    return MemoryLifecycleService(
+        database(request).path,
+        graph_root=get_settings().data_dir / "memory-graph",
+    )
 
 
 def continuity_service(request: Request | AppContext) -> ContinuityService:

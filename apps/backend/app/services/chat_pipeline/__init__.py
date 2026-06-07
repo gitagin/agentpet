@@ -5,9 +5,9 @@ from app.agents.state import AgentState
 from app.api.wiring import AppContext, record_agent_action, settings_store
 from app.services.agent_actions import AgentActionCreate, AutomationPolicy
 
+from .consolidation import consolidate_slow_memory
 from .diary import archive_daily_diary
 from .diary_memory import archive_structured_diary_memory
-from .long_term import archive_long_term_memory
 from .wiki_summary import archive_wiki_answer_summary
 
 logger = logging.getLogger(__name__)
@@ -44,14 +44,6 @@ async def archive_chat_memory(
         )
         return actions
 
-    actions.extend(
-        archive_long_term_memory(
-            context=context,
-            state=state,
-            automation=automation,
-            policy=policy,
-        )
-    )
     daily_result, daily_actions = archive_daily_diary(
         context=context,
         state=state,
@@ -71,6 +63,18 @@ async def archive_chat_memory(
         policy=policy,
     )
     actions.extend(diary_actions)
+    actions.extend(
+        consolidate_slow_memory(
+            context=context,
+            state=state,
+            assistant_message_id=assistant_message_id,
+            assistant_answer=assistant_answer,
+            daily_result=daily_result,
+            diary_object_ids=diary_object_ids,
+            automation=automation,
+            policy=policy,
+        )
+    )
     actions.extend(
         archive_wiki_answer_summary(
             context=context,

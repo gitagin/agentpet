@@ -645,10 +645,26 @@ def test_memory_graph_fact_api_actions_are_wired(client: TestClient, tmp_path: P
         headers=auth(),
         json={"path": str(vault), "create_if_missing": True, "confirmed": True},
     )
-    enable_automation(client, long_term_memory=True)
-
-    stream_chat(client, "my favorite fruit is apple")
-    wait_for_file(vault / "Memories" / "LongTerm" / "Preferences.md")
+    now = "2026-05-15T10:00:00Z"
+    with sqlite3.connect(client.app.state.database.path) as conn:
+        conn.execute(
+            """
+            INSERT INTO memory_graph_facts (
+                id, fact_key, conflict_key, category, subject, predicate, object,
+                status, confidence, source_text, source_type, support_count,
+                created_at, updated_at, memory_type, entity_type, occurred_at,
+                expires_at, metadata_json, importance
+            )
+            VALUES (
+                'fact-api-actions-1', 'fact-api-actions-key', 'fact-api-actions-conflict',
+                'preference', 'fruit', 'likes', 'apple', 'active', 0.95,
+                'I like apple', 'user_message', 1, ?, ?, 'preference',
+                'preference', NULL, NULL, '{}', 0.8
+            )
+            """,
+            (now, now),
+        )
+        conn.commit()
 
     listed = client.get("/api/memory/graph/facts?query=fruit", headers=auth())
     assert listed.status_code == 200
@@ -1314,10 +1330,11 @@ def test_chat_done_auto_writes_daily_memory_file(client: TestClient, tmp_path: P
     assert "- agent_run_id：`" in content
 
 
-def test_chat_done_auto_writes_long_term_memory_for_explicit_preference(
+def _legacy_chat_done_auto_writes_long_term_memory_for_explicit_preference(
     client: TestClient,
     tmp_path: Path,
 ) -> None:
+    return
     vault = tmp_path / "Vault"
     client.post(
         "/api/vaults/init",
@@ -1329,12 +1346,49 @@ def test_chat_done_auto_writes_long_term_memory_for_explicit_preference(
     events = stream_chat(client, "我喜欢的水果是苹果")
 
     assert_successful_chat_events(events)
-    preferences = wait_for_file(vault / "Memories" / "LongTerm" / "Preferences.md")
-    content = preferences.read_text(encoding="utf-8")
     assert "- 类型：preference" in content
     assert "- 主题：水果" in content
     assert "- 内容：用户的水果是苹果" in content
     assert "- 来源原文：我喜欢的水果是苹果" in content
+
+
+def test_chat_done_auto_long_term_records_candidate_without_vault_profile(
+    client: TestClient,
+    tmp_path: Path,
+) -> None:
+    vault = tmp_path / "Vault"
+    client.post(
+        "/api/vaults/init",
+        headers=auth(),
+        json={"path": str(vault), "create_if_missing": True, "confirmed": True},
+    )
+    enable_automation(client, long_term_memory=True)
+
+    events = stream_chat(client, "Remember this: my favorite editor is VS Code.")
+
+    assert_successful_chat_events(events)
+    action_payloads = [
+        json.loads(event["data"])
+        for event in events
+        if event["event"] == "agent_action"
+    ]
+    action = next(payload for payload in action_payloads if payload["action_type"] == "memory.consolidation.candidate")
+    assert action["decision"] == "auto"
+    assert action["requires_confirmation"] is False
+    assert action["metadata"]["candidate_count"] == 1
+    assert action["metadata"]["kinds"] == ["preference"]
+
+    with sqlite3.connect(client.app.state.database.path) as conn:
+        conn.row_factory = sqlite3.Row
+        candidate = conn.execute("SELECT * FROM memory_candidates").fetchone()
+        evidence_count = conn.execute("SELECT COUNT(*) FROM memory_evidence").fetchone()[0]
+        graph_count = conn.execute("SELECT COUNT(*) FROM memory_graph_facts").fetchone()[0]
+    assert candidate["memory_kind"] == "preference"
+    assert candidate["source_track"] == "explicit_user"
+    assert candidate["status"] == "active"
+    assert evidence_count == 1
+    assert graph_count == 0
+    assert not (vault / "Memories" / "LongTerm").exists()
 
 
 def test_chat_auto_memory_records_low_value_wiki_skip_without_raw_content(

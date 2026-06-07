@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.agents.memory_router import MemoryRouter, route_memory
+from app.agents.memory_router import MemoryRoute, MemoryRouter, route_memory
 from app.agents.state import AgentState
 
 
@@ -38,10 +38,10 @@ def test_explicit_date_recall_prefers_daily_chat() -> None:
     assert route.legacy_source_scope == "all"
 
 
-def test_long_term_preference_prefers_personal_memory_then_diary_and_daily_chat() -> None:
+def test_long_term_preference_prefers_graph_facts_then_personal_memory_then_diary_and_daily_chat() -> None:
     route = route_memory("What do you remember about my coding style?")
 
-    assert route.primary_scopes == ("personal_memory",)
+    assert route.primary_scopes == ("graph_facts", "personal_memory")
     assert route.fallback_scopes == ("diary_objects", "daily_chat")
     assert route.answer_style == "grounded"
     assert route.confidence >= 0.8
@@ -80,4 +80,11 @@ def test_agent_state_can_carry_memory_route_without_requiring_runtime_wiring() -
     )
 
     assert state.memory_route == route
-    assert state.memory_route.primary_scopes == ("personal_memory",)
+    assert state.memory_route.primary_scopes == ("graph_facts", "personal_memory")
+
+
+def test_graph_fact_only_route_bridges_to_legacy_personal_memory_scope() -> None:
+    route = MemoryRoute(primary_scopes=("graph_facts",), query="coding style")
+
+    assert route.primary_scopes == ("graph_facts",)
+    assert route.legacy_source_scope == "personal_memory"

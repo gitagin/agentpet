@@ -130,6 +130,12 @@ def test_sensitive_life_domain_requires_review_instead_of_auto_write(tmp_path):
     assert not (tmp_path / "Memories" / "LongTerm" / "Profile.md").exists()
 
 
+def test_one_off_emotion_is_not_explicit_long_term_candidate():
+    candidate = extract_long_term_memory_candidate("I feel anxious today because the release is close.")
+
+    assert candidate is None
+
+
 def test_extracts_short_like_statement_as_preference():
     candidate = extract_long_term_memory_candidate("我喜欢苹果")
 

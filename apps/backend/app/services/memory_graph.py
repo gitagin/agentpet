@@ -9,6 +9,7 @@ from typing import Iterable
 
 from app.models.common import new_id
 from app.models.enums import MemoryFactStatus
+from app.services.memory_taxonomy import LifecycleStatus
 from app.utils.hash import sha256_hex
 from app.utils.time import utc_now_iso
 
@@ -62,6 +63,7 @@ class MemoryGraphFact:
     expires_at: str | None = None
     metadata_json: str = "{}"
     importance: float = 0.5
+    superseded_by: str | None = None
 
 
 @dataclass(frozen=True)
@@ -246,7 +248,8 @@ class MemoryGraphStore:
                 CASE status
                     WHEN 'active' THEN 0
                     WHEN 'candidate' THEN 1
-                    WHEN 'quarantined' THEN 2
+                    WHEN 'stale' THEN 2
+                    WHEN 'quarantined' THEN 3
                     ELSE 3
                 END,
                 importance DESC,
@@ -266,14 +269,34 @@ class MemoryGraphStore:
             raise KeyError(fact_id)
         return self._map(row)
 
-    def update_status(self, fact_id: str, status: MemoryFactStatus | str, *, reason: str | None = None) -> MemoryGraphFact:
+    def update_status(
+        self,
+        fact_id: str,
+        status: MemoryFactStatus | str,
+        *,
+        reason: str | None = None,
+        superseded_by: str | None = None,
+    ) -> MemoryGraphFact:
         normalized = MemoryFactStatus(status)
+        existing = self.get(fact_id)
+        metadata_json = (
+            _metadata_with_superseded_by(existing.metadata_json, superseded_by)
+            if superseded_by is not None
+            else existing.metadata_json
+        )
         with self.conn:
             self.conn.execute(
-                "UPDATE memory_graph_facts SET status = ?, updated_at = ? WHERE id = ?",
-                (normalized.value, utc_now_iso(), fact_id),
+                "UPDATE memory_graph_facts SET status = ?, metadata_json = ?, updated_at = ? WHERE id = ?",
+                (normalized.value, metadata_json, utc_now_iso(), fact_id),
             )
             self._record_event(fact_id, normalized.value, reason)
+            self._record_lifecycle_event(
+                fact_id=fact_id,
+                from_status=_fact_status_to_lifecycle(existing.status),
+                to_status=_fact_status_to_lifecycle(normalized),
+                reason=reason,
+                metadata={"superseded_by": superseded_by} if superseded_by else None,
+            )
         fact = self.get(fact_id)
         self._mirror_fact(fact)
         return fact
@@ -320,6 +343,35 @@ class MemoryGraphStore:
             (new_id(), fact_id, action, reason, utc_now_iso()),
         )
 
+    def _record_lifecycle_event(
+        self,
+        *,
+        fact_id: str,
+        from_status: LifecycleStatus | None,
+        to_status: LifecycleStatus | None,
+        reason: str | None,
+        metadata: dict[str, object] | None = None,
+    ) -> None:
+        if to_status is None:
+            return
+        self.conn.execute(
+            """
+            INSERT INTO memory_lifecycle_events (
+                id, fact_id, from_status, to_status, reason, metadata_json, created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                new_id(),
+                fact_id,
+                from_status.value if from_status is not None else None,
+                to_status.value,
+                reason or "",
+                json.dumps(metadata or {}, ensure_ascii=True, sort_keys=True, separators=(",", ":")),
+                utc_now_iso(),
+            ),
+        )
+
     def _mirror_fact(self, fact: MemoryGraphFact) -> None:
         if self._kuzu is not None:
             self._kuzu.upsert_fact(fact)
@@ -350,6 +402,7 @@ class MemoryGraphStore:
             expires_at=row["expires_at"],
             metadata_json=row["metadata_json"] or "{}",
             importance=float(row["importance"]),
+            superseded_by=_superseded_by_from_metadata(row["metadata_json"]),
         )
 
 
@@ -506,6 +559,41 @@ def _normalize_metadata_json(value: str | None) -> str:
     except json.JSONDecodeError:
         return "{}"
     return json.dumps(parsed, sort_keys=True, separators=(",", ":"))
+
+
+def _metadata_with_superseded_by(value: str, superseded_by: str) -> str:
+    try:
+        parsed = json.loads(value or "{}")
+    except json.JSONDecodeError:
+        parsed = {}
+    if not isinstance(parsed, dict):
+        parsed = {}
+    parsed["superseded_by"] = superseded_by
+    return json.dumps(parsed, sort_keys=True, separators=(",", ":"))
+
+
+def _superseded_by_from_metadata(value: str | None) -> str | None:
+    if not value:
+        return None
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    superseded_by = parsed.get("superseded_by")
+    return superseded_by if isinstance(superseded_by, str) and superseded_by else None
+
+
+def _fact_status_to_lifecycle(status: MemoryFactStatus) -> LifecycleStatus | None:
+    if status is MemoryFactStatus.QUARANTINED:
+        return LifecycleStatus.CANDIDATE
+    if status in {MemoryFactStatus.WRONG, MemoryFactStatus.SENSITIVE_BLOCKED}:
+        return LifecycleStatus.REJECTED
+    try:
+        return LifecycleStatus(status.value)
+    except ValueError:
+        return None
 
 
 def _normalize_importance(value: float | None) -> float:

@@ -269,6 +269,23 @@ Backend:
 .\scripts\runbook-smoke.ps1 -Port 8766
 ```
 
+Dual-track memory regression:
+
+```powershell
+Push-Location E:\agentproject\apps\backend
+python -m pytest -q tests/test_memory_taxonomy.py tests/test_dual_track_memory_schema.py tests/test_immediate_understanding.py tests/test_memory_consolidation.py tests/test_memory_lifecycle.py tests/test_memory_activation.py tests/test_memory_permissions.py tests/test_memory_feedback_api.py tests/test_memory_hygiene.py tests/test_memory_pollution_regression.py tests/test_agent_runtime_chat.py tests/test_agent_runtime_retrieval.py tests/test_api_wiring_mvp.py
+Pop-Location
+```
+
+Task 15 final reconciliation:
+
+```powershell
+Push-Location apps\backend; python -m pytest -q; Pop-Location
+Push-Location apps\desktop; npm run typecheck; Pop-Location
+Push-Location apps\desktop; node scripts\validate-electron-migration.mjs; Pop-Location
+.\scripts\check-mvp-acceptance-gap.ps1
+```
+
 Desktop:
 
 ```powershell

@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 MemoryScope = Literal[
     "none",
+    "graph_facts",
     "knowledge_base",
     "personal_memory",
     "diary_objects",
@@ -72,7 +73,7 @@ class MemoryRouter:
 
         if _is_long_term_preference_query(query, normalized):
             return MemoryRoute(
-                primary_scopes=("personal_memory",),
+                primary_scopes=("graph_facts", "personal_memory"),
                 fallback_scopes=("diary_objects", "daily_chat"),
                 query=query,
                 answer_style="grounded",
@@ -147,8 +148,10 @@ def _dedupe_legacy_scopes(
     for scope in scopes:
         if scope in {"none"}:
             continue
-        if scope == "diary_objects":
+        if scope in {"graph_facts", "diary_objects"}:
             legacy_scope: Literal["personal_memory", "daily_chat", "knowledge_base"] = "daily_chat"
+            if scope == "graph_facts":
+                legacy_scope = "personal_memory"
         else:
             legacy_scope = scope
         if legacy_scope in seen:

@@ -1,0 +1,700 @@
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from typing import Callable, Iterable, Mapping
+
+from app.services.long_term_memory import extract_long_term_memory_candidate
+from app.services.memory_candidates import (
+    MemoryCandidateCreate,
+    MemoryCandidateRecord,
+    MemoryCandidateStore,
+    MemoryEvidenceCreate,
+    MemoryEvidenceRecord,
+    MemoryLifecycleEventRecord,
+)
+from app.services.memory_policy import evaluate_memory_content
+from app.services.memory_taxonomy import (
+    LifecycleStatus,
+    MemoryKind,
+    MemoryScope,
+    MemoryTaxonomy,
+    RiskTier,
+    SourceTrack,
+    classify_memory,
+)
+
+
+RECENT_STATE_TTL_DAYS = 7
+PROJECT_CONTEXT_TTL_DAYS = 90
+MAX_EVIDENCE_EXCERPT = 500
+REDACTED_EVIDENCE = "[redacted sensitive content]"
+
+
+@dataclass(frozen=True, slots=True)
+class MemoryConsolidationItem:
+    candidate: MemoryCandidateRecord
+    evidence: MemoryEvidenceRecord | None
+    lifecycle_event: MemoryLifecycleEventRecord | None
+    taxonomy: MemoryTaxonomy
+    reason: str
+
+
+@dataclass(frozen=True, slots=True)
+class MemoryConsolidationResult:
+    items: tuple[MemoryConsolidationItem, ...]
+    skipped_reason: str | None = None
+
+    @property
+    def candidate_count(self) -> int:
+        return len(self.items)
+
+    @property
+    def evidence_count(self) -> int:
+        return sum(1 for item in self.items if item.evidence is not None)
+
+    @property
+    def rejected_count(self) -> int:
+        return sum(1 for item in self.items if item.candidate.status is LifecycleStatus.REJECTED)
+
+    @property
+    def highest_risk_tier(self) -> RiskTier:
+        order = {RiskTier.LOW: 0, RiskTier.MEDIUM: 1, RiskTier.HIGH: 2}
+        highest = RiskTier.LOW
+        for item in self.items:
+            if order[item.candidate.risk_tier] > order[highest]:
+                highest = item.candidate.risk_tier
+        return highest
+
+
+@dataclass(frozen=True, slots=True)
+class _CandidateSpec:
+    memory_kind: MemoryKind
+    memory_scope: MemoryScope
+    summary: str
+    normalized_value: str
+    evidence_text: str
+    evidence_source_type: str
+    source_track: SourceTrack
+    confidence: float
+    importance: float
+    status: LifecycleStatus | None
+    reason: str
+    expires_at: str | None = None
+    sensitive: bool = False
+    conflicting: bool = False
+    transition_to: LifecycleStatus | None = None
+    metadata: Mapping[str, object] | None = None
+
+
+class MemoryConsolidationService:
+    def __init__(
+        self,
+        store: MemoryCandidateStore,
+        *,
+        now_provider: Callable[[], datetime] | None = None,
+    ) -> None:
+        self.store = store
+        self.now_provider = now_provider or (lambda: datetime.now(timezone.utc))
+
+    def close(self) -> None:
+        self.store.close()
+
+    def consolidate(
+        self,
+        *,
+        user_message: str,
+        assistant_answer: str = "",
+        conversation_id: str | None = None,
+        user_message_id: str | None = None,
+        assistant_message_id: str | None = None,
+        agent_run_id: str | None = None,
+        diary_object_ids: Iterable[str] = (),
+        diary_markdown_path: str | None = None,
+    ) -> MemoryConsolidationResult:
+        specs = tuple(
+            self._extract_specs(
+                user_message=user_message,
+                assistant_answer=assistant_answer,
+                diary_object_ids=tuple(diary_object_ids),
+                diary_markdown_path=diary_markdown_path,
+            )
+        )
+        if not specs:
+            return MemoryConsolidationResult(items=(), skipped_reason="no_signal")
+
+        items: list[MemoryConsolidationItem] = []
+        for spec in specs:
+            items.append(
+                self._store_spec(
+                    spec,
+                    conversation_id=conversation_id,
+                    user_message_id=user_message_id,
+                    assistant_message_id=assistant_message_id,
+                    agent_run_id=agent_run_id,
+                )
+            )
+        return MemoryConsolidationResult(items=tuple(items))
+
+    def _extract_specs(
+        self,
+        *,
+        user_message: str,
+        assistant_answer: str,
+        diary_object_ids: tuple[str, ...],
+        diary_markdown_path: str | None,
+    ) -> Iterable[_CandidateSpec]:
+        user_text = _compact(user_message)
+        assistant_text = _compact(assistant_answer)
+        if not user_text and not assistant_text:
+            return ()
+
+        safety = self._safety_spec(user_text=user_text, assistant_text=assistant_text)
+        if safety is not None:
+            return (safety,)
+
+        boundary_specs = tuple(self._boundary_specs(user_text))
+        if any(spec.metadata and spec.metadata.get("blocks_other_candidates") for spec in boundary_specs):
+            return boundary_specs
+
+        specs: list[_CandidateSpec] = list(boundary_specs)
+        explicit = self._explicit_user_memory_spec(user_text)
+        if explicit is not None:
+            specs.append(explicit)
+        specs.extend(self._stable_preference_specs(user_text))
+        specs.extend(self._project_context_specs(user_text, diary_object_ids=diary_object_ids, diary_markdown_path=diary_markdown_path))
+        specs.extend(self._recent_state_specs(user_text))
+        inference = self._assistant_inference_spec(assistant_text)
+        if inference is not None:
+            specs.append(inference)
+        return _dedupe_specs(specs)
+
+    def _safety_spec(self, *, user_text: str, assistant_text: str) -> _CandidateSpec | None:
+        for source_name, text in (("user_message", user_text), ("assistant_answer", assistant_text)):
+            if not text:
+                continue
+            decision = evaluate_memory_content(text)
+            if decision.allowed:
+                continue
+            reason = decision.reason or "sensitive_content"
+            return _CandidateSpec(
+                memory_kind=MemoryKind.INFERENCE,
+                memory_scope=MemoryScope.SENSITIVE,
+                summary="Sensitive content was rejected during slow memory consolidation.",
+                normalized_value=f"safety_event:{reason}",
+                evidence_text="",
+                evidence_source_type=source_name,
+                source_track=SourceTrack.SLOW_CONSOLIDATION,
+                confidence=1.0,
+                importance=1.0,
+                status=LifecycleStatus.CANDIDATE,
+                reason=reason,
+                sensitive=True,
+                transition_to=LifecycleStatus.REJECTED,
+                metadata={"safety_event": True, "sensitive_reason": reason, "redacted": True},
+            )
+        return None
+
+    def _boundary_specs(self, user_text: str) -> Iterable[_CandidateSpec]:
+        lowered = user_text.casefold()
+        boundary_patterns = (
+            (
+                "do_not_save",
+                re.compile(r"\b(?:do not|don't|dont|please do not)\s+(?:save|store|remember)\s+(?:this|that|it)\b"),
+                "User asked that this turn should not be saved as ordinary memory.",
+                "boundary:no_save_this_turn",
+                True,
+            ),
+            (
+                "do_not_nag",
+                re.compile(r"\b(?:do not|don't|dont|please do not)\s+nag\s+me\b"),
+                "User does not want nagging reminders.",
+                "boundary:do_not_nag",
+                False,
+            ),
+            (
+                "do_not_be_preachy",
+                re.compile(r"\b(?:do not|don't|dont|please do not)\s+be\s+preachy\b"),
+                "User does not want preachy responses.",
+                "boundary:do_not_be_preachy",
+                False,
+            ),
+        )
+        for reason, pattern, summary, normalized, blocks_other in boundary_patterns:
+            if pattern.search(lowered):
+                yield _CandidateSpec(
+                    memory_kind=MemoryKind.BOUNDARY,
+                    memory_scope=MemoryScope.GLOBAL,
+                    summary=summary,
+                    normalized_value=normalized,
+                    evidence_text=user_text,
+                    evidence_source_type="chat_message",
+                    source_track=SourceTrack.EXPLICIT_USER,
+                    confidence=0.98,
+                    importance=0.95,
+                    status=LifecycleStatus.ACTIVE,
+                    reason=reason,
+                    metadata={"blocks_other_candidates": blocks_other},
+                )
+
+    def _explicit_user_memory_spec(self, user_text: str) -> _CandidateSpec | None:
+        if not _looks_explicit_memory_request(user_text):
+            return None
+
+        existing_candidate = extract_long_term_memory_candidate(user_text)
+        if existing_candidate is not None:
+            kind = MemoryKind.PREFERENCE if existing_candidate.category.casefold() == "preference" else MemoryKind.FACT
+            return _CandidateSpec(
+                memory_kind=kind,
+                memory_scope=MemoryScope.GLOBAL,
+                summary=_summary_for_subject_value(kind=kind, subject=existing_candidate.subject, value=existing_candidate.value),
+                normalized_value=f"{kind.value}:{existing_candidate.subject.casefold()}={existing_candidate.value.casefold()}",
+                evidence_text=user_text,
+                evidence_source_type="chat_message",
+                source_track=SourceTrack.EXPLICIT_USER,
+                confidence=0.96,
+                importance=0.85,
+                status=LifecycleStatus.ACTIVE,
+                reason="explicit_remember",
+                metadata={
+                    "legacy_category": existing_candidate.category,
+                    "legacy_target_path": existing_candidate.target_path,
+                },
+            )
+
+        assignment = _extract_assignment(user_text)
+        if assignment is not None:
+            subject, value = assignment
+            kind = MemoryKind.PREFERENCE if _looks_like_preference_subject(subject) else MemoryKind.FACT
+            return _CandidateSpec(
+                memory_kind=kind,
+                memory_scope=MemoryScope.GLOBAL,
+                summary=_summary_for_subject_value(kind=kind, subject=subject, value=value),
+                normalized_value=f"{kind.value}:{subject.casefold()}={value.casefold()}",
+                evidence_text=user_text,
+                evidence_source_type="chat_message",
+                source_track=SourceTrack.EXPLICIT_USER,
+                confidence=0.96,
+                importance=0.85,
+                status=LifecycleStatus.ACTIVE,
+                reason="explicit_remember",
+            )
+
+        preference = _extract_preference_value(user_text)
+        if preference:
+            return _CandidateSpec(
+                memory_kind=MemoryKind.PREFERENCE,
+                memory_scope=MemoryScope.GLOBAL,
+                summary=f"User prefers {preference}.",
+                normalized_value=f"preference:{preference.casefold()}",
+                evidence_text=user_text,
+                evidence_source_type="chat_message",
+                source_track=SourceTrack.EXPLICIT_USER,
+                confidence=0.94,
+                importance=0.8,
+                status=LifecycleStatus.ACTIVE,
+                reason="explicit_remember_preference",
+            )
+        return None
+
+    def _stable_preference_specs(self, user_text: str) -> Iterable[_CandidateSpec]:
+        if _looks_explicit_memory_request(user_text):
+            return ()
+        preference = _extract_preference_value(user_text)
+        if not preference:
+            return ()
+        return (
+            _CandidateSpec(
+                memory_kind=MemoryKind.PREFERENCE,
+                memory_scope=MemoryScope.GLOBAL,
+                summary=f"User prefers {preference}.",
+                normalized_value=f"preference:{preference.casefold()}",
+                evidence_text=user_text,
+                evidence_source_type="chat_message",
+                source_track=SourceTrack.SLOW_CONSOLIDATION,
+                confidence=0.62,
+                importance=0.62,
+                status=LifecycleStatus.CANDIDATE,
+                reason="stable_preference_signal",
+            ),
+        )
+
+    def _project_context_specs(
+        self,
+        user_text: str,
+        *,
+        diary_object_ids: tuple[str, ...],
+        diary_markdown_path: str | None,
+    ) -> Iterable[_CandidateSpec]:
+        specs: list[_CandidateSpec] = []
+        project = _extract_project_name(user_text)
+        if project:
+            specs.append(
+                _CandidateSpec(
+                    memory_kind=MemoryKind.PROJECT_CONTEXT,
+                    memory_scope=MemoryScope.PROJECT,
+                    summary=f"User is working on {project}.",
+                    normalized_value=f"project:{project.casefold()}",
+                    evidence_text=user_text,
+                    evidence_source_type="chat_message",
+                    source_track=SourceTrack.SLOW_CONSOLIDATION,
+                    confidence=0.66,
+                    importance=0.7,
+                    status=LifecycleStatus.CANDIDATE,
+                    expires_at=self._expires_after(days=PROJECT_CONTEXT_TTL_DAYS),
+                    reason="project_context_signal",
+                    metadata={
+                        "diary_object_ids": list(diary_object_ids),
+                        "diary_markdown_path": diary_markdown_path,
+                    },
+                )
+            )
+
+        tools = _extract_tool_stack(user_text)
+        if tools:
+            normalized_tools = ", ".join(tools)
+            specs.append(
+                _CandidateSpec(
+                    memory_kind=MemoryKind.PROJECT_CONTEXT,
+                    memory_scope=MemoryScope.TOPIC,
+                    summary=f"User mentioned a tool stack: {normalized_tools}.",
+                    normalized_value=f"tool_stack:{'|'.join(tool.casefold() for tool in tools)}",
+                    evidence_text=user_text,
+                    evidence_source_type="chat_message",
+                    source_track=SourceTrack.SLOW_CONSOLIDATION,
+                    confidence=0.66,
+                    importance=0.6,
+                    status=LifecycleStatus.CANDIDATE,
+                    expires_at=self._expires_after(days=PROJECT_CONTEXT_TTL_DAYS),
+                    reason="tool_stack_signal",
+                    metadata={
+                        "tools": list(tools),
+                        "diary_object_ids": list(diary_object_ids),
+                        "diary_markdown_path": diary_markdown_path,
+                    },
+                )
+            )
+        return specs
+
+    def _recent_state_specs(self, user_text: str) -> Iterable[_CandidateSpec]:
+        state = _extract_recent_state(user_text)
+        if state is None:
+            return ()
+        return (
+            _CandidateSpec(
+                memory_kind=MemoryKind.RECENT_STATE,
+                memory_scope=MemoryScope.TEMPORARY,
+                summary=f"User recently mentioned feeling {state}.",
+                normalized_value=f"recent_state:{state.casefold()}",
+                evidence_text=user_text,
+                evidence_source_type="chat_message",
+                source_track=SourceTrack.SLOW_CONSOLIDATION,
+                confidence=0.58,
+                importance=0.45,
+                status=LifecycleStatus.CANDIDATE,
+                expires_at=self._expires_after(days=RECENT_STATE_TTL_DAYS),
+                reason="temporary_state_signal",
+            ),
+        )
+
+    def _assistant_inference_spec(self, assistant_text: str) -> _CandidateSpec | None:
+        label = _extract_assistant_personality_inference(assistant_text)
+        if label is None:
+            return None
+        return _CandidateSpec(
+            memory_kind=MemoryKind.INFERENCE,
+            memory_scope=MemoryScope.RELATIONSHIP,
+            summary=f"Assistant inferred that the user may be {label}.",
+            normalized_value=f"inference:{label.casefold()}",
+            evidence_text=assistant_text,
+            evidence_source_type="assistant_inference",
+            source_track=SourceTrack.MODEL_EXTRACTED,
+            confidence=0.42,
+            importance=0.25,
+            status=LifecycleStatus.CANDIDATE,
+            reason="assistant_inference_downgraded",
+            metadata={"model_output_only": True},
+        )
+
+    def _store_spec(
+        self,
+        spec: _CandidateSpec,
+        *,
+        conversation_id: str | None,
+        user_message_id: str | None,
+        assistant_message_id: str | None,
+        agent_run_id: str | None,
+    ) -> MemoryConsolidationItem:
+        confidence = self._confidence_with_existing_evidence(spec)
+        taxonomy = classify_memory(
+            memory_kind=spec.memory_kind,
+            memory_scope=spec.memory_scope,
+            source_track=spec.source_track,
+            lifecycle_status=spec.status,
+            confidence=confidence,
+            importance=spec.importance,
+            expires_at=spec.expires_at,
+            source_text="" if spec.sensitive else spec.evidence_text,
+            conflicting=spec.conflicting,
+            sensitive=spec.sensitive,
+        )
+        metadata = {
+            **dict(spec.metadata or {}),
+            "consolidation_reason": spec.reason,
+            "taxonomy_reasons": list(taxonomy.reasons),
+            "recall_permissions": _permissions_dict(taxonomy),
+            "requires_confirmation": taxonomy.requires_confirmation,
+        }
+        candidate = self.store.create_candidate(
+            MemoryCandidateCreate(
+                memory_kind=spec.memory_kind,
+                memory_scope=spec.memory_scope,
+                summary=spec.summary,
+                normalized_value=spec.normalized_value,
+                source_text="",
+                source_track=spec.source_track,
+                risk_tier=taxonomy.risk_tier,
+                confidence=taxonomy.confidence,
+                importance=taxonomy.importance,
+                status=taxonomy.lifecycle_status,
+                expires_at=taxonomy.expires_at,
+                metadata=metadata,
+            )
+        )
+        evidence = self.store.add_evidence(
+            MemoryEvidenceCreate(
+                candidate_id=candidate.id,
+                source_type=spec.evidence_source_type,
+                source_text="" if spec.sensitive else spec.evidence_text,
+                source_excerpt=REDACTED_EVIDENCE if spec.sensitive else _excerpt(spec.evidence_text),
+                conversation_id=conversation_id,
+                message_id=assistant_message_id if spec.evidence_source_type == "assistant_inference" else user_message_id,
+                agent_run_id=agent_run_id,
+                confidence=taxonomy.confidence,
+                metadata={
+                    "consolidation_reason": spec.reason,
+                    "redacted": spec.sensitive,
+                },
+            )
+        )
+        lifecycle_event = None
+        if spec.transition_to is not None and candidate.status is not spec.transition_to:
+            lifecycle_event = self.store.transition(
+                candidate_id=candidate.id,
+                to_status=spec.transition_to,
+                reason=spec.reason,
+                source_agent_run_id=agent_run_id,
+                source_message_id=user_message_id,
+                metadata={"consolidation_reason": spec.reason},
+            )
+            candidate = self.store.get_candidate(candidate.id)
+        return MemoryConsolidationItem(
+            candidate=candidate,
+            evidence=evidence,
+            lifecycle_event=lifecycle_event,
+            taxonomy=taxonomy,
+            reason=spec.reason,
+        )
+
+    def _confidence_with_existing_evidence(self, spec: _CandidateSpec) -> float:
+        if spec.source_track is SourceTrack.EXPLICIT_USER or spec.sensitive:
+            return spec.confidence
+        for candidate in self.store.list_candidates(memory_kind=spec.memory_kind, limit=200):
+            if (
+                candidate.memory_scope is spec.memory_scope
+                and candidate.source_track is spec.source_track
+                and candidate.normalized_value == spec.normalized_value
+            ):
+                return min(0.9, max(spec.confidence, candidate.confidence + 0.08))
+        return spec.confidence
+
+    def _expires_after(self, *, days: int) -> str:
+        current = self.now_provider()
+        if current.tzinfo is None:
+            current = current.replace(tzinfo=timezone.utc)
+        return (current.astimezone(timezone.utc) + timedelta(days=days)).isoformat().replace("+00:00", "Z")
+
+
+def _looks_explicit_memory_request(text: str) -> bool:
+    lowered = text.casefold()
+    return bool(
+        re.search(r"\b(?:remember|save|store)\s+(?:this|that|it)?\b", lowered)
+        or "keep this in memory" in lowered
+    )
+
+
+def _extract_assignment(text: str) -> tuple[str, str] | None:
+    patterns = (
+        r"\b(?:remember\s+(?:this|that)?\s*[:,-]?\s*)?(?:my|our)\s+(?P<subject>[a-z][a-z0-9 _-]{1,50})\s+(?:is|are|=)\s+(?P<value>[^.?!]{1,120})",
+        r"\b(?:remember\s+(?:this|that)?\s*[:,-]?\s*)?the\s+(?P<subject>[a-z][a-z0-9 _-]{1,50})\s+(?:is|=)\s+(?P<value>[^.?!]{1,120})",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            subject = _trim_value(match.group("subject"), limit=80)
+            value = _trim_value(match.group("value"), limit=160)
+            if subject and value:
+                return subject, value
+    return None
+
+
+def _extract_preference_value(text: str) -> str:
+    patterns = (
+        r"\b(?:i prefer|i like|please keep|keep|please make|make)\s+(?P<value>[^.?!]{2,120})",
+        r"\b(?:my favorite)\s+(?P<subject>[a-z][a-z0-9 _-]{1,40})\s+is\s+(?P<value>[^.?!]{2,120})",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if not match:
+            continue
+        if match.groupdict().get("subject"):
+            return _trim_value(f"{match.group('subject')} = {match.group('value')}", limit=160)
+        value = _trim_value(match.group("value"), limit=160)
+        if value:
+            return value
+    if re.search(r"\bconcise\s+(?:answers|replies|responses|style)\b", text, re.IGNORECASE):
+        return "concise replies"
+    return ""
+
+
+def _extract_project_name(text: str) -> str:
+    patterns = (
+        r"\b(?:working on|building|maintaining)\s+(?P<project>(?:project\s+)?[A-Z][A-Za-z0-9_-]{1,50})",
+        r"\bproject\s+(?P<project>[A-Z][A-Za-z0-9_-]{1,50})",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            return _trim_value(match.group("project"), limit=80)
+    return ""
+
+
+def _extract_tool_stack(text: str) -> tuple[str, ...]:
+    known = (
+        "Python",
+        "FastAPI",
+        "React",
+        "TypeScript",
+        "Electron",
+        "Vite",
+        "SQLite",
+        "Obsidian",
+        "LangGraph",
+        "pytest",
+    )
+    lowered = text.casefold()
+    if not any(marker in lowered for marker in ("use ", "using ", "stack", "built with", "tool")):
+        return ()
+    tools = tuple(tool for tool in known if re.search(rf"\b{re.escape(tool)}\b", text, re.IGNORECASE))
+    return tools[:6]
+
+
+def _extract_recent_state(text: str) -> str | None:
+    lowered = text.casefold()
+    state_patterns = (
+        "under pressure",
+        "overwhelmed",
+        "stressed",
+        "anxious",
+        "tired",
+        "exhausted",
+        "frustrated",
+        "relieved",
+        "busy",
+        "sad",
+        "excited",
+    )
+    has_temporal_hint = any(marker in lowered for marker in ("today", "right now", "this week", "lately", "recently", "deadline"))
+    has_self_report = any(marker in lowered for marker in ("i feel", "i'm", "i am", "i have been", "i've been"))
+    if not (has_temporal_hint or has_self_report):
+        return None
+    for state in state_patterns:
+        if state in lowered:
+            return state
+    if re.search(r"\b(?:plan|need|have)\s+to\s+[^.?!]{2,80}\b", lowered) and has_temporal_hint:
+        return "short-term plan"
+    return None
+
+
+def _extract_assistant_personality_inference(text: str) -> str | None:
+    if not text:
+        return None
+    patterns = (
+        r"\b(?:the user|you)\s+(?:is|are|seems?|appear(?:s)?)\s+(?:like\s+)?(?:an?\s+)?(?P<label>[a-z][a-z -]{2,60})(?:\s+person|\s+personality)?\b",
+        r"\b(?:the user|you)\s+has\s+(?:an?\s+)?(?P<label>[a-z][a-z -]{2,60})(?:\s+personality)?\b",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match is None:
+            continue
+        label = _trim_value(match.group("label"), limit=80).casefold()
+        label = re.sub(r"\s+(?:person|personality|user)$", "", label).strip()
+        if _looks_like_personality_label(label):
+            return label
+    return None
+
+
+def _looks_like_personality_label(label: str) -> bool:
+    labels = (
+        "anxious",
+        "depressed",
+        "lazy",
+        "avoidant",
+        "needy",
+        "angry",
+        "emotional",
+        "introvert",
+        "introverted",
+        "perfectionist",
+        "unreliable",
+        "insecure",
+    )
+    return any(marker in label for marker in labels)
+
+
+def _looks_like_preference_subject(subject: str) -> bool:
+    lowered = subject.casefold()
+    return any(marker in lowered for marker in ("prefer", "preference", "favorite", "style", "tone", "editor"))
+
+
+def _summary_for_subject_value(*, kind: MemoryKind, subject: str, value: str) -> str:
+    if kind is MemoryKind.PREFERENCE:
+        return f"User preference for {subject}: {value}."
+    return f"User stated {subject}: {value}."
+
+
+def _permissions_dict(taxonomy: MemoryTaxonomy) -> dict[str, bool]:
+    permissions = taxonomy.recall_permissions
+    return {
+        "can_style_response": permissions.can_style_response,
+        "can_answer_context": permissions.can_answer_context,
+        "can_proactively_mention": permissions.can_proactively_mention,
+        "can_suggest_action": permissions.can_suggest_action,
+        "can_persist": permissions.can_persist,
+    }
+
+
+def _dedupe_specs(specs: Iterable[_CandidateSpec]) -> tuple[_CandidateSpec, ...]:
+    seen: set[tuple[MemoryKind, MemoryScope, SourceTrack, str]] = set()
+    deduped: list[_CandidateSpec] = []
+    for spec in specs:
+        key = (spec.memory_kind, spec.memory_scope, spec.source_track, spec.normalized_value)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(spec)
+    return tuple(deduped)
+
+
+def _trim_value(value: str, *, limit: int) -> str:
+    cleaned = re.sub(r"\s+", " ", value).strip(" .,:;\"'")
+    return cleaned[:limit].strip(" .,:;\"'")
+
+
+def _excerpt(value: str) -> str:
+    return _trim_value(value, limit=MAX_EVIDENCE_EXCERPT)
+
+
+def _compact(value: str) -> str:
+    return re.sub(r"\s+", " ", value or "").strip()
