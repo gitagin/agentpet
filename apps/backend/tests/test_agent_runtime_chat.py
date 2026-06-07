@@ -24,6 +24,41 @@ from app.agents import AgentRuntimeServices, LangGraphAgentRuntime
 from app.services.chat_model import AgentId, AgentModelRegistry
 
 
+class StreamingChatModel:
+    def __init__(self, chunks: list[str]) -> None:
+        self.chunks = chunks
+        self.calls = []
+        self.complete_calls = []
+
+    async def complete(self, *, user_message: str, system_prompt: str | None = None) -> str:
+        self.complete_calls.append((user_message, system_prompt))
+        return "".join(self.chunks)
+
+    async def stream_complete(self, *, user_message: str, system_prompt: str | None = None):
+        self.calls.append((user_message, system_prompt))
+        for chunk in self.chunks:
+            await asyncio.sleep(0)
+            yield chunk
+
+
+def test_langgraph_runtime_streams_plain_chat_tokens_when_model_supports_streaming() -> None:
+    async def run_case():
+        chat_model = StreamingChatModel(["你", "好"])
+        runtime = LangGraphAgentRuntime(AgentRuntimeServices(chat_model=chat_model))
+
+        events = [event async for event in runtime.run(make_state("hello"))]
+
+        return chat_model, events
+
+    chat_model, events = asyncio.run(run_case())
+
+    assert chat_model.complete_calls == []
+    assert chat_model.calls
+    assert [event.text for event in events if event.event == "token"] == ["你", "好"]
+    assert events[-1].event == "done"
+    assert events[-1].text == "你好"
+
+
 def test_langgraph_runtime_uses_configured_chat_model_for_plain_chat() -> None:
     async def run_case():
         chat_model = FakeChatModel("LangGraph 聊天回复")

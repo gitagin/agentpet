@@ -18,7 +18,7 @@ async def synthesize_tts(
 ) -> TtsSynthesisResponse:
     settings = get_settings()
     cache = TtsAudioCache(settings.data_dir / "cache" / "tts")
-    service = TtsService(store, timeout_seconds=settings.model_timeout_seconds, cache=cache)
+    service = TtsService(store, timeout_seconds=settings.tts_timeout_seconds, cache=cache)
     try:
         return await service.synthesize(request)
     except TtsServiceError as exc:

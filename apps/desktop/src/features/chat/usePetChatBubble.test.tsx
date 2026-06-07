@@ -171,16 +171,18 @@ describe("usePetChatBubble", () => {
     expect(result.current.bubble.phase).toBe("fading");
   });
 
-  it("plays only final reply pages through TTS", () => {
+  it("starts stable streamed reply pages through TTS and shows text on playback start", () => {
     const tts = createTtsQueueMock();
     const { result } = renderPetChatBubbleHook(tts);
 
     act(() => {
+      result.current.resetStreamState("assistant-1");
       result.current.assistantReplyRef.current = multiPageReply;
       result.current.setReplyPagesFromText(multiPageReply);
     });
 
-    expect(tts.play).not.toHaveBeenCalled();
+    expect(tts.play).toHaveBeenCalledTimes(1);
+    expect(result.current.bubble.tone).toBe("thinking");
 
     act(() => {
       result.current.startReplyPaging("assistant-1");
@@ -200,8 +202,7 @@ describe("usePetChatBubble", () => {
         cacheEnabled: true,
       },
     });
-    expect(result.current.bubble.tone).toBe("reply");
-    expect(result.current.bubble.message).toBe(firstItem.text);
+    expect(result.current.bubble.tone).toBe("thinking");
     expect(tts.enqueue).not.toHaveBeenCalled();
 
     act(() => {
@@ -250,7 +251,7 @@ describe("usePetChatBubble", () => {
     expect(prefetchedPageIndexes).toEqual([1, 2, 3]);
   });
 
-  it("prefetches stable TTS pages while a long reply is still streaming", () => {
+  it("starts and prefetches stable TTS pages while a long reply is still streaming", () => {
     const tts = createTtsQueueMock();
     const { result } = renderPetChatBubbleHook(tts);
 
@@ -260,17 +261,23 @@ describe("usePetChatBubble", () => {
       result.current.setReplyPagesFromText(longMultiPageReply);
     });
 
-    expect(tts.play).not.toHaveBeenCalled();
+    expect(tts.play).toHaveBeenCalledTimes(1);
     expect(tts.enqueue).not.toHaveBeenCalled();
     expect(tts.prefetch).toHaveBeenCalled();
-    expect(result.current.bubble.tone).toBe("reply");
-    expect(result.current.bubble.message).toBe(result.current.replyPagesRef.current[0]);
-    const firstPrefetchedItem = vi.mocked(tts.prefetch).mock.calls[0][0] as TtsPlaybackItem;
-    expect(firstPrefetchedItem).toMatchObject({
+    expect(result.current.bubble.tone).toBe("thinking");
+    const firstPlaybackItem = vi.mocked(tts.play).mock.calls[0][0] as TtsPlaybackItem;
+    expect(firstPlaybackItem).toMatchObject({
       id: "tts:assistant-streaming:0",
       messageId: "assistant-streaming",
       pageIndex: 0,
     });
+
+    act(() => {
+      result.current.handleTtsPlaybackStart(firstPlaybackItem);
+    });
+
+    expect(result.current.bubble.tone).toBe("reply");
+    expect(result.current.bubble.message).toBe(firstPlaybackItem.text);
   });
 
   it("shows streamed reply text in the bubble before the final reply is ready", () => {
@@ -358,7 +365,7 @@ describe("usePetChatBubble", () => {
     expect(result.current.bubble.message).toBe(secondItem.text);
   });
 
-  it("keeps the final TTS reply page visible while voice prepares", () => {
+  it("waits to show the final TTS reply page until voice playback starts", () => {
     const tts = createTtsQueueMock();
     const { result } = renderPetChatBubbleHook(tts);
 
@@ -368,15 +375,14 @@ describe("usePetChatBubble", () => {
     });
 
     expect(result.current.replyText).toBe("The text is ready before the voice.");
-    expect(result.current.bubble.tone).toBe("reply");
-    expect(result.current.bubble.message).toBe("The text is ready before the voice.");
+    expect(result.current.bubble.tone).toBe("thinking");
 
     act(() => {
       result.current.startReplyPaging("assistant-sync");
     });
 
     const item = vi.mocked(tts.play).mock.calls[0][0] as TtsPlaybackItem;
-    expect(result.current.bubble.message).toBe(item.text);
+    expect(result.current.bubble.tone).toBe("thinking");
 
     act(() => {
       result.current.handleTtsPlaybackStart(item);

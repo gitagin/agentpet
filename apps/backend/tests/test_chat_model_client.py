@@ -33,6 +33,17 @@ class HangingAgent:
         return {"messages": [FakeAIMessage("too late")]}
 
 
+class FakeStreamingModel:
+    def __init__(self, chunks):
+        self.chunks = chunks
+        self.calls = []
+
+    async def astream(self, messages):
+        self.calls.append(messages)
+        for chunk in self.chunks:
+            yield FakeAIMessage(chunk)
+
+
 def test_langchain_graph_client_uses_create_agent_boundary() -> None:
     captured = {}
     fake_agent = FakeAgent(
@@ -76,6 +87,21 @@ def test_langchain_graph_client_uses_create_agent_boundary() -> None:
         "tools": [],
     }
     assert fake_agent.calls == [{"messages": [{"role": "user", "content": "你好"}]}]
+
+
+def test_langchain_graph_client_streams_model_chunks_without_agent_boundary() -> None:
+    model = FakeStreamingModel(["你", "好"])
+    client = LangChainGraphChatClient(
+        api_key="sk-test",
+        base_url="https://example.test/v1",
+        model="demo-model",
+        model_factory=lambda _client: model,
+    )
+
+    chunks = asyncio.run(async_collect_stream(client, user_message="hello", system_prompt="system prompt"))
+
+    assert chunks == ["你", "好"]
+    assert model.calls == [[("system", "system prompt"), ("user", "hello")]]
 
 
 def test_langchain_graph_client_extracts_content_blocks() -> None:
@@ -220,3 +246,12 @@ async def async_complete(
     system_prompt: str | None = None,
 ) -> str:
     return await client.complete(user_message=user_message, system_prompt=system_prompt)
+
+
+async def async_collect_stream(
+    client: LangChainGraphChatClient,
+    *,
+    user_message: str,
+    system_prompt: str | None = None,
+) -> list[str]:
+    return [chunk async for chunk in client.stream_complete(user_message=user_message, system_prompt=system_prompt)]

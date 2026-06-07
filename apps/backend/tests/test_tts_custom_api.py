@@ -91,6 +91,7 @@ def test_custom_tts_settings_key_and_synthesis_do_not_leak_secret(
     assert payload["mime_type"] == "audio/mpeg"
     assert base64.b64decode(payload["audio_base64"]) == audio
     assert captured["url"] == "https://tts.example.test/synthesize"
+    assert captured["timeout"] == 8.0
     assert captured["headers"]["Authorization"] == f"Bearer {secret}"
     assert captured["body"] == {
         "text": "hello",

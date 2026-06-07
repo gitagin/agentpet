@@ -33,6 +33,63 @@ def stream_chat(client: TestClient, message: str) -> list[dict[str, str]]:
     return parse_sse_events(body)
 
 
+def stream_chat_with_payload(client: TestClient, message: str) -> tuple[dict[str, str], list[dict[str, str]]]:
+    chat = client.post("/api/chat", headers=auth(), json={"message": message})
+    assert chat.status_code == 200
+    payload = chat.json()
+    with client.stream("GET", payload["stream_url"], headers=auth()) as stream:
+        body = "".join(stream.iter_text())
+    return payload, parse_sse_events(body)
+
+
+def wait_for_agent_actions(
+    client: TestClient,
+    agent_run_id: str,
+    *,
+    action_type: str | None = None,
+    timeout_seconds: float = 3.0,
+) -> list[dict[str, object]]:
+    deadline = time.time() + timeout_seconds
+    latest: list[dict[str, object]] = []
+    while time.time() < deadline:
+        response = client.get(
+            "/api/agent/actions",
+            headers=auth(),
+            params={"agent_run_id": agent_run_id, "limit": 50},
+        )
+        assert response.status_code == 200
+        latest = response.json()["actions"]
+        if action_type is None:
+            if latest:
+                return latest
+        elif any(action["action_type"] == action_type for action in latest):
+            return latest
+        time.sleep(0.05)
+    return latest
+
+
+def wait_for_continuity_proposals(client: TestClient, *, timeout_seconds: float = 3.0) -> list[dict[str, object]]:
+    deadline = time.time() + timeout_seconds
+    latest: list[dict[str, object]] = []
+    while time.time() < deadline:
+        response = client.get("/api/continuity/proposals", headers=auth())
+        assert response.status_code == 200
+        latest = response.json()["proposals"]
+        if latest:
+            return latest
+        time.sleep(0.05)
+    return latest
+
+
+def agent_run_id_from_events(events: list[dict[str, str]]) -> str:
+    for event in events:
+        payload = json.loads(event["data"])
+        agent_run_id = payload.get("agent_run_id")
+        if isinstance(agent_run_id, str):
+            return agent_run_id
+    raise AssertionError("SSE events did not include agent_run_id")
+
+
 def enable_automation(
     client: TestClient,
     *,
@@ -958,11 +1015,10 @@ def test_continuity_routes_are_protected_and_update_runtime_state(client: TestCl
     assert unauthenticated.status_code == 401
 
     events = stream_chat(client, "I feel tired today, can we continue this tomorrow?")
-    assert "continuity_proposal" in event_names(events)
+    assert_successful_chat_events(events)
+    assert "continuity_proposal" not in event_names(events)
 
-    pending = client.get("/api/continuity/proposals", headers=auth())
-    assert pending.status_code == 200
-    proposals = pending.json()["proposals"]
+    proposals = wait_for_continuity_proposals(client)
     assert proposals
     proposal_id = proposals[0]["proposal_id"]
 
@@ -1003,8 +1059,9 @@ def test_continuity_routes_are_protected_and_update_runtime_state(client: TestCl
 
 def test_rejected_continuity_proposal_remains_out_of_runtime_state(client: TestClient) -> None:
     events = stream_chat(client, "I feel lonely tonight and want to continue this later.")
-    assert "continuity_proposal" in event_names(events)
-    pending = client.get("/api/continuity/proposals", headers=auth()).json()["proposals"]
+    assert_successful_chat_events(events)
+    assert "continuity_proposal" not in event_names(events)
+    pending = wait_for_continuity_proposals(client)
     proposal_id = pending[0]["proposal_id"]
 
     rejected = client.post(
@@ -1145,15 +1202,17 @@ def test_chat_stream_auto_archives_daily_memory_and_records_action(
 
     events = parse_sse_events(body)
     event_names_for_order = event_names(events)
-    assert event_names_for_order.index("reply_ready") < event_names_for_order.index("agent_action")
     assert event_names_for_order[-1] == "done"
-    assert "agent_action" in event_names(events)
-    action_event = next(event for event in events if event["event"] == "agent_action")
-    action_payload = json.loads(action_event["data"])
-    assert action_payload["agent_run_id"] == chat_payload["agent_run_id"]
+    assert "reply_ready" in event_names_for_order
+    assert "agent_action" not in event_names_for_order
+    action_payloads = wait_for_agent_actions(
+        client,
+        chat_payload["agent_run_id"],
+        action_type="chat.daily_archive",
+    )
+    action_payload = next(action for action in action_payloads if action["action_type"] == "chat.daily_archive")
     assert action_payload["action_type"] == "chat.daily_archive"
     assert action_payload["decision"] == "auto"
-    assert action_payload["requires_confirmation"] is False
     assert action_payload["source_agent_run_id"] == chat_payload["agent_run_id"]
     assert action_payload["source_conversation_id"] == chat_payload["conversation_id"]
     assert action_payload["source_message_id"] == chat_payload["message_id"]
@@ -1222,11 +1281,13 @@ def test_chat_stream_auto_summarizes_useful_answer_to_wiki(
         body = "".join(stream.iter_text())
 
     events = parse_sse_events(body)
-    action_payloads = [
-        json.loads(event["data"])
-        for event in events
-        if event["event"] == "agent_action"
-    ]
+    assert_successful_chat_events(events)
+    assert "agent_action" not in event_names(events)
+    action_payloads = wait_for_agent_actions(
+        client,
+        chat_payload["agent_run_id"],
+        action_type="wiki.answer_summary.write",
+    )
     action_types = [payload["action_type"] for payload in action_payloads]
     assert "chat.daily_archive" in action_types
     assert "wiki.answer_summary.write" in action_types
@@ -1364,17 +1425,17 @@ def test_chat_done_auto_long_term_records_candidate_without_vault_profile(
     )
     enable_automation(client, long_term_memory=True)
 
-    events = stream_chat(client, "Remember this: my favorite editor is VS Code.")
+    chat_payload, events = stream_chat_with_payload(client, "Remember this: my favorite editor is VS Code.")
 
     assert_successful_chat_events(events)
-    action_payloads = [
-        json.loads(event["data"])
-        for event in events
-        if event["event"] == "agent_action"
-    ]
+    assert "agent_action" not in event_names(events)
+    action_payloads = wait_for_agent_actions(
+        client,
+        chat_payload["agent_run_id"],
+        action_type="memory.consolidation.candidate",
+    )
     action = next(payload for payload in action_payloads if payload["action_type"] == "memory.consolidation.candidate")
     assert action["decision"] == "auto"
-    assert action["requires_confirmation"] is False
     assert action["metadata"]["candidate_count"] == 1
     assert action["metadata"]["kinds"] == ["preference"]
 
@@ -1403,12 +1464,14 @@ def test_chat_auto_memory_records_low_value_wiki_skip_without_raw_content(
     )
     enable_automation(client, chat_diary=True, wiki_organize=True)
 
-    events = stream_chat(client, "hello")
-    action_payloads = [
-        json.loads(event["data"])
-        for event in events
-        if event["event"] == "agent_action"
-    ]
+    chat_payload, events = stream_chat_with_payload(client, "hello")
+    assert_successful_chat_events(events)
+    assert "agent_action" not in event_names(events)
+    action_payloads = wait_for_agent_actions(
+        client,
+        chat_payload["agent_run_id"],
+        action_type="wiki.answer_summary.skip",
+    )
     skip_action = next(payload for payload in action_payloads if payload["action_type"] == "wiki.answer_summary.skip")
 
     assert skip_action["status"] == "skipped"
@@ -1419,14 +1482,15 @@ def test_chat_auto_memory_records_low_value_wiki_skip_without_raw_content(
 
 
 def test_chat_auto_memory_records_disabled_automation_skip_without_vault_write(client: TestClient) -> None:
-    events = stream_chat(client, "最近主要忙着整理首次使用体验")
+    chat_payload, events = stream_chat_with_payload(client, "最近主要忙着整理首次使用体验")
 
     assert_successful_chat_events(events)
-    action_payloads = [
-        json.loads(event["data"])
-        for event in events
-        if event["event"] == "agent_action"
-    ]
+    assert "agent_action" not in event_names(events)
+    action_payloads = wait_for_agent_actions(
+        client,
+        chat_payload["agent_run_id"],
+        action_type="chat.auto_memory.skip",
+    )
     skip_action = next(payload for payload in action_payloads if payload["action_type"] == "chat.auto_memory.skip")
     assert skip_action["status"] == "skipped"
     assert skip_action["decision"] == "notify"

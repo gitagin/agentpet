@@ -293,6 +293,20 @@ export function usePetChatBubble({
     };
   }
 
+  function stableTtsPageCount() {
+    const pages = replyPagesRef.current;
+    return replyCompleteRef.current ? pages.length : Math.max(0, pages.length - 1);
+  }
+
+  function isReplyPageStableForTts(pageIndex: number) {
+    return pageIndex >= 0 && pageIndex < stableTtsPageCount();
+  }
+
+  function shouldAutoAdvanceTtsFromPage(pageIndex: number) {
+    const nextIndex = pageIndex + 1;
+    return nextIndex < replyPagesRef.current.length && isReplyPageStableForTts(nextIndex);
+  }
+
   function prefetchTtsPagesFrom(pageIndex: number, lookahead = ttsPrefetchLookaheadPages) {
     const config = ttsRef.current;
     if (!config?.enabled || lookahead <= 0) {
@@ -318,6 +332,34 @@ export function usePetChatBubble({
       return;
     }
     prefetchTtsPagesFrom(0, Math.min(ttsPrefetchLookaheadPages, stablePageCount));
+  }
+
+  function startOrAdvanceStableTtsDuringStream(
+    phase: Extract<PetBubblePhase, "speaking" | "complete"> = "speaking",
+  ) {
+    if (!ttsRef.current?.enabled || replyCompleteRef.current || bubblePausedRef.current) {
+      return false;
+    }
+    const stableCount = stableTtsPageCount();
+    if (stableCount <= 0) {
+      return false;
+    }
+    if (pendingTtsDisplayRef.current) {
+      prefetchTtsPagesFrom(replyPageIndexRef.current + 1);
+      return true;
+    }
+    if (visibleTtsPageRef.current) {
+      prepareNextTtsPageFromVisible(visibleTtsPageRef.current);
+      return true;
+    }
+
+    const nextIndex = petBubble.tone === "reply" ? Math.min(replyPageIndexRef.current + 1, stableCount - 1) : 0;
+    const renderResult = renderPage(nextIndex, phase, { playTts: true });
+    if (renderResult !== "pending") {
+      return false;
+    }
+    pendingTtsAutoAdvanceRef.current = shouldAutoAdvanceTtsFromPage(nextIndex);
+    return true;
   }
 
   function clearReplyTts(reason: string) {
@@ -432,7 +474,7 @@ export function usePetChatBubble({
       visibleTtsPageRef.current = {
         itemId: item.id,
         pageIndex: item.pageIndex,
-        autoAdvance: item.pageIndex < replyPagesRef.current.length - 1,
+        autoAdvance: shouldAutoAdvanceTtsFromPage(item.pageIndex),
         hideDelay: replyCompleteRef.current && item.pageIndex >= replyPagesRef.current.length - 1 ? 9000 : null,
       };
       prepareNextTtsPageFromVisible(visibleTtsPageRef.current);
@@ -490,7 +532,6 @@ export function usePetChatBubble({
     if (options.playTts) {
       const item = ttsItemForReplyPage(safeIndex);
       if (item && ttsRef.current?.enabled) {
-        showReplyPage(safeIndex, phase);
         pendingTtsDisplayRef.current = { itemId: item.id, pageIndex: safeIndex, phase, fallbackOnIdle: true };
         ttsRef.current.queue.play(item);
         prefetchTtsPagesFrom(safeIndex + 1);
@@ -531,6 +572,9 @@ export function usePetChatBubble({
     pageIndex: number,
     phase: Extract<PetBubblePhase, "speaking" | "complete">,
   ) {
+    if (!isReplyPageStableForTts(pageIndex)) {
+      return false;
+    }
     const item = ttsItemForReplyPage(pageIndex);
     if (!item || !ttsRef.current?.enabled) {
       return false;
@@ -559,6 +603,9 @@ export function usePetChatBubble({
     if (nextIndex >= pages.length) {
       return;
     }
+    if (!isReplyPageStableForTts(nextIndex)) {
+      return;
+    }
     queueTtsPageForAutoAdvance(nextIndex, replyCompleteRef.current ? "complete" : "speaking");
   }
 
@@ -574,9 +621,12 @@ export function usePetChatBubble({
       return;
     }
     const nextIndex = Math.min(replyPageIndexRef.current + 1, latestPages.length - 1);
+    if (ttsRef.current?.enabled && !isReplyPageStableForTts(nextIndex)) {
+      return;
+    }
     const renderResult = renderPage(nextIndex, replyCompleteRef.current ? "complete" : "speaking", { playTts: true });
     if (renderResult === "pending") {
-      pendingTtsAutoAdvanceRef.current = true;
+      pendingTtsAutoAdvanceRef.current = shouldAutoAdvanceTtsFromPage(nextIndex);
       return;
     }
     scheduleAutoAdvancePage();
@@ -624,6 +674,10 @@ export function usePetChatBubble({
       setPetBubble({ visible: false, title: "", message: "", tone: "reply", phase: "idle" });
       return;
     }
+    if (ttsRef.current?.enabled && !replyCompleteRef.current) {
+      startOrAdvanceStableTtsDuringStream(options.phase || "speaking");
+      return;
+    }
 
     const nextIndex = options.preserveCurrentPage
       ? Math.min(replyPageIndexRef.current, pages.length - 1)
@@ -660,6 +714,30 @@ export function usePetChatBubble({
     }
 
     const safeIndex = Math.min(replyPageIndexRef.current, pages.length - 1);
+    if (ttsRef.current?.enabled) {
+      const pending = pendingTtsDisplayRef.current;
+      const visible = visibleTtsPageRef.current;
+      if (pending?.pageIndex === safeIndex) {
+        pendingTtsAutoAdvanceRef.current = shouldAutoAdvanceTtsFromPage(safeIndex);
+        pendingTtsHideDelayRef.current = safeIndex >= pages.length - 1 ? 9000 : null;
+        prefetchTtsPagesFrom(safeIndex + 1);
+        return;
+      }
+      if (visible?.pageIndex === safeIndex) {
+        visible.autoAdvance = shouldAutoAdvanceTtsFromPage(safeIndex);
+        visible.hideDelay = safeIndex >= pages.length - 1 ? 9000 : null;
+        prepareNextTtsPageFromVisible(visible);
+        return;
+      }
+      if (petBubble.tone === "reply" && safeIndex < pages.length - 1) {
+        const nextIndex = safeIndex + 1;
+        const nextRenderResult = renderPage(nextIndex, "complete", { playTts: true });
+        if (nextRenderResult === "pending") {
+          pendingTtsAutoAdvanceRef.current = shouldAutoAdvanceTtsFromPage(nextIndex);
+          return;
+        }
+      }
+    }
     const renderResult = renderPage(safeIndex, "complete", { playTts: true });
     if (pages.length === 1) {
       if (renderResult === "pending") {
@@ -669,7 +747,7 @@ export function usePetChatBubble({
       }
     } else {
       if (renderResult === "pending") {
-        pendingTtsAutoAdvanceRef.current = true;
+        pendingTtsAutoAdvanceRef.current = shouldAutoAdvanceTtsFromPage(safeIndex);
       } else {
         scheduleAutoAdvancePage();
       }
@@ -732,7 +810,7 @@ export function usePetChatBubble({
       return;
     }
     if (renderResult === "pending") {
-      pendingTtsAutoAdvanceRef.current = true;
+      pendingTtsAutoAdvanceRef.current = shouldAutoAdvanceTtsFromPage(nextIndex);
     } else {
       scheduleAutoAdvancePage();
     }
@@ -747,7 +825,7 @@ export function usePetChatBubble({
     const previousIndex = Math.max(replyPageIndexRef.current - 1, 0);
     const renderResult = renderPage(previousIndex, replyCompleteRef.current ? "complete" : "speaking", { playTts: true });
     if (renderResult === "pending") {
-      pendingTtsAutoAdvanceRef.current = true;
+      pendingTtsAutoAdvanceRef.current = shouldAutoAdvanceTtsFromPage(previousIndex);
     } else {
       scheduleAutoAdvancePage();
     }

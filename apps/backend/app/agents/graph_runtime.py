@@ -1,22 +1,24 @@
 ﻿from __future__ import annotations
 
 import logging
+from collections.abc import AsyncIterator
 from typing import Any
 
 from langgraph.graph import END, START, StateGraph
 
 from app.models.api import MemorySearchResponse
-from app.models.enums import AgentIntent
+from app.models.enums import AgentIntent, AgentRunStatus
 from app.services.agent_actions import AgentActionCreate
+from app.services.chat_model import ChatModelError, StreamingChatModelClientProtocol
 from app.models.enums import AgentId
 from .agent_runner import run_agent
-from .events import AgentStatusEvent, NegotiationDoneEvent, NegotiationStepEvent
+from .events import AgentDoneEvent, AgentErrorEvent, AgentStatusEvent, AgentTokenEvent, NegotiationDoneEvent, NegotiationStepEvent
 from .events_helpers import _agent_state, _append_status, _events
 from .immediate_understanding import extract_immediate_understanding
 from .intent import route_intent
 from .memory_router import route_memory
 from .negotiation_graph import build_negotiation_graph
-from .nodes.chat import _chat_node
+from .nodes.chat import _chat_node, _message_with_runtime_context
 from .nodes.finish import _finish_node
 from .nodes.memory import _memory_node
 from .nodes.orchestrator import OrchestratorNode
@@ -25,9 +27,9 @@ from .nodes.task import _task_node
 from .nodes.wiki import _wiki_node
 from .prompts.system import _semantic_system_prompt
 from .registry import AgentRegistry, default_agent_registry
-from .retrieval.router import _select_after_memory_retrieval
+from .retrieval.router import _chat_agent_tool_names, _select_after_memory_retrieval
 from .retrieval.scoping import _force_search_memory_source_scope, _select_retrieval_entry_node, _semantic_from_memory_route
-from .runtime_helpers import _chat_system_prompt
+from .runtime_helpers import _chat_system_prompt, _continuity_signal, _continuity_signal_event
 from .semantic import _fallback_semantic_analysis, _parse_semantic_analysis
 from .services import AgentRuntimeServices, ToolCallingChatModelProtocol
 from .state import AgentState, NegotiationState, SemanticAnalysisResult
@@ -59,6 +61,12 @@ class LangGraphAgentRuntime:
         self.graph = self._build_graph()
 
     async def run(self, state: AgentState):
+        streaming_graph_state = await self._prepare_streaming_chat_fast_path(state)
+        if streaming_graph_state is not None:
+            async for event in self._run_streaming_chat_fast_path(streaming_graph_state):
+                yield event
+            return
+
         graph_state: dict[str, Any] = {
             "agent_state": state,
             "events": [],
@@ -71,6 +79,108 @@ class LangGraphAgentRuntime:
                 for event in events[yielded:]:
                     yield event
                 yielded = len(events)
+
+    async def _prepare_streaming_chat_fast_path(self, state: AgentState) -> dict[str, Any] | None:
+        try:
+            chat_model = self._model_for(AgentId.CHAT_AGENT)
+        except Exception:
+            return None
+        if not isinstance(chat_model, StreamingChatModelClientProtocol):
+            return None
+
+        graph_state: dict[str, Any] = {
+            "agent_state": state.model_copy(deep=True),
+            "events": [],
+            "failed": False,
+        }
+        await self._route_node(graph_state)
+        await self._semantic_node(graph_state)
+        if graph_state.get("failed"):
+            return None
+
+        prepared_state = _agent_state(graph_state)
+        if prepared_state.route is None or prepared_state.route.intent != AgentIntent.CHAT:
+            return None
+        if prepared_state.citations or _needs_chat_context(prepared_state):
+            return None
+        if _chat_agent_tool_names(prepared_state, self.services):
+            return None
+        return graph_state
+
+    async def _run_streaming_chat_fast_path(self, graph_state: dict[str, Any]) -> AsyncIterator[Any]:
+        state = _agent_state(graph_state)
+        for event in _events(graph_state):
+            yield event
+
+        signal = _continuity_signal(self.services.continuity)
+        if signal is not None:
+            yield _continuity_signal_event(state.agent_run_id, signal)
+
+        yield AgentStatusEvent(
+            agent_run_id=state.agent_run_id,
+            status=state.status,
+            intent=state.route.intent if state.route else None,
+            message="正在生成桌宠回复。",
+            stage="chat_generation",
+        )
+
+        chat_model = self._model_for(AgentId.CHAT_AGENT)
+        if not isinstance(chat_model, StreamingChatModelClientProtocol):
+            return
+
+        chunks: list[str] = []
+        try:
+            async for chunk in chat_model.stream_complete(
+                user_message=_message_with_runtime_context(self.services, state),
+                system_prompt=_chat_system_prompt(),
+            ):
+                if not chunk:
+                    continue
+                chunks.append(chunk)
+                yield AgentTokenEvent(agent_run_id=state.agent_run_id, text=chunk)
+        except ChatModelError as exc:
+            state.status = AgentRunStatus.FAILED
+            state.error_code = exc.code
+            state.error_message = str(exc)
+            yield AgentErrorEvent(agent_run_id=state.agent_run_id, code=exc.code, message=str(exc))
+            return
+        except Exception:
+            state.status = AgentRunStatus.FAILED
+            state.error_code = "model_invocation_failed"
+            state.error_message = "模型调用失败，请检查模型服务地址、模型名称和 API 密钥。"
+            yield AgentErrorEvent(
+                agent_run_id=state.agent_run_id,
+                code=state.error_code,
+                message=state.error_message,
+            )
+            return
+
+        response = "".join(chunks).strip()
+        if not response:
+            state.status = AgentRunStatus.FAILED
+            state.error_code = "empty_response"
+            state.error_message = "模型服务返回了空回复。"
+            yield AgentErrorEvent(
+                agent_run_id=state.agent_run_id,
+                code=state.error_code,
+                message=state.error_message,
+            )
+            return
+
+        state.response_text = response
+        state.status = AgentRunStatus.SUCCESS
+        yield AgentStatusEvent(
+            agent_run_id=state.agent_run_id,
+            status=state.status,
+            intent=state.route.intent if state.route else None,
+            message="回复已完成，后台保存聊天记忆。",
+            stage="background_memory",
+        )
+        yield AgentDoneEvent(
+            agent_run_id=state.agent_run_id,
+            intent=state.route.intent,
+            text=response,
+        )
 
     def _build_graph(self):
         if self._should_use_negotiation():

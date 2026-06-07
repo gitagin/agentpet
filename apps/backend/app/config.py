@@ -41,6 +41,10 @@ class Settings(BaseSettings):
         default=30.0,
         alias="AGENT_PET_MODEL_TIMEOUT_SECONDS",
     )
+    tts_timeout_seconds: float = Field(
+        default=8.0,
+        alias="AGENT_PET_TTS_TIMEOUT_SECONDS",
+    )
 
     model_config = SettingsConfigDict(extra="ignore")
 

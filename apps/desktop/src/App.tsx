@@ -358,6 +358,9 @@ function App() {
   });
   const [submittingFirstUseOnboarding, setSubmittingFirstUseOnboarding] = useState(false);
   const streamAbort = useRef<AbortController | null>(null);
+  const activeChatRequestIdRef = useRef<string | null>(null);
+  const streamingRef = useRef(false);
+  const conversationIdRef = useRef<string | null>(conversationId);
   const live2dTaskStageRef = useRef<() => void>(() => undefined);
   const petDragRef = useRef<{
     pointerId: number;
@@ -374,6 +377,14 @@ function App() {
   const applySettingsStatusRef = useRef<(response: SettingsStatusResponse) => void>((response) => {
     pendingSettingsStatusRef.current = response;
   });
+
+  useEffect(() => {
+    conversationIdRef.current = conversationId;
+  }, [conversationId]);
+
+  useEffect(() => {
+    streamingRef.current = streaming;
+  }, [streaming]);
 
   const {
     api,
@@ -864,9 +875,12 @@ function App() {
     options: SendChatTextOptions = {},
   ): Promise<boolean> {
     const text = rawText.trim();
-    if (!text || streaming) {
+    if (!text || streamingRef.current) {
       return false;
     }
+    streamAbort.current?.abort();
+    const requestId = crypto.randomUUID();
+    activeChatRequestIdRef.current = requestId;
     const displayText = options.displayText?.trim() || text;
     if (agentActionsStatus !== "loading") {
       void loadAgentActions({ silent: true });
@@ -890,6 +904,7 @@ function App() {
     setMessages((current) => [...current, userMessage, assistantMessage]);
     clearInput();
     petChat.setInputVisible(false);
+    streamingRef.current = true;
     setStreaming(true);
     setNotice(null);
     petChat.resetStreamState(assistantId);
@@ -907,15 +922,20 @@ function App() {
 
     const abort = new AbortController();
     streamAbort.current = abort;
+    const isCurrentRequest = () => activeChatRequestIdRef.current === requestId;
 
     try {
       const accepted = await api.startChat(
         {
-          conversation_id: conversationId,
+          conversation_id: conversationIdRef.current,
           message: text,
         },
         abort.signal,
       );
+      if (!isCurrentRequest()) {
+        return false;
+      }
+      conversationIdRef.current = accepted.conversation_id;
       setConversationId(accepted.conversation_id);
       setMessages((current) =>
         current.map((message) =>
@@ -946,6 +966,9 @@ function App() {
             }
           },
           onEvent: (sseEvent) => {
+            if (!isCurrentRequest()) {
+              return;
+            }
             applyStreamEvent(assistantId, sseEvent, {
               petChat,
               setMessages,
@@ -982,12 +1005,17 @@ function App() {
               triggerLive2DTaskStage,
             });
             if (sseEvent.event === "reply_ready") {
+              streamingRef.current = false;
               setStreaming(false);
+              void loadAgentActions({ silent: true });
             }
           },
         },
         abort.signal,
       );
+      if (!isCurrentRequest()) {
+        return false;
+      }
       petChat.clearStreamWatchdogTimer();
 
       if (petChat.streamFailedRef.current) {
@@ -1013,6 +1041,9 @@ function App() {
       }
       return !petChat.streamFailedRef.current;
     } catch (error) {
+      if (!isCurrentRequest()) {
+        return false;
+      }
       petChat.clearStreamWatchdogTimer();
       petChat.streamFailedRef.current = true;
       const message = describeError(error, "消息发送失败");
@@ -1034,10 +1065,14 @@ function App() {
       }
       return false;
     } finally {
-      petChat.clearStreamWatchdogTimer();
-      setStreaming(false);
-      streamAbort.current = null;
-      petChat.finishStream();
+      if (activeChatRequestIdRef.current === requestId) {
+        petChat.clearStreamWatchdogTimer();
+        streamingRef.current = false;
+        setStreaming(false);
+        streamAbort.current = null;
+        activeChatRequestIdRef.current = null;
+        petChat.finishStream();
+      }
     }
   }
 

@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import re
-from collections.abc import Callable, Sequence
+from collections.abc import AsyncIterator, Callable, Sequence
 from dataclasses import dataclass
-from typing import Any, Mapping, Protocol
+from typing import Any, Mapping, Protocol, runtime_checkable
 
 from app.models.enums import AgentId
 
@@ -48,11 +48,17 @@ class AgentModelNotConfiguredError(ChatModelError):
         self.agent_id = normalized
 
 
+@runtime_checkable
 class ChatModelClientProtocol(Protocol):
     def complete(self, *, user_message: str, system_prompt: str | None = None) -> str: ...
 
 
-ModelFactory = Callable[["LangChainGraphChatClient"], Any]
+@runtime_checkable
+class StreamingChatModelClientProtocol(ChatModelClientProtocol, Protocol):
+    def stream_complete(self, *, user_message: str, system_prompt: str | None = None) -> AsyncIterator[str]: ...
+
+
+ModelFactory = Callable[..., Any]
 AgentFactory = Callable[[Any, str | None, Sequence[Any]], Any]
 
 
@@ -98,6 +104,34 @@ class LangChainGraphChatClient:
         )
         return result.text
 
+    async def stream_complete(self, *, user_message: str, system_prompt: str | None = None) -> AsyncIterator[str]:
+        saw_text = False
+        try:
+            async for chunk in self._stream_model(
+                user_message=user_message,
+                system_prompt=system_prompt,
+            ):
+                text = _extract_stream_text(chunk)
+                if not text:
+                    continue
+                saw_text = True
+                yield text
+        except ImportError as exc:
+            raise ChatModelError(
+                "LangChain dependency is not installed.",
+                code="dependency_missing",
+            ) from exc
+        except TimeoutError as exc:
+            raise classify_chat_model_exception(exc) from exc
+        except Exception as exc:
+            raise classify_chat_model_exception(exc) from exc
+
+        if not saw_text:
+            raise ChatModelError(
+                "Model returned an empty response.",
+                code="empty_response",
+            )
+
     async def complete_with_tools(
         self,
         *,
@@ -139,17 +173,56 @@ class LangChainGraphChatClient:
             return await agent.ainvoke(payload)
         return await asyncio.to_thread(agent.invoke, payload)
 
+    async def _stream_model(
+        self,
+        *,
+        user_message: str,
+        system_prompt: str | None,
+    ) -> AsyncIterator[Any]:
+        model = self._create_model(streaming=True)
+        messages: list[tuple[str, str]] = []
+        if system_prompt:
+            messages.append(("system", system_prompt))
+        messages.append(("user", user_message))
+
+        if hasattr(model, "astream"):
+            stream = model.astream(messages)
+            iterator = stream.__aiter__()
+            deadline = asyncio.get_running_loop().time() + max(self.timeout_seconds, 0.001)
+            while True:
+                remaining = deadline - asyncio.get_running_loop().time()
+                if remaining <= 0:
+                    raise TimeoutError("chat model streaming timed out")
+                try:
+                    yield await asyncio.wait_for(iterator.__anext__(), timeout=remaining)
+                except StopAsyncIteration:
+                    return
+
+        if hasattr(model, "invoke"):
+            yield await asyncio.wait_for(
+                asyncio.to_thread(model.invoke, messages),
+                timeout=max(self.timeout_seconds, 0.001),
+            )
+            return
+
+        yield await self.complete(user_message=user_message, system_prompt=system_prompt)
+
     def _create_agent(self, system_prompt: str | None, tools: Sequence[Any]) -> Any:
         model = self._create_model()
         factory = self.agent_factory or _default_agent_factory
         return factory(model, system_prompt, tools)
 
-    def _create_model(self) -> Any:
+    def _create_model(self, *, streaming: bool = False) -> Any:
         factory = self.model_factory or _default_model_factory
-        return factory(self)
+        try:
+            return factory(self, streaming=streaming)
+        except TypeError as exc:
+            if "streaming" not in str(exc):
+                raise
+            return factory(self)
 
 
-def _default_model_factory(client: LangChainGraphChatClient) -> Any:
+def _default_model_factory(client: LangChainGraphChatClient, *, streaming: bool = False) -> Any:
     from langchain_openai import ChatOpenAI
 
     return ChatOpenAI(
@@ -157,6 +230,7 @@ def _default_model_factory(client: LangChainGraphChatClient) -> Any:
         base_url=client.base_url.rstrip("/"),
         model=client.model,
         timeout=client.timeout_seconds,
+        streaming=streaming,
     )
 
 
@@ -223,6 +297,17 @@ def _coerce_content_to_text(content: Any) -> str:
         "模型服务响应格式无法转换为文本。",
         code="invalid_response",
     )
+
+
+def _extract_stream_text(chunk: Any) -> str:
+    if isinstance(chunk, tuple) and chunk:
+        chunk = chunk[0]
+    if isinstance(chunk, str):
+        return chunk
+    try:
+        return _coerce_content_to_text(_message_content(chunk))
+    except ChatModelError:
+        return ""
 
 
 def classify_chat_model_exception(exc: Exception) -> ChatModelError:

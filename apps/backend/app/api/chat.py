@@ -1,4 +1,5 @@
 from collections.abc import AsyncIterator
+import asyncio
 import logging
 
 from fastapi import APIRouter, Request, status
@@ -122,8 +123,7 @@ async def _persisting_stream(request: Request, state: AgentState) -> AsyncIterat
                         intent=event.intent,
                         text=final_text,
                     )
-                    async for post_event in _complete_assistant_message(request, state, assistant_message_id, final_text):
-                        yield post_event
+                    _schedule_post_reply_work(request, state, assistant_message_id, final_text)
                     final_status = AgentRunStatus.SUCCESS.value
                 elif isinstance(event, AgentErrorEvent):
                     terminal_event_seen = True
@@ -156,12 +156,41 @@ async def _persisting_stream(request: Request, state: AgentState) -> AsyncIterat
         pop_chat_run(request, state.agent_run_id)
 
 
-async def _complete_assistant_message(request: Request, state: AgentState, assistant_message_id: str, final_text: str) -> AsyncIterator[AgentEventBase]:
-    _update_assistant_message(request, assistant_message_id, final_text, MessageStatus.COMPLETED.value)
-    async for continuity_event in _create_continuity_proposals(request, state, assistant_answer=final_text):
-        yield continuity_event
-    for action_event in await _archive_chat_memory_in_background(request, state, assistant_message_id, final_text):
-        yield action_event
+def _schedule_post_reply_work(request: Request, state: AgentState, assistant_message_id: str, final_text: str) -> None:
+    context = AppContext(
+        app=request.app,
+        request_id=getattr(getattr(request, "state", None), "request_id", None),
+    )
+    task = asyncio.create_task(
+        _complete_assistant_message_background(
+            context,
+            state.model_copy(deep=True),
+            assistant_message_id,
+            final_text,
+        )
+    )
+    task.add_done_callback(_log_post_reply_task_result)
+
+
+async def _complete_assistant_message_background(
+    context: AppContext,
+    state: AgentState,
+    assistant_message_id: str,
+    final_text: str,
+) -> None:
+    _update_assistant_message(context, assistant_message_id, final_text, MessageStatus.COMPLETED.value)
+    async for _ in _create_continuity_proposals(context, state, assistant_answer=final_text):
+        pass
+    await _archive_chat_memory_in_background(context, state, assistant_message_id, final_text)
+
+
+def _log_post_reply_task_result(task: asyncio.Task[None]) -> None:
+    try:
+        task.result()
+    except asyncio.CancelledError:
+        logger.info("Post-reply chat memory task was cancelled")
+    except Exception:
+        logger.warning("Post-reply chat memory task failed", exc_info=True)
 
 
 def _fail_message(request: Request, state: AgentState, assistant_message_id: str, content: str, code: str, message: str) -> AgentErrorEvent:
@@ -170,7 +199,7 @@ def _fail_message(request: Request, state: AgentState, assistant_message_id: str
 
 
 async def _archive_chat_memory_in_background(
-    request: Request,
+    request: Request | AppContext,
     state: AgentState,
     assistant_message_id: str,
     assistant_answer: str,
@@ -189,7 +218,7 @@ async def _archive_chat_memory_in_background(
 
 
 async def _create_continuity_proposals(
-    request: Request,
+    request: Request | AppContext,
     state: AgentState,
     *,
     assistant_answer: str,

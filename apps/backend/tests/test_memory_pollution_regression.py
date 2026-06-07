@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -78,6 +79,29 @@ def stream_chat(client: TestClient, message: str) -> tuple[dict[str, str], list[
     with client.stream("GET", payload["stream_url"], headers=auth()) as stream:
         body = "".join(stream.iter_text())
     return payload, parse_sse_events(body)
+
+
+def wait_for_agent_actions(
+    client: TestClient,
+    agent_run_id: str,
+    *,
+    action_type: str,
+    timeout_seconds: float = 3.0,
+) -> list[dict[str, object]]:
+    deadline = time.time() + timeout_seconds
+    latest: list[dict[str, object]] = []
+    while time.time() < deadline:
+        response = client.get(
+            "/api/agent/actions",
+            headers=auth(),
+            params={"agent_run_id": agent_run_id, "limit": 50},
+        )
+        assert response.status_code == 200
+        latest = response.json()["actions"]
+        if any(action["action_type"] == action_type for action in latest):
+            return latest
+        time.sleep(0.05)
+    return latest
 
 
 def create_fact(
@@ -336,12 +360,13 @@ def test_agent_actions_trace_automatic_memory_activity(client_factory, tmp_path:
         enable_automation(client, long_term_memory=True)
 
         chat_payload, events = stream_chat(client, "Remember this: my favorite editor is VS Code.")
+        assert "agent_action" not in [event["event"] for event in events]
 
-        action_payloads = [
-            json.loads(event["data"])
-            for event in events
-            if event["event"] == "agent_action"
-        ]
+        action_payloads = wait_for_agent_actions(
+            client,
+            chat_payload["agent_run_id"],
+            action_type="memory.consolidation.candidate",
+        )
         consolidation_action = next(
             payload
             for payload in action_payloads
