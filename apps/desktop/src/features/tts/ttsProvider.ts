@@ -26,6 +26,7 @@ export interface TtsProvider<TResult extends TtsSynthesisResult = TtsSynthesisRe
   synthesize(request: TtsSynthesisRequest, signal?: AbortSignal): Promise<TResult>;
   play(result: TResult, options?: TtsProviderPlaybackOptions): Promise<TtsProviderPlaybackResult<TResult>>;
   stop(reason?: string): void;
+  dispose?(result: TResult): void;
   getVoices?(): Promise<TtsVoice[]>;
 }
 

@@ -24,11 +24,21 @@ export type UseTtsPlaybackQueueOptions = {
 export type TtsPlaybackQueueController = {
   state: TtsPlaybackState;
   enqueue: (item: TtsPlaybackItem) => void;
+  prefetch: (item: TtsPlaybackItem) => void;
   play: (item: TtsPlaybackItem) => void;
   stop: (reason?: string) => void;
   cancelMessage: (messageId: string) => void;
   clear: (reason?: string) => void;
   setVolume: (volume: number) => void;
+};
+
+type PrefetchedSynthesis = {
+  controller: AbortController;
+  item: TtsPlaybackItem;
+  key: string;
+  promise: Promise<TtsSynthesisResult>;
+  provider: TtsProvider<TtsSynthesisResult>;
+  used: boolean;
 };
 
 function currentIsoTime() {
@@ -63,6 +73,17 @@ function itemAlreadyScheduled(
   queue: TtsPlaybackItem[],
 ) {
   return currentItem?.id === item.id || queue.some((queuedItem) => queuedItem.id === item.id);
+}
+
+function synthesisKeyForItem(item: TtsPlaybackItem) {
+  return JSON.stringify({
+    text: item.text,
+    provider: item.synthesis.provider,
+    voice: item.synthesis.voice?.id ?? null,
+    speed: item.synthesis.speed,
+    volume: item.synthesis.volume ?? null,
+    cacheEnabled: item.synthesis.cacheEnabled ?? null,
+  });
 }
 
 function playbackErrorFromUnknown(
@@ -105,6 +126,7 @@ export function useTtsPlaybackQueue({
   const activeRunIdRef = useRef(0);
   const activeAbortControllerRef = useRef<AbortController | null>(null);
   const activeProviderRef = useRef<TtsProvider<TtsSynthesisResult> | null>(null);
+  const prefetchedSynthesisRef = useRef<Map<string, PrefetchedSynthesis>>(new Map());
   const startNextRef = useRef<() => void>(() => undefined);
   const [state, setState] = useState<TtsPlaybackState>(() =>
     createPlaybackState("idle", null, [], null, clampTtsVolume(initialVolume), now),
@@ -137,6 +159,59 @@ export function useTtsPlaybackQueue({
         nowRef.current,
       ),
     );
+  }, []);
+
+  const disposePrefetchedResult = useCallback(
+    (entry: PrefetchedSynthesis) => {
+      void entry.promise.then((result) => {
+        if (!entry.used) {
+          entry.provider.dispose?.(result);
+        }
+      }).catch(() => undefined);
+    },
+    [],
+  );
+
+  const clearPrefetchedItems = useCallback((predicate?: (item: TtsPlaybackItem) => boolean) => {
+    Array.from(prefetchedSynthesisRef.current.entries()).forEach(([itemId, entry]) => {
+      if (!predicate || predicate(entry.item)) {
+        prefetchedSynthesisRef.current.delete(itemId);
+        entry.controller.abort();
+        disposePrefetchedResult(entry);
+      }
+    });
+  }, [disposePrefetchedResult]);
+
+  const prefetchQueuedItem = useCallback((item: TtsPlaybackItem) => {
+    if (!hasPlayableText(item)) {
+      return;
+    }
+    const key = synthesisKeyForItem(item);
+    const existing = prefetchedSynthesisRef.current.get(item.id);
+    if (existing) {
+      if (existing.key === key) {
+        return;
+      }
+      prefetchedSynthesisRef.current.delete(item.id);
+      existing.controller.abort();
+      disposePrefetchedResult(existing);
+    }
+    const provider = providersRef.current[item.synthesis.provider];
+    if (!provider) {
+      return;
+    }
+    const controller = new AbortController();
+    const promise = provider.synthesize({ ...item.synthesis, text: item.text }, controller.signal);
+    void promise.catch(() => undefined);
+    const entry: PrefetchedSynthesis = {
+      controller,
+      item,
+      key,
+      promise,
+      provider,
+      used: false,
+    };
+    prefetchedSynthesisRef.current.set(item.id, entry);
   }, []);
 
   const stopActivePlayback = useCallback((reason: string, status: TtsPlaybackStatus) => {
@@ -175,27 +250,62 @@ export function useTtsPlaybackQueue({
       return;
     }
 
-    const abortController = new AbortController();
+    const prefetchedCandidate = prefetchedSynthesisRef.current.get(item.id);
+    const prefetched =
+      prefetchedCandidate && prefetchedCandidate.key === synthesisKeyForItem(item)
+        ? prefetchedCandidate
+        : null;
+    if (prefetchedCandidate && !prefetched) {
+      prefetchedSynthesisRef.current.delete(item.id);
+      prefetchedCandidate.controller.abort();
+      disposePrefetchedResult(prefetchedCandidate);
+    }
+    if (prefetched) {
+      prefetchedSynthesisRef.current.delete(item.id);
+      prefetched.used = true;
+    }
+    const playbackProvider = prefetched?.provider ?? provider;
+    const abortController = prefetched?.controller ?? new AbortController();
     activeAbortControllerRef.current = abortController;
-    activeProviderRef.current = provider;
+    activeProviderRef.current = playbackProvider;
     publish();
 
     void (async () => {
       try {
-        const synthesis = await provider.synthesize(
-          {
-            ...item.synthesis,
-            text: item.text,
-          },
-          abortController.signal,
-        );
+        let synthesis: TtsSynthesisResult;
+        try {
+          synthesis = prefetched
+            ? await prefetched.promise
+            : await provider.synthesize(
+                {
+                  ...item.synthesis,
+                  text: item.text,
+                },
+                abortController.signal,
+              );
+        } catch (error) {
+          if (!prefetched) {
+            throw error;
+          }
+          if (activeRunIdRef.current !== runId || abortController.signal.aborted) {
+            return;
+          }
+          synthesis = await provider.synthesize(
+              {
+                ...item.synthesis,
+                text: item.text,
+              },
+              abortController.signal,
+            );
+        }
         if (activeRunIdRef.current !== runId || abortController.signal.aborted) {
+          playbackProvider.dispose?.(synthesis);
           return;
         }
 
         statusRef.current = "playing";
         publish();
-        const playbackPromise = provider.play(synthesis, {
+        const playbackPromise = playbackProvider.play(synthesis, {
           signal: abortController.signal,
           volume: volumeRef.current,
         });
@@ -252,11 +362,21 @@ export function useTtsPlaybackQueue({
       return;
     }
     queueRef.current = [...queueRef.current, item];
+    if (currentItemRef.current) {
+      prefetchQueuedItem(item);
+    }
     publish();
     if (!currentItemRef.current) {
       startNextRef.current();
     }
-  }, [publish]);
+  }, [prefetchQueuedItem, publish]);
+
+  const prefetch = useCallback((item: TtsPlaybackItem) => {
+    if (currentItemRef.current?.id === item.id || itemAlreadyScheduled(item, currentItemRef.current, queueRef.current)) {
+      return;
+    }
+    prefetchQueuedItem(item);
+  }, [prefetchQueuedItem]);
 
   const play = useCallback((item: TtsPlaybackItem) => {
     if (!hasPlayableText(item)) {
@@ -266,12 +386,13 @@ export function useTtsPlaybackQueue({
     if (currentItemRef.current?.id === item.id) {
       return;
     }
+    clearPrefetchedItems((prefetchedItem) => prefetchedItem.messageId !== item.messageId);
     queueRef.current = [];
     if (currentItemRef.current || activeProviderRef.current || activeAbortControllerRef.current) {
       stopActivePlayback("replaced", "cancelled");
     }
     startPlayback(item);
-  }, [startPlayback, stopActivePlayback]);
+  }, [clearPrefetchedItems, startPlayback, stopActivePlayback]);
 
   const stop = useCallback((reason = "stopped") => {
     stopActivePlayback(reason, "cancelled");
@@ -279,6 +400,7 @@ export function useTtsPlaybackQueue({
 
   const cancelMessage = useCallback((messageId: string) => {
     queueRef.current = queueRef.current.filter((item) => item.messageId !== messageId);
+    clearPrefetchedItems((item) => item.messageId === messageId);
     if (currentItemRef.current?.messageId === messageId) {
       stopActivePlayback("message_cancelled", "cancelled");
       startNextRef.current();
@@ -288,10 +410,11 @@ export function useTtsPlaybackQueue({
     if (!currentItemRef.current) {
       startNextRef.current();
     }
-  }, [publish, stopActivePlayback]);
+  }, [clearPrefetchedItems, publish, stopActivePlayback]);
 
   const clear = useCallback((reason = "cleared") => {
     queueRef.current = [];
+    clearPrefetchedItems();
     if (currentItemRef.current || activeProviderRef.current || activeAbortControllerRef.current) {
       stopActivePlayback(reason, "idle");
       return;
@@ -299,7 +422,7 @@ export function useTtsPlaybackQueue({
     statusRef.current = "idle";
     errorRef.current = null;
     publish();
-  }, [publish, stopActivePlayback]);
+  }, [clearPrefetchedItems, publish, stopActivePlayback]);
 
   const setVolume = useCallback((volume: number) => {
     volumeRef.current = clampTtsVolume(volume);
@@ -311,14 +434,16 @@ export function useTtsPlaybackQueue({
       activeRunIdRef.current += 1;
       activeAbortControllerRef.current?.abort();
       activeProviderRef.current?.stop("unmount");
+      clearPrefetchedItems();
       activeAbortControllerRef.current = null;
       activeProviderRef.current = null;
     };
-  }, []);
+  }, [clearPrefetchedItems]);
 
   return {
     state,
     enqueue,
+    prefetch,
     play,
     stop,
     cancelMessage,

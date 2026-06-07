@@ -21,7 +21,8 @@ const {
   normalizePetBubbleText,
   paginatePetBubbleReply,
   petBubbleHardSplitWeight,
-  petBubblePageDelayMs,
+  petBubblePageDelayMaxMs,
+  petBubblePageDelayMinMs,
   petBubbleSegmentMinWeight,
   petBubbleSegmentMaxWeight,
   segmentPetBubbleText,
@@ -134,7 +135,10 @@ for (const sample of samples) {
       assert.ok(hasNaturalEnding(page), `${sample.name}: segment ${segmentNumber} should end at a natural boundary`);
     }
     const delay = getPetBubblePageDelay(page);
-    assert.equal(delay, petBubblePageDelayMs, `${sample.name}: segment delay should be fixed (${delay})`);
+    assert.ok(
+      delay >= petBubblePageDelayMinMs && delay <= petBubblePageDelayMaxMs,
+      `${sample.name}: segment delay should be bounded (${delay})`,
+    );
     assertNoBrokenGraphemeBoundary(page, sample.name, segmentNumber);
   }
 

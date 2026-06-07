@@ -12,7 +12,9 @@ import {
 type SystemTtsSynthesisResult = Extract<TtsSynthesisResult, { kind: "system" }>;
 
 export type SystemTtsProviderDependencies = {
-  speechSynthesis?: Pick<SpeechSynthesis, "cancel" | "getVoices" | "speak"> | null;
+  speechSynthesis?:
+    | (Pick<SpeechSynthesis, "cancel" | "getVoices" | "speak"> & Partial<Pick<SpeechSynthesis, "resume">>)
+    | null;
   createUtterance?: (text: string) => SpeechSynthesisUtterance;
 };
 
@@ -141,7 +143,11 @@ export function createSystemTtsProvider(
           },
           { once: true },
         );
-        speechSynthesis.speak(utterance);
+        if (!options?.signal?.aborted && !playback.settled) {
+          speechSynthesis.resume?.();
+          speechSynthesis.speak(utterance);
+          speechSynthesis.resume?.();
+        }
       });
     },
 

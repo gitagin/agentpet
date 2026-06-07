@@ -112,6 +112,29 @@ function createControlledProvider(failRequestIds: string[] = []) {
   };
 }
 
+function createProviderThatFailsFirstRequest(requestId: string) {
+  const controlled = createControlledProvider();
+  let failed = false;
+  controlled.synthesize.mockImplementation(
+    async (request: TtsSynthesisRequest, signal?: AbortSignal): Promise<TtsSynthesisResult> => {
+      if (signal?.aborted) {
+        throw createTtsProviderError("mock", "cancelled", "cancelled");
+      }
+      if (request.requestId === requestId && !failed) {
+        failed = true;
+        throw createTtsProviderError("mock", "provider_failed", "transient synthesis failed");
+      }
+      return {
+        kind: "mock",
+        requestId: request.requestId,
+        provider: "mock",
+        durationMs: 100,
+      };
+    },
+  );
+  return controlled;
+}
+
 function renderQueue(
   provider: TtsProvider<TtsSynthesisResult>,
   options: {
@@ -189,7 +212,125 @@ describe("useTtsPlaybackQueue", () => {
     expect(controlled.stop).toHaveBeenCalledWith("replaced");
     expect(controlled.synthesize.mock.calls.map(([request]) => request.requestId)).toEqual([
       "request-page-1",
+      "request-page-2",
       "request-page-3",
+    ]);
+  });
+
+  it("prefetches queued synthesis without interrupting current playback", async () => {
+    const controlled = createControlledProvider();
+    const { result } = renderQueue(controlled.provider);
+    const first = playbackItem("page-1");
+    const second = playbackItem("page-2");
+
+    act(() => {
+      result.current.enqueue(first);
+    });
+    await waitFor(() => expect(controlled.play).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      result.current.enqueue(second);
+    });
+
+    expect(controlled.synthesize.mock.calls.map(([request]) => request.requestId)).toEqual([
+      "request-page-1",
+      "request-page-2",
+    ]);
+    expect(controlled.play).toHaveBeenCalledTimes(1);
+
+    await finishCurrentPlayback(controlled.completeNext);
+
+    await waitFor(() => expect(result.current.state.currentItem?.id).toBe("page-2"));
+    expect(controlled.synthesize).toHaveBeenCalledTimes(2);
+    expect(controlled.play).toHaveBeenCalledTimes(2);
+  });
+
+  it("prefetches synthesis without adding the item to the playback queue", async () => {
+    const controlled = createControlledProvider();
+    const { result } = renderQueue(controlled.provider);
+    const item = playbackItem("page-prefetch");
+
+    act(() => {
+      result.current.prefetch(item);
+    });
+
+    expect(result.current.state.status).toBe("idle");
+    expect(result.current.state.currentItem).toBeNull();
+    expect(result.current.state.queue).toEqual([]);
+    expect(controlled.synthesize).toHaveBeenCalledTimes(1);
+    expect(controlled.play).not.toHaveBeenCalled();
+  });
+
+  it("reuses same-message prefetched synthesis when the page is later enqueued", async () => {
+    const controlled = createControlledProvider();
+    const { result } = renderQueue(controlled.provider);
+    const first = playbackItem("page-1", { pageIndex: 0, pageCount: 2 });
+    const second = playbackItem("page-2", { pageIndex: 1, pageCount: 2 });
+
+    act(() => {
+      result.current.prefetch(second);
+      result.current.play(first);
+    });
+
+    await waitFor(() => expect(result.current.state.currentItem?.id).toBe("page-1"));
+    expect(controlled.synthesize.mock.calls.map(([request]) => request.requestId)).toEqual([
+      "request-page-2",
+      "request-page-1",
+    ]);
+
+    act(() => {
+      result.current.enqueue(second);
+    });
+
+    await finishCurrentPlayback(controlled.completeNext);
+
+    await waitFor(() => expect(result.current.state.currentItem?.id).toBe("page-2"));
+    expect(controlled.synthesize.mock.calls.map(([request]) => request.requestId)).toEqual([
+      "request-page-2",
+      "request-page-1",
+    ]);
+    expect(controlled.play).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries synthesis when a prefetched page failed before playback", async () => {
+    const controlled = createProviderThatFailsFirstRequest("request-page-1");
+    const { result } = renderQueue(controlled.provider);
+    const item = playbackItem("page-1");
+
+    act(() => {
+      result.current.prefetch(item);
+    });
+
+    expect(controlled.synthesize).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      result.current.play(item);
+    });
+
+    await waitFor(() => expect(result.current.state.status).toBe("playing"));
+    expect(controlled.synthesize).toHaveBeenCalledTimes(2);
+    expect(controlled.play).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears prefetched synthesis from old messages when direct playback starts", async () => {
+    const controlled = createControlledProvider();
+    const { result } = renderQueue(controlled.provider);
+    const stale = playbackItem("stale-page", { messageId: "old-message" });
+    const current = playbackItem("current-page", { messageId: "new-message" });
+
+    act(() => {
+      result.current.prefetch(stale);
+      result.current.play(current);
+      result.current.enqueue(stale);
+    });
+
+    await waitFor(() => expect(result.current.state.currentItem?.id).toBe("current-page"));
+    await finishCurrentPlayback(controlled.completeNext);
+    await waitFor(() => expect(result.current.state.currentItem?.id).toBe("stale-page"));
+    expect(controlled.synthesize.mock.calls.map(([request]) => request.requestId)).toEqual([
+      "request-stale-page",
+      "request-current-page",
+      "request-stale-page",
     ]);
   });
 
@@ -242,7 +383,10 @@ describe("useTtsPlaybackQueue", () => {
     expect(result.current.state.currentItem).toBeNull();
     expect(result.current.state.queue).toEqual([]);
     expect(controlled.stop).toHaveBeenCalledWith("voice_disabled");
-    expect(controlled.synthesize.mock.calls.map(([request]) => request.requestId)).toEqual(["request-page-1"]);
+    expect(controlled.synthesize.mock.calls.map(([request]) => request.requestId)).toEqual([
+      "request-page-1",
+      "request-page-2",
+    ]);
   });
 
   it("cancels a message without leaving old page audio behind", async () => {
@@ -268,6 +412,7 @@ describe("useTtsPlaybackQueue", () => {
     expect(controlled.stop).toHaveBeenCalledWith("message_cancelled");
     expect(controlled.synthesize.mock.calls.map(([request]) => request.requestId)).toEqual([
       "request-message-a-1",
+      "request-message-a-2",
       "request-message-b-1",
     ]);
   });

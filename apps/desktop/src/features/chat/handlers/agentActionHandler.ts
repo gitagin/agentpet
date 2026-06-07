@@ -35,7 +35,7 @@ export function agentActionHandler({ messageId, payload, context }: StreamHandle
   if (!petChat.replyStartedRef.current && action) {
     petChat.showBubble({
       title: action.decision === "ask" ? "需要确认" : "自动整理",
-      message: action.summary || action.title,
+      message: display?.summary || action.summary || action.title,
       tone: action.status === "failed" ? "error" : "tool",
     });
   }

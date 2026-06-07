@@ -69,6 +69,8 @@ function createProxyManager({ baseUrl, sessionToken }) {
       { methods: ["GET"], pattern: /^\/api\/memory\/graph\/export-preview$/ },
       { methods: ["POST"], pattern: /^\/api\/memory\/companion\/consolidation\/runs$/ },
       { methods: ["GET"], pattern: /^\/api\/memory\/companion\/context-reports$/ },
+      { methods: ["GET"], pattern: /^\/api\/memory\/reviews\/weekly$/ },
+      { methods: ["POST"], pattern: /^\/api\/memory\/reviews\/weekly\/actions$/ },
       { methods: ["GET"], pattern: /^\/api\/memory\/retrospectives$/ },
       { methods: ["POST"], pattern: /^\/api\/memory\/retrospectives\/report$/ },
       { methods: ["GET"], pattern: /^\/api\/continuity\/state$/ },

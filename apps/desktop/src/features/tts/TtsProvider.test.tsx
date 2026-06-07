@@ -152,6 +152,38 @@ describe("TTS providers", () => {
     expect(spokenUtterance.lang).toBe("zh-CN");
   });
 
+  it("starts system speech immediately even when voices are still loading", async () => {
+    const speechSynthesis: Pick<SpeechSynthesis, "cancel" | "getVoices" | "speak"> &
+      Partial<Pick<SpeechSynthesis, "resume">> = {
+      cancel: vi.fn(),
+      getVoices: vi.fn(() => []),
+      resume: vi.fn(),
+      speak: vi.fn((utterance: SpeechSynthesisUtterance) => {
+        utterance.onend?.call(utterance, {} as SpeechSynthesisEvent);
+      }),
+    };
+    const provider = createSystemTtsProvider({
+      speechSynthesis,
+      createUtterance: fakeUtterance,
+    });
+    const result = await provider.synthesize(
+      request({
+        voice: {
+          id: "system-voice-cn",
+          provider: "system",
+          label: "Microsoft Xiaoxiao",
+          locale: "zh-CN",
+        },
+      }),
+    );
+
+    const playback = provider.play(result);
+
+    await expect(playback).resolves.toMatchObject({ status: "played" });
+    expect(speechSynthesis.speak).toHaveBeenCalledTimes(1);
+    expect(speechSynthesis.resume).toHaveBeenCalled();
+  });
+
   it("reports system provider availability without blocking text chat", async () => {
     const provider = createSystemTtsProvider({
       speechSynthesis: null,
@@ -189,11 +221,13 @@ describe("TTS providers", () => {
       revokeObjectUrl,
       createAudio: (url) => ({
         src: url,
+        style: {},
         volume: 1,
         onended: null,
         onerror: null,
         play,
         pause,
+        remove: vi.fn(),
       } as unknown as HTMLAudioElement),
     });
 
@@ -292,11 +326,13 @@ describe("TTS providers", () => {
       revokeObjectUrl,
       createAudio: (url) => ({
         src: url,
+        style: {},
         volume: 1,
         onended: null,
         onerror: null,
         play,
         pause,
+        remove: vi.fn(),
       } as unknown as HTMLAudioElement),
     });
     const result = await provider.synthesize(request({ provider: "custom-http" }));

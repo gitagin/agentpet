@@ -555,6 +555,7 @@ function App() {
   const ttsProviders = useMemo(
     () => ({
       "custom-http": createBackendTtsProvider({ api }),
+      "xiaomi-mimo": createBackendTtsProvider({ api, providerId: "xiaomi-mimo" }),
       mock: createMockTtsProvider(),
       system: createSystemTtsProvider(),
     }),
@@ -563,6 +564,7 @@ function App() {
   const petTtsPlaybackStartRef = useRef<(item: TtsPlaybackItem) => void>(() => undefined);
   const petTtsPlaybackEndRef = useRef<(item: TtsPlaybackItem, status: TtsProviderPlaybackStatus) => void>(() => undefined);
   const previousTtsWindowModeRef = useRef<DesktopWindowMode | null>(null);
+  const lastTtsErrorNoticeRef = useRef<string | null>(null);
   const ttsQueue = useTtsPlaybackQueue({
     providers: ttsProviders,
     onPlaybackStart: (item) => petTtsPlaybackStartRef.current(item),
@@ -607,6 +609,28 @@ function App() {
   });
   petTtsPlaybackStartRef.current = petChat.handleTtsPlaybackStart || (() => undefined);
   petTtsPlaybackEndRef.current = petChat.handleTtsPlaybackEnd || (() => undefined);
+
+  useEffect(() => {
+    const error = ttsQueue.state.error;
+    if (!error) {
+      lastTtsErrorNoticeRef.current = null;
+      return;
+    }
+    const noticeKey = `${error.provider || "unknown"}:${error.itemId || "unknown"}:${error.code}:${error.message}`;
+    if (lastTtsErrorNoticeRef.current === noticeKey) {
+      return;
+    }
+    lastTtsErrorNoticeRef.current = noticeKey;
+    setNotice({
+      tone: "error",
+      message: `语音播放失败：${error.message}`,
+    });
+  }, [
+    ttsQueue.state.error?.code,
+    ttsQueue.state.error?.itemId,
+    ttsQueue.state.error?.message,
+    ttsQueue.state.error?.provider,
+  ]);
 
   useEffect(() => {
     const previousMode = previousTtsWindowModeRef.current;
@@ -868,7 +892,7 @@ function App() {
     petChat.setInputVisible(false);
     setStreaming(true);
     setNotice(null);
-    petChat.resetStreamState();
+    petChat.resetStreamState(assistantId);
     petChat.showBubble({
       title: "",
       message: "我先看一下。",

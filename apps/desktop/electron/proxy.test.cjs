@@ -84,6 +84,25 @@ describe("Electron API proxy allowlist", () => {
     expect(init.headers.get("Content-Type")).toBe("application/json");
   });
 
+  it("allows weekly memory review routes through the main-process proxy", async () => {
+    global.fetch = vi.fn(async () => createJsonResponse({ ok: true }));
+    const proxy = createProxyManager({
+      baseUrl: "http://127.0.0.1:8765",
+      sessionToken: "test-session-token",
+    });
+
+    await proxy.proxyApiRequest("/api/memory/reviews/weekly?days=7", { method: "GET" });
+    await proxy.proxyApiRequest("/api/memory/reviews/weekly/actions", { method: "POST", body: "{}" });
+
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+    const [getTarget, getInit] = global.fetch.mock.calls[0];
+    const [postTarget, postInit] = global.fetch.mock.calls[1];
+    expect(getTarget.toString()).toBe("http://127.0.0.1:8765/api/memory/reviews/weekly?days=7");
+    expect(getInit.headers.get("Authorization")).toBe("Bearer test-session-token");
+    expect(postTarget.toString()).toBe("http://127.0.0.1:8765/api/memory/reviews/weekly/actions");
+    expect(postInit.headers.get("Authorization")).toBe("Bearer test-session-token");
+  });
+
   it("allows only chat run event routes for SSE streams", async () => {
     global.fetch = vi.fn(async () => createJsonResponse({ ok: true }));
     const proxy = createProxyManager({

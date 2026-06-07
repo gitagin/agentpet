@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import MemoryWindowView from "./MemoryWindowView";
 import type { DesktopApi } from "../services/desktopApi";
-import type { AgentAction, LocalAssetStatsResponse, MemoryGraphFact, MemoryProposalDraft, MemorySearchResult, RetrospectiveReportResponse, RetrospectiveResponse } from "../types";
+import type { AgentAction, LocalAssetStatsResponse, MemoryGraphFact, MemoryProposalDraft, MemoryReviewResponse, MemorySearchResult, RetrospectiveReportResponse, RetrospectiveResponse } from "../types";
 
 function memoryFact(overrides: Partial<MemoryGraphFact> = {}): MemoryGraphFact {
   return {
@@ -180,6 +180,51 @@ const localAssetStats: LocalAssetStatsResponse = {
   reversible_operation_count: 2,
 };
 
+const weeklyMemoryReview: MemoryReviewResponse = {
+  generated_at: "2026-06-02T00:00:00Z",
+  window_days: 7,
+  summary: { kept: 1, temporary: 1, ignored: 1 },
+  redaction_note: "Sensitive text, credentials, raw evidence, and full Authorization headers are not included.",
+  items: [
+    {
+      review_id: "fact:fact-1",
+      target_type: "fact",
+      target_id: "fact-1",
+      category: "kept",
+      summary: "weekly review retained preference",
+      memory_kind: "preference",
+      memory_scope: null,
+      lifecycle_status: "active",
+      risk_tier: null,
+      confidence: 0.91,
+      importance: 0.8,
+      evidence_count: 2,
+      expires_at: null,
+      updated_at: "2026-06-01T00:00:00Z",
+      source: "user_message",
+      allowed_actions: ["keep", "edit", "forget", "only_this_week"],
+    },
+    {
+      review_id: "candidate:candidate-1",
+      target_type: "candidate",
+      target_id: "candidate-1",
+      category: "ignored",
+      summary: "Maybe use weekly planning prompts.",
+      memory_kind: "preference",
+      memory_scope: "global",
+      lifecycle_status: "candidate",
+      risk_tier: "low",
+      confidence: 0.72,
+      importance: 0.5,
+      evidence_count: 1,
+      expires_at: null,
+      updated_at: "2026-06-01T00:00:00Z",
+      source: "slow_consolidation",
+      allowed_actions: ["keep", "edit", "forget", "only_this_week"],
+    },
+  ],
+};
+
 function createApi(facts: MemoryGraphFact[], stats: LocalAssetStatsResponse = localAssetStats) {
   return {
     searchMemory: vi.fn().mockResolvedValue({ results: [searchResult()], metadata: { semantic_available: false } }),
@@ -198,6 +243,15 @@ function createApi(facts: MemoryGraphFact[], stats: LocalAssetStatsResponse = lo
     getRetrospectives: vi.fn().mockResolvedValue(retrospectives),
     writeRetrospectiveReport: vi.fn((days: number) => Promise.resolve(reportResponse(`Wiki/Companion/Reports/2026-06-02-${days}d-review.md`))),
     writeRetrospectivePeriodReport: vi.fn((period: string) => Promise.resolve(reportResponse(`Wiki/Companion/Reports/2026-06-02-${period}-review.md`))),
+    getWeeklyMemoryReview: vi.fn().mockResolvedValue(weeklyMemoryReview),
+    applyWeeklyMemoryReviewAction: vi.fn().mockResolvedValue({
+      target_type: "fact",
+      target_id: "fact-1",
+      operation: "make_temporary",
+      status: "active",
+      feedback_event_id: "feedback-1",
+      action_id: "action-feedback-1",
+    }),
     listMemoryGraphFacts: vi.fn().mockResolvedValue({ facts }),
     markMemoryGraphFactWrong: vi.fn().mockResolvedValue({ fact_id: "fact-1", status: "wrong" }),
     archiveMemoryGraphFact: vi.fn(),
@@ -461,6 +515,37 @@ describe("MemoryWindowView", () => {
     expect(within(todayCard as HTMLElement).getByText("长期记忆")).toBeInTheDocument();
     expect(within(todayCard as HTMLElement).getByText("Wiki")).toBeInTheDocument();
     expect(within(todayCard as HTMLElement).getByText("使用 1 条日记、1 个任务、1 条记忆事实和 1 次 Wiki 更新。")).toBeInTheDocument();
+  });
+
+  it("shows a weekly memory review and applies lightweight review actions", async () => {
+    const api = createApi([memoryFact()]);
+    const onRefresh = vi.fn();
+
+    renderView(api, onRefresh);
+
+    const review = await screen.findByLabelText("本周记忆复核");
+    expect(within(review).getAllByText("已保留").length).toBeGreaterThan(0);
+    expect(within(review).getByText("临时")).toBeInTheDocument();
+    expect(within(review).getAllByText("已忽略").length).toBeGreaterThan(0);
+    expect(within(review).getByText("weekly review retained preference")).toBeInTheDocument();
+    expect(within(review).getByText("Maybe use weekly planning prompts.")).toBeInTheDocument();
+    expect(review.textContent).not.toMatch(/Bearer\s+\S+/i);
+    expect(review.textContent).not.toContain("token=");
+
+    const factCard = within(review).getByText("weekly review retained preference").closest("article");
+    expect(factCard).not.toBeNull();
+    fireEvent.click(within(factCard as HTMLElement).getByRole("button", { name: "只保留本周" }));
+
+    await waitFor(() =>
+      expect(api.applyWeeklyMemoryReviewAction).toHaveBeenCalledWith({
+        target_type: "fact",
+        target_id: "fact-1",
+        action: "only_this_week",
+        feedback_text: "weekly_memory_review:only_this_week",
+        replacement_text: null,
+      }),
+    );
+    expect(onRefresh).toHaveBeenCalled();
   });
 
   it("generates review reports without chat and exposes report artifacts", async () => {

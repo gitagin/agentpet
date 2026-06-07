@@ -18,6 +18,7 @@ type ActivePlayback = {
   audio: HTMLAudioElement;
   objectUrl: string;
   result: AudioTtsSynthesisResult;
+  detach: () => void;
   resolve: (value: TtsProviderPlaybackResult<AudioTtsSynthesisResult>) => void;
   reject: (error: Error) => void;
   settled: boolean;
@@ -47,6 +48,7 @@ export function createBackendTtsProvider({
     playback.settled = true;
     active = null;
     playback.audio.pause();
+    playback.detach();
     revokeObjectUrl(playback.objectUrl);
     playback.resolve({
       provider: providerId,
@@ -115,6 +117,7 @@ export function createBackendTtsProvider({
       assertTtsNotAborted(options?.signal, providerId);
       cancelActive("replaced");
       const audio = createAudio(result.audioUrl);
+      const detach = attachAudioForPlayback(audio);
       audio.volume = clampTtsVolume(options?.volume);
 
       return new Promise((resolve, reject) => {
@@ -122,6 +125,7 @@ export function createBackendTtsProvider({
           audio,
           objectUrl: result.audioUrl,
           result,
+          detach,
           resolve,
           reject,
           settled: false,
@@ -133,6 +137,7 @@ export function createBackendTtsProvider({
           }
           playback.settled = true;
           active = null;
+          playback.detach();
           revokeObjectUrl(playback.objectUrl);
           reject(error);
         };
@@ -159,6 +164,26 @@ export function createBackendTtsProvider({
     stop(reason = "stopped"): void {
       cancelActive(reason);
     },
+
+    dispose(result: AudioTtsSynthesisResult): void {
+      revokeObjectUrl(result.audioUrl);
+    },
+  };
+}
+
+function attachAudioForPlayback(audio: HTMLAudioElement): () => void {
+  audio.preload = "auto";
+  audio.autoplay = true;
+  if (typeof document === "undefined" || !document.body || typeof document.body.appendChild !== "function") {
+    return () => undefined;
+  }
+  if (!(audio instanceof Node)) {
+    return () => undefined;
+  }
+  audio.style.display = "none";
+  document.body.appendChild(audio);
+  return () => {
+    audio.remove();
   };
 }
 

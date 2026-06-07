@@ -25,7 +25,10 @@ import type {
   MemoryGraphExportPreviewResponse,
   MemoryGraphFactActionResponse,
   MemoryGraphFactListResponse,
+  MemoryFeedbackResponse,
   MemorySearchResponse,
+  MemoryReviewActionRequest,
+  MemoryReviewResponse,
   ModelKeyResponse,
   ModelConfigResponse,
   ModelHealthResponse,
@@ -215,6 +218,18 @@ export class DesktopApi {
       `/api/memory/companion/context-reports?${params.toString()}`,
       signal,
     );
+  }
+
+  getWeeklyMemoryReview(days = 7, limit = 30, signal?: AbortSignal): Promise<MemoryReviewResponse> {
+    const params = new URLSearchParams({ days: String(days), limit: String(limit) });
+    return this.client.get<MemoryReviewResponse>(`/api/memory/reviews/weekly?${params.toString()}`, signal);
+  }
+
+  applyWeeklyMemoryReviewAction(
+    request: MemoryReviewActionRequest,
+    signal?: AbortSignal,
+  ): Promise<MemoryFeedbackResponse> {
+    return this.client.post<MemoryFeedbackResponse>("/api/memory/reviews/weekly/actions", request, signal);
   }
 
   getRetrospectives(signal?: AbortSignal): Promise<RetrospectiveResponse> {

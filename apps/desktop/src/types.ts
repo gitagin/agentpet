@@ -697,6 +697,58 @@ export type MemoryProposalListResponse = {
   proposals: MemoryProposalListItem[];
 };
 
+export type MemoryReviewCategory = "kept" | "temporary" | "ignored";
+
+export type MemoryReviewAction = "keep" | "edit" | "forget" | "only_this_week" | "mark_completed";
+
+export type MemoryReviewItem = {
+  review_id: string;
+  target_type: "candidate" | "fact";
+  target_id: string;
+  category: MemoryReviewCategory;
+  summary: string;
+  memory_kind?: string | null;
+  memory_scope?: string | null;
+  lifecycle_status: string;
+  risk_tier?: string | null;
+  confidence: number;
+  importance: number;
+  evidence_count: number;
+  expires_at?: string | null;
+  updated_at: string;
+  source: string;
+  allowed_actions: MemoryReviewAction[];
+};
+
+export type MemoryReviewResponse = {
+  generated_at: string;
+  window_days: number;
+  summary: Record<MemoryReviewCategory, number>;
+  items: MemoryReviewItem[];
+  redaction_note: string;
+};
+
+export type MemoryReviewActionRequest = {
+  target_type: "candidate" | "fact";
+  target_id: string;
+  action: MemoryReviewAction;
+  feedback_text?: string;
+  replacement_text?: string | null;
+  replacement_subject?: string | null;
+  replacement_predicate?: string | null;
+  replacement_object?: string | null;
+};
+
+export type MemoryFeedbackResponse = {
+  target_type: "candidate" | "fact";
+  target_id: string;
+  operation: string;
+  status: string;
+  feedback_event_id: string;
+  replacement_target_id?: string | null;
+  action_id: string;
+};
+
 export type TaskDraft = {
   title: string;
   description: string;

@@ -20,6 +20,8 @@ const state = {
   rendererUiState: loadRendererUiState(rendererUiStatePath),
 };
 
+app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
+
 function quitApp() {
   state.isQuitting = true;
   app.quit();

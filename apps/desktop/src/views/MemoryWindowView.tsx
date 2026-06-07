@@ -16,6 +16,9 @@ import type {
   MemoryProposal,
   MemoryProposalDraft,
   MemoryProposalType,
+  MemoryReviewAction,
+  MemoryReviewItem,
+  MemoryReviewResponse,
   MemorySearchResult,
   DesktopVaultRevealMode,
   RetrospectiveReportPeriod,
@@ -243,6 +246,26 @@ function memoryFactSearchText(fact: MemoryGraphFact): string {
 
 function memoryFactSentence(fact: MemoryGraphFact): string {
   return `${fact.subject} ${fact.predicate} ${fact.object}`;
+}
+
+function formatReviewCategory(category: MemoryReviewItem["category"]): string {
+  const labels: Record<MemoryReviewItem["category"], string> = {
+    kept: "已保留",
+    temporary: "临时",
+    ignored: "已忽略",
+  };
+  return labels[category];
+}
+
+function formatReviewAction(action: MemoryReviewAction): string {
+  const labels: Record<MemoryReviewAction, string> = {
+    keep: "保留",
+    edit: "编辑",
+    forget: "忘记",
+    only_this_week: "只保留本周",
+    mark_completed: "标记完成",
+  };
+  return labels[action];
 }
 
 function formatSources(sources: RetrospectiveSourceReference[]): string {
@@ -893,6 +916,97 @@ function MemoryFactSection({
   );
 }
 
+function WeeklyMemoryReviewPanel({
+  review,
+  loading,
+  error,
+  busyId,
+  onRefresh,
+  onAction,
+}: {
+  review: MemoryReviewResponse | null;
+  loading: boolean;
+  error: string;
+  busyId: string | null;
+  onRefresh: () => void;
+  onAction: (item: MemoryReviewItem, action: MemoryReviewAction) => void;
+}) {
+  const summary = review?.summary || { kept: 0, temporary: 0, ignored: 0 };
+  return (
+    <section className="weekly-memory-review-panel" aria-label="本周记忆复核">
+      <div className="section-heading">
+        <strong>本周记忆复核</strong>
+        <span>短列表显示已保留、临时和已忽略的记忆；高风险写入仍按确认规则处理。</span>
+      </div>
+      <div className="memory-trust-group-grid">
+        <article className="memory-trust-group-card active">
+          <strong>已保留</strong>
+          <span>{summary.kept}</span>
+          <p>可继续影响回答的稳定记忆。</p>
+        </article>
+        <article className="memory-trust-group-card active">
+          <strong>临时</strong>
+          <span>{summary.temporary}</span>
+          <p>带有效期或本周上下文的记忆。</p>
+        </article>
+        <article className="memory-trust-group-card active">
+          <strong>已忽略</strong>
+          <span>{summary.ignored}</span>
+          <p>候选、隔离或未进入长期使用的内容。</p>
+        </article>
+      </div>
+      <div className="button-row">
+        <button type="button" className="secondary" onClick={onRefresh} disabled={loading}>
+          {loading ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />}
+          刷新复核
+        </button>
+      </div>
+      {error ? <p className="field-note error">{error}</p> : null}
+      {review?.redaction_note ? <p className="field-note">{review.redaction_note}</p> : null}
+      <div className="proposal-list memory-proposal-review-list">
+        {review && review.items.length > 0 ? (
+          review.items.map((item) => (
+            <article key={item.review_id} className={`memory-graph-fact ${item.category}`}>
+              <div className="memory-graph-fact-main">
+                <strong>{item.summary}</strong>
+                <div className="memory-graph-fact-meta">
+                  <span>{formatReviewCategory(item.category)}</span>
+                  <span>{item.memory_kind || item.target_type}</span>
+                  <span>{item.lifecycle_status}</span>
+                  <span>置信度 {Math.round(item.confidence * 100)}%</span>
+                </div>
+                <p>
+                  {item.source}
+                  {item.expires_at ? ` / expires ${formatDate(item.expires_at)}` : ""}
+                  {item.updated_at ? ` / ${formatDate(item.updated_at)}` : ""}
+                </p>
+              </div>
+              <div className="memory-graph-fact-actions">
+                {item.allowed_actions.map((action) => (
+                  <button
+                    key={action}
+                    type="button"
+                    className="secondary"
+                    onClick={() => onAction(item, action)}
+                    disabled={busyId === item.review_id}
+                  >
+                    {busyId === item.review_id ? <Loader2 className="spin" size={15} /> : <Check size={15} />}
+                    {formatReviewAction(action)}
+                  </button>
+                ))}
+              </div>
+            </article>
+          ))
+        ) : loading ? (
+          <EmptyState text="正在加载本周记忆复核。" />
+        ) : (
+          <EmptyState text="这周还没有可复核的记忆项。" />
+        )}
+      </div>
+    </section>
+  );
+}
+
 export default function MemoryWindowView({
   api,
   loading,
@@ -936,6 +1050,10 @@ export default function MemoryWindowView({
   const [exportPreview, setExportPreview] = useState<MemoryGraphExportPreviewResponse | null>(null);
   const [exportLoading, setExportLoading] = useState(false);
   const [exportMessage, setExportMessage] = useState("");
+  const [weeklyMemoryReview, setWeeklyMemoryReview] = useState<MemoryReviewResponse | null>(null);
+  const [weeklyMemoryReviewLoading, setWeeklyMemoryReviewLoading] = useState(true);
+  const [weeklyMemoryReviewError, setWeeklyMemoryReviewError] = useState("");
+  const [weeklyMemoryReviewBusyId, setWeeklyMemoryReviewBusyId] = useState<string | null>(null);
   const normalizedQuery = searchQuery.trim().toLocaleLowerCase();
   const normalizedFactQuery = memoryFactQuery.trim().toLocaleLowerCase();
   const filteredEntries = useMemo(
@@ -1018,10 +1136,26 @@ export default function MemoryWindowView({
     }
   }
 
+  async function loadWeeklyMemoryReview(signal?: AbortSignal) {
+    setWeeklyMemoryReviewLoading(true);
+    setWeeklyMemoryReviewError("");
+    try {
+      setWeeklyMemoryReview(await api.getWeeklyMemoryReview(7, 30, signal));
+    } catch (requestError) {
+      if (requestError instanceof DOMException && requestError.name === "AbortError") {
+        return;
+      }
+      setWeeklyMemoryReviewError(describeError(requestError, "本周记忆复核加载失败"));
+    } finally {
+      setWeeklyMemoryReviewLoading(false);
+    }
+  }
+
   useEffect(() => {
     const abort = new AbortController();
     void loadLocalAssets(abort.signal);
     void loadRetrospectives(abort.signal);
+    void loadWeeklyMemoryReview(abort.signal);
     return () => abort.abort();
   }, [api]);
 
@@ -1140,6 +1274,35 @@ export default function MemoryWindowView({
       setMemoryFactsError(describeError(requestError, "长期记忆状态更新失败"));
     } finally {
       setMemoryFactBusyId(null);
+    }
+  }
+
+  async function applyWeeklyMemoryReviewAction(item: MemoryReviewItem, action: MemoryReviewAction) {
+    let replacementText: string | null = null;
+    if (action === "edit") {
+      replacementText = window.prompt("请输入新的记忆内容", item.summary);
+      if (!replacementText?.trim()) {
+        return;
+      }
+    }
+    setWeeklyMemoryReviewBusyId(item.review_id);
+    setWeeklyMemoryReviewError("");
+    try {
+      await api.applyWeeklyMemoryReviewAction({
+        target_type: item.target_type,
+        target_id: item.target_id,
+        action,
+        feedback_text: `weekly_memory_review:${action}`,
+        replacement_text: replacementText,
+      });
+      await loadWeeklyMemoryReview();
+      await loadMemoryFacts();
+      await loadLocalAssets();
+      onRefresh();
+    } catch (requestError) {
+      setWeeklyMemoryReviewError(describeError(requestError, "本周记忆复核操作失败"));
+    } finally {
+      setWeeklyMemoryReviewBusyId(null);
     }
   }
 
@@ -1302,6 +1465,15 @@ export default function MemoryWindowView({
       </section>
 
       <section className="panel feature-window-panel memory-review-queue-panel" aria-label="记忆复核队列">
+      <WeeklyMemoryReviewPanel
+        review={weeklyMemoryReview}
+        loading={weeklyMemoryReviewLoading}
+        error={weeklyMemoryReviewError}
+        busyId={weeklyMemoryReviewBusyId}
+        onRefresh={() => void loadWeeklyMemoryReview()}
+        onAction={(item, action) => void applyWeeklyMemoryReviewAction(item, action)}
+      />
+
         <MemoryProposalReviewList
           proposals={memoryProposals}
           loading={loadingMemoryProposals}
