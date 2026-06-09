@@ -3,19 +3,21 @@ import type { CSSProperties, FormEvent, RefObject } from "react";
 import {
   BookOpen,
   CalendarCheck,
-  ListPlus,
-  Search,
-  Sparkles,
+  FolderKanban,
+  MessageSquareText,
+  Settings,
   type LucideIcon,
 } from "lucide-react";
 import { Live2DStage } from "../components/Live2DStage";
 import type { Live2DStageView } from "../components/Live2DStage";
 import type { Live2DAssetInfo, Live2DRuntimeBoundary } from "../services/live2dRuntime";
+import type { DesktopApi } from "../services/desktopApi";
 import type { PetBubbleState } from "../features/chat/chatTypes";
 import { PetReplyBubble } from "../features/chat/PetReplyBubble";
+import { VisibleContinuityPanel } from "../features/continuity";
 import { BottomNav } from "./BottomNav";
 
-type StageRoute = "agent" | "memory" | "world";
+type StageRoute = "agent" | "chat" | "memory" | "settings" | "world";
 
 type StageAction = {
   label: string;
@@ -40,40 +42,44 @@ type StageViewProps = {
   onResumePaging?: () => void;
   ttsSpeaking?: boolean;
   active?: boolean;
+  api?: DesktopApi;
 };
 
 const profile = { name: "桌面记忆助手", mood: "待命" };
 
 const stageActions: StageAction[] = [
   {
-    label: "新建任务",
-    detail: "提醒、截止时间、步骤、日志",
+    label: "聊天",
+    detail: "把新想法和提醒告诉我",
+    route: "chat",
+    icon: MessageSquareText,
+  },
+  {
+    label: "任务",
+    detail: "看项目状态和今日任务",
     route: "agent",
-    icon: ListPlus,
+    icon: FolderKanban,
   },
   {
-    label: "记住这件事",
-    detail: "保存为长期记忆",
-    route: "memory",
-    icon: Sparkles,
-  },
-  {
-    label: "整理知识",
-    detail: "草拟或更新 Wiki 页面",
-    route: "world",
-    icon: BookOpen,
-  },
-  {
-    label: "今日复盘",
-    detail: "今天、周报、月报",
+    label: "回放",
+    detail: "本周回放和月度复盘",
     route: "memory",
     icon: CalendarCheck,
   },
   {
-    label: "搜索记忆",
-    detail: "事实、日记、Wiki 上下文",
-    route: "memory",
-    icon: Search,
+    label: "设置",
+    detail: "模型、隐私和保存位置",
+    route: "settings",
+    icon: Settings,
+  },
+];
+
+const advancedStageActions: StageAction[] = [
+  {
+    label: "知识整理",
+    detail: "高级 Markdown 导出与 Wiki 维护",
+    route: "world",
+    icon: BookOpen,
   },
 ];
 
@@ -97,6 +103,7 @@ export default function StageView({
   onResumePaging,
   ttsSpeaking = false,
   active = true,
+  api,
 }: StageViewProps) {
   const [chatInput, setChatInput] = useState("");
   const now = new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
@@ -107,6 +114,12 @@ export default function StageView({
       void onSendChat(chatInput, () => setChatInput(""));
     },
     [chatInput, onSendChat],
+  );
+  const handleContinuePrompt = useCallback(
+    (prompt: string) => {
+      void onSendChat(prompt, () => setChatInput(""));
+    },
+    [onSendChat],
   );
 
   const bubbleVisible = Boolean(bubble?.visible);
@@ -124,11 +137,22 @@ export default function StageView({
         <time style={S.time}>{now}</time>
       </header>
 
-      <section className="stage-main-view stage-command-layout" style={S.mainStage} aria-label="主舞台">
+      <section className={`stage-main-view stage-command-layout${api ? " has-outcome" : ""}`} style={S.mainStage} aria-label="主舞台">
+        {api ? (
+          <section className="stage-outcome-panel" aria-label="首页整理结果">
+            <VisibleContinuityPanel
+              api={api}
+              autoLoad={active}
+              className="stage-continuity-panel"
+              onContinuePrompt={handleContinuePrompt}
+            />
+          </section>
+        ) : null}
+
         <section className="stage-command-panel" aria-label="功能指挥中心">
           <div className="stage-command-heading">
-            <p>从真实工作流开始</p>
-            <h1>首页</h1>
+            <p>我帮你整理好最近的事</p>
+            <h1>今日</h1>
           </div>
           <div className="stage-action-grid">
             {stageActions.map((action) => {
@@ -150,6 +174,29 @@ export default function StageView({
               );
             })}
           </div>
+          <details className="stage-advanced-routes">
+            <summary>高级工具</summary>
+            <div className="stage-action-grid compact">
+              {advancedStageActions.map((action) => {
+                const Icon = action.icon;
+                return (
+                  <button
+                    key={action.label}
+                    type="button"
+                    className="stage-action-card"
+                    data-stage-route={action.route}
+                    onClick={() => openStageRoute(action.route)}
+                  >
+                    <Icon aria-hidden="true" size={20} />
+                    <span>
+                      <strong>{action.label}</strong>
+                      <small>{action.detail}</small>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </details>
         </section>
 
         <section className="stage-live2d-zone" aria-label="Live2D 桌宠">
@@ -199,7 +246,7 @@ export default function StageView({
           )}
         </form>
 
-        <BottomNav activeTab="首页" />
+        <BottomNav activeTab="今日" />
       </footer>
     </main>
   );

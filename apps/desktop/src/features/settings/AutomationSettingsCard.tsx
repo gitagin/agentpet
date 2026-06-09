@@ -79,7 +79,7 @@ export function AutomationSettingsCard({
     <section className="agent-model-section settings-card automation-settings-card" aria-label="自动整理策略">
       <div className="section-heading">
         <strong>自动整理策略</strong>
-        <span>控制低风险整理是否自动执行；所有高风险 Vault、Markdown 和状态操作仍必须确认。</span>
+        <span>控制低风险整理是否自动执行；删除、移动、批量改写和保存位置变更仍必须确认。</span>
       </div>
 
       <div className="automation-toggle-grid">
@@ -119,7 +119,7 @@ export function AutomationSettingsCard({
         <ShieldCheck size={16} />
         <span>
           <strong>高风险操作必须确认</strong>
-          <small>强制开启，不可关闭。包括真实 Vault 绑定、删除、移动、批量改写、SQLite schema 和高风险记忆合并。</small>
+          <small>强制开启，不可关闭。包括真实保存位置绑定、删除、移动、批量改写、SQLite schema 和高风险记忆合并。</small>
         </span>
         <b>强制开启</b>
       </div>

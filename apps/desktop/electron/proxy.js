@@ -73,6 +73,7 @@ function createProxyManager({ baseUrl, sessionToken }) {
       { methods: ["POST"], pattern: /^\/api\/memory\/reviews\/weekly\/actions$/ },
       { methods: ["GET"], pattern: /^\/api\/memory\/retrospectives$/ },
       { methods: ["POST"], pattern: /^\/api\/memory\/retrospectives\/report$/ },
+      { methods: ["GET"], pattern: /^\/api\/today\/snapshot$/ },
       { methods: ["GET"], pattern: /^\/api\/continuity\/state$/ },
       { methods: ["GET"], pattern: /^\/api\/continuity\/proposals$/ },
       { methods: ["POST"], pattern: /^\/api\/continuity\/proposals\/[^/]+\/(confirm|reject)$/ },

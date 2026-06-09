@@ -14,12 +14,18 @@ type AgentActionActivityCardProps = {
   onRevealTarget?: (relativePath: string, mode: "open" | "show") => void;
 };
 
+function isSkippedAction(action: AgentAction): boolean {
+  const actionType = action.action_type.toLocaleLowerCase();
+  return action.status === "skipped" || actionType.endsWith(".skip") || actionType.includes(".skip.");
+}
+
 export function AgentActionActivityCard({ entry, reverting, onRevert, onRevealTarget }: AgentActionActivityCardProps) {
   const action = entry.action;
   const display = getAgentActionDisplayFields(action);
   const attention = isAttentionAgentAction(action);
   const canRevert = canRevertAgentAction(action);
   const targetPaths = action.target_paths.filter((targetPath) => targetPath.toLowerCase().endsWith(".md"));
+  const showAuditDetails = !isSkippedAction(action);
   const auditDetails = [
     action.title && action.title !== display.actionName ? `原始标题：${action.title}` : "",
     action.summary && action.summary !== display.summary ? `原始摘要：${action.summary}` : "",
@@ -54,7 +60,7 @@ export function AgentActionActivityCard({ entry, reverting, onRevert, onRevealTa
         {display.sourceLabel ? <small>来源：{display.sourceLabel}</small> : null}
       </div>
 
-      {auditDetails.length > 0 ? (
+      {showAuditDetails && auditDetails.length > 0 ? (
         <details className="agent-action-audit-details">
           <summary>审计详情</summary>
           {auditDetails.map((detail) => (

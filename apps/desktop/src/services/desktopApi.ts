@@ -57,6 +57,7 @@ import type {
   VaultIndexResponse,
   VaultInitResponse,
   VaultStatusResponse,
+  VisibleContinuitySnapshotResponse,
   WikiIngestApplyResponse,
   WikiIngestApplyRequest,
   WikiIngestConfirmRequest,
@@ -234,6 +235,10 @@ export class DesktopApi {
 
   getRetrospectives(signal?: AbortSignal): Promise<RetrospectiveResponse> {
     return this.client.get<RetrospectiveResponse>("/api/memory/retrospectives", signal);
+  }
+
+  getVisibleContinuitySnapshot(signal?: AbortSignal): Promise<VisibleContinuitySnapshotResponse> {
+    return this.client.get<VisibleContinuitySnapshotResponse>("/api/today/snapshot", signal);
   }
 
   writeRetrospectiveReport(days: number, signal?: AbortSignal): Promise<RetrospectiveReportResponse> {

@@ -114,6 +114,13 @@ from .tasks import (
     TaskStepsResponse,
     TaskWorkspaceItem,
 )
+from .visible_continuity import (
+    VisibleContinuityPlaybackPreview,
+    VisibleContinuityProjectCard,
+    VisibleContinuityReceipt,
+    VisibleContinuitySnapshotResponse,
+    VisibleContinuityTodayCard,
+)
 from .wiki import (
     QueryArchiveDetailResponse,
     QueryArchiveHistoryItem,

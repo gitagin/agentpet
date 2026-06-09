@@ -117,12 +117,12 @@ export function SettingsPanel({
     <Panel id="settings-panel" icon={<KeyRound size={18} />} title="设置" className="settings-panel-compact">
       <section className="settings-intro" aria-label="设置引导">
         <div>
-          <p className="eyebrow">先完成两项设置</p>
-          <h3>先连接聊天模型，再选择记忆保存的位置。</h3>
+          <p className="eyebrow">先能对话，再决定保存</p>
+          <h3>连接聊天模型后就能开始；保存和导出位置可以之后再设。</h3>
         </div>
         <ol>
           <li>配置模型</li>
-          <li>选择记忆文件夹</li>
+          <li>选择保存位置</li>
         </ol>
         <div className="guided-trial-actions settings-guided-trials" aria-label="设置快捷操作">
           <button type="button" className="secondary" onClick={onTestGlobalModel} disabled={globalModelTestStatus === "loading"}>
@@ -131,7 +131,7 @@ export function SettingsPanel({
           </button>
           <button type="button" className="secondary" onClick={onSelectVaultDirectory} disabled={!canSelectVaultDirectory}>
             <FolderOpen size={16} />
-            选择记忆文件夹
+            选择保存位置
           </button>
           <button type="button" className="secondary" onClick={onRefreshSettings} disabled={loadingSettingsStatus}>
             <RefreshCw size={16} />

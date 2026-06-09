@@ -144,7 +144,7 @@ class RetrospectiveService:
         )
         return RetrospectiveReportResponse(
             page=WikiPageResponse(
-                title=f"{window.label} 长期回顾",
+                title=_report_title(window, report_kind=report_kind),
                 relative_path=target_path,
                 operation="replace",
                 status="updated" if before.get("exists", {}).get(target_path) else "created",
@@ -172,8 +172,8 @@ class RetrospectiveService:
             FROM diary_memory_objects o
             LEFT JOIN diary_memory_object_sources s ON s.object_id = o.id
             WHERE o.vault_id = ?
-              AND o.occurred_at >= ?
-              AND o.occurred_at <= ?
+              AND julianday(o.occurred_at) >= julianday(?)
+              AND julianday(o.occurred_at) <= julianday(?)
               AND o.status IN ('active', 'candidate')
             ORDER BY o.importance DESC, o.confidence DESC, o.occurred_at DESC
             LIMIT 200
@@ -186,8 +186,8 @@ class RetrospectiveService:
             """
             SELECT *
             FROM memory_graph_facts
-            WHERE created_at >= ?
-              AND created_at <= ?
+            WHERE julianday(created_at) >= julianday(?)
+              AND julianday(created_at) <= julianday(?)
               AND status IN ('active', 'candidate')
             ORDER BY importance DESC, confidence DESC, created_at DESC
             LIMIT 100
@@ -201,8 +201,8 @@ class RetrospectiveService:
             SELECT t.*, r.remind_at_utc, r.status AS reminder_status
             FROM tasks t
             LEFT JOIN reminders r ON r.task_id = t.id
-            WHERE COALESCE(t.updated_at, t.created_at) >= ?
-              AND COALESCE(t.updated_at, t.created_at) <= ?
+            WHERE julianday(COALESCE(t.updated_at, t.created_at)) >= julianday(?)
+              AND julianday(COALESCE(t.updated_at, t.created_at)) <= julianday(?)
             ORDER BY COALESCE(t.due_at_utc, t.updated_at, t.created_at) DESC
             LIMIT 200
             """,
@@ -214,8 +214,8 @@ class RetrospectiveService:
             """
             SELECT *
             FROM agent_actions
-            WHERE created_at >= ?
-              AND created_at <= ?
+            WHERE julianday(created_at) >= julianday(?)
+              AND julianday(created_at) <= julianday(?)
               AND action_type LIKE 'wiki.%'
               AND status IN ('completed', 'reverted')
             ORDER BY created_at DESC
@@ -271,7 +271,8 @@ def retrospective_report_markdown(window: RetrospectiveWindow, *, report_kind: s
     lines.extend(["", "## 任务完成与延迟"])
     if window.tasks.total:
         lines.append(
-            f"- 共 {window.tasks.total} 个任务；完成 {window.tasks.completed}，未完成 {window.tasks.pending}，取消 {window.tasks.cancelled}，逾期 {window.tasks.overdue}。"
+            f"- 共 {window.tasks.total} 个任务；完成 {window.tasks.completed}，未完成 {window.tasks.pending}，"
+            f"取消 {window.tasks.cancelled}，逾期 {window.tasks.overdue}。"
         )
         lines.append(f"- 来源：{_markdown_sources(window.tasks.sources)}")
     else:
@@ -560,4 +561,4 @@ def _markdown_sources(sources: list[RetrospectiveSourceReference]) -> str:
             labels.append(f"`{source.path}`")
         else:
             labels.append(f"{source.kind}:{source.id}")
-    return "，".join(labels)
+    return "；".join(labels)

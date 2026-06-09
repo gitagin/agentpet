@@ -77,10 +77,12 @@ import {
   createSystemTtsProvider,
   type TtsProviderPlaybackStatus,
   useTtsPlaybackQueue,
+  useTtsWaitingCue,
 } from "./features/tts";
 import { Live2DModelPanel } from "./features/live2d/Live2DModelPanel";
 import { live2dModelSelectionStorageKey } from "./features/live2d/live2dConstants";
 import { useLive2D } from "./features/live2d/useLive2D";
+import { VisibleContinuityPanel } from "./features/continuity";
 import { fetchSseStream } from "./services/sse";
 import { agentLabel } from "./services/agentModelDrafts";
 import {
@@ -113,9 +115,14 @@ type CoreWorkflowItem = {
   targetId?: string;
 };
 
+function hasExplicitWindowRoute(): boolean {
+  const hash = window.location.hash.replace("#/", "").replace("#", "").trim();
+  return Boolean(hash);
+}
+
 const petShortcutButtonSize = 38;
 const petShortcutButtonGap = 8;
-const petShortcutButtonCount = 6;
+const petShortcutButtonCount = 4;
 const petShortcutColumnCount = 2;
 const petShortcutButtonStyles = buildPetShortcutButtonStyles();
 const firstUseOnboardingStorageKey = "agent-pet.first-use-onboarding";
@@ -133,7 +140,7 @@ function displayTextForInputMode(mode: PetInputMode, rawText: string): string {
 }
 
 function detectDesktopWindowMode(): DesktopWindowMode {
-  const mode = window.location.hash.replace("#/", "").replace("#", "") || "control";
+  const mode = window.location.hash.replace("#/", "").replace("#", "") || "stage";
   if (
     mode === "pet" ||
     mode === "stage" ||
@@ -220,59 +227,59 @@ function buildPetShortcutButtonStyles(): CSSProperties[] {
 type FirstUseOnboardingDraft = {
   currentFocus: string;
   longTermContext: string;
-  preferredHelp: string;
+  savePreference: string;
 };
 
 function buildFirstUseOnboardingMessage(draft: FirstUseOnboardingDraft): string | null {
   const currentFocus = draft.currentFocus.trim();
   const longTermContext = draft.longTermContext.trim();
-  const preferredHelp = draft.preferredHelp.trim();
-  if (!currentFocus && !longTermContext && !preferredHelp) {
+  const savePreference = draft.savePreference.trim();
+  if (!currentFocus && !longTermContext && !savePreference) {
     return null;
   }
   return [
-    "这是我的首次使用引导回答。请先按普通聊天回应我，再根据现有自动整理策略判断哪些内容值得沉淀；如果没有可保存内容，请明确说明已跳过以及原因。",
+    "这是我的首次使用引导回答。请先用自然语言告诉我今天可以从哪里继续，再按现有自动整理策略判断哪些内容值得跟踪；如果没有可保存内容，请明确说明已跳过以及原因。",
     "",
     `最近主要在忙什么：${currentFocus || "未填写"}`,
-    `希望你长期记住的偏好或背景：${longTermContext || "未填写"}`,
-    `主要想让你帮我做什么：${preferredHelp || "未填写"}`,
+    `希望你帮我跟踪什么：${longTermContext || "未填写"}`,
+    `记忆保存或导出位置偏好：${savePreference || "未填写"}`,
   ].join("\n");
 }
 
 function FirstUseOnboardingCard({
   currentFocus,
   longTermContext,
-  preferredHelp,
+  savePreference,
   connected,
   streaming,
   submitting,
   hasVaultInitialized,
   onCurrentFocusChange,
   onLongTermContextChange,
-  onPreferredHelpChange,
+  onSavePreferenceChange,
   onSubmit,
   onSkip,
 }: {
   currentFocus: string;
   longTermContext: string;
-  preferredHelp: string;
+  savePreference: string;
   connected: boolean;
   streaming: boolean;
   submitting: boolean;
   hasVaultInitialized: boolean;
   onCurrentFocusChange: (value: string) => void;
   onLongTermContextChange: (value: string) => void;
-  onPreferredHelpChange: (value: string) => void;
+  onSavePreferenceChange: (value: string) => void;
   onSubmit: (event: FormEvent) => void;
   onSkip: () => void;
 }) {
-  const hasAnyAnswer = Boolean(currentFocus.trim() || longTermContext.trim() || preferredHelp.trim());
+  const hasAnyAnswer = Boolean(currentFocus.trim() || longTermContext.trim() || savePreference.trim());
   return (
     <section className="first-use-onboarding" aria-label="首次使用引导">
       <div className="section-heading">
-        <strong>先让我了解你</strong>
+        <strong>今天从这里继续</strong>
         <span>
-          回答 3 个问题后会直接开始第一次聊天；没有 Vault 也可以先聊，后端只会按当前自动整理策略记录已整理或已跳过的结果。
+          只要告诉我最近在推进什么、要我帮你盯住什么；保存位置可以之后再设。
         </span>
       </div>
       <form className="first-use-onboarding-form" onSubmit={onSubmit}>
@@ -282,27 +289,27 @@ function FirstUseOnboardingCard({
             rows={2}
             value={currentFocus}
             onChange={(event) => onCurrentFocusChange(event.target.value)}
-            placeholder="例如：收尾一个桌面应用、准备考试、整理个人知识库"
+            placeholder="例如：收尾一个桌面应用、准备考试、整理本周计划"
             disabled={submitting || streaming}
           />
         </label>
         <label>
-          <span>希望我长期记住什么偏好或背景？</span>
+          <span>要我帮你跟踪什么？</span>
           <textarea
             rows={2}
             value={longTermContext}
             onChange={(event) => onLongTermContextChange(event.target.value)}
-            placeholder="例如：喜欢简洁结论、工作日晚上复盘、项目资料优先写入 Wiki"
+            placeholder="例如：项目状态、待办承诺、复盘提醒、重要偏好"
             disabled={submitting || streaming}
           />
         </label>
         <label>
-          <span>主要想让我帮你做什么？</span>
+          <span>保存或导出位置（可选）</span>
           <textarea
             rows={2}
-            value={preferredHelp}
-            onChange={(event) => onPreferredHelpChange(event.target.value)}
-            placeholder="陪聊、日记、任务、知识整理、项目复盘"
+            value={savePreference}
+            onChange={(event) => onSavePreferenceChange(event.target.value)}
+            placeholder="例如：暂时只保存在本机；之后再导出到 Markdown 文件夹"
             disabled={submitting || streaming}
           />
         </label>
@@ -317,8 +324,8 @@ function FirstUseOnboardingCard({
         </div>
         <p className="field-note">
           {hasVaultInitialized
-            ? "当前已有活动 Vault；低风险内容可按设置进入自动整理，高风险或敏感内容仍需确认或会被跳过。"
-            : "当前没有活动 Vault；这不会阻止聊天，也不会偷偷绑定真实知识库。"}
+            ? "当前已有保存位置；低风险整理会按设置记录，高风险或敏感内容仍需确认或会被跳过。"
+            : "没有设置保存位置也可以先聊；我不会偷偷绑定真实文件夹。"}
         </p>
       </form>
     </section>
@@ -354,7 +361,7 @@ function App() {
   const [firstUseOnboardingDraft, setFirstUseOnboardingDraft] = useState({
     currentFocus: "",
     longTermContext: "",
-    preferredHelp: "",
+    savePreference: "",
   });
   const [submittingFirstUseOnboarding, setSubmittingFirstUseOnboarding] = useState(false);
   const streamAbort = useRef<AbortController | null>(null);
@@ -590,16 +597,35 @@ function App() {
       ttsSettings.configured &&
       ttsSettings.status === "ready",
   );
-  const ttsVoice = ttsSettings?.voice
-    ? {
-        id: ttsSettings.voice.id,
-        provider: ttsSettings.voice.provider,
-        label: ttsSettings.voice.label,
-        locale: ttsSettings.voice.locale || undefined,
-        gender: normalizeTtsVoiceGender(ttsSettings.voice.gender),
-        description: ttsSettings.voice.description || undefined,
-      }
-    : null;
+  const ttsVoice = useMemo(() => {
+    const voice = ttsSettings?.voice;
+    return voice
+      ? {
+          id: voice.id,
+          provider: voice.provider,
+          label: voice.label,
+          locale: voice.locale || undefined,
+          gender: normalizeTtsVoiceGender(voice.gender),
+          description: voice.description || undefined,
+        }
+      : null;
+  }, [
+    ttsSettings?.voice?.description,
+    ttsSettings?.voice?.gender,
+    ttsSettings?.voice?.id,
+    ttsSettings?.voice?.label,
+    ttsSettings?.voice?.locale,
+    ttsSettings?.voice?.provider,
+  ]);
+  const ttsWaitingCue = useTtsWaitingCue({
+    enabled: ttsEnabled,
+    providers: ttsProviders,
+    provider: ttsSettings?.provider || "system",
+    voice: ttsVoice,
+    speed: ttsSettings?.speed ?? 1,
+    cueSpeed: 0.82,
+    volume: ttsSettings?.volume ?? 1,
+  });
 
   const petChat = usePetChatBubble({
     messages,
@@ -618,7 +644,10 @@ function App() {
       playbackState: ttsQueue.state,
     },
   });
-  petTtsPlaybackStartRef.current = petChat.handleTtsPlaybackStart || (() => undefined);
+  petTtsPlaybackStartRef.current = (item) => {
+    ttsWaitingCue.stop("assistant_tts_started");
+    petChat.handleTtsPlaybackStart?.(item);
+  };
   petTtsPlaybackEndRef.current = petChat.handleTtsPlaybackEnd || (() => undefined);
 
   useEffect(() => {
@@ -705,6 +734,10 @@ function App() {
         setDesktopHostMode(mode);
       }
       const detectedMode = detectDesktopWindowMode();
+      if (!cancelled && !hasExplicitWindowRoute() && (mode === "pet" || mode === "control")) {
+        setWindowMode(mode);
+        return;
+      }
       if (!cancelled && detectedMode !== "control") {
         setWindowMode(detectedMode);
         return;
@@ -878,6 +911,7 @@ function App() {
     if (!text || streamingRef.current) {
       return false;
     }
+    ttsWaitingCue.stop("new_request");
     streamAbort.current?.abort();
     const requestId = crypto.randomUUID();
     activeChatRequestIdRef.current = requestId;
@@ -908,9 +942,10 @@ function App() {
     setStreaming(true);
     setNotice(null);
     petChat.resetStreamState(assistantId);
+    const waitingCueMessage = ttsWaitingCue.start();
     petChat.showBubble({
       title: "",
-      message: "我先看一下。",
+      message: waitingCueMessage,
       tone: "thinking",
     });
     petChat.scheduleStreamWatchdog(
@@ -1045,6 +1080,7 @@ function App() {
         return false;
       }
       petChat.clearStreamWatchdogTimer();
+      ttsWaitingCue.stop("send_failed");
       petChat.streamFailedRef.current = true;
       const message = describeError(error, "消息发送失败");
       setMessages((current) =>
@@ -1251,7 +1287,7 @@ function App() {
     if (!window.agentDesktop?.revealVaultPath) {
       setNotice({
         tone: "info",
-        message: "当前浏览器预览不能打开本地 Vault 文件；请在 Electron 桌面端使用该操作。",
+        message: "当前浏览器预览不能打开本地保存文件；请在 Electron 桌面端使用该操作。",
       });
       return;
     }
@@ -1267,10 +1303,10 @@ function App() {
       }
       setNotice({
         tone: "error",
-        message: `无法打开 Vault 目标：${result.reason || result.status}。`,
+        message: `无法打开保存目标：${result.reason || result.status}。`,
       });
     } catch (error) {
-      setNotice({ tone: "error", message: describeError(error, "打开 Vault 目标失败") });
+      setNotice({ tone: "error", message: describeError(error, "打开保存目标失败") });
     }
   }
 
@@ -1411,6 +1447,7 @@ function App() {
 
   function stopStreaming() {
     petChat.clearStreamWatchdogTimer();
+    ttsWaitingCue.stop("stream_stopped");
     petChat.streamFailedRef.current = true;
     streamAbort.current?.abort();
     setStreaming(false);
@@ -1476,7 +1513,7 @@ function App() {
         tone: "success",
         message:
           action === "confirm"
-            ? "连续性整理项已确认，已进入运行时连续性状态；未写入 Vault Markdown。"
+            ? "连续性整理项已确认，已进入运行时连续性状态；未写入 Markdown 文件。"
             : "连续性整理项已拒绝，不会进入提示词或 Live2D 状态。",
       });
     } catch (error) {
@@ -1492,7 +1529,7 @@ function App() {
 
   async function resetLocalState() {
     const confirmed = window.confirm(
-      "这会清空本机桌宠的聊天记录、长期记忆、连续性状态、任务、Vault 绑定、索引缓存、模型配置和本地密钥。不会删除 Vault 里的 Markdown 文件。确定要重置为初始化状态吗？",
+      "这会清空本机桌宠的聊天记录、长期记忆、连续性状态、任务、保存位置绑定、索引缓存、模型配置和本地密钥。不会删除你选择的 Markdown 文件。确定要重置为初始化状态吗？",
     );
     if (!confirmed) {
       return;
@@ -1656,13 +1693,13 @@ function App() {
   const coreWorkflowItems: CoreWorkflowItem[] = [
     ...agentWorkflowItems,
     {
-      label: "Obsidian Vault / 索引",
+      label: "保存与导出",
       status: hasVaultInitialized && hasIndexSignal ? "done" : hasVaultInitialized ? "active" : "blocked",
       detail: lastIndexRun
         ? `最近索引 ${formatTaskStatus(lastIndexRun.status)}，文件 ${lastIndexRun.filesIndexed ?? 0}/${lastIndexRun.filesSeen ?? 0}`
         : hasVaultInitialized
-          ? "Vault 已初始化，下一步运行索引。"
-          : "先选择并初始化 Obsidian/Markdown Vault。",
+          ? "保存位置已设置，下一步刷新本地索引。"
+          : "可选：设置 Markdown 导出文件夹，方便之后备份和复盘。",
     },
     {
       label: "助手运行事件",
@@ -1734,20 +1771,20 @@ function App() {
     <FirstUseOnboardingCard
       currentFocus={firstUseOnboardingDraft.currentFocus}
       longTermContext={firstUseOnboardingDraft.longTermContext}
-      preferredHelp={firstUseOnboardingDraft.preferredHelp}
+      savePreference={firstUseOnboardingDraft.savePreference}
       connected={hasConnection}
       streaming={streaming}
       submitting={submittingFirstUseOnboarding}
       hasVaultInitialized={hasVaultInitialized}
       onCurrentFocusChange={(value) => setFirstUseOnboardingDraft((current) => ({ ...current, currentFocus: value }))}
       onLongTermContextChange={(value) => setFirstUseOnboardingDraft((current) => ({ ...current, longTermContext: value }))}
-      onPreferredHelpChange={(value) => setFirstUseOnboardingDraft((current) => ({ ...current, preferredHelp: value }))}
+      onSavePreferenceChange={(value) => setFirstUseOnboardingDraft((current) => ({ ...current, savePreference: value }))}
       onSubmit={submitFirstUseOnboarding}
       onSkip={skipFirstUseOnboarding}
     />
   ) : null;
   const connectionPanel = (
-    <Panel id="connection-panel" icon={<Settings size={18} />} title="本地连接">
+    <Panel id="connection-panel" icon={<Settings size={18} />} title="模型连接">
       <ConnectionPanel
         settings={settings}
         onSettingsChange={setSettings}
@@ -1762,7 +1799,7 @@ function App() {
       <section className="danger-zone" aria-label="本机状态重置">
         <div className="section-heading">
           <strong>重置桌宠初始化状态</strong>
-          <span>清空本机聊天、记忆、任务、Vault 绑定、索引缓存和模型配置，让应用回到首次启动状态。</span>
+          <span>清空本机聊天、记忆、任务、保存位置、索引缓存和模型配置，让应用回到首次启动状态。</span>
         </div>
         <div className="button-row">
           <button
@@ -1776,7 +1813,7 @@ function App() {
           </button>
         </div>
         <p className="field-note error">
-          仅清理本机应用状态和本地凭据引用，不删除 Vault 目录中的 Markdown 文件。打包发版前可用它确认客户首次启动不会带开发测试记录。
+          仅清理本机应用状态和本地凭据引用，不删除已选择的 Markdown 文件夹。打包发版前可用它确认客户首次启动不会带开发测试记录。
         </p>
       </section>
     </Panel>
@@ -1924,6 +1961,7 @@ function App() {
       onResumePaging={petChat.resumePaging}
       ttsSpeaking={ttsSpeaking}
       active={!isStageHostWindow || windowMode === "stage"}
+      api={api}
     />
   );
 
@@ -2180,23 +2218,17 @@ function App() {
           onContextMenu={(event) => event.preventDefault()}
           onAnimationEnd={finishPetShortcutMotion}
         >
-          <button type="button" className="pet-shortcut-button" style={petShortcutButtonStyles[0]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="开始聊天" onClick={() => openPetInputMode("chat")}>
-            聊天
+          <button type="button" className="pet-shortcut-button" style={petShortcutButtonStyles[0]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="继续对话" onClick={() => openPetInputMode("chat")}>
+            继续
           </button>
-          <button type="button" className="pet-shortcut-button" style={petShortcutButtonStyles[1]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="打开任务工作台" onClick={() => void window.agentDesktop?.openStage?.("agent")}>
+          <button type="button" className="pet-shortcut-button" style={petShortcutButtonStyles[1]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="记录一条笔记" onClick={() => openPetInputMode("note")}>
+            记录
+          </button>
+          <button type="button" className="pet-shortcut-button" style={petShortcutButtonStyles[2]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="打开任务工作台" onClick={() => void window.agentDesktop?.openStage?.("agent")}>
             任务
           </button>
-          <button type="button" className="pet-shortcut-button" style={petShortcutButtonStyles[2]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="打开记忆工作台" onClick={() => void window.agentDesktop?.openStage?.("memory")}>
-            记忆
-          </button>
-          <button type="button" className="pet-shortcut-button" style={petShortcutButtonStyles[3]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="打开知识库" onClick={() => void window.agentDesktop?.openStage?.("world")}>
-            知识
-          </button>
-          <button type="button" className="pet-shortcut-button" style={petShortcutButtonStyles[4]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="开始今日复盘" onClick={() => openPetInputMode("review")}>
+          <button type="button" className="pet-shortcut-button" style={petShortcutButtonStyles[3]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="开始今日复盘" onClick={() => openPetInputMode("review")}>
             复盘
-          </button>
-          <button type="button" className="pet-shortcut-button" style={petShortcutButtonStyles[5]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="打开设置" onClick={() => void window.agentDesktop?.openStage?.("settings")}>
-            设置
           </button>
         </nav>
       </main>
@@ -2207,8 +2239,8 @@ function App() {
     <main className="app-shell">
       <header className="topbar">
         <div>
-          <p className="eyebrow">本地优先 · 透明记忆 · 桌宠陪伴</p>
-          <h1>桌面记忆助手</h1>
+          <p className="eyebrow">今天从这里继续</p>
+          <h1>我帮你整理好最近的事</h1>
         </div>
         <ConnectionStatusStrip sidecarStatus={sidecarStatus} health={health} />
       </header>
@@ -2230,12 +2262,14 @@ function App() {
           speaking={ttsActive}
         />
 
-        <Panel id="agent-workspace-panel" icon={<MessageSquareText size={18} />} title="记忆陪伴工作区" className="chat-panel">
-          <section className="stack" aria-label="聊天和 Obsidian 记忆工作流">
+        <VisibleContinuityPanel api={api} className="control-continuity-panel" />
+
+        <Panel id="agent-workspace-panel" icon={<MessageSquareText size={18} />} title="今天要跟进的事" className="chat-panel">
+          <section className="stack" aria-label="聊天和整理工作流">
             {firstUseOnboardingPanel}
             <div className="section-heading">
-              <strong>和桌宠对话</strong>
-              <span>日常聊天会优先引用资料库；自动记忆功能默认关闭，可在设置中开启，高风险写入仍会打断你确认。</span>
+              <strong>直接告诉我接下来要做什么</strong>
+              <span>我会把对话、任务、复盘和需要留意的线索串起来；本地保存和高风险确认规则在设置里可查。</span>
             </div>
             <form
               className="chat-form"
@@ -2247,7 +2281,7 @@ function App() {
               <input
                 value={controlInput}
                 onChange={(event) => setControlInput(event.target.value)}
-                placeholder={hasConnection ? "和桌宠说点什么，或让它引用资料库、整理记忆、创建任务..." : "正在等待本地助手连接..."}
+                placeholder={hasConnection ? "说一句要跟进的事、要记住的偏好，或让我安排一个提醒..." : "正在等待本地助手连接..."}
                 disabled={streaming}
               />
               {streaming ? (
@@ -2310,7 +2344,7 @@ function App() {
               onOpenWiki={(path) => openArtifactTarget("world", path)}
               onOpenReport={(path) => openArtifactTarget("memory", path)}
             />
-            <div className="workflow-grid" aria-label="助手与 Obsidian 工作流状态">
+            <div className="workflow-grid" aria-label="助手整理状态">
               {coreWorkflowItems.map((item) => (
                 <article key={item.label} className={`workflow-card ${item.status}`}>
                   <span className="workflow-state">{formatWorkflowStatus(item.status)}</span>
@@ -2332,20 +2366,11 @@ function App() {
           </section>
         </Panel>
 
-        <Live2DModelPanel
-          models={live2dModels}
-          selectedModelId={selectedLive2dModelId}
-          asset={live2dAsset}
-          onSelectModel={selectLive2DModel}
-        />
-
-        {connectionPanel}
-
         <Panel id="continuity-panel" icon={<HeartPulse size={18} />} title="陪伴状态">
           <section className="stack" aria-label="连续性状态">
             <div className="section-heading">
               <strong>关系与状态连续性</strong>
-              <span>确认后只进入 SQLite 运行时状态；不会写入 Vault Markdown。</span>
+              <span>确认后只进入本机运行时状态；不会写入 Markdown 文件。</span>
             </div>
             <div className="button-row">
               <button type="button" className="secondary" onClick={() => void loadContinuity()} disabled={loadingContinuity}>
@@ -2389,9 +2414,26 @@ function App() {
           </section>
         </Panel>
 
-        {wikiWorkflowPanel}
+        <details className="control-secondary-nav">
+          <summary>
+            <strong>高级管理与诊断</strong>
+            <span>模型、连接、Wiki、设置和 Live2D 资源仍可在这里展开，也可用底部导航进入独立窗口。</span>
+          </summary>
+          <div className="control-secondary-grid">
+            <Live2DModelPanel
+              models={live2dModels}
+              selectedModelId={selectedLive2dModelId}
+              asset={live2dAsset}
+              onSelectModel={selectLive2DModel}
+            />
 
-        {settingsPanel}
+            {connectionPanel}
+
+            {wikiWorkflowPanel}
+
+            {settingsPanel}
+          </div>
+        </details>
 
       </section>
     </main>
@@ -2455,7 +2497,7 @@ function normalizeContinuitySignal(payload: Record<string, unknown> | null): Cha
     return null;
   }
   const intensity = pickPayloadString(payload, ["intensity"]) || "medium";
-  const displayHint = pickPayloadString(payload, ["display_hint"]) || "只作为运行时陪伴提示；不会写入 Vault。";
+  const displayHint = pickPayloadString(payload, ["display_hint"]) || "只作为运行时陪伴提示；不会写入 Markdown 文件。";
   const keys = Array.isArray(payload.source_state_keys)
     ? payload.source_state_keys.filter((value): value is string => typeof value === "string")
     : [];

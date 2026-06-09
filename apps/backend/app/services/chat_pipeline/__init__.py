@@ -34,10 +34,10 @@ async def archive_chat_memory(
                 context=context,
                 state=state,
                 action_type="chat.auto_memory.skip",
-                title="Skipped automatic organization",
+                title="已跳过自动整理",
                 summary=(
-                    "Skipped because automatic diary, structured memory, long-term memory, "
-                    "and Wiki organization are disabled; no local asset was written."
+                    "自动日记、结构化记忆、长期记忆和 Wiki 整理当前都已关闭，"
+                    "因此本轮没有写入本地资产。"
                 ),
                 reason="automation_disabled",
             )

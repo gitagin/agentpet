@@ -132,7 +132,7 @@ describe("wiki terminology", () => {
       </WorldWindowView>,
     );
 
-    expect(screen.getByRole("heading", { name: "知识" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "知识整理" })).toBeInTheDocument();
     expect(screen.queryByText(/Vault \/ Wiki|VAULT \/ WIKI/i)).not.toBeInTheDocument();
   });
 

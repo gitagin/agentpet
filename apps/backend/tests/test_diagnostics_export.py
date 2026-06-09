@@ -157,7 +157,7 @@ def test_diagnostics_export_returns_redacted_runtime_summary(
     assert response.status_code == 200
     payload = response.json()
     body = response.text
-    assert payload["app"]["version"] == "1.0"
+    assert payload["app"]["version"] == "0.2.0"
     assert payload["database"]["reachable"] is True
     assert payload["database"]["quick_check"] == "ok"
     assert payload["vault"]["configured"] is True

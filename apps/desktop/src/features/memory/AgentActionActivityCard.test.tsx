@@ -69,7 +69,7 @@ describe("AgentActionActivityCard", () => {
     expect(screen.queryByRole("button", { name: "显示位置" })).not.toBeInTheDocument();
   });
 
-  it("uses human-readable skipped automation copy while keeping raw audit details secondary", () => {
+  it("uses human-readable skipped automation copy without exposing legacy English details", () => {
     render(
       <AgentActionActivityCard
         entry={entry(
@@ -91,7 +91,8 @@ describe("AgentActionActivityCard", () => {
 
     expect(screen.getByText("已跳过自动整理")).toBeInTheDocument();
     expect(screen.getByText(/自动整理策略当前关闭/)).toBeInTheDocument();
-    expect(screen.getByText("审计详情")).toBeInTheDocument();
-    expect(screen.getByText("原始跳过原因：automation_disabled")).toBeInTheDocument();
+    expect(screen.queryByText(/Skipped automatic organization/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Skipped because/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/automation_disabled/)).not.toBeInTheDocument();
   });
 });

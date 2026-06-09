@@ -45,7 +45,7 @@ def consolidate_slow_memory(
                     context=context,
                     state=state,
                     action_type="memory.consolidation.skip",
-                    title="Skipped slow memory consolidation",
+                    title="已跳过慢记忆整理",
                     summary=_skip_summary(result.skipped_reason),
                     reason=result.skipped_reason or "no_signal",
                     risk_tier="low",
@@ -61,7 +61,7 @@ def consolidate_slow_memory(
             context,
             AgentActionCreate(
                 action_type=action_type,
-                title="Recorded slow memory consolidation candidates",
+                title="已记录慢记忆整理候选",
                 summary=_result_summary(result),
                 source_agent_run_id=state.agent_run_id,
                 source_conversation_id=state.conversation_id,
@@ -98,14 +98,14 @@ def consolidate_slow_memory(
 
 def _result_summary(result: MemoryConsolidationResult) -> str:
     if result.rejected_count:
-        return "Recorded a non-recallable safety event; no ordinary long-term memory or Vault file was written."
+        return "已记录一条不可召回的安全事件，没有写入普通长期记忆或 Vault 文件。"
     return (
-        f"Recorded {result.candidate_count} slow-memory candidate(s) with "
-        f"{result.evidence_count} evidence record(s); no Vault long-term profile was written."
+        f"已记录 {result.candidate_count} 条慢记忆候选和 "
+        f"{result.evidence_count} 条证据记录；没有写入 Vault 长期画像。"
     )
 
 
 def _skip_summary(reason: str | None) -> str:
     if reason == "no_signal":
-        return "Skipped because this turn did not contain a safe slow-memory signal."
-    return "Skipped slow memory consolidation; no local asset was written."
+        return "本轮没有包含可安全沉淀的慢记忆信号。"
+    return "已跳过慢记忆整理，没有写入本地资产。"

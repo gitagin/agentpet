@@ -63,8 +63,8 @@ def archive_long_term_memory(
                     context=context,
                     state=state,
                     action_type="memory.long_term.skip",
-                    title="Skipped long-term memory",
-                    summary="Skipped because this turn contained sensitive or confirmation-only content; no long-term memory was written.",
+                    title="已跳过长期记忆",
+                    summary="本轮内容包含敏感信息或需要先确认，因此没有写入长期记忆。",
                     reason=long_term_result.reason,
                     risk_tier="high",
                 )

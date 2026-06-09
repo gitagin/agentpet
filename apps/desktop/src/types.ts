@@ -1350,6 +1350,60 @@ export type RetrospectiveReportResponse = {
   markdown: string;
 };
 
+export type VisibleContinuityTodayCard = {
+  title: string;
+  summary: string;
+  carry_over_items: string[];
+  suggested_next_steps: string[];
+  continuation_prompts: string[];
+  source_count: number;
+  updated_at?: string | null;
+};
+
+export type VisibleContinuityReceipt = {
+  action_id: string;
+  action_type: string;
+  title: string;
+  summary: string;
+  decision: AgentActionDecision;
+  risk_tier: AgentActionRiskTier;
+  status: string;
+  reversible: boolean;
+  reverted_by?: string | null;
+  reverts_action_id?: string | null;
+  target_path?: string | null;
+  created_at: string;
+};
+
+export type VisibleContinuityProjectCard = {
+  project_id: string;
+  title: string;
+  current_state: string;
+  recent_progress: string;
+  next_step: string;
+  blockers: string[];
+  last_touched_at?: string | null;
+  sources: string[];
+};
+
+export type VisibleContinuityPlaybackPreview = {
+  period: "weekly" | "monthly";
+  title: string;
+  summary: string;
+  themes: string[];
+  completed: string[];
+  stuck_points: string[];
+  next_focus: string[];
+  source_count: number;
+};
+
+export type VisibleContinuitySnapshotResponse = {
+  today_card: VisibleContinuityTodayCard;
+  recent_receipts: VisibleContinuityReceipt[];
+  project_cards: VisibleContinuityProjectCard[];
+  playback_preview: VisibleContinuityPlaybackPreview;
+};
+
 export type VaultStatusResponse = {
   configured: boolean;
   active_vault_id?: string | null;

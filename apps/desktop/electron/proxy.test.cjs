@@ -103,6 +103,35 @@ describe("Electron API proxy allowlist", () => {
     expect(postInit.headers.get("Authorization")).toBe("Bearer test-session-token");
   });
 
+  it("allows only the exact visible continuity snapshot route", async () => {
+    global.fetch = vi.fn(async () => createJsonResponse({ ok: true }));
+    const proxy = createProxyManager({
+      baseUrl: "http://127.0.0.1:8765",
+      sessionToken: "test-session-token",
+    });
+
+    await proxy.proxyApiRequest("/api/today/snapshot", { method: "GET" });
+
+    expect(global.fetch).toHaveBeenCalledOnce();
+    const [target, init] = global.fetch.mock.calls[0];
+    expect(target.toString()).toBe("http://127.0.0.1:8765/api/today/snapshot");
+    expect(init.headers.get("Authorization")).toBe("Bearer test-session-token");
+    await expect(proxy.proxyApiRequest("/api/today/snapshot/export", { method: "GET" })).rejects.toMatchObject({
+      code: "renderer_api_route_not_allowed",
+      details: {
+        method: "GET",
+        path: "/api/today/snapshot/export",
+      },
+    });
+    await expect(proxy.proxyApiRequest("/api/today/snapshot", { method: "POST", body: "{}" })).rejects.toMatchObject({
+      code: "renderer_api_route_not_allowed",
+      details: {
+        method: "POST",
+        path: "/api/today/snapshot",
+      },
+    });
+  });
+
   it("allows only chat run event routes for SSE streams", async () => {
     global.fetch = vi.fn(async () => createJsonResponse({ ok: true }));
     const proxy = createProxyManager({

@@ -1,5 +1,5 @@
 import pytest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from apps.backend.tests._schema import migrated_connection
 from app.models.enums import MemoryProposalStatus, MemoryProposalType
@@ -238,6 +238,48 @@ def test_retrospective_service_builds_local_windows_from_tracked_sources(tmp_pat
     assert seven.wiki_updates[0].path == "Wiki/Companion/Summaries/Task-03.md"
 
 
+def test_retrospective_service_counts_diary_objects_with_offset_timezone_inside_utc_window(tmp_path):
+    conn = migrated_connection()
+    now = datetime(2026, 6, 2, tzinfo=timezone.utc)
+    local_occurred_at = (now - timedelta(days=1)).astimezone(timezone(timedelta(hours=8))).isoformat()
+    outside_occurred_at = (now - timedelta(days=8)).astimezone(timezone(timedelta(hours=8))).isoformat()
+    conn.execute("INSERT INTO vaults(id, root_path, name) VALUES ('vault-1', ?, 'Vault')", (str(tmp_path),))
+    conn.execute(
+        """
+        INSERT INTO diary_memory_objects (
+            id, vault_id, type, summary, topic, emotion, people_json,
+            keywords_json, importance, confidence, occurred_at, timezone,
+            status, object_hash, extraction_model, created_at, updated_at
+        )
+        VALUES
+            ('diary-offset-1', 'vault-1', 'event', 'Reviewed offset timezone retrospective behavior.',
+             'retrospective', 'focused', '[]', '["timezone"]', 0.9, 0.95,
+             ?, 'Asia/Shanghai', 'active', 'hash-offset-1', 'fake',
+             '2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z'),
+            ('diary-offset-archived', 'vault-1', 'event', 'Archived object should stay excluded.',
+             'retrospective', 'focused', '[]', '["timezone"]', 0.9, 0.95,
+             ?, 'Asia/Shanghai', 'archived', 'hash-offset-archived', 'fake',
+             '2026-06-01T00:00:00Z', '2026-06-01T00:00:00Z'),
+            ('diary-offset-outside', 'vault-1', 'event', 'Old object should stay outside the 7 day window.',
+             'retrospective', 'focused', '[]', '["timezone"]', 0.9, 0.95,
+             ?, 'Asia/Shanghai', 'active', 'hash-offset-outside', 'fake',
+             '2026-05-25T00:00:00Z', '2026-05-25T00:00:00Z')
+        """,
+        (local_occurred_at, local_occurred_at, outside_occurred_at),
+    )
+    conn.commit()
+    service = RetrospectiveService(
+        conn,
+        vault_id="vault-1",
+        now_provider=lambda: now,
+    )
+
+    seven = service.build_window(7)
+
+    assert seven.summary["diary_objects"] == 1
+    assert seven.diary_summaries[0].id == "diary-offset-1"
+
+
 def test_retrospective_report_write_records_reversible_agent_action(tmp_path):
     conn = migrated_connection()
     vault = tmp_path / "Vault"
@@ -274,9 +316,15 @@ def test_retrospective_report_write_records_reversible_agent_action(tmp_path):
     assert response.page.relative_path.startswith("Wiki/Companion/Reports/")
     assert response.page.index_job_id == f"indexed:{response.page.relative_path}"
     assert response.action.action_type == "wiki.retrospective_report.write"
+    assert response.action.title == "已生成 7-day Markdown 报告"
+    assert response.page.title == "7-day 长期回顾"
     assert response.action.reversible is True
     assert report_path.exists()
-    assert "reporting" in report_path.read_text(encoding="utf-8")
+    report_text = report_path.read_text(encoding="utf-8")
+    assert "reporting" in report_text
+    assert "## 主要主题" in report_text
+    assert "## 重要对话和日记摘要" in report_text
+    assert "本报告只使用本地 SQLite 与 Vault 中已有的可追踪记录" in report_text
 
     updated, reverted = action_service.revert(response.action.action_id)
 

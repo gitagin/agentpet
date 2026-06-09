@@ -318,6 +318,15 @@ function renderView(
   );
 }
 
+function openAdvancedMemoryTools() {
+  const advanced = screen.getByText("Advanced memory tools").closest("details") as HTMLDetailsElement;
+  expect(advanced).toBeInTheDocument();
+  expect(advanced).not.toHaveAttribute("open");
+  fireEvent.click(within(advanced).getByText("Advanced memory tools"));
+  expect(advanced).toHaveAttribute("open");
+  return advanced;
+}
+
 describe("MemoryWindowView", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -344,7 +353,7 @@ describe("MemoryWindowView", () => {
     expect(api.getLocalAssetStats).toHaveBeenCalled();
   });
 
-  it("shows direct memory search and add-memory controls before local assets", async () => {
+  it("shows playback first and keeps direct memory tools in advanced sections", async () => {
     const api = createApi([memoryFact()]);
 
     renderView(api, vi.fn(), {
@@ -353,14 +362,21 @@ describe("MemoryWindowView", () => {
       memorySearchResults: [searchResult()],
     });
 
-    const workbench = screen.getByLabelText("记忆工作台");
+    expect(screen.getByRole("heading", { name: "本周回放与月度复盘" })).toBeInTheDocument();
+    const playback = screen.getByLabelText("复盘助手");
     const localAssets = (await screen.findByRole("button", { name: /刷新资产/ })).closest("section") as HTMLElement;
-    expect(workbench.compareDocumentPosition(localAssets) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const advanced = screen.getByText("Advanced memory tools").closest("details") as HTMLDetailsElement;
+    expect(playback.compareDocumentPosition(localAssets) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(localAssets.compareDocumentPosition(advanced) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(advanced).not.toHaveAttribute("open");
+
+    fireEvent.click(within(advanced).getByText("Advanced memory tools"));
+    const workbench = screen.getByLabelText("Advanced memory workbench");
+    expect(advanced).toContainElement(workbench);
     expect(within(workbench).getByLabelText("记忆搜索")).toBeInTheDocument();
     expect(within(workbench).getByLabelText("新增记忆表单")).toBeInTheDocument();
     expect(screen.getByText("偏好记忆")).toBeInTheDocument();
     expect(screen.getByText("用户偏好发布清单。")).toBeInTheDocument();
-    expect(screen.getByLabelText("复盘助手")).toBeInTheDocument();
     expect(screen.getByLabelText("已确认记忆")).toBeInTheDocument();
     expect(screen.queryByLabelText(/chat/i)).not.toBeInTheDocument();
   });
@@ -371,6 +387,7 @@ describe("MemoryWindowView", () => {
     const onMemoryProposalDraftChange = vi.fn();
 
     renderView(api, vi.fn(), { onMemorySearchQueryChange, onMemoryProposalDraftChange });
+    openAdvancedMemoryTools();
 
     fireEvent.click(screen.getByRole("button", { name: "搜索记忆" }));
     expect(onMemorySearchQueryChange).toHaveBeenCalledWith("发布清单");
@@ -390,6 +407,7 @@ describe("MemoryWindowView", () => {
     const api = createApi([memoryFact()]);
 
     renderView(api, vi.fn(), { memorySearchQuery: "发布清单" });
+    openAdvancedMemoryTools();
 
     fireEvent.click(screen.getByRole("button", { name: "搜索" }));
 
@@ -405,6 +423,7 @@ describe("MemoryWindowView", () => {
     };
 
     renderView(api, vi.fn(), { memoryProposalDraft: draft });
+    openAdvancedMemoryTools();
 
     fireEvent.click(screen.getByRole("button", { name: "新增记忆" }));
 
@@ -442,6 +461,7 @@ describe("MemoryWindowView", () => {
     const onRefresh = vi.fn();
 
     renderView(api, onRefresh);
+    openAdvancedMemoryTools();
 
     const confirmed = await screen.findByLabelText("已确认记忆");
     expect(within(confirmed).getByText("fruit is apple")).toBeInTheDocument();
@@ -473,6 +493,7 @@ describe("MemoryWindowView", () => {
     const onRefresh = vi.fn();
 
     renderView(api, onRefresh);
+    openAdvancedMemoryTools();
 
     expect(await screen.findByText("fruit is apple")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "标为不准确" }));
@@ -485,6 +506,7 @@ describe("MemoryWindowView", () => {
     const api = createApi([memoryFact()]);
 
     renderView(api);
+    openAdvancedMemoryTools();
 
     await screen.findByText("fruit is apple");
     expect(screen.queryByText("raw evidence is not rendered")).not.toBeInTheDocument();
@@ -522,6 +544,7 @@ describe("MemoryWindowView", () => {
     const onRefresh = vi.fn();
 
     renderView(api, onRefresh);
+    openAdvancedMemoryTools();
 
     const review = await screen.findByLabelText("本周记忆复核");
     expect(within(review).getAllByText("已保留").length).toBeGreaterThan(0);

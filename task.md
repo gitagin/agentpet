@@ -1,560 +1,463 @@
-# Dual-Track Memory System Task Set
-
-This task set is for implementing a dual-track memory system in Agent Pet.
-The immediate track makes the pet adapt quickly inside the current conversation.
-The slow consolidation track turns only safe, scoped, explainable, and reversible signals into durable memory.
-
-## Execution Rules
-
-1. Protect against memory pollution before expanding automatic memory.
-2. Immediate understanding may influence the current reply, but must not directly write long-term memory.
-3. Slow consolidation must keep source, scope, lifecycle, risk, recall permissions, and audit evidence.
-4. Long-term does not mean permanent. Durable memory must support active, stale, archived, forgotten, and superseded states.
-5. Model inference must not become a user personality fact. Inference may only become a candidate or short-lived state unless confirmed by strong evidence.
-6. High-risk, sensitive, conflicting, and low-confidence promotion must require confirmation or downgrade.
-7. Schema changes require a new migration, model/service updates, pytest coverage, and backend verification.
-8. Do not edit generated or local-state paths: `node_modules/`, `dist/`, `release/`, `*.db`, `logs/`, `.tmp/`, `.idea/`, `.codex/`.
-9. Do not mark any acceptance row as `Covered` until implementation evidence or tests support it.
-10. Renderer capabilities must still go through contextBridge IPC. Backend work comes first unless a task explicitly enters desktop UI.
+# 任务指令集
 
-## TASK-001: Baseline Memory Audit
+## 执行总原则
 
-Goal: Establish the current memory-system baseline before adding new behavior.
-
-Read these files first:
-
-- `apps/backend/app/services/memory_policy.py`
-- `apps/backend/app/services/memory.py`
-- `apps/backend/app/services/long_term_memory.py`
-- `apps/backend/app/services/memory_graph.py`
-- `apps/backend/app/services/diary_memory.py`
-- `apps/backend/app/services/chat_auto_memory.py`
-- `apps/backend/app/services/companion_retrieval.py`
-- `apps/backend/app/services/continuity.py`
-- `apps/backend/app/services/agent_actions.py`
-- `apps/backend/app/agents/memory_router.py`
-- `apps/backend/app/agents/nodes/memory.py`
-- `apps/backend/app/agents/nodes/chat.py`
-- `apps/backend/app/agents/graph_runtime.py`
-- `apps/backend/migrations/003_vector_index_and_memory_graph.sql`
-- `apps/backend/migrations/009_continuity_kernel.sql`
-- `apps/backend/migrations/010_diary_memory_objects.sql`
-- `apps/backend/migrations/012_agent_actions_autonomy.sql`
-- `apps/backend/migrations/014_service_schema_cleanup.sql`
+所有任务必须严格按顺序执行。前一项没有完成产物，不得进入后一项。
 
-Steps:
+第一叙事固定为：面向中国用户的本地长期记忆陪伴体。
 
-1. List all current memory inputs: explicit remember requests, post-chat diary, structured diary, long-term memory, continuity state, and Wiki summaries.
-2. List all current storage surfaces: `memory_graph_facts`, `diary_memory_objects`, `continuity_state`, `continuity_proposals`, `agent_actions`, and `daily_chat_memory_entries`.
-3. List existing safety mechanisms: sensitive-content rejection, automation risk decisions, reversible Markdown snapshots, and the activity ledger.
-4. Decide what can be reused and what must be added.
+其他能力只能作为后台支撑，不得在对外叙事中抢占主位置。
 
-Acceptance:
+不得把产品描述成大而全的工具集合。所有表达都必须回到一个核心承诺：它长期记得你，陪你，并且记忆在本地、可查看、可修改、可撤回。
 
-- No behavior changes.
-- The audit names where the immediate track and slow consolidation track will plug into the existing code.
-- Run at least:
-  - `Push-Location apps\backend; python -m pytest -q tests/test_memory_services.py tests/test_long_term_memory_services.py tests/test_chat_auto_memory_services.py tests/test_agent_actions.py; Pop-Location`
+## 任务一：确定唯一产品定位
 
-## TASK-002: Define Memory Taxonomy And Recall Permissions
+目标：把产品从研发系统收敛成一个用户能听懂、能复述、能产生兴趣的产品。
 
-Goal: Create a shared contract for safe, natural, scoped memory.
-
-Suggested files:
-
-- Add `apps/backend/app/services/memory_taxonomy.py`
-- Update `apps/backend/app/models/memory.py` if API models need the contract
-- Update `apps/backend/tests/test_contracts_api_models.py` if API schema changes
+执行步骤：
 
-Define these fields:
-
-- `memory_kind`: fact, preference, recent_state, boundary, project_context, historical, inference
-- `memory_scope`: global, project, topic, relationship, temporary, sensitive
-- `lifecycle_status`: candidate, active, stale, archived, forgotten, rejected, superseded
-- `source_track`: immediate, slow_consolidation, explicit_user, model_extracted, diary, continuity
-- `risk_tier`: low, medium, high
-- `confidence`
-- `importance`
-- `evidence_count`
-- `expires_at`
-- `last_confirmed_at`
-- `superseded_by`
+一、写出一句产品定位，句式为：这是一个给谁使用、解决什么问题、产生什么结果的本地长期记忆陪伴体。
 
-Split recall permissions into separate booleans:
+二、写出三条核心价值，只允许围绕长期记忆、本地安全、持续陪伴展开。
 
-- `can_style_response`
-- `can_answer_context`
-- `can_proactively_mention`
-- `can_suggest_action`
-- `can_persist`
+三、删除所有会让用户感觉这是工具集合的描述。
 
-Rules:
+四、保留一版面向普通中国用户的说法，不使用技术术语。
 
-1. Emotion, relationship, and personality inference must not default to `can_persist=True`.
-2. User boundaries are durable and high priority, but can be changed by explicit user correction.
-3. Low-confidence candidates cannot be proactively mentioned.
-4. Sensitive content cannot be written to ordinary memory or Vault Markdown.
-5. Current tasks and projects need lifecycle state; they must not remain current forever.
+完成产物：
 
-Acceptance:
+一、一句产品定位。
 
-- Unit tests cover default permissions for each kind and scope.
-- Unit tests cover sensitive, conflicting, low-confidence, and explicit-user memory priority.
+二、三条核心价值。
 
-## TASK-003: Add Slow Memory Schema
+三、一段不超过一百字的用户能听懂的介绍。
 
-Goal: Add queryable and auditable storage for the slow consolidation track.
+验收标准：
 
-Important: This is a SQLite schema change. Follow the project rule: add a migration, update models/services, add pytest coverage, and do not edit local database files.
+用户读完后能回答：这个产品是谁、能做什么、为什么值得用。
 
-Suggested migration:
+## 任务二：锁定第一批目标用户
 
-- `apps/backend/migrations/017_dual_track_memory.sql`
+目标：选择一个最容易产生真实使用频率的中国用户群体。
 
-Suggested tables:
+执行步骤：
 
-1. `memory_candidates`
-   - Stores extracted candidate memories.
-   - Include kind, scope, summary, normalized_value, source_text, risk_tier, confidence, importance, status, expires_at, and metadata_json.
-2. `memory_evidence`
-   - Stores evidence for candidates or durable facts.
-   - Link conversation_id, message_id, agent_run_id, diary_object_id, and fact_id when available.
-3. `memory_lifecycle_events`
-   - Stores candidate to active to stale to archived to forgotten transitions.
-4. `memory_activation_events`
-   - Stores each memory recall or response influence event.
-5. `memory_feedback_events`
-   - Stores user correction, keep, forget, rewrite, make-temporary, and mark-completed feedback.
+一、列出三个候选人群：独居或异地生活的年轻人、高压工作人群、长期写作和自我记录人群。
 
-Reuse requirements:
+二、分别判断每个人群的痛点强度、使用频率、付费可能、隐私敏感度、传播难度。
 
-- Reuse `memory_graph_facts` for durable facts where possible.
-- Reuse `agent_actions` for user-visible activity and revert records where possible.
-- Use `metadata_json` for secondary fields only; frequently queried fields should be real columns.
+三、只选择一个人群作为第一批目标用户。
 
-Acceptance:
+四、写出这个人群一天中最可能打开产品的三个具体时刻。
 
-- Migration is idempotent.
-- Add schema tests for tables, indexes, foreign keys, and defaults.
-- Run:
-  - `Push-Location apps\backend; python -m pytest -q tests/test_persistence_mvp.py tests/test_api_wiring_mvp.py; Pop-Location`
+完成产物：
 
-## TASK-004: Implement Immediate Understanding Layer
+一、第一批目标用户定义。
 
-Goal: Let the pet adapt quickly inside the current conversation without polluting long-term memory.
+二、选择理由。
 
-Suggested files:
+三、三个真实使用时刻。
 
-- Add `apps/backend/app/agents/immediate_understanding.py`
-- Update `apps/backend/app/agents/state.py`
-- Update `apps/backend/app/agents/nodes/chat.py`
-- Update `apps/backend/app/agents/prompts/system.py`
+验收标准：
 
-Behavior:
+目标用户必须具体到能找到人访谈，不能停留在泛泛的所有人。
 
-1. Extract temporary understanding from the current user message and conversation state:
-   - current task
-   - desired tone
-   - direct, detailed, gentle, sharp, or concise interaction style
-   - current topic/domain
-   - explicit temporary constraints
-2. Store this only in agent state and prompt context.
-3. Do not write it to `memory_graph_facts`, Vault Markdown, or long-term memory.
-4. Allow it to immediately affect the current reply.
-5. Make it internally traceable without exposing sensitive raw text.
+## 任务三：定义第一个核心场景
 
-Acceptance scenarios:
+目标：只保留一个最能体现长期记忆陪伴价值的核心场景。
 
-- After the user asks for blunt critique, the current reply becomes direct.
-- A current-session tone request is not saved as a global preference.
-- If the user says the request only applies this time, later turns do not keep it.
+执行步骤：
 
-Tests:
+一、从目标用户的一天中选择一个最高频、最有情绪价值、最需要连续上下文的场景。
 
-- Add `apps/backend/tests/test_immediate_understanding.py`
-- Update `apps/backend/tests/test_agent_runtime_chat.py`
+二、写出用户在这个场景下说的第一句话。
 
-## TASK-005: Implement Slow Consolidation Extractor
+三、写出陪伴体第一次回应应该做到什么。
 
-Goal: Extract candidate memory after chat without directly creating a long-term user profile.
+四、写出第二天陪伴体如何自然接上昨天的话题。
 
-Suggested files:
+五、写出一周后陪伴体如何体现它真的更懂用户。
 
-- Add `apps/backend/app/services/memory_consolidation.py`
-- Refactor or reuse `apps/backend/app/services/long_term_memory.py`
-- Reuse `apps/backend/app/services/diary_memory_extractor.py`
-- Integrate with `apps/backend/app/services/chat_auto_memory.py`
+完成产物：
 
-Candidate classes:
+一、核心场景说明。
 
-1. Low-risk facts: project names, tool stacks, stable preferences. These may enter candidate or active state automatically.
-2. Temporary states: emotion, current pressure, and short-term plans. These must be `recent_state` and require `expires_at`.
-3. Inference: candidate only by default; `can_persist=False` unless supported by repeated evidence or confirmation.
-4. Boundaries: "do not nag me", "do not save this", and similar constraints. These have highest priority.
-5. Sensitive content: reject or store only as a non-recallable safety event. Do not write to ordinary memory or Vault.
+二、首次对话样例。
 
-Acceptance:
+三、第二天连续对话样例。
 
-- One-off emotion does not become a durable personality fact.
-- Repeated stable interaction preference can become a candidate and gain confidence.
-- Model output like "the user is an anxious person" is rejected or downgraded to short-lived state.
-- Explicit "remember this" remains the highest-confidence path, but not the only path.
+四、一周后记忆体现样例。
 
-Tests:
+验收标准：
 
-- Add `apps/backend/tests/test_memory_consolidation.py`
-- Update `apps/backend/tests/test_long_term_memory_services.py`
-- Update `apps/backend/tests/test_diary_memory_extractor.py`
+场景必须体现长期记忆。如果去掉长期记忆后体验差不多，则任务不通过。
 
-## TASK-006: Add Lifecycle State Machine
+## 任务四：设计长期记忆闭环
 
-Goal: Prevent completed projects, old goals, stale preferences, and superseded facts from acting like current truth.
+目标：让记忆成为产品主体验，而不是后台数据库功能。
 
-Suggested files:
+执行步骤：
 
-- Add `apps/backend/app/services/memory_lifecycle.py`
-- Update `apps/backend/app/services/memory_graph.py`
-- Update `apps/backend/app/models/memory.py`
+一、定义哪些内容可以自动记住。
 
-Required transitions:
+二、定义哪些内容必须征得用户确认后才能记住。
 
-- candidate -> active
-- candidate -> rejected
-- active -> stale
-- stale -> active
-- stale -> archived
-- active -> archived
-- active -> forgotten
-- active -> superseded
+三、定义哪些内容禁止记住。
 
-Transition triggers:
+四、设计用户查看记忆的入口。
 
-1. User explicitly says completed, cancelled, forget, or do not do this anymore.
-2. New memory conflicts with old memory.
-3. Old project has not appeared for a configured period.
-4. New project or new preference appears repeatedly.
-5. User review chooses keep, edit, forget, make temporary, or mark completed.
+五、设计用户修改记忆的动作。
 
-Acceptance:
+六、设计用户撤回记忆的动作。
 
-- Completed projects stop being recalled as current tasks.
-- Completed projects may remain as historical background.
-- New related projects supersede current context without deleting old history.
-- User boundaries are not overwritten by ordinary preferences.
+七、设计陪伴体在对话中引用记忆时的表达方式。
 
-Tests:
+完成产物：
 
-- Add `apps/backend/tests/test_memory_lifecycle.py`
+一、记忆分类规则。
 
-## TASK-007: Implement Activation Scoring
+二、记忆查看流程。
 
-Goal: Make recall fast and natural while staying controlled.
+三、记忆修改流程。
 
-Suggested files:
+四、记忆撤回流程。
 
-- Add `apps/backend/app/services/memory_activation.py`
-- Update `apps/backend/app/services/companion_retrieval.py`
-- Update `apps/backend/app/agents/memory_router.py`
+五、对话中引用记忆的三条例句。
 
-The score decides whether a memory can influence this turn. It does not decide whether the memory is true.
+验收标准：
 
-Suggested factors:
+用户必须知道产品记住了什么、为什么记住、如何改、如何删。
 
-- query relevance
-- scope match
-- lifecycle status
-- confidence
-- importance
-- evidence_count
-- recency
-- last_confirmed_at
-- user_feedback
-- conflict_penalty
-- expired_penalty
-- sensitive_penalty
+## 任务五：重排产品功能层级
 
-Hard gates:
+目标：把所有现有能力重新归位，避免对外叙事虚胖。
 
-1. `forgotten` is never recalled.
-2. `rejected` is never recalled.
-3. Expired `recent_state` cannot be used as current fact.
-4. Sensitive memory cannot be proactively mentioned.
-5. Low-confidence inference cannot be proactively mentioned.
+执行步骤：
 
-Acceptance:
+一、把功能分成三层：主体验、支撑能力、内部能力。
 
-- Current-session style can affect the reply quickly.
-- Old state naturally loses influence.
-- User boundaries win in relevant contexts.
-- Corrected memories are immediately downgraded or disabled.
+二、主体验只允许包含陪伴、长期记忆、记忆可控。
 
-Tests:
+三、支撑能力可以包含日记整理、知识沉淀、资料归档、回顾总结。
 
-- Add `apps/backend/tests/test_memory_activation.py`
-- Update `apps/backend/tests/test_companion_retrieval_services.py`
-- Update `apps/backend/tests/test_memory_router.py`
+四、内部能力只能服务稳定性、安全性、检索、记录、审计，不得出现在首屏卖点里。
 
-## TASK-008: Add Recall Permission Gate
+五、删除所有让用户误以为这是知识管理工具、办公工具、开发者工具的首屏表达。
 
-Goal: Separate "can be saved" from "can be used in this reply".
+完成产物：
 
-Suggested files:
+一、功能层级表。
 
-- Add `apps/backend/app/services/memory_permissions.py`
-- Update `apps/backend/app/services/companion_retrieval.py`
-- Update `apps/backend/app/agents/nodes/chat.py`
+二、首屏只展示的三个卖点。
 
-Implementation requirements:
+三、不得出现在首屏的功能清单。
 
-1. Every recalled item must carry permissions.
-2. Prompt construction must split memory into:
-   - style memory: affects tone only, no raw source exposure
-   - answer context: can be used as answer context
-   - proactive mention: can be directly mentioned first
-   - action suggestion: can support suggestions
-3. Memory without the required permission cannot enter that prompt section.
-4. Write `memory_activation_events` for actual usage and permissions.
+验收标准：
 
-Acceptance:
+普通用户第一次看到产品时，第一印象必须是陪伴体，而不是工具箱。
 
-- "The user has been under pressure recently" may soften tone but must not be randomly brought up.
-- "The user dislikes preachy answers" may influence tone long term.
-- "The user is working on project X" is used only in relevant project contexts.
+## 任务六：设计首次使用体验
 
-Tests:
+目标：让中国用户在第一次打开时立刻感受到被陪伴，而不是被要求配置系统。
 
-- Add `apps/backend/tests/test_memory_permissions.py`
-- Update `apps/backend/tests/test_agent_runtime_retrieval.py`
+执行步骤：
 
-## TASK-009: Integrate User Correction
+一、设计第一次打开产品时陪伴体说的第一句话。
 
-Goal: User correction must take effect immediately and prevent self-reinforcing wrong memory.
+二、设计用户最少只回答一个问题即可开始使用。
 
-Suggested files:
+三、设计陪伴体如何在首次对话中建立称呼、偏好、当前状态。
 
-- Update `apps/backend/app/api/memory.py`
-- Update `apps/backend/app/services/memory_lifecycle.py`
-- Update `apps/backend/app/services/agent_actions.py`
-- Update desktop API client only if UI calls are added
+四、设计首次对话结束后，产品如何展示已形成的第一条记忆。
 
-Minimum operations:
+五、设计用户如何确认、修改或撤回这条记忆。
 
-- keep
-- edit
-- forget
-- make_temporary
-- mark_completed
-- mark_stale
-- reject_candidate
+完成产物：
 
-Rules:
+一、首次启动流程。
 
-1. User correction must write lifecycle or feedback events.
-2. After forget, the memory must not be recalled.
-3. After edit, the old memory must be superseded.
-4. `make_temporary` must set `expires_at`.
-5. `mark_completed` must move active project context into historical/archived state.
+二、首次对话脚本。
 
-Acceptance:
+三、第一条记忆展示样式说明。
 
-- After the user says "that is not what I meant", related memory stops influencing the next turn.
-- After the user says "this is only for today", the system creates a temporary state.
-- After the user says "this project is done", it stops being active context.
+四、确认、修改、撤回动作说明。
 
-Tests:
+验收标准：
 
-- Add `apps/backend/tests/test_memory_feedback_api.py`
-- Update `apps/backend/tests/test_security_contracts_api.py`
+首次使用不得要求用户理解知识库、同步、配置、模型、路径等概念。
 
-## TASK-010: Add Memory Hygiene Job
+## 任务七：定义陪伴体人格边界
 
-Goal: Keep the candidate pool and short-lived state from growing into memory clutter.
+目标：让陪伴体有温度，但不过度亲密、不替代真人关系、不制造心理风险。
 
-Suggested files:
+执行步骤：
 
-- Add `apps/backend/app/services/memory_hygiene.py`
-- Integrate with startup or scheduler only after tests prove the service behavior
+一、定义陪伴体的语气：温和、稳定、记得住细节、有分寸。
 
-Cleanup rules:
+二、定义禁止语气：讨好、控制、占有、诊断、命令、卖惨。
 
-1. Expired `recent_state` becomes archived or forgotten.
-2. Long-unused, low-confidence, unconfirmed candidates become rejected or archived.
-3. Old facts conflicting with stronger new facts become stale or superseded.
-4. Duplicate candidates merge evidence.
-5. Sensitive or policy-violating candidates are rejected.
+三、定义在用户低落时的回应边界。
 
-Acceptance:
+四、定义涉及健康、法律、金钱、亲密关系时的安全表达。
 
-- Cleanup actions are recorded through lifecycle events or `agent_actions`.
-- Raw chat logs are not deleted.
-- User Vault originals are not overwritten.
+五、定义陪伴体如何承认自己可能记错。
 
-Tests:
+完成产物：
 
-- Add `apps/backend/tests/test_memory_hygiene.py`
+一、人格说明。
 
-## TASK-011: Add Explainability Report
+二、允许表达清单。
 
-Goal: Explain why memory affected a reply without leaking credentials or sensitive headers.
+三、禁止表达清单。
 
-Suggested files:
+四、高风险话题回应规则。
 
-- Update `apps/backend/app/services/companion_retrieval.py`
-- Update `apps/backend/app/models/memory.py`
-- Update `apps/backend/app/api/memory.py`
+验收标准：
 
-Report fields:
+陪伴体必须像可靠的长期伙伴，不能像情绪操控者，也不能像冷冰冰的工具。
 
-- number of candidate recalls
-- memory IDs that entered the prompt
-- permissions used
-- activation score breakdown
-- filtered item reasons
-- expired, conflict, or sensitive gates
+## 任务八：设计本地安全表达
 
-Acceptance:
+目标：把本地安全从技术卖点转化为用户信任。
 
-- Diagnostics never expose API keys, tokens, full Authorization headers, or private-key blocks.
-- A user can understand why the pet remembered or avoided mentioning something.
-- Redaction is tested.
+执行步骤：
 
-Tests:
+一、用普通中文解释记忆为什么在本地更安心。
 
-- Update `apps/backend/tests/test_companion_retrieval_services.py`
-- Update `apps/backend/tests/test_audit_logs.py`
+二、写出用户能看懂的数据控制说明。
 
-## TASK-012: Add Weekly Memory Review Surface
+三、写出用户能带走自己记忆的表达。
 
-Goal: Give the user lightweight memory control without turning them into a memory administrator.
+四、写出产品不会偷偷扩大记忆范围的承诺。
 
-Suggested files:
+五、避免使用任何听起来像技术炫耀的词。
 
-- Backend: `apps/backend/app/api/memory.py`
-- Desktop API: `apps/desktop/src/services/desktopApi.ts`
-- UI: `apps/desktop/src/App.tsx` or the existing settings/memory panel
+完成产物：
 
-Product behavior:
+一、本地安全说明。
 
-1. Do not interrupt every chat with confirmation prompts.
-2. Offer a short daily or weekly review:
-   - what was kept
-   - what is temporary
-   - what was ignored
-3. Let the user choose:
-   - keep
-   - edit
-   - forget
-   - only this week
-   - mark completed
+二、记忆控制说明。
 
-Acceptance:
+三、数据带走说明。
 
-- UI does not expose tokens.
-- Renderer does not directly access Node or FS.
-- Desktop capabilities still go through contextBridge IPC.
-- High-risk confirmation remains mandatory.
+四、用户信任承诺。
 
-Tests:
+验收标准：
 
-- Backend API tests.
-- `Push-Location apps\desktop; npm run typecheck; Pop-Location`
-- If Electron main/preload changes, also run migration validation.
+用户看完后感受到安心，而不是觉得自己需要懂技术。
 
-## TASK-013: Wire Into Chat Runtime
+## 任务九：设计一周留存验证
 
-Goal: Make the dual-track system part of the main chat path.
+目标：验证用户是否真的因为长期记忆而回来。
 
-Suggested files:
+执行步骤：
 
-- `apps/backend/app/api/chat.py`
-- `apps/backend/app/agents/graph_runtime.py`
-- `apps/backend/app/agents/nodes/chat.py`
-- `apps/backend/app/agents/nodes/retrieval.py`
-- `apps/backend/app/agents/state.py`
+一、定义第一天用户必须完成的动作。
 
-Execution order:
+二、定义第二天产品必须自然接上的内容。
 
-1. Run immediate understanding on the user message.
-2. Retrieve memory through memory route plus activation scoring.
-3. Split results through the permission gate.
-4. Build chat prompt with separated style, context, proactive, and action memory.
-5. After reply completion, run slow consolidation.
-6. Slow consolidation writes only compliant candidates or active facts and records lifecycle/action events.
+三、定义第三天到第七天产品如何体现连续陪伴。
 
-Acceptance:
+四、定义用户是否愿意继续使用的判断标准。
 
-- Current conversation adapts quickly.
-- Durable writes stay conservative.
-- User correction affects the next turn.
-- Recall is explainable.
-- Old projects do not pretend to be current projects.
+五、定义用户愿意付费前必须出现的关键体验。
 
-Tests:
+完成产物：
 
-- Update `apps/backend/tests/test_agent_runtime_chat.py`
-- Update `apps/backend/tests/test_agent_runtime_memory_task.py`
-- Update `apps/backend/tests/test_agent_runtime_retrieval.py`
-- Update `apps/backend/tests/test_api_wiring_mvp.py`
+一、七天使用路径。
 
-## TASK-014: Pollution Regression Suite
+二、每日关键体验。
 
-Goal: Add explicit regression tests for memory pollution.
+三、留存判断标准。
 
-New test file:
+四、付费意愿判断标准。
 
-- `apps/backend/tests/test_memory_pollution_regression.py`
+验收标准：
 
-Must cover:
+判断标准必须基于用户行为，不能只基于用户口头夸奖。
 
-1. One-off emotion does not become durable personality memory.
-2. Jokes do not become facts.
-3. Model summaries do not directly become long-term memory.
-4. Frequent complaining does not become a durable personality label.
-5. Low-frequency but explicit boundaries remain protected.
-6. Completed projects are archived.
-7. Related new projects do not get polluted by old active context.
-8. User correction prevents future recall.
-9. Sensitive content does not write to Vault or ordinary memory.
-10. `agent_actions` can trace automatic memory activity.
+## 任务十：准备用户访谈
 
-Acceptance:
+目标：用真实中国用户验证产品定位，而不是用团队想象验证。
 
-- This regression suite passes in backend pytest.
-- Future memory-strategy changes must run this test file.
+执行步骤：
 
-## TASK-015: Acceptance And Documentation Update
+一、招募不少于十名目标用户。
 
-Goal: Update docs only after implementation evidence exists.
+二、访谈前不解释复杂功能，只介绍一句产品定位。
 
-Reference files:
+三、让用户讲述最近一次希望有人记得自己状态的经历。
 
-- `docs/mvp-acceptance-coverage.md`
-- `docs/runbook.md`
-- `docs/v0.1-validation.md`
-- `progress.md` is Coordinator-owned; do not write it unless acting as Coordinator.
+四、让用户评价本地长期记忆陪伴体是否有吸引力。
 
-Requirements:
+五、让用户说出最担心的三件事。
 
-1. Record new verification commands and results.
-2. Mark acceptance rows as `Covered` only after tests or manual validation support the claim.
-3. If the desktop memory review UI is incomplete, keep the relevant status Partial or Gap.
-4. If the live provider gate was not run, record the missing `LIVE_*` environment variables.
-5. If desktop visual validation was not run, record the residual risk.
+六、让用户看首次使用脚本并提出修改意见。
 
-Recommended final verification:
+完成产物：
 
-```powershell
-Push-Location apps\backend; python -m pytest -q; Pop-Location
-Push-Location apps\desktop; npm run typecheck; Pop-Location
-Push-Location apps\desktop; node scripts/validate-electron-migration.mjs; Pop-Location
-.\scripts\check-mvp-acceptance-gap.ps1
-```
+一、访谈问题清单。
 
-Completion standard:
+二、十份访谈记录。
 
-- Dual-track memory affects the main chat path.
-- Memory write, lifecycle, recall permissions, user correction, and audit records all have tests.
-- Memory pollution regression tests pass.
-- The user does not need frequent confirmation prompts.
-- Wrong long-term user profiles cannot keep controlling current replies.
-- The final delivery response lists every command actually run and its result.
+三、用户原话摘录。
+
+四、定位修改建议。
+
+验收标准：
+
+必须记录用户原话，不得只记录执行代理自己的总结。
+
+## 任务十一：制作最小可演示闭环
+
+目标：做出一个能让外部人立刻理解产品价值的演示，而不是展示全部系统能力。
+
+执行步骤：
+
+一、演示第一天用户说出烦恼或计划。
+
+二、演示产品形成一条可查看的记忆。
+
+三、演示用户修改这条记忆。
+
+四、演示第二天产品自然接上昨天内容。
+
+五、演示一周后产品给出带有长期上下文的陪伴回应。
+
+六、演示用户撤回一条记忆后，产品不再使用它。
+
+完成产物：
+
+一、演示脚本。
+
+二、演示数据。
+
+三、演示操作顺序。
+
+四、演示验收清单。
+
+验收标准：
+
+演示必须围绕长期记忆陪伴闭环，不得展示无关功能。
+
+## 任务十二：重写对外表达
+
+目标：把产品从研发叙事改成用户价值叙事。
+
+执行步骤：
+
+一、写出一句话介绍。
+
+二、写出三句话介绍。
+
+三、写出首页首屏文案。
+
+四、写出给早期用户看的邀请文案。
+
+五、写出给投资人看的简短介绍。
+
+六、删除所有堆砌能力的表达。
+
+完成产物：
+
+一、一句话介绍。
+
+二、三句话介绍。
+
+三、首页首屏文案。
+
+四、早期用户邀请文案。
+
+五、投资人简短介绍。
+
+验收标准：
+
+所有文案必须先讲用户价值，再讲信任基础，最后才讲能力支撑。
+
+## 任务十三：定义近期不做清单
+
+目标：保护产品收敛，避免继续膨胀。
+
+执行步骤：
+
+一、列出所有想做但会稀释陪伴体主线的功能。
+
+二、把知识整理、资料归档、复杂工作流、开发者扩展全部降级为后台或后续能力。
+
+三、定义未来四周只服务长期记忆陪伴闭环的开发范围。
+
+四、任何新需求必须回答：它是否让陪伴体更会记得用户、更会陪用户、更让用户信任。
+
+完成产物：
+
+一、近期不做清单。
+
+二、四周开发范围。
+
+三、新需求判断规则。
+
+验收标准：
+
+没有通过判断规则的新需求，不得进入近期开发。
+
+## 任务十四：形成四周执行路线
+
+目标：把收敛后的方向变成可执行节奏。
+
+执行步骤：
+
+一、第一周完成定位、人群、场景、访谈。
+
+二、第二周完成首次使用体验和记忆闭环。
+
+三、第三周完成最小可演示闭环。
+
+四、第四周完成真实用户试用、留存观察、文案修订。
+
+五、每周结束必须产出一份事实记录，包含做了什么、用户怎么反应、哪些假设被证明、哪些假设被推翻。
+
+完成产物：
+
+一、四周路线表。
+
+二、每周验收标准。
+
+三、事实记录模板。
+
+验收标准：
+
+四周后必须能判断：本地长期记忆陪伴体是否值得继续加码。
+
+## 任务十五：融资前判断
+
+目标：判断当前是否可以对外说产品已经成型。
+
+执行步骤：
+
+一、检查是否有明确目标用户。
+
+二、检查是否有七天留存证据。
+
+三、检查用户是否能复述产品价值。
+
+四、检查长期记忆是否带来明显差异。
+
+五、检查是否有用户主动回来使用。
+
+六、检查是否有用户愿意付费或表达强烈付费意愿。
+
+七、检查演示是否能在三分钟内讲清楚产品。
+
+完成产物：
+
+一、融资前判断表。
+
+二、已验证证据。
+
+三、仍未验证风险。
+
+四、下一步建议。
+
+验收标准：
+
+没有留存证据和清晰复述证据前，不得对外宣称产品已经成型。

@@ -42,3 +42,6 @@ export type {
   TtsProviderRegistry,
   UseTtsPlaybackQueueOptions,
 } from "./useTtsPlaybackQueue";
+
+export { useTtsWaitingCue } from "./useTtsWaitingCue";
+export type { TtsWaitingCueController, UseTtsWaitingCueOptions } from "./useTtsWaitingCue";

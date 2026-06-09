@@ -1,6 +1,6 @@
 import { createRef } from "react";
 import type { MouseEvent } from "react";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import App from "./App";
@@ -9,6 +9,8 @@ import type { Live2DAssetInfo, Live2DRuntimeBoundary } from "./services/live2dRu
 
 const mockPetShowInput = vi.hoisted(() => vi.fn());
 const mockTtsStop = vi.hoisted(() => vi.fn());
+const mockTtsWaitingCueStart = vi.hoisted(() => vi.fn(() => "我想一下。"));
+const mockTtsWaitingCueStop = vi.hoisted(() => vi.fn());
 const mockTtsQueueStatus = vi.hoisted(() => ({ current: "idle" }));
 const mockTtsQueueError = vi.hoisted(() => ({
   current: null as null | {
@@ -62,6 +64,11 @@ vi.mock("./features/tts", () => ({
   createBackendTtsProvider: mockCreateBackendTtsProvider,
   createMockTtsProvider: vi.fn(() => ({ id: "mock" })),
   createSystemTtsProvider: vi.fn(() => ({ id: "system" })),
+  useTtsWaitingCue: () => ({
+    start: mockTtsWaitingCueStart,
+    stop: mockTtsWaitingCueStop,
+    prefetch: vi.fn(),
+  }),
   useTtsPlaybackQueue: () => ({
     state: {
       status: mockTtsQueueStatus.current,
@@ -118,6 +125,14 @@ vi.mock("./features/live2d/Live2DModelPanel", () => ({
   Live2DModelPanel: () => <section aria-label="mock live2d model panel" />,
 }));
 
+vi.mock("./features/continuity", () => ({
+  VisibleContinuityPanel: () => (
+    <section id="visible-continuity-panel" aria-label="mock visible continuity panel">
+      Visible continuity outcomes
+    </section>
+  ),
+}));
+
 const sidecarStatus: DesktopSidecarStatus = {
   state: "ready",
   baseUrl: "http://127.0.0.1:8765",
@@ -152,6 +167,8 @@ const api = {
   listAgentActions: vi.fn().mockResolvedValue({ actions: [] }),
   getContinuityState: vi.fn().mockResolvedValue({ items: [] }),
   listContinuityProposals: vi.fn().mockResolvedValue({ proposals: [] }),
+  getVisibleContinuitySnapshot: vi.fn(),
+  revertAgentAction: vi.fn(),
   exportDiagnostics: vi.fn(),
   resetLocalState: vi.fn(),
 };
@@ -403,14 +420,34 @@ describe("App", () => {
     vi.clearAllMocks();
   });
 
-  it("renders the control dashboard when desktop bridge is unavailable", async () => {
+  it("renders the Today route when desktop bridge is unavailable", async () => {
     render(<App />);
 
-    expect(await screen.findByRole("heading", { name: "桌面记忆助手" })).toBeInTheDocument();
-    expect(screen.getByText("记忆陪伴工作区")).toBeInTheDocument();
-    expect(screen.getByText("和桌宠对话")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Today" })).toBeInTheDocument();
+    const commandCenter = within(screen.getByLabelText("功能指挥中心"));
+    expect(commandCenter.getByRole("button", { name: /Chat/ })).toHaveAttribute("data-stage-route", "chat");
+    expect(commandCenter.getByRole("button", { name: /Projects/ })).toHaveAttribute("data-stage-route", "agent");
+    expect(commandCenter.getByRole("button", { name: /Playback/ })).toHaveAttribute("data-stage-route", "memory");
+    expect(commandCenter.getByRole("button", { name: /Settings/ })).toHaveAttribute("data-stage-route", "settings");
+    expect(screen.queryByText("高级管理与诊断")).not.toBeInTheDocument();
+  });
+
+  it("keeps the legacy control dashboard reachable from #control", async () => {
+    window.location.hash = "#control";
+
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "我帮你整理好最近的事" })).toBeInTheDocument();
+    expect(screen.getByLabelText("mock visible continuity panel")).toBeInTheDocument();
+    expect(screen.getByText("今天要跟进的事")).toBeInTheDocument();
+    expect(screen.getByText("直接告诉我接下来要做什么")).toBeInTheDocument();
+    expect(document.getElementById("visible-continuity-panel")?.compareDocumentPosition(document.getElementById("agent-workspace-panel")!)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
     expect(screen.getByLabelText("mock panel stage")).toBeInTheDocument();
-    expect(screen.getByLabelText("mock connection panel")).toBeInTheDocument();
+    expect(screen.getByText("高级管理与诊断")).toBeInTheDocument();
+    const secondaryNavigation = screen.getByLabelText("mock connection panel").closest("details");
+    expect(secondaryNavigation).not.toHaveAttribute("open");
   });
 
   it("starts the first-use onboarding as a normal chat and persists completion", async () => {
@@ -427,6 +464,7 @@ describe("App", () => {
         }
       }),
     };
+    window.location.hash = "#chat";
 
     render(<App />);
 
@@ -434,19 +472,20 @@ describe("App", () => {
     fireEvent.change(screen.getByLabelText("最近主要在忙什么？"), {
       target: { value: "准备产品加固任务" },
     });
-    fireEvent.change(screen.getByLabelText("希望我长期记住什么偏好或背景？"), {
+    fireEvent.change(screen.getByLabelText("要我帮你跟踪什么？"), {
       target: { value: "偏好简洁可追踪的结果" },
     });
-    fireEvent.change(screen.getByLabelText("主要想让我帮你做什么？"), {
-      target: { value: "日记、任务、知识整理、项目复盘" },
+    fireEvent.change(screen.getByLabelText("保存或导出位置（可选）"), {
+      target: { value: "暂时只保存在本机，之后导出到 Markdown 文件夹" },
     });
     fireEvent.click(screen.getByRole("button", { name: "开始第一次聊天" }));
 
     await waitFor(() => expect(api.startChat).toHaveBeenCalledTimes(1));
+    expect(mockTtsWaitingCueStart).toHaveBeenCalledTimes(1);
     const request = api.startChat.mock.calls[0][0];
     expect(request.message).toContain("准备产品加固任务");
     expect(request.message).toContain("偏好简洁可追踪的结果");
-    expect(request.message).toContain("日记、任务、知识整理、项目复盘");
+    expect(request.message).toContain("暂时只保存在本机，之后导出到 Markdown 文件夹");
     await waitFor(() =>
       expect(window.agentDesktop?.setUiState).toHaveBeenCalledWith(
         "agent-pet.first-use-onboarding",
@@ -489,18 +528,19 @@ describe("App", () => {
     render(<App />);
 
     expect(await screen.findByLabelText("功能指挥中心")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /新建任务/ })).toHaveAttribute("data-stage-route", "agent");
-    expect(screen.getByRole("button", { name: /记住这件事/ })).toHaveAttribute("data-stage-route", "memory");
-    expect(screen.getByRole("button", { name: /整理知识/ })).toHaveAttribute("data-stage-route", "world");
-    expect(screen.getByRole("button", { name: /今日复盘/ })).toHaveAttribute("data-stage-route", "memory");
-    expect(screen.getByRole("button", { name: /搜索记忆/ })).toHaveAttribute("data-stage-route", "memory");
+    const commandCenter = within(screen.getByLabelText("功能指挥中心"));
+    expect(commandCenter.getByRole("button", { name: /Chat/ })).toHaveAttribute("data-stage-route", "chat");
+    expect(commandCenter.getByRole("button", { name: /Projects/ })).toHaveAttribute("data-stage-route", "agent");
+    expect(commandCenter.getByRole("button", { name: /Playback/ })).toHaveAttribute("data-stage-route", "memory");
+    expect(commandCenter.getByRole("button", { name: /Settings/ })).toHaveAttribute("data-stage-route", "settings");
+    expect(commandCenter.getByRole("button", { name: /知识整理/ })).toHaveAttribute("data-stage-route", "world");
   });
 
   it("renders core product routes as dedicated workspaces instead of chat-only surfaces", async () => {
     const routes = [
       { hash: "#agent", query: () => screen.findByLabelText("任务工作区") },
-      { hash: "#memory", query: () => screen.findByLabelText("记忆工作台") },
-      { hash: "#world", query: () => screen.findByRole("heading", { name: "知识" }) },
+      { hash: "#memory", query: () => screen.findByRole("heading", { name: "本周回放与月度复盘" }) },
+      { hash: "#world", query: () => screen.findByRole("heading", { name: "知识整理" }) },
     ];
 
     for (const route of routes) {
@@ -536,7 +576,7 @@ describe("App", () => {
     expect(shortcutBar).toHaveAttribute("data-shortcut-motion", "idle");
     expect(shortcutBar).not.toHaveClass("is-visible");
     expect(await screen.findByLabelText("桌宠入口提示")).toHaveTextContent("右键我打开功能");
-    expect(screen.getByLabelText("开始聊天")).toHaveAttribute("tabindex", "-1");
+    expect(screen.getByLabelText("继续对话")).toHaveAttribute("tabindex", "-1");
 
     const finishShortcutAnimation = (animationName: string) => {
       const event = new Event("animationend", { bubbles: true });
@@ -550,7 +590,7 @@ describe("App", () => {
     expect(shortcutBar).toHaveAttribute("data-shortcut-motion", "opening");
     expect(shortcutBar).toHaveClass("is-visible");
     expect(screen.queryByLabelText("桌宠入口提示")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("开始聊天")).toHaveAttribute("tabindex", "0");
+    expect(screen.getByLabelText("继续对话")).toHaveAttribute("tabindex", "0");
     expect(window.agentDesktop.setPetShortcutBarVisible).toHaveBeenLastCalledWith(true);
     expect(window.agentDesktop.setUiState).toHaveBeenCalledWith("agent-pet.pet-entry-hint", "completed:v1");
 
@@ -563,7 +603,7 @@ describe("App", () => {
     expect(shortcutBar).toHaveAttribute("data-shortcut-motion", "closing");
     expect(shortcutBar).not.toHaveClass("is-visible");
     expect(screen.queryByLabelText("桌宠入口提示")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("开始聊天")).toHaveAttribute("tabindex", "-1");
+    expect(screen.getByLabelText("继续对话")).toHaveAttribute("tabindex", "-1");
     expect(window.agentDesktop.setPetShortcutBarVisible).toHaveBeenLastCalledWith(false);
 
     finishShortcutAnimation("pet-shortcut-roll-in");
@@ -571,21 +611,15 @@ describe("App", () => {
 
     fireEvent.contextMenu(petStage);
 
+    fireEvent.click(screen.getByLabelText("记录一条笔记"));
     fireEvent.click(screen.getByLabelText("打开任务工作台"));
-    fireEvent.click(screen.getByLabelText("打开记忆工作台"));
-    fireEvent.click(screen.getByLabelText("打开知识库"));
-    fireEvent.click(screen.getByLabelText("打开设置"));
+    fireEvent.click(screen.getByLabelText("开始今日复盘"));
 
     expect(window.agentDesktop.openStage).toHaveBeenCalledWith("agent");
-    expect(window.agentDesktop.openStage).toHaveBeenCalledWith("memory");
-    expect(window.agentDesktop.openStage).toHaveBeenCalledWith("world");
-    expect(window.agentDesktop.openStage).toHaveBeenCalledWith("settings");
     expect(window.agentDesktop.openAgent).not.toHaveBeenCalled();
     expect(window.agentDesktop.openFeatureWindow).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByLabelText("开始今日复盘"));
-
-    expect(mockPetShowInput).toHaveBeenCalledTimes(1);
+    expect(mockPetShowInput).toHaveBeenCalledTimes(2);
     expect(shortcutBar).toHaveAttribute("aria-hidden", "true");
     expect(shortcutBar).not.toHaveClass("is-visible");
   });
@@ -623,6 +657,7 @@ describe("App", () => {
   });
 
   it("uses an isolated Live2D canvas ref for each renderer surface", async () => {
+    window.location.hash = "#control";
     render(<App />);
     expect(await screen.findByLabelText("mock panel stage")).toBeInTheDocument();
     const panelRef = live2dStageRenderProps.find((props) => props.variant === "panel")?.canvasRef;
@@ -656,6 +691,7 @@ describe("App", () => {
   it("stops active TTS when the renderer document is hidden", async () => {
     mockTtsQueueStatus.current = "playing";
     const visibilitySpy = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    window.location.hash = "#control";
 
     try {
       render(<App />);
@@ -672,6 +708,7 @@ describe("App", () => {
   });
 
   it("registers Xiaomi MiMo as a backend TTS provider", async () => {
+    window.location.hash = "#control";
     render(<App />);
 
     expect(await screen.findByLabelText("mock panel stage")).toBeInTheDocument();
@@ -687,6 +724,7 @@ describe("App", () => {
       itemId: "tts:assistant-1:0",
       recoverable: true,
     };
+    window.location.hash = "#control";
 
     render(<App />);
 

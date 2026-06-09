@@ -4,6 +4,7 @@ import json
 import sqlite3
 import time
 from collections.abc import Iterator
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -503,7 +504,10 @@ def test_retrospective_apis_aggregate_local_assets_and_write_reversible_report(
     assert init.status_code == 200
     vault_id = init.json()["vault_id"]
     db_path = client.app.state.database.path
-    now = "2026-06-02T00:00:00Z"
+    now_dt = datetime.now(timezone.utc)
+    diary_occurred_at = (now_dt - timedelta(days=1)).isoformat().replace("+00:00", "Z")
+    fact_created_at = (now_dt - timedelta(days=1) + timedelta(minutes=30)).isoformat().replace("+00:00", "Z")
+    now = now_dt.isoformat().replace("+00:00", "Z")
     with sqlite3.connect(db_path) as conn:
         conn.execute(
             """
@@ -515,10 +519,10 @@ def test_retrospective_apis_aggregate_local_assets_and_write_reversible_report(
             VALUES (
                 'diary-retro-api-1', ?, 'event', 'Reviewed local retrospective API.', 'retrospective',
                 'focused', '[]', '["retrospective","local"]', 0.9, 0.95,
-                '2026-06-01T12:00:00Z', 'UTC', 'active', 'hash-retro-api-1', 'fake', ?, ?
+                ?, 'UTC', 'active', 'hash-retro-api-1', 'fake', ?, ?
             )
             """,
-            (vault_id, now, now),
+            (vault_id, diary_occurred_at, now, now),
         )
         conn.execute(
             """
@@ -532,10 +536,11 @@ def test_retrospective_apis_aggregate_local_assets_and_write_reversible_report(
                 'fact-retro-api-1', 'retro-api-key', 'retro-api-conflict', 'preference',
                 'report cadence', 'prefers', 'weekly local review', 'active', 0.88,
                 'User prefers weekly local review.', 'user_message', 2,
-                '2026-06-01T12:30:00Z', '2026-06-01T12:30:00Z',
+                ?, ?,
                 'preference', 'preference', NULL, NULL, '{}', 0.8
             )
-            """
+            """,
+            (fact_created_at, fact_created_at),
         )
         conn.commit()
 
@@ -578,6 +583,81 @@ def test_retrospective_apis_aggregate_local_assets_and_write_reversible_report(
     action_ids = {action["action_id"] for action in actions.json()["actions"]}
     assert payload["action"]["action_id"] in action_ids
     assert weekly_payload["action"]["action_id"] in action_ids
+
+
+def test_today_snapshot_api_is_protected_and_returns_visible_continuity_contract(
+    client: TestClient,
+    tmp_path: Path,
+) -> None:
+    denied = client.get("/api/today/snapshot")
+    assert denied.status_code == 401
+
+    empty = client.get("/api/today/snapshot", headers=auth())
+    assert empty.status_code == 200
+    empty_payload = empty.json()
+    assert empty_payload["today_card"]["source_count"] == 0
+    assert empty_payload["recent_receipts"] == []
+    assert empty_payload["project_cards"] == []
+    assert empty_payload["playback_preview"]["period"] == "weekly"
+
+    vault = tmp_path / "Vault"
+    init = client.post(
+        "/api/vaults/init",
+        headers=auth(),
+        json={"path": str(vault), "create_if_missing": True, "confirmed": True},
+    )
+    assert init.status_code == 200
+    now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    with sqlite3.connect(client.app.state.database.path) as conn:
+        conn.execute(
+            """
+            INSERT INTO tasks(id, title, description, due_at_utc, status, source_text, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "today-snapshot-task-1",
+                "Ship project Agent Pet snapshot API",
+                "Expose one visible continuity endpoint.",
+                None,
+                "pending",
+                "project Agent Pet",
+                now,
+                now,
+            ),
+        )
+        conn.execute(
+            """
+            INSERT INTO agent_actions (
+                id, action_type, risk_tier, decision, status, title, summary,
+                target_paths_json, before_snapshot_json, after_snapshot_json,
+                metadata_json, reversible, created_at, updated_at, completed_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', '{}', '{}', ?, ?, ?, ?)
+            """,
+            (
+                "today-snapshot-action-1",
+                "wiki.answer_summary.write",
+                "low",
+                "auto",
+                "completed",
+                "Saved snapshot summary",
+                "Saved a safe visible continuity summary.",
+                '["Wiki/Companion/Summaries/today-snapshot.md"]',
+                1,
+                now,
+                now,
+                now,
+            ),
+        )
+
+    response = client.get("/api/today/snapshot", headers=auth())
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["today_card"]["source_count"] >= 2
+    assert payload["recent_receipts"][0]["action_id"] == "today-snapshot-action-1"
+    assert payload["recent_receipts"][0]["target_path"] == "Wiki/Companion/Summaries/today-snapshot.md"
+    assert payload["project_cards"]
+    assert payload["project_cards"][0]["sources"] == ["tasks:today-snapshot-task-1"]
 
 
 def test_vault_status_recovers_persisted_active_vault_after_restart(

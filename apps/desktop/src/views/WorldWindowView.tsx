@@ -4,10 +4,10 @@ import { FeatureWindowShell } from "./FeatureWindowShell";
 export default function WorldWindowView({ children }: { children: ReactNode }) {
   return (
     <FeatureWindowShell
-      eyebrow="知识"
-      title="知识"
-      description="把日常材料整理成可复用的 Wiki 页面；最近产物优先展示，维护工具收在高级区。"
-      activeTab="知识"
+      eyebrow="高级"
+      title="知识整理"
+      description="Markdown 导出与 Wiki 维护工具收在这里，不打扰主流程。"
+      activeTab="设置"
     >
       {children}
     </FeatureWindowShell>

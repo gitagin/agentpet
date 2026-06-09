@@ -143,28 +143,33 @@ function renderSettingsPanel(
 describe("SettingsPanel", () => {
   it("shows action-first settings trials without binding or saving automatically", () => {
     const { onRefreshSettings, onTestGlobalModel, onSelectVaultDirectory } = renderSettingsPanel();
+    const guidedActions = within(screen.getByRole("region", { name: "设置引导" }));
 
-    fireEvent.click(screen.getByRole("button", { name: "Test model" }));
-    fireEvent.click(screen.getByRole("button", { name: "Choose memory folder" }));
-    fireEvent.click(screen.getByRole("button", { name: "Refresh settings" }));
+    expect(screen.getByText("先能对话，再决定保存")).toBeInTheDocument();
+    expect(screen.getByText("连接聊天模型后就能开始；保存和导出位置可以之后再设。")).toBeInTheDocument();
+    fireEvent.click(guidedActions.getByRole("button", { name: "测试模型" }));
+    fireEvent.click(guidedActions.getByRole("button", { name: "选择保存位置" }));
+    fireEvent.click(guidedActions.getByRole("button", { name: "刷新设置" }));
 
     expect(onTestGlobalModel).toHaveBeenCalledTimes(1);
     expect(onSelectVaultDirectory).toHaveBeenCalledTimes(1);
     expect(onRefreshSettings).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("保存与导出位置")).toBeInTheDocument();
+    expect(screen.getByText("可选：选择一个本机 Markdown 文件夹，用来保存长期记忆和复盘报告。")).toBeInTheDocument();
+    expect(screen.getByText(/可直接用 Obsidian 打开/)).toBeInTheDocument();
   });
 
   it("keeps specialist model configuration behind advanced outcome-oriented settings", () => {
     const { container } = renderSettingsPanel();
 
-    const advanced = screen.getByText("Advanced model routing").closest("details");
+    const advanced = screen.getByText("高级模型路由").closest("details");
 
     expect(advanced).not.toHaveAttribute("open");
-    expect(screen.getByText("Optional per-outcome overrides; most users can keep everything on the global model.")).toBeInTheDocument();
-    expect(screen.getByText("Outcome model overrides")).toBeInTheDocument();
-    expect(screen.getAllByText("Tasks").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Knowledge").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Memory").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Cited answers").length).toBeGreaterThan(0);
+    expect(screen.getByText("按结果覆盖模型")).toBeInTheDocument();
+    expect(screen.getAllByText("任务").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("知识").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("记忆").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("带引用回答").length).toBeGreaterThan(0);
     expect(container.textContent).not.toMatch(/9 agents|9 个智能体|9个智能体/);
   });
 

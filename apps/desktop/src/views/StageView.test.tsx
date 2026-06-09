@@ -21,6 +21,17 @@ vi.mock("./BottomNav", () => ({
   BottomNav: () => <nav aria-label="mock bottom nav" />,
 }));
 
+vi.mock("../features/continuity", () => ({
+  VisibleContinuityPanel: ({ onContinuePrompt }: { onContinuePrompt?: (prompt: string) => void }) => (
+    <section aria-label="mock stage visible continuity">
+      Stage outcomes
+      <button type="button" onClick={() => onContinuePrompt?.("Continue mocked project")}>
+        Continue mocked prompt
+      </button>
+    </section>
+  ),
+}));
+
 const live2dStage: Live2DStageView = {
   state: "idle",
   label: "idle",
@@ -56,9 +67,10 @@ const live2dAsset: Live2DAssetInfo = {
 
 function renderStageView(
   bubble: PetBubbleState,
-  options: { active?: boolean; ttsSpeaking?: boolean } = {},
+  options: { active?: boolean; ttsSpeaking?: boolean; api?: object } = {},
 ) {
-  return render(
+  const onSendChat = vi.fn();
+  const rendered = render(
     <StageView
       live2dStage={live2dStage}
       live2dAsset={live2dAsset}
@@ -67,15 +79,17 @@ function renderStageView(
       connected
       streaming={false}
       bubble={bubble}
-      onSendChat={vi.fn()}
+      onSendChat={onSendChat}
       onPreviousPage={vi.fn()}
       onAdvancePage={vi.fn()}
       onPausePaging={vi.fn()}
       onResumePaging={vi.fn()}
       ttsSpeaking={options.ttsSpeaking}
       active={options.active}
+      api={options.api as never}
     />,
   );
+  return { ...rendered, onSendChat };
 }
 
 describe("StageView", () => {
@@ -83,7 +97,7 @@ describe("StageView", () => {
     window.location.hash = "";
   });
 
-  it("shows five primary feature entries on the main stage", () => {
+  it("shows outcome-first primary entries and keeps advanced tools collapsed", () => {
     renderStageView({
       visible: false,
       title: "",
@@ -94,12 +108,43 @@ describe("StageView", () => {
 
     const commandCenter = screen.getByLabelText("功能指挥中心");
     expect(commandCenter).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /新建任务/ })).toHaveAttribute("data-stage-route", "agent");
-    expect(screen.getByRole("button", { name: /记住这件事/ })).toHaveAttribute("data-stage-route", "memory");
-    expect(screen.getByRole("button", { name: /整理知识/ })).toHaveAttribute("data-stage-route", "world");
-    expect(screen.getByRole("button", { name: /今日复盘/ })).toHaveAttribute("data-stage-route", "memory");
-    expect(screen.getByRole("button", { name: /搜索记忆/ })).toHaveAttribute("data-stage-route", "memory");
+    expect(screen.getByRole("button", { name: /Chat/ })).toHaveAttribute("data-stage-route", "chat");
+    expect(screen.getByRole("button", { name: /Projects/ })).toHaveAttribute("data-stage-route", "agent");
+    expect(screen.getByRole("button", { name: /Playback/ })).toHaveAttribute("data-stage-route", "memory");
+    expect(screen.getByRole("button", { name: /Settings/ })).toHaveAttribute("data-stage-route", "settings");
+    const advanced = screen.getByText("Advanced").closest("details");
+    expect(advanced).not.toHaveAttribute("open");
+    expect(screen.getByRole("button", { name: /知识整理/ })).toHaveAttribute("data-stage-route", "world");
     expect(screen.getByLabelText("聊天输入")).toBeInTheDocument();
+  });
+
+  it("shows visible outcomes before the stage command panel when an API is provided", () => {
+    renderStageView({
+      visible: false,
+      title: "",
+      message: "",
+      tone: "thinking",
+      phase: "idle",
+    }, { api: {} });
+
+    expect(screen.getByLabelText("首页整理结果")).toBeInTheDocument();
+    expect(screen.getByLabelText("mock stage visible continuity")).toBeInTheDocument();
+    expect(screen.getByLabelText("功能指挥中心")).toBeInTheDocument();
+    expect(screen.getByLabelText("聊天输入")).toBeInTheDocument();
+  });
+
+  it("starts a chat from a visible continuity continuation prompt", () => {
+    const { onSendChat } = renderStageView({
+      visible: false,
+      title: "",
+      message: "",
+      tone: "thinking",
+      phase: "idle",
+    }, { api: {} });
+
+    fireEvent.click(screen.getByRole("button", { name: "Continue mocked prompt" }));
+
+    expect(onSendChat).toHaveBeenCalledWith("Continue mocked project", expect.any(Function));
   });
 
   it("opens concrete non-chat routes from stage feature entries", () => {
@@ -111,13 +156,13 @@ describe("StageView", () => {
       phase: "idle",
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /新建任务/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Projects/ }));
     expect(window.location.hash).toBe("#agent");
 
-    fireEvent.click(screen.getByRole("button", { name: /记住这件事/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Playback/ }));
     expect(window.location.hash).toBe("#memory");
 
-    fireEvent.click(screen.getByRole("button", { name: /整理知识/ }));
+    fireEvent.click(screen.getByRole("button", { name: /知识整理/ }));
     expect(window.location.hash).toBe("#world");
   });
 
@@ -136,7 +181,6 @@ describe("StageView", () => {
     expect(actionButtons).toHaveLength(5);
     actionButtons.forEach((button) => {
       expect(button).toHaveAttribute("data-stage-route");
-      expect(button).not.toHaveAttribute("data-stage-route", "chat");
     });
     expect(within(commandCenter).queryByLabelText("聊天输入")).not.toBeInTheDocument();
     expect(screen.getByLabelText("舞台聊天表单")).toBeInTheDocument();

@@ -50,7 +50,7 @@ def archive_wiki_answer_summary(
                     context=context,
                     state=state,
                     action_type="wiki.answer_summary.skip",
-                    title="Skipped Wiki summary",
+                    title="已跳过 Wiki 摘要",
                     summary=_wiki_skip_summary(reason),
                     reason=reason,
                     risk_tier="low" if reason in {"low_value_chat", "low_knowledge_score", "no_saveable_content"} else "high",
@@ -121,9 +121,9 @@ def archive_wiki_answer_summary(
 
 def _wiki_skip_summary(reason: str) -> str:
     if reason == "sensitive_content":
-        return "Skipped because this turn contained sensitive content; no Wiki summary was written."
+        return "本轮内容包含敏感信息，因此没有写入 Wiki 摘要。"
     if reason == "low_value_chat":
-        return "Skipped because this turn was too short or low-value for a durable Wiki summary."
+        return "本轮内容较短或临时性较强，不适合沉淀为长期 Wiki 摘要。"
     if reason == "low_knowledge_score":
-        return "Skipped because this answer did not contain enough reusable knowledge for Wiki."
-    return "Skipped because this turn did not produce saveable Wiki summary content."
+        return "本轮回答没有提炼出足够可复用的 Wiki 知识。"
+    return "本轮没有生成可保存的 Wiki 摘要内容。"

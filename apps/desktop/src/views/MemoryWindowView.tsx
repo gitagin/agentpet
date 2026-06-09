@@ -523,7 +523,7 @@ function ReviewReportArtifactCard({
           </button>
         </div>
       ) : (
-        <p className="field-note">当前浏览器视图无法打开 Vault 文件位置。</p>
+        <p className="field-note">当前浏览器视图无法打开本地保存文件位置。</p>
       )}
     </div>
   );
@@ -1238,7 +1238,7 @@ export default function MemoryWindowView({
 
   async function revealReviewReport(relativePath: string, mode: DesktopVaultRevealMode) {
     if (!window.agentDesktop?.revealVaultPath) {
-      setRetrospectiveError("当前浏览器视图无法打开 Vault 文件位置。");
+      setRetrospectiveError("当前浏览器视图无法打开本地保存文件位置。");
       return;
     }
     const result = await window.agentDesktop.revealVaultPath(relativePath, mode);
@@ -1329,12 +1329,70 @@ export default function MemoryWindowView({
 
   return (
     <FeatureWindowShell
-      eyebrow="记忆"
-      title="记忆"
-      description="无需打开聊天，也可以搜索、新增、复核、更正、归档和导出长期记忆。"
-      activeTab="记忆"
+      eyebrow="回放"
+      title="本周回放与月度复盘"
+      description="从本地历史里回看主题、已完成事项、卡点和下一步重点，再进入高级记忆工具。"
+      activeTab="回放"
     >
-      <section className="panel feature-window-panel memory-workbench-panel" aria-label="记忆工作台">
+      <ReviewCoachPanel
+        retrospectives={retrospectives}
+        loading={retrospectiveLoading}
+        error={retrospectiveError}
+        message={reviewReportMessage}
+        generatingReport={generatingReport}
+        reportArtifacts={reviewReportArtifacts}
+        canRevealReports={canRevealReports}
+        onRefresh={() => void loadRetrospectives()}
+        onGenerate={generateReviewFromCard}
+        onRevealReport={(relativePath, mode) => void revealReviewReport(relativePath, mode)}
+      />
+
+      <section className="panel feature-window-panel memory-source-details-panel" aria-label="复盘来源详情">
+        <div className="section-heading">
+          <strong>复盘来源详情</strong>
+          <span>生成报告前后都可以检查每次复盘背后的本地证据。</span>
+        </div>
+        <div className="retrospective-toolbar" aria-label="复盘来源窗口">
+          {[1, 7, 30, 90].map((days) => (
+            <button
+              key={days}
+              type="button"
+              className={`secondary memory-activity-filter ${activeRetrospectiveDays === days ? "active" : ""}`}
+              onClick={() => setActiveRetrospectiveDays(days)}
+              aria-pressed={activeRetrospectiveDays === days}
+            >
+              <CalendarRange size={15} />
+              {days === 1 ? "今天" : `${days} 天`}
+            </button>
+          ))}
+        </div>
+        {retrospectiveLoading && !activeRetrospective ? (
+          <EmptyState text="正在加载本地复盘数据。" />
+        ) : activeRetrospective ? (
+          <RetrospectiveWindowPanel
+            window={activeRetrospective}
+            generatingReport={generatingReport}
+            onGenerateReport={(days) => void generateReport(days)}
+          />
+        ) : (
+          <EmptyState text="还没有复盘数据。请先完成一次聊天、任务或 Wiki 整理。" />
+        )}
+      </section>
+
+      <LocalAssetDashboard
+        stats={localAssets}
+        loading={localAssetsLoading}
+        error={localAssetsError}
+        onRefresh={() => void loadLocalAssets()}
+      />
+
+      <details className="memory-advanced-tools">
+        <summary>
+          <strong>高级记忆工具</strong>
+          <span>搜索原始记忆、管理图谱事实、复核候选项，并查看自动整理账本。</span>
+        </summary>
+        <div className="memory-advanced-tools-stack">
+      <section className="panel feature-window-panel memory-workbench-panel" aria-label="高级记忆工作台">
         <MemorySearchWorkbench
           query={memorySearchQuery}
           status={memorySearchStatus}
@@ -1358,7 +1416,7 @@ export default function MemoryWindowView({
         </div>
       </section>
 
-      <section className="panel feature-window-panel memory-management-panel" aria-label="记忆复核与管理">
+      <section className="panel feature-window-panel memory-management-panel" aria-label="高级记忆图谱管理">
         <div className="section-heading">
           <strong>复核并管理记忆事实</strong>
           <span>
@@ -1464,7 +1522,7 @@ export default function MemoryWindowView({
         ) : null}
       </section>
 
-      <section className="panel feature-window-panel memory-review-queue-panel" aria-label="记忆复核队列">
+      <section className="panel feature-window-panel memory-review-queue-panel" aria-label="高级记忆复核队列">
       <WeeklyMemoryReviewPanel
         review={weeklyMemoryReview}
         loading={weeklyMemoryReviewLoading}
@@ -1483,59 +1541,7 @@ export default function MemoryWindowView({
         />
       </section>
 
-      <ReviewCoachPanel
-        retrospectives={retrospectives}
-        loading={retrospectiveLoading}
-        error={retrospectiveError}
-        message={reviewReportMessage}
-        generatingReport={generatingReport}
-        reportArtifacts={reviewReportArtifacts}
-        canRevealReports={canRevealReports}
-        onRefresh={() => void loadRetrospectives()}
-        onGenerate={generateReviewFromCard}
-        onRevealReport={(relativePath, mode) => void revealReviewReport(relativePath, mode)}
-      />
-
-      <section className="panel feature-window-panel memory-source-details-panel" aria-label="复盘来源详情">
-        <div className="section-heading">
-          <strong>复盘来源详情</strong>
-          <span>生成报告前后都可以检查每次复盘背后的本地证据。</span>
-        </div>
-        <div className="retrospective-toolbar" aria-label="复盘来源窗口">
-          {[1, 7, 30, 90].map((days) => (
-            <button
-              key={days}
-              type="button"
-              className={`secondary memory-activity-filter ${activeRetrospectiveDays === days ? "active" : ""}`}
-              onClick={() => setActiveRetrospectiveDays(days)}
-              aria-pressed={activeRetrospectiveDays === days}
-            >
-              <CalendarRange size={15} />
-              {days === 1 ? "今天" : `${days} 天`}
-            </button>
-          ))}
-        </div>
-        {retrospectiveLoading && !activeRetrospective ? (
-          <EmptyState text="正在加载本地复盘数据。" />
-        ) : activeRetrospective ? (
-          <RetrospectiveWindowPanel
-            window={activeRetrospective}
-            generatingReport={generatingReport}
-            onGenerateReport={(days) => void generateReport(days)}
-          />
-        ) : (
-          <EmptyState text="还没有复盘数据。请先完成一次聊天、任务或 Wiki 整理。" />
-        )}
-      </section>
-
-      <LocalAssetDashboard
-        stats={localAssets}
-        loading={localAssetsLoading}
-        error={localAssetsError}
-        onRefresh={() => void loadLocalAssets()}
-      />
-
-      <section className="panel feature-window-panel memory-activity-panel" aria-label="最近整理活动">
+      <section className="panel feature-window-panel memory-activity-panel" aria-label="高级自动整理账本">
         <div className="section-heading">
           <strong>最近整理活动</strong>
           <span>
@@ -1620,6 +1626,8 @@ export default function MemoryWindowView({
           )}
         </div>
       </section>
+        </div>
+      </details>
     </FeatureWindowShell>
   );
 }
