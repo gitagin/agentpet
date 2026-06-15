@@ -117,7 +117,7 @@ describe("agentActivity", () => {
     );
 
     expect(needsConfirmation).toContain("确认");
-    expect(nothingToSave).toContain("知识库");
+    expect(nothingToSave).toContain("知识页");
     expect(lowValue).toContain("长期保存");
     expect(new Set([needsConfirmation, nothingToSave, lowValue]).size).toBe(3);
     expect(`${needsConfirmation} ${nothingToSave} ${lowValue}`).not.toMatch(/confirmation-only|saveable|too short|low-value/);

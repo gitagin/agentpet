@@ -166,7 +166,7 @@ describe("VisibleContinuityPanel", () => {
     expect(screen.getByText("Wiki/Companion/Summaries/week.md")).toBeInTheDocument();
     expect(screen.getByText("已跳过敏感记忆")).toBeInTheDocument();
     expect(screen.getByText("仅支持手动确认路径。")).toBeInTheDocument();
-    expect(screen.getByText("没有可展示的安全 Markdown 目标。")).toBeInTheDocument();
+    expect(screen.getByText("没有可展示的安全本地文件目标。")).toBeInTheDocument();
     expect(screen.queryByText("Skipped sensitive memory")).not.toBeInTheDocument();
     expect(screen.queryByText("Secrets/token.md")).not.toBeInTheDocument();
     expect(screen.getByText("Agent Pet")).toBeInTheDocument();

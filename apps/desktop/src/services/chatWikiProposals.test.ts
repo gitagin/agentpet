@@ -29,7 +29,7 @@ describe("chatWikiProposals", () => {
     expect(detail).toContain("[redacted]");
     expect(detail).not.toContain("secret-token");
     expect(detail).not.toContain("secret-key");
-    expect(detail).toContain("需确认后才会写入 Vault");
+    expect(detail).toContain("需确认后才会写入本机知识页");
   });
 
   it("normalizes proposal payloads and target options", () => {

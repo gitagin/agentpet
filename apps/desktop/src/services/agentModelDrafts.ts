@@ -42,7 +42,7 @@ export const agentOutcomeDefinitions: Record<AgentOutcomeKey, { label: string; d
   },
   knowledge_page: {
     label: "知识",
-    description: "把可复用来源材料整理为 Wiki 页面、摘要或报告。",
+    description: "把可复用来源材料整理为知识页、摘要或报告。",
   },
   memory_review: {
     label: "记忆",
@@ -50,7 +50,7 @@ export const agentOutcomeDefinitions: Record<AgentOutcomeKey, { label: string; d
   },
   cited_answer: {
     label: "带引用回答",
-    description: "检索本地记忆、聊天日记和 Wiki 上下文，为回答提供来源。",
+    description: "检索本地记忆、聊天日记和知识整理上下文，为回答提供来源。",
   },
   relationship_continuity: {
     label: "连续性",
@@ -61,11 +61,11 @@ export const agentOutcomeDefinitions: Record<AgentOutcomeKey, { label: string; d
 export const agentModelDefinitions: AgentModelDefinition[] = [
   { id: "chat_agent", label: "最终回复", description: "生成用户可见的聊天回复。", outcome: "chat", outcomeLabel: "聊天" },
   { id: "task_agent", label: "任务创建", description: "创建本地任务和提醒。", outcome: "task_reminder", outcomeLabel: "任务" },
-  { id: "wiki_manager_agent", label: "Wiki 写入", description: "维护持久化 Vault Wiki 页面。", outcome: "knowledge_page", outcomeLabel: "知识" },
+  { id: "wiki_manager_agent", label: "知识页写入", description: "维护本机知识页。", outcome: "knowledge_page", outcomeLabel: "知识" },
   { id: "memory_proposal_agent", label: "记忆复核", description: "准备可能需要确认的长期记忆项。", outcome: "memory_review", outcomeLabel: "记忆" },
   { id: "diary_memory_extractor_agent", label: "日记结构化", description: "从聊天日记提取事件、主题和情绪。", outcome: "memory_review", outcomeLabel: "记忆" },
   { id: "memory_retrieval_agent", label: "记忆检索", description: "搜索个人记忆和每日聊天记录。", outcome: "cited_answer", outcomeLabel: "带引用回答" },
-  { id: "knowledge_retrieval_agent", label: "知识检索", description: "搜索持久化 Wiki 文档。", outcome: "cited_answer", outcomeLabel: "带引用回答" },
+  { id: "knowledge_retrieval_agent", label: "知识检索", description: "搜索本机知识页。", outcome: "cited_answer", outcomeLabel: "带引用回答" },
   { id: "continuity_agent", label: "连续性", description: "提取身份、关系和情绪连续性；高风险内容仍需复核。", outcome: "relationship_continuity", outcomeLabel: "连续性" },
   { id: "semantic_analysis_agent", label: "意图路由", description: "判断意图与上下文需求。", outcome: "chat", outcomeLabel: "聊天" },
 ];

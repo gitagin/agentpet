@@ -6,7 +6,7 @@ export default function WorldWindowView({ children }: { children: ReactNode }) {
     <FeatureWindowShell
       eyebrow="高级"
       title="知识整理"
-      description="Markdown 导出与 Wiki 维护工具收在这里，不打扰主流程。"
+      description="本地文本导出与知识整理工具收在这里，不打扰主流程。"
       activeTab="设置"
     >
       {children}

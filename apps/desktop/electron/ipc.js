@@ -7,6 +7,7 @@ const deniedVaultPathParts = new Set([".git", ".obsidian"]);
 const allowedRendererUiStateKeys = new Set([
   "agent-pet.first-use-onboarding",
   "agent-pet.pet-entry-hint",
+  "agent-pet.live2d-default-model-migration",
   "agent-pet.live2d-model-id",
   "agent-pet.wiki-archive-candidate",
 ]);

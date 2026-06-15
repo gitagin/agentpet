@@ -55,16 +55,21 @@ describe("ChatWindowView", () => {
       />,
     );
 
-    expect(screen.getByRole("tab", { name: "切换到新任务模式" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "创建明天的提醒" }));
+    expect(screen.getByRole("heading", { name: "陪伴" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "切换到陪伴" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "切换到记住" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "切换到提醒" })).toHaveClass("secondary");
+    expect(screen.getByRole("tab", { name: "切换到整理资料" })).toHaveClass("secondary");
+
+    fireEvent.click(screen.getByRole("button", { name: "明天提醒我继续这件事" }));
     expect(onModeChange).toHaveBeenCalledWith("task");
-    expect(onInputChange).toHaveBeenCalledWith("请在明天上午 9:00 提醒我检查发布清单。");
+    expect(onInputChange).toHaveBeenCalledWith("明天提醒我继续这件事");
 
-    fireEvent.click(screen.getByRole("button", { name: "保存一个偏好" }));
+    fireEvent.click(screen.getByRole("button", { name: "记住我最近在准备一件重要的事" }));
     expect(onModeChange).toHaveBeenCalledWith("note");
-    expect(onInputChange).toHaveBeenCalledWith("请记住我偏好简洁的发布清单。");
+    expect(onInputChange).toHaveBeenCalledWith("记住我最近在准备一件重要的事");
 
-    fireEvent.click(screen.getByRole("tab", { name: "切换到今日复盘模式" }));
+    fireEvent.click(screen.getByRole("tab", { name: "切换到回顾今天" }));
     expect(onModeChange).toHaveBeenCalledWith("review");
 
     rerender(
@@ -84,7 +89,7 @@ describe("ChatWindowView", () => {
     fireEvent.submit(container.querySelector(".chat-form") as HTMLFormElement);
 
     expect(onSend).toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "复盘" })).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: "回顾" })).not.toBeDisabled();
   });
 
   it("keeps first-use onboarding first for a blank uninitialized chat", () => {
@@ -131,6 +136,5 @@ describe("ChatWindowView", () => {
     expect(appearsBefore(form as Element, onboarding)).toBe(true);
     expect(screen.getByText("补充首次偏好")).toBeInTheDocument();
     expect(screen.getByText("还没有对话。可以直接和桌宠聊一句，之后这里会显示最近聊天。")).toBeInTheDocument();
-    expect(screen.queryByText(/先绑定 Obsidian\/Markdown 资料库/)).not.toBeInTheDocument();
   });
 });

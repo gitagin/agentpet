@@ -91,11 +91,11 @@ describe("WikiWorkflowPanel", () => {
 
     const { rerender } = renderWorkflowPanel({ onPreview, onApply });
 
-    const organizer = screen.getByLabelText("日常 Wiki 整理");
+    const organizer = screen.getByLabelText("日常知识整理");
     const advancedTools = screen.getByLabelText("高级知识库维护工具");
 
     expect(organizer.compareDocumentPosition(advancedTools) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(within(organizer).getByLabelText("创建或更新 Wiki 页面")).toBeInTheDocument();
+    expect(within(organizer).getByLabelText("创建或更新知识页")).toBeInTheDocument();
     expect(within(organizer).getByLabelText("标题")).toBeInTheDocument();
     expect(within(organizer).getByLabelText("来源内容")).toBeInTheDocument();
     expect(within(organizer).getByLabelText("目标类型")).toBeInTheDocument();
@@ -156,15 +156,15 @@ describe("WikiWorkflowPanel", () => {
       />,
     );
 
-    expect(screen.getByLabelText("Wiki 预览结果")).toHaveTextContent("Wiki/Concepts/Decision-Memory.md");
-    fireEvent.click(within(screen.getByLabelText("日常 Wiki 整理")).getByRole("button", { name: "应用" }));
+    expect(screen.getByLabelText("知识页预览结果")).toHaveTextContent("Wiki/Concepts/Decision-Memory.md");
+    fireEvent.click(within(screen.getByLabelText("日常知识整理")).getByRole("button", { name: "应用" }));
     expect(onApply).toHaveBeenCalledTimes(1);
   });
 
   it("keeps advanced maintenance and system-style details hidden by default", () => {
     renderWorkflowPanel();
 
-    expect(screen.getByLabelText("日常 Wiki 整理")).toBeInTheDocument();
+    expect(screen.getByLabelText("日常知识整理")).toBeInTheDocument();
     expect(screen.getByLabelText("高级知识库维护工具")).not.toHaveAttribute("open");
     expect(screen.getByText("审查/应用目标")).not.toBeVisible();
     expect(screen.queryByText("运行状态")).not.toBeInTheDocument();

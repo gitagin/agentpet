@@ -279,6 +279,14 @@ def _contextual_permissions(result: MemorySearchResult, *, query: str) -> Memory
     permissions = result.recall_permissions
     memory_kind = result.memory_kind or ""
     snippet = result.snippet
+    if _is_unconfirmed_or_inactive_result(result):
+        return permissions.model_copy(
+            update={
+                "can_answer_context": False,
+                "can_proactively_mention": False,
+                "can_suggest_action": False,
+            }
+        )
     if memory_kind == MemoryKind.RECENT_STATE.value:
         direct = _direct_relevance(query, snippet)
         return permissions.model_copy(
@@ -299,6 +307,25 @@ def _contextual_permissions(result: MemorySearchResult, *, query: str) -> Memory
             }
         )
     return permissions
+
+
+def _is_unconfirmed_or_inactive_result(result: MemorySearchResult) -> bool:
+    inactive_statuses = {
+        "candidate",
+        "pending",
+        "quarantined",
+        "rejected",
+        "archived",
+        "forgotten",
+        "sensitive_blocked",
+        "wrong",
+        "superseded",
+        "reverted",
+    }
+    if result.lifecycle_status and result.lifecycle_status.casefold() in inactive_statuses:
+        return True
+    snippet = result.snippet.casefold()
+    return any(f"status={status}" in snippet for status in inactive_statuses)
 
 
 def _source_context_line(result: MemorySearchResult) -> str:

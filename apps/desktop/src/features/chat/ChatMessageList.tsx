@@ -2,6 +2,7 @@ import type { AgentAction, ChatMessage, ChatNegotiationAction, TaskItem } from "
 import { EmptyState } from "../../components/layout";
 import { ChatAgentActionSummary } from "./ChatAgentActionSummary";
 import { ChatCitationSummary } from "./ChatCitationSummary";
+import { stripAssistantHiddenReplyText } from "./assistantReplyVisibility";
 import { formatMessageRole, formatRunStatus } from "./chatFormatters";
 
 type ChatMessageListProps = {
@@ -51,7 +52,9 @@ export function ChatMessageList({
       {visibleMessages.length > 0 ? (
         visibleMessages.map((message) => {
           const showMeta = message.status === "failed" || message.status === "cancelled";
-          const hasContent = message.content.trim().length > 0;
+          const displayContent =
+            message.role === "assistant" ? stripAssistantHiddenReplyText(message.content) : message.content;
+          const hasContent = displayContent.trim().length > 0;
           const isPending = message.status === "partial" && !hasContent;
           return (
             <article key={message.id} className={`message ${message.role}`}>
@@ -62,7 +65,7 @@ export function ChatMessageList({
                 </div>
               ) : null}
               <p className={isPending ? "message-pending" : undefined}>
-                {hasContent ? message.content : message.status === "partial" ? "正在整理回答..." : "没有收到可显示内容。"}
+                {hasContent ? displayContent : message.status === "partial" ? "正在整理回答..." : "没有收到可显示内容。"}
               </p>
               {message.role === "assistant" ? (
                 <>

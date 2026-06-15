@@ -117,7 +117,7 @@ export function ChatWikiProposalCard({
           type="button"
           onClick={() => onApply(message.id, proposal.id)}
           disabled={!canApply}
-          title={canApply ? "将已选择目标写入 Vault" : "需要先确认，并选择至少一个带 run_id 与 review_id 的目标"}
+          title={canApply ? "将已选择目标写入本机知识页" : "需要先确认，并选择至少一个带必要校验信息的目标"}
         >
           {proposal.state === "applying" ? <Loader2 className="spin" size={16} /> : <FileDown size={16} />}
           确认写入

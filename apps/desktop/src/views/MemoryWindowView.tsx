@@ -6,6 +6,8 @@ import type { DesktopApi } from "../services/desktopApi";
 import { describeError } from "../services/apiErrorMessages";
 import {
   buildMemoryTrustGroups,
+  canRevertAgentAction,
+  classifyMemoryTrustEntry,
   getAgentActionSearchText,
   type AgentActivityLogEntry,
 } from "../services/agentActivity";
@@ -30,6 +32,7 @@ import type {
 import { MemoryProposalActivityCard } from "../features/memory/MemoryProposalActivityCard";
 import type { MemoryAsyncStatus } from "../features/memory/memoryReducer";
 import { memoryTypeLabels, memoryTypes } from "../features/memory/memoryConstants";
+import { productCopy } from "../productCopy";
 import { FeatureWindowShell } from "./FeatureWindowShell";
 
 type MemoryActivityFilter = "all" | "auto" | "pending" | "reverted" | "failed";
@@ -101,7 +104,7 @@ const reviewCoachCards: ReviewCoachCardConfig[] = [
   {
     kind: "today",
     title: "今日复盘",
-    description: "把今天的日记、任务、记忆和 Wiki 更新整理成本地 Markdown 复盘。",
+    description: "把今天的日记、任务、记忆和知识整理更新合成本地复盘。",
     windowDays: 1,
     target: 1,
     buttonLabel: "生成今日复盘",
@@ -117,7 +120,7 @@ const reviewCoachCards: ReviewCoachCardConfig[] = [
   {
     kind: "monthly",
     title: "月度复盘",
-    description: "生成结合长期记忆、任务状态和 Wiki 输出的月度报告。",
+    description: "生成结合长期记忆、任务状态和知识整理输出的月度报告。",
     windowDays: 30,
     target: "monthly",
     buttonLabel: "生成月度复盘",
@@ -164,6 +167,20 @@ function entryMatchesFilter(entry: AgentActivityLogEntry, filter: MemoryActivity
   return filter === "pending"
     ? entry.proposal.state === "pending"
     : filter === "failed" && entry.proposal.state === "failed";
+}
+
+function isMemoryControlHistoryEntry(entry: AgentActivityLogEntry): boolean {
+  if (entry.kind !== "agent_action") {
+    return false;
+  }
+  const action = entry.action;
+  const trustKey = classifyMemoryTrustEntry(entry);
+  const actionType = action.action_type.toLocaleLowerCase();
+  const skipped = action.status === "skipped" || actionType.endsWith(".skip") || actionType.includes(".skip.");
+  const reverted = action.status === "reverted" || Boolean(action.reverts_action_id) || Boolean(action.reverted_by);
+  const canRevert = canRevertAgentAction(action);
+  const memoryLike = trustKey !== null && trustKey !== "tasks";
+  return (memoryLike || reverted) && (skipped || reverted || canRevert);
 }
 
 function entrySearchText(entry: AgentActivityLogEntry): string {
@@ -344,20 +361,20 @@ function LocalAssetDashboard({
   const taskValue = stats ? `${stats.completed_task_count}/${stats.task_count}` : "0/0";
   const items = [
     { label: "聊天日记天数", value: String(stats?.chat_diary_days ?? 0), meta: `${stats?.chat_diary_entries ?? 0} 条记录`, icon: NotebookTabs },
-    { label: "长期记忆", value: String(stats?.long_term_memory_count ?? 0), meta: "active / candidate", icon: Database },
-    { label: "Wiki 页面", value: String(stats?.wiki_page_count ?? 0), meta: "不含核心维护页", icon: BookOpen },
-    { label: "任务完成", value: taskValue, meta: "completed / total", icon: CheckCircle2 },
-    { label: "最近整理", value: latest, meta: "本地活动账本", icon: History },
+    { label: "长期记忆", value: String(stats?.long_term_memory_count ?? 0), meta: "使用中 / 待确认", icon: Database },
+    { label: "知识页", value: String(stats?.wiki_page_count ?? 0), meta: "不含核心维护页", icon: BookOpen },
+    { label: "任务完成", value: taskValue, meta: "完成 / 总数", icon: CheckCircle2 },
+    { label: "最近整理", value: latest, meta: "本机记录", icon: History },
     { label: "可撤销操作", value: String(stats?.reversible_operation_count ?? 0), meta: "尚未撤销", icon: RotateCcw },
   ];
   return (
-    <section className="panel feature-window-panel local-asset-dashboard" aria-label="本地资产仪表盘">
+    <section className="panel feature-window-panel local-asset-dashboard" aria-label="本机积累">
       <div className="section-heading">
-        <strong>本地资产仪表盘</strong>
+        <strong>本机积累</strong>
         <span>
           {stats?.vault_configured
-            ? "从本地 SQLite 与 Vault 只读汇总，不上传遥测。"
-            : "尚未绑定 Vault；先显示本地数据库中的积累。"}
+            ? "从本机数据库与文件夹只读汇总，不上传遥测。"
+            : "尚未绑定本机文件夹；先显示本机数据库中的积累。"}
         </span>
       </div>
       <div className="local-asset-toolbar">
@@ -367,7 +384,7 @@ function LocalAssetDashboard({
         </span>
         <button type="button" className="secondary" onClick={onRefresh} disabled={loading}>
           {loading ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />}
-          刷新资产
+        刷新积累
         </button>
       </div>
       {error ? <p className="field-note error">{error}</p> : null}
@@ -387,9 +404,9 @@ function LocalAssetDashboard({
         })}
       </div>
       {!loading && stats && !hasLocalAssets(stats) ? (
-        <EmptyState text="还没有本地资产。完成一次聊天、记录长期记忆或生成复盘后，这里会显示积累情况。" />
+        <EmptyState text="还没有本机积累。完成一次聊天、记录长期记忆或生成复盘后，这里会显示积累情况。" />
       ) : null}
-      {loading && !stats ? <EmptyState text="正在读取本地资产统计。" /> : null}
+      {loading && !stats ? <EmptyState text="正在读取本机积累统计。" /> : null}
     </section>
   );
 }
@@ -416,7 +433,7 @@ function RetrospectiveWindowPanel({
         <span>日记 {window.summary.diary_objects || 0}</span>
         <span>长期记忆 {window.summary.long_term_memories || 0}</span>
         <span>任务 {window.tasks.total}</span>
-        <span>Wiki {window.summary.wiki_updates || 0}</span>
+      <span>知识整理 {window.summary.wiki_updates || 0}</span>
       </div>
       {window.has_data ? (
         <>
@@ -439,7 +456,7 @@ function RetrospectiveWindowPanel({
             </p>
           </div>
           <div className="retrospective-section">
-            <strong>新增记忆和 Wiki</strong>
+            <strong>新增记忆和知识整理</strong>
             {window.long_term_memories.slice(0, 3).map((item) => (
               <p key={item.id}>
                 {item.summary} <small>{item.category} / {item.status}</small>
@@ -450,7 +467,7 @@ function RetrospectiveWindowPanel({
                 {item.title} <small>{item.path}</small>
               </p>
             ))}
-            {!window.long_term_memories.length && !window.wiki_updates.length ? <p>暂无新增长期记忆或 Wiki 更新。</p> : null}
+            {!window.long_term_memories.length && !window.wiki_updates.length ? <p>暂无新增长期记忆或知识整理。</p> : null}
           </div>
           <div className="retrospective-section">
             <strong>重复偏好/关注点</strong>
@@ -466,11 +483,11 @@ function RetrospectiveWindowPanel({
           </div>
         </>
       ) : (
-        <EmptyState text="这个时间窗口还没有可回顾的本地资产。先完成一次聊天、任务或 Wiki 整理后再回来查看。" />
+        <EmptyState text="这个时间窗口还没有可回顾的本机积累。先完成一次聊天、任务或知识整理后再回来查看。" />
       )}
       <button type="button" className="secondary" onClick={() => onGenerateReport(window.days)} disabled={busy}>
         {busy ? <Loader2 className="spin" size={16} /> : <FileText size={16} />}
-        生成 Markdown 报告
+        生成本地报告
       </button>
     </article>
   );
@@ -482,7 +499,7 @@ function ReviewCoverageList({ window }: { window: RetrospectiveWindow | null }) 
     { label: "聊天日记", value: coverage.chatDiary },
     { label: "任务", value: coverage.tasks },
     { label: "长期记忆", value: coverage.longTermMemory },
-    { label: "Wiki", value: coverage.wiki },
+    { label: "知识整理", value: coverage.wiki },
   ];
   return (
     <dl className="review-coverage-list" aria-label="来源覆盖">
@@ -557,7 +574,7 @@ function ReviewCoachCard({
       <ReviewCoverageList window={window} />
       {window?.has_data ? (
         <p className="field-note">
-          使用 {window.summary.diary_objects || 0} 条日记、{window.tasks.total} 个任务、{window.summary.long_term_memories || 0} 条记忆事实和 {window.summary.wiki_updates || 0} 次 Wiki 更新。
+          使用 {window.summary.diary_objects || 0} 条日记、{window.tasks.total} 个任务、{window.summary.long_term_memories || 0} 条记忆事实和 {window.summary.wiki_updates || 0} 次知识整理。
         </p>
       ) : (
         <p className="field-note">这个复盘窗口还没有本地来源数据。</p>
@@ -681,7 +698,7 @@ function MemorySearchWorkbench({
             type="search"
             value={query}
             onChange={(event) => onQueryChange(event.target.value)}
-            placeholder="搜索偏好、日记、事实或 Wiki 上下文"
+            placeholder={productCopy.memoryPage.searchPlaceholder}
           />
         </label>
         <button type="submit" disabled={searching || !query.trim()}>
@@ -916,6 +933,129 @@ function MemoryFactSection({
   );
 }
 
+function MemoryPriorityPanel({
+  activeFacts,
+  candidateFacts,
+  memoryFactsLoading,
+  memoryFactBusyId,
+  pendingProposals,
+  loadingMemoryProposals,
+  memoryProposalActionIds,
+  recentHistoryEntries,
+  onMemoryFactAction,
+  onMemoryProposalAct,
+  onLoadMemoryProposals,
+  renderEntry,
+}: {
+  activeFacts: MemoryGraphFact[];
+  candidateFacts: MemoryGraphFact[];
+  memoryFactsLoading: boolean;
+  memoryFactBusyId: string | null;
+  pendingProposals: MemoryProposal[];
+  loadingMemoryProposals: boolean;
+  memoryProposalActionIds: Set<string>;
+  recentHistoryEntries: AgentActivityLogEntry[];
+  onMemoryFactAction: (factId: string, action: "wrong" | "archive" | "sensitive_block" | "confirm") => void;
+  onMemoryProposalAct: (proposalId: string, action: "confirm" | "reject") => void;
+  onLoadMemoryProposals: () => void;
+  renderEntry: (entry: AgentActivityLogEntry) => ReactNode;
+}) {
+  const activePreview = activeFacts.slice(0, 3);
+  const proposalPreview = pendingProposals.slice(0, 3);
+  const candidatePreview = candidateFacts.slice(0, 3);
+  const historyPreview = recentHistoryEntries.slice(0, 3);
+
+  return (
+    <section className="panel feature-window-panel memory-primary-panel" aria-label="我的记忆控制台">
+      <div className="section-heading">
+        <strong>{productCopy.memoryPage.title}</strong>
+        <span>{productCopy.memoryPage.description}</span>
+      </div>
+
+      <div className="memory-priority-grid">
+        <section className="memory-priority-block" aria-label={productCopy.memoryPage.activeSectionTitle}>
+          <div className="section-heading compact">
+            <strong>{productCopy.memoryPage.activeSectionTitle}</strong>
+            <span>{activeFacts.length} 条正在用于陪伴和检索。</span>
+          </div>
+          <div className="memory-graph-list memory-priority-list">
+            {activePreview.length > 0 ? (
+              activePreview.map((fact) => (
+                <MemoryFactCard
+                  key={fact.fact_id}
+                  fact={fact}
+                  busy={memoryFactBusyId === fact.fact_id}
+                  onAction={onMemoryFactAction}
+                />
+              ))
+            ) : memoryFactsLoading ? (
+              <EmptyState text="正在加载长期记忆。" />
+            ) : (
+              <EmptyState text={productCopy.memoryPage.emptyState} />
+            )}
+          </div>
+        </section>
+
+        <section className="memory-priority-block" aria-label={productCopy.memoryPage.pendingSectionTitle}>
+          <div className="section-heading compact">
+            <strong>{productCopy.memoryPage.pendingSectionTitle}</strong>
+            <span>{pendingProposals.length + candidateFacts.length} 条需要你确认或复核。</span>
+          </div>
+          <button type="button" className="secondary memory-priority-refresh" onClick={onLoadMemoryProposals} disabled={loadingMemoryProposals}>
+            {loadingMemoryProposals ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />}
+            刷新待确认
+          </button>
+          <div className="proposal-list memory-priority-list">
+            {proposalPreview.length > 0 ? (
+              proposalPreview.map((proposal) => (
+                <MemoryProposalActivityCard
+                  key={proposal.proposal_id}
+                  entry={{
+                    kind: "memory_proposal",
+                    id: `memory-proposal-${proposal.proposal_id}`,
+                    sortAt: proposal.proposal_id,
+                    sortKey: 0,
+                    proposal,
+                  }}
+                  busy={memoryProposalActionIds.has(proposal.proposal_id)}
+                  onAct={onMemoryProposalAct}
+                />
+              ))
+            ) : candidatePreview.length > 0 ? (
+              candidatePreview.map((fact) => (
+                <MemoryFactCard
+                  key={fact.fact_id}
+                  fact={fact}
+                  busy={memoryFactBusyId === fact.fact_id}
+                  onAction={onMemoryFactAction}
+                />
+              ))
+            ) : loadingMemoryProposals || memoryFactsLoading ? (
+              <EmptyState text="正在加载待确认记忆。" />
+            ) : (
+              <EmptyState text="当前没有待确认的记忆。" />
+            )}
+          </div>
+        </section>
+
+        <section className="memory-priority-block" aria-label={productCopy.memoryPage.recentHistoryTitle}>
+          <div className="section-heading compact">
+            <strong>{productCopy.memoryPage.recentHistoryTitle}</strong>
+            <span>显示最近已跳过、已撤回，或仍可撤回的整理记录。</span>
+          </div>
+          <div className="proposal-list agent-activity-log-list feature-activity-list memory-priority-list">
+            {historyPreview.length > 0 ? (
+              historyPreview.map((entry) => renderEntry(entry))
+            ) : (
+              <EmptyState text="最近没有撤回或跳过的记忆记录。" />
+            )}
+          </div>
+        </section>
+      </div>
+    </section>
+  );
+}
+
 function WeeklyMemoryReviewPanel({
   review,
   loading,
@@ -1078,6 +1218,19 @@ export default function MemoryWindowView({
   const populatedGroups = memoryGroups.filter((group) => group.entries.length > 0);
   const activeRetrospective = windowByDays(retrospectives, activeRetrospectiveDays);
   const canRevealReports = Boolean(window.agentDesktop?.revealVaultPath);
+  const activePriorityFacts = useMemo(() => memoryFacts.filter((fact) => fact.status === "active"), [memoryFacts]);
+  const pendingPriorityFacts = useMemo(
+    () => memoryFacts.filter((fact) => ["candidate", "quarantined"].includes(fact.status)),
+    [memoryFacts],
+  );
+  const pendingMemoryProposals = useMemo(
+    () => memoryProposals.filter((proposal) => proposal.status === "pending"),
+    [memoryProposals],
+  );
+  const recentMemoryHistoryEntries = useMemo(
+    () => entries.filter(isMemoryControlHistoryEntry),
+    [entries],
+  );
   const confirmedFacts = filteredMemoryFacts.filter((fact) => fact.status === "active");
   const candidateFacts = filteredMemoryFacts.filter((fact) => ["candidate", "quarantined"].includes(fact.status));
   const diaryDerivedFacts = filteredMemoryFacts.filter((fact) =>
@@ -1098,7 +1251,7 @@ export default function MemoryWindowView({
       if (requestError instanceof DOMException && requestError.name === "AbortError") {
         return;
       }
-      setLocalAssetsError(describeError(requestError, "本地资产统计加载失败"));
+      setLocalAssetsError(describeError(requestError, "本机积累统计加载失败"));
     } finally {
       setLocalAssetsLoading(false);
     }
@@ -1329,70 +1482,93 @@ export default function MemoryWindowView({
 
   return (
     <FeatureWindowShell
-      eyebrow="回放"
-      title="本周回放与月度复盘"
-      description="从本地历史里回看主题、已完成事项、卡点和下一步重点，再进入高级记忆工具。"
-      activeTab="回放"
+      eyebrow="记忆"
+      title={productCopy.memoryPage.title}
+      description={productCopy.memoryPage.description}
+      activeTab="记忆"
     >
-      <ReviewCoachPanel
-        retrospectives={retrospectives}
-        loading={retrospectiveLoading}
-        error={retrospectiveError}
-        message={reviewReportMessage}
-        generatingReport={generatingReport}
-        reportArtifacts={reviewReportArtifacts}
-        canRevealReports={canRevealReports}
-        onRefresh={() => void loadRetrospectives()}
-        onGenerate={generateReviewFromCard}
-        onRevealReport={(relativePath, mode) => void revealReviewReport(relativePath, mode)}
+      <MemoryPriorityPanel
+        activeFacts={activePriorityFacts}
+        candidateFacts={pendingPriorityFacts}
+        memoryFactsLoading={memoryFactsLoading}
+        memoryFactBusyId={memoryFactBusyId}
+        pendingProposals={pendingMemoryProposals}
+        loadingMemoryProposals={loadingMemoryProposals}
+        memoryProposalActionIds={memoryProposalActionIds}
+        recentHistoryEntries={recentMemoryHistoryEntries}
+        onMemoryFactAction={(factId, action) => void updateMemoryFactStatus(factId, action)}
+        onMemoryProposalAct={onActOnMemoryProposal}
+        onLoadMemoryProposals={onLoadMemoryProposals}
+        renderEntry={renderEntry}
       />
 
-      <section className="panel feature-window-panel memory-source-details-panel" aria-label="复盘来源详情">
-        <div className="section-heading">
-          <strong>复盘来源详情</strong>
-          <span>生成报告前后都可以检查每次复盘背后的本地证据。</span>
-        </div>
-        <div className="retrospective-toolbar" aria-label="复盘来源窗口">
-          {[1, 7, 30, 90].map((days) => (
-            <button
-              key={days}
-              type="button"
-              className={`secondary memory-activity-filter ${activeRetrospectiveDays === days ? "active" : ""}`}
-              onClick={() => setActiveRetrospectiveDays(days)}
-              aria-pressed={activeRetrospectiveDays === days}
-            >
-              <CalendarRange size={15} />
-              {days === 1 ? "今天" : `${days} 天`}
-            </button>
-          ))}
-        </div>
-        {retrospectiveLoading && !activeRetrospective ? (
-          <EmptyState text="正在加载本地复盘数据。" />
-        ) : activeRetrospective ? (
-          <RetrospectiveWindowPanel
-            window={activeRetrospective}
+      <details className="memory-advanced-tools memory-review-tools">
+        <summary>
+          <strong>回顾和本机整理</strong>
+          <span>生成回顾报告、查看本机积累和更细的来源详情。</span>
+        </summary>
+        <div className="memory-advanced-tools-stack">
+          <ReviewCoachPanel
+            retrospectives={retrospectives}
+            loading={retrospectiveLoading}
+            error={retrospectiveError}
+            message={reviewReportMessage}
             generatingReport={generatingReport}
-            onGenerateReport={(days) => void generateReport(days)}
+            reportArtifacts={reviewReportArtifacts}
+            canRevealReports={canRevealReports}
+            onRefresh={() => void loadRetrospectives()}
+            onGenerate={generateReviewFromCard}
+            onRevealReport={(relativePath, mode) => void revealReviewReport(relativePath, mode)}
           />
-        ) : (
-          <EmptyState text="还没有复盘数据。请先完成一次聊天、任务或 Wiki 整理。" />
-        )}
-      </section>
 
-      <LocalAssetDashboard
-        stats={localAssets}
-        loading={localAssetsLoading}
-        error={localAssetsError}
-        onRefresh={() => void loadLocalAssets()}
-      />
+          <section className="panel feature-window-panel memory-source-details-panel" aria-label="复盘来源详情">
+            <div className="section-heading">
+              <strong>复盘来源详情</strong>
+              <span>生成报告前后都可以检查每次复盘背后的本地证据。</span>
+            </div>
+            <div className="retrospective-toolbar" aria-label="复盘来源窗口">
+              {[1, 7, 30, 90].map((days) => (
+                <button
+                  key={days}
+                  type="button"
+                  className={`secondary memory-activity-filter ${activeRetrospectiveDays === days ? "active" : ""}`}
+                  onClick={() => setActiveRetrospectiveDays(days)}
+                  aria-pressed={activeRetrospectiveDays === days}
+                >
+                  <CalendarRange size={15} />
+                  {days === 1 ? "今天" : `${days} 天`}
+                </button>
+              ))}
+            </div>
+            {retrospectiveLoading && !activeRetrospective ? (
+              <EmptyState text="正在加载本地复盘数据。" />
+            ) : activeRetrospective ? (
+              <RetrospectiveWindowPanel
+                window={activeRetrospective}
+                generatingReport={generatingReport}
+                onGenerateReport={(days) => void generateReport(days)}
+              />
+            ) : (
+              <EmptyState text="还没有复盘数据。请先完成一次聊天、任务或知识整理。" />
+            )}
+          </section>
+
+          <LocalAssetDashboard
+            stats={localAssets}
+            loading={localAssetsLoading}
+            error={localAssetsError}
+            onRefresh={() => void loadLocalAssets()}
+          />
+        </div>
+      </details>
 
       <details className="memory-advanced-tools">
         <summary>
-          <strong>高级记忆工具</strong>
-          <span>搜索原始记忆、管理图谱事实、复核候选项，并查看自动整理账本。</span>
+          <strong>更多记忆管理</strong>
+          <span>搜索更多记录、复核候选项，并查看后台整理记录。</span>
         </summary>
         <div className="memory-advanced-tools-stack">
-      <section className="panel feature-window-panel memory-workbench-panel" aria-label="高级记忆工作台">
+      <section className="panel feature-window-panel memory-workbench-panel" aria-label="更多记忆工作区">
         <MemorySearchWorkbench
           query={memorySearchQuery}
           status={memorySearchStatus}
@@ -1416,7 +1592,7 @@ export default function MemoryWindowView({
         </div>
       </section>
 
-      <section className="panel feature-window-panel memory-management-panel" aria-label="高级记忆图谱管理">
+      <section className="panel feature-window-panel memory-management-panel" aria-label="更多记忆管理">
         <div className="section-heading">
           <strong>复核并管理记忆事实</strong>
           <span>
@@ -1484,10 +1660,10 @@ export default function MemoryWindowView({
           />
           <MemoryFactSection
             title="待复核候选"
-            description={`${candidateFacts.length} 条图谱事实正在等待置信度或冲突复核。`}
+            description={`${candidateFacts.length} 条记忆事实正在等待置信度或冲突复核。`}
             facts={candidateFacts}
             loading={memoryFactsLoading}
-            emptyText="当前筛选下没有匹配的图谱候选。"
+            emptyText="当前筛选下没有匹配的待确认候选。"
             busyId={memoryFactBusyId}
             onAction={(factId, action) => void updateMemoryFactStatus(factId, action)}
           />
@@ -1522,7 +1698,7 @@ export default function MemoryWindowView({
         ) : null}
       </section>
 
-      <section className="panel feature-window-panel memory-review-queue-panel" aria-label="高级记忆复核队列">
+      <section className="panel feature-window-panel memory-review-queue-panel" aria-label="更多记忆复核">
       <WeeklyMemoryReviewPanel
         review={weeklyMemoryReview}
         loading={weeklyMemoryReviewLoading}
@@ -1541,7 +1717,7 @@ export default function MemoryWindowView({
         />
       </section>
 
-      <section className="panel feature-window-panel memory-activity-panel" aria-label="高级自动整理账本">
+      <section className="panel feature-window-panel memory-activity-panel" aria-label="后台整理记录">
         <div className="section-heading">
           <strong>最近整理活动</strong>
           <span>

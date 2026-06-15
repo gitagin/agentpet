@@ -1,0 +1,113 @@
+{
+  "version": 1,
+  "id": "agent_pet_companion",
+  "status": "expression_references_only_not_runtime",
+  "notRuntimeModel": true,
+  "referenceCount": 8,
+  "references": [
+    {
+      "name": "exp_idle_soft_ref",
+      "action": "idle",
+      "expression": "exp_idle_soft",
+      "file": "expression_references/exp_idle_soft_ref.png",
+      "crop": {
+        "left": 606,
+        "top": 82,
+        "right": 850,
+        "bottom": 310
+      },
+      "purpose": "Default friendly online idle."
+    },
+    {
+      "name": "exp_listen_mic_ref",
+      "action": "chat_listen",
+      "expression": "exp_listen_mic",
+      "file": "expression_references/exp_listen_mic_ref.png",
+      "crop": {
+        "left": 866,
+        "top": 82,
+        "right": 1115,
+        "bottom": 310
+      },
+      "purpose": "Attentive listening pose."
+    },
+    {
+      "name": "exp_think_focus_ref",
+      "action": "chat_think",
+      "expression": "exp_think_focus",
+      "file": "expression_references/exp_think_focus_ref.png",
+      "crop": {
+        "left": 1118,
+        "top": 82,
+        "right": 1380,
+        "bottom": 310
+      },
+      "purpose": "Thinking and confirmation hesitation."
+    },
+    {
+      "name": "exp_talk_warm_ref",
+      "action": "chat_talk",
+      "expression": "exp_talk_warm",
+      "file": "expression_references/exp_talk_warm_ref.png",
+      "crop": {
+        "left": 600,
+        "top": 370,
+        "right": 850,
+        "bottom": 610
+      },
+      "purpose": "Warm speaking expression."
+    },
+    {
+      "name": "exp_task_done_ref",
+      "action": "task_complete",
+      "expression": "exp_task_done",
+      "file": "expression_references/exp_task_done_ref.png",
+      "crop": {
+        "left": 866,
+        "top": 370,
+        "right": 1115,
+        "bottom": 610
+      },
+      "purpose": "Small positive celebration."
+    },
+    {
+      "name": "exp_privacy_guard_ref",
+      "action": "memory_privacy_guard",
+      "expression": "exp_privacy_guard",
+      "file": "expression_references/exp_privacy_guard_ref.png",
+      "crop": {
+        "left": 1116,
+        "top": 370,
+        "right": 1390,
+        "bottom": 615
+      },
+      "purpose": "Privacy guard hand pose."
+    },
+    {
+      "name": "exp_confirm_careful_ref",
+      "action": "memory_confirm_needed",
+      "expression": "exp_confirm_careful",
+      "file": "expression_references/exp_confirm_careful_ref.png",
+      "crop": {
+        "left": 690,
+        "top": 720,
+        "right": 960,
+        "bottom": 1005
+      },
+      "purpose": "Careful confirmation and uncertainty."
+    },
+    {
+      "name": "exp_sleep_quiet_ref",
+      "action": "sleep_quiet",
+      "expression": "exp_sleep_quiet",
+      "file": "expression_references/exp_sleep_quiet_ref.png",
+      "crop": {
+        "left": 995,
+        "top": 720,
+        "right": 1280,
+        "bottom": 1005
+      },
+      "purpose": "Quiet low-distraction sleepy state."
+    }
+  ]
+}

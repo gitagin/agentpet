@@ -1,6 +1,24 @@
 {
   "models": [
     {
+      "id": "gentle_girl",
+      "label": "温柔少女",
+      "directory": "/live2d/温柔少女/girlfriend/",
+      "model": "girlfriend.model3.json",
+      "icon": "icon.png",
+      "actions": "gentle_girl.actions.json"
+    },
+    {
+      "id": "agent_pet_companion",
+      "label": "Archivist Companion",
+      "directory": "/live2d/agent_pet_companion/",
+      "model": "agent_pet_companion.model3.json",
+      "icon": "preview.svg",
+      "actions": "agent_pet_companion.actions.json",
+      "previewOnly": true,
+      "design": "character-design.json"
+    },
+    {
       "id": "hiyori",
       "label": "Hiyori",
       "directory": "/live2d/hiyori_pro_zh/runtime/",

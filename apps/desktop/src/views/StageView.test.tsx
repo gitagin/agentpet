@@ -106,16 +106,45 @@ describe("StageView", () => {
       phase: "idle",
     });
 
-    const commandCenter = screen.getByLabelText("功能指挥中心");
+    const commandCenter = screen.getByLabelText("陪伴入口");
     expect(commandCenter).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Chat/ })).toHaveAttribute("data-stage-route", "chat");
-    expect(screen.getByRole("button", { name: /Projects/ })).toHaveAttribute("data-stage-route", "agent");
-    expect(screen.getByRole("button", { name: /Playback/ })).toHaveAttribute("data-stage-route", "memory");
-    expect(screen.getByRole("button", { name: /Settings/ })).toHaveAttribute("data-stage-route", "settings");
-    const advanced = screen.getByText("Advanced").closest("details");
+    expect(commandCenter).toHaveTextContent("我会长期记住重要的事");
+    expect(commandCenter).toHaveTextContent("记忆留在本机，可查看、可撤回");
+    expect(within(commandCenter).getByText("长期陪伴")).toBeInTheDocument();
+    expect(within(commandCenter).getByText("本地记忆")).toBeInTheDocument();
+    expect(within(commandCenter).getByText("记忆可控")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /陪我聊聊/ })).toHaveAttribute("data-stage-route", "chat");
+    expect(screen.getByRole("button", { name: /看看记忆/ })).toHaveAttribute("data-stage-route", "memory");
+    expect(screen.getByRole("button", { name: /设置边界/ })).toHaveAttribute("data-stage-route", "settings");
+    const advanced = screen.getByText("更多能力").closest("details");
     expect(advanced).not.toHaveAttribute("open");
-    expect(screen.getByRole("button", { name: /知识整理/ })).toHaveAttribute("data-stage-route", "world");
+    expect(screen.getByRole("button", { name: /提醒和待办/ })).toHaveAttribute("data-stage-route", "agent");
+    expect(screen.getByRole("button", { name: /整理资料/ })).toHaveAttribute("data-stage-route", "world");
     expect(screen.getByLabelText("聊天输入")).toBeInTheDocument();
+  });
+
+  it("does not expose support abilities as first-screen primary actions", () => {
+    renderStageView({
+      visible: false,
+      title: "",
+      message: "",
+      tone: "thinking",
+      phase: "idle",
+    });
+
+    const commandCenter = screen.getByLabelText("陪伴入口");
+    const primaryActionNames = within(commandCenter)
+      .getAllByRole("button")
+      .slice(0, 3)
+      .map((button) => button.textContent ?? "");
+
+    expect(primaryActionNames).toEqual([
+      expect.stringContaining("陪我聊聊"),
+      expect.stringContaining("看看记忆"),
+      expect.stringContaining("设置边界"),
+    ]);
+    expect(primaryActionNames.join(" ")).not.toMatch(/任务|知识整理|高级工具|Wiki|Markdown|Agent/);
+    expect(screen.queryByText("高级工具")).not.toBeInTheDocument();
   });
 
   it("shows visible outcomes before the stage command panel when an API is provided", () => {
@@ -129,7 +158,7 @@ describe("StageView", () => {
 
     expect(screen.getByLabelText("首页整理结果")).toBeInTheDocument();
     expect(screen.getByLabelText("mock stage visible continuity")).toBeInTheDocument();
-    expect(screen.getByLabelText("功能指挥中心")).toBeInTheDocument();
+    expect(screen.getByLabelText("陪伴入口")).toBeInTheDocument();
     expect(screen.getByLabelText("聊天输入")).toBeInTheDocument();
   });
 
@@ -156,13 +185,13 @@ describe("StageView", () => {
       phase: "idle",
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /Projects/ }));
+    fireEvent.click(screen.getByRole("button", { name: /提醒和待办/ }));
     expect(window.location.hash).toBe("#agent");
 
-    fireEvent.click(screen.getByRole("button", { name: /Playback/ }));
+    fireEvent.click(screen.getByRole("button", { name: /看看记忆/ }));
     expect(window.location.hash).toBe("#memory");
 
-    fireEvent.click(screen.getByRole("button", { name: /知识整理/ }));
+    fireEvent.click(screen.getByRole("button", { name: /整理资料/ }));
     expect(window.location.hash).toBe("#world");
   });
 
@@ -175,7 +204,7 @@ describe("StageView", () => {
       phase: "idle",
     });
 
-    const commandCenter = screen.getByLabelText("功能指挥中心");
+    const commandCenter = screen.getByLabelText("陪伴入口");
     const actionButtons = within(commandCenter).getAllByRole("button");
 
     expect(actionButtons).toHaveLength(5);

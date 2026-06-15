@@ -52,7 +52,7 @@ function wikiProposal(overrides: Partial<ChatWikiProposal> = {}): ChatWikiPropos
     proposal_type: overrides.proposal_type || "synthesize",
     state: overrides.state || "pending",
     title: overrides.title || "决策记忆",
-    summary: overrides.summary || "草拟 Wiki 页面。",
+    summary: overrides.summary || "草拟知识页。",
     target_paths: overrides.target_paths || ["Wiki/Decision-Memory.md"],
     recommended_targets: overrides.recommended_targets || [],
     selected_targets: overrides.selected_targets || [],
@@ -67,7 +67,7 @@ describe("ChatAgentActionSummary", () => {
     render(<ChatAgentActionSummary actions={[]} tasks={[]} showEmpty />);
 
     expect(screen.getByRole("region", { name: "聊天整理结果" })).toBeInTheDocument();
-    expect(screen.getByText("本轮没有创建任务、记忆、Wiki 页面或复盘报告。")).toBeInTheDocument();
+    expect(screen.getByText("本轮没有创建任务、记忆、知识页或复盘报告。")).toBeInTheDocument();
   });
 
   it("renders actionable cards for task, memory, Wiki, and review artifacts", () => {
@@ -107,14 +107,14 @@ describe("ChatAgentActionSummary", () => {
     expect(screen.getByText("已创建任务")).toBeInTheDocument();
     expect(screen.getByText("已写入记忆")).toBeInTheDocument();
     expect(screen.getByText("记忆待确认")).toBeInTheDocument();
-    expect(screen.getByText("Wiki 页面待确认")).toBeInTheDocument();
+    expect(screen.getByText("知识页待确认")).toBeInTheDocument();
     expect(screen.getByText("已生成复盘")).toBeInTheDocument();
     expect(screen.getByText("自动整理活动")).toBeInTheDocument();
     expect(screen.getByText("3 个结果支持区域")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "打开任务" }));
     fireEvent.click(screen.getAllByRole("button", { name: "打开记忆" })[0]);
-    fireEvent.click(screen.getByRole("button", { name: "打开 Wiki 页面" }));
+    fireEvent.click(screen.getByRole("button", { name: "打开知识页" }));
     fireEvent.click(screen.getByRole("button", { name: "打开报告" }));
 
     expect(onOpenTask).toHaveBeenCalledWith(expect.objectContaining({ task_id: "task-1" }));

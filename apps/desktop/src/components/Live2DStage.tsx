@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { MouseEvent, PointerEvent, RefObject, ReactNode } from "react";
 import type { Live2DAssetInfo, Live2DRendererDiagnostics, Live2DRendererMode, Live2DRuntimeBoundary, Live2DRuntimeHandle } from "../services/live2dRuntime";
 import { createRendererMountContext, mountLive2DRendererBoundary } from "../services/live2dRuntime";
+import { resolveLive2DActionDirective } from "../services/live2dActions";
 
 export type Live2DStageState =
   | "disconnected"
@@ -23,20 +24,44 @@ export type Live2DStageView = {
 };
 
 export type Live2DStageRuntimeDirective = {
+  actionKey: string;
   expression: string;
   motionGroup: string;
   motionIndex: number;
   petHint: string;
   controlSummary: string;
+  warnings: string[];
+};
+
+const live2DStageActionKeys: Record<Live2DStageState, string> = {
+  disconnected: "system_offline",
+  idle: "idle",
+  presence: "continuity_remember",
+  reflective: "emotion_comfort",
+  thinking: "chat_think",
+  memory: "memory_search",
+  confirming: "memory_confirm_needed",
+  tasking: "task_create",
+  diagnosed: "system_diagnosed",
 };
 
 type Live2DRenderLifecycleStatus = "loading" | "mounted" | "preview" | "failed";
+
+const petCanvasSupersampleRatio = 2;
+const maxCanvasPixelRatio = 4;
+
+function getLive2DCanvasPixelRatio(variant: "panel" | "pet" | "stage" | undefined): number {
+  const devicePixelRatio = window.devicePixelRatio || 1;
+  return variant === "pet"
+    ? Math.min(devicePixelRatio * petCanvasSupersampleRatio, maxCanvasPixelRatio)
+    : devicePixelRatio;
+}
 
 function getLive2DRenderLifecycleText(status: Live2DRenderLifecycleStatus): string {
   const labels: Record<Live2DRenderLifecycleStatus, string> = {
     loading: "模型渲染启动中",
     mounted: "模型渲染已启动",
-    preview: "控制台静态预览",
+    preview: "角色静态预览",
     failed: "模型渲染不可用",
   };
   return labels[status];
@@ -45,9 +70,13 @@ function getLive2DRenderLifecycleText(status: Live2DRenderLifecycleStatus): stri
 function getInitialLive2DRenderStatus(
   variant: "panel" | "pet" | "stage" | undefined,
   shouldMountRenderer: boolean,
+  runtimeStatus: Live2DRuntimeBoundary["status"],
 ): Live2DRenderLifecycleStatus {
   if (shouldMountRenderer) {
     return "loading";
+  }
+  if (runtimeStatus === "preview-only") {
+    return "preview";
   }
   return variant === "panel" ? "preview" : "failed";
 }
@@ -58,6 +87,9 @@ function getInactiveLive2DRenderStatus(
 ): Live2DRenderLifecycleStatus {
   if (runtimeStatus === "loading-assets") {
     return "loading";
+  }
+  if (runtimeStatus === "preview-only") {
+    return "preview";
   }
   return variant === "panel" ? "preview" : "failed";
 }
@@ -71,7 +103,14 @@ function getLive2DRenderModeText(mode: Live2DRendererMode): string {
   return labels[mode];
 }
 
-function getLive2DStaticPreviewMessage(variant: "panel" | "pet" | "stage" | undefined, fallback: string): string {
+function getLive2DStaticPreviewMessage(
+  variant: "panel" | "pet" | "stage" | undefined,
+  fallback: string,
+  runtimeStatus: Live2DRuntimeBoundary["status"],
+): string {
+  if (runtimeStatus === "preview-only") {
+    return fallback || "项目角色静态预览已启用，等待 Cubism 导出后切换为真实 Live2D 渲染。";
+  }
   if (variant === "panel") {
     return "控制台使用静态预览；真实模型渲染只在陪伴和桌宠窗口运行。";
   }
@@ -80,36 +119,47 @@ function getLive2DStaticPreviewMessage(variant: "panel" | "pet" | "stage" | unde
 
 function getLive2DStageRuntimeDirective(
   state: Live2DStageState,
-  defaultMotionGroup = "",
-  defaultMotionIndex = 0,
+  asset: Live2DAssetInfo,
 ): Live2DStageRuntimeDirective {
-  const sharedMotion = { motionGroup: defaultMotionGroup, motionIndex: defaultMotionGroup ? defaultMotionIndex : -1 };
-  const directives: Record<Live2DStageState, Live2DStageRuntimeDirective> = {
-    disconnected: { ...sharedMotion, expression: "5QAQ", petHint: "离线待命，双击打开控制台检查连接。", controlSummary: "离线表情 5QAQ，保持默认待机动作。" },
-    idle: { ...sharedMotion, expression: "1desk", petHint: "在线陪伴中，双击打开控制台。", controlSummary: "待机表情 1desk，播放默认循环动作。" },
-    presence: { ...sharedMotion, expression: "2mic", petHint: "我还记着未完话题，双击打开控制台继续。", controlSummary: "连续性轻提醒表情 2mic，仅作运行时显示。" },
-    reflective: { ...sharedMotion, expression: "6i gi a ri", petHint: "我正带着已确认的情绪连续性陪伴。", controlSummary: "情绪连续性表情 6i gi a ri，不写入 Vault。" },
-    thinking: { ...sharedMotion, expression: "3clever", petHint: "正在思考，回复生成中。", controlSummary: "思考表情 3clever，维持默认循环动作。" },
-    memory: { ...sharedMotion, expression: "7keyboard", petHint: "已找到记忆线索，打开控制台查看。", controlSummary: "检索表情 7keyboard，提示记忆搜索结果。" },
-    confirming: { ...sharedMotion, expression: "4OAO", petHint: "有记忆待确认，双击处理。", controlSummary: "确认表情 4OAO，提示待确认记忆提案。" },
-    tasking: { ...sharedMotion, expression: "1desk", petHint: "任务已记录，打开控制台管理。", controlSummary: "任务表情 1desk，提示任务列表状态。" },
-    diagnosed: { ...sharedMotion, expression: "9", petHint: "诊断已完成，可回控制台查看。", controlSummary: "诊断表情 9，提示诊断快照已归档。" },
-  };
-  return directives[state];
+  return getLive2DActionRuntimeDirective(live2DStageActionKeys[state], asset);
+}
+
+function getLive2DActionRuntimeDirective(
+  actionKey: string,
+  asset: Live2DAssetInfo,
+): Live2DStageRuntimeDirective {
+  return resolveLive2DActionDirective({
+    actionKey,
+    profile: asset.actionProfile,
+    availableExpressions: asset.expressions,
+    availableMotions: asset.motions,
+    defaultMotionGroup: asset.defaultMotionGroup,
+    defaultMotionIndex: asset.defaultMotionIndex,
+  });
 }
 
 function getLive2DSpeakingRuntimeDirective(
-  defaultMotionGroup = "",
-  defaultMotionIndex = 0,
+  asset: Live2DAssetInfo,
 ): Live2DStageRuntimeDirective {
-  const motionGroup = defaultMotionGroup;
-  return {
-    expression: "2mic",
-    motionGroup,
-    motionIndex: motionGroup ? defaultMotionIndex : -1,
-    petHint: "TTS 朗读反馈已开启。",
-    controlSummary: "TTS 朗读叠加层：表情 2mic，使用默认循环动作。",
-  };
+  return getLive2DActionRuntimeDirective("tts_speaking", asset);
+}
+
+function getLive2DRuntimeDirective({
+  state,
+  asset,
+  speaking,
+  actionKeyOverride,
+}: {
+  state: Live2DStageState;
+  asset: Live2DAssetInfo;
+  speaking: boolean;
+  actionKeyOverride?: string | null;
+}): Live2DStageRuntimeDirective {
+  const override = actionKeyOverride?.trim();
+  if (override) {
+    return getLive2DActionRuntimeDirective(override, asset);
+  }
+  return speaking ? getLive2DSpeakingRuntimeDirective(asset) : getLive2DStageRuntimeDirective(state, asset);
 }
 
 function getLive2DRuntimeDiagnosticRows({
@@ -139,13 +189,20 @@ function getLive2DRuntimeDiagnosticRows({
   const renderPathText = runtimeDiagnostics ? getLive2DRenderModeText(runtimeDiagnostics.renderMode) : "等待渲染器";
   const effectText = runtimeDiagnostics ? "动作 " + runtimeDiagnostics.motionCount + " 个，表情 " + runtimeDiagnostics.expressionCount + " 个，眨眼" + (runtimeDiagnostics.eyeBlinkEnabled ? "已启用" : "未启用") + "，呼吸" + (runtimeDiagnostics.breathEnabled ? "已启用" : "未启用") + "，物理摆动" + (runtimeDiagnostics.physicsEnabled ? "已启用" : "未启用") : "等待模型资源";
   const latestIssue = runtimeDiagnostics?.lastOfficialRenderError || runtimeDiagnostics?.lastFallbackRenderError || runtimeDiagnostics?.lastMotionError || runtimeDiagnostics?.lastExpressionError || runtimeDiagnostics?.lastEffectError || "暂无问题";
+  const actionProfileText = asset.actionProfileStatus === "loaded"
+    ? `${asset.actionProfilePath || "模型动作配置"} 已加载，${asset.actionCount || 0} 个项目动作。`
+    : asset.actionProfileStatus === "error"
+      ? `${asset.actionProfilePath || "模型动作配置"} 读取失败：${asset.actionProfileError || "未知错误"}。`
+      : "未声明模型动作配置，使用内置默认映射。";
+  const actionWarnings = runtimeCommand.warnings.length > 0 ? runtimeCommand.warnings.join("；") : "当前动作适配正常。";
   return [
     { label: "渲染状态", value: lifecycleText + " / " + renderModeText },
-    { label: "当前指令", value: runtimeCommand.controlSummary + " 当前表情：" + runtimeCommand.expression + "；当前动作：" + (runtimeCommand.motionGroup || "未指定") + (runtimeCommand.motionIndex >= 0 ? "[" + runtimeCommand.motionIndex + "]" : "") },
+    { label: "当前指令", value: runtimeCommand.controlSummary + " 当前表情：" + (runtimeCommand.expression || "未指定") + "；当前动作：" + (runtimeCommand.motionIndex >= 0 ? (runtimeCommand.motionGroup || "默认动作组") + "[" + runtimeCommand.motionIndex + "]" : "未指定") },
+    { label: "动作适配", value: `${actionProfileText} 当前项目动作：${runtimeCommand.actionKey}。${actionWarnings}` },
     { label: "渲染路径", value: runtimeDiagnostics ? renderPathText + "；当前动作：" + motionText + "；当前表情：" + expressionText + "；画布状态：" + visibleText : "等待桌宠渲染器启动" },
     { label: "动作与效果", value: effectText },
     { label: "最近问题", value: latestIssue },
-    { label: "模型资源", value: asset.status === "recognized" ? resourceCountText + "，模型文件：" + (asset.moc || "未识别") : asset.status + "，" + (asset.error || runtime.detail) },
+    { label: "模型资源", value: asset.status === "recognized" ? resourceCountText + "，模型文件：" + (asset.moc || "未识别") : asset.status === "preview" ? resourceCountText + "，设计稿：" + (asset.designPath || "未声明") : asset.status + "，" + (asset.error || runtime.detail) },
     { label: "画布诊断", value: layoutWarning || (renderLifecycle.status === "mounted" ? "画布已挂载，像素检测仅作诊断" : renderLifecycle.message) },
   ];
 }
@@ -157,6 +214,10 @@ function formatLive2DResourceCount(asset: Live2DAssetInfo): string {
 
   if (asset.status === "missing" || asset.status === "error") {
     return "待识别";
+  }
+
+  if (asset.status === "preview") {
+    return asset.actionCount ? `待导出 Cubism / ${asset.actionCount} 个项目动作已适配` : "待导出 Cubism";
   }
 
   return `${asset.textureCount} 张贴图 / ${asset.expressionCount} 个表情 / ${asset.motionCount} 个动作`;
@@ -175,6 +236,10 @@ function getLive2DCoverStatusText(asset: Live2DAssetInfo): string {
     return "未找到封面，当前显示 CSS 占位";
   }
 
+  if (asset.status === "preview") {
+    return "静态预览封面待确认";
+  }
+
   return "待识别";
 }
 
@@ -182,7 +247,7 @@ export function getLive2DAssetStatusText(asset: Live2DAssetInfo): { title: strin
   if (asset.status === "recognized") {
     return {
       title: "模型资源已识别",
-      detail: `已读取 Live2D 模型清单，Cubism 运行时会尝试挂载 WebGL 画布；失败时回退到${asset.hasIcon ? "静态封面" : "样式占位"}。`,
+      detail: `已读取桌宠模型清单，Cubism 运行时会尝试挂载 WebGL 画布；失败时回退到${asset.hasIcon ? "静态封面" : "样式占位"}。`,
     };
   }
 
@@ -190,6 +255,13 @@ export function getLive2DAssetStatusText(asset: Live2DAssetInfo): { title: strin
     return {
       title: "模型资源未识别",
       detail: `未读取到 ${asset.manifestPath}；Cubism 运行时暂不能挂载。`,
+    };
+  }
+
+  if (asset.status === "preview") {
+    return {
+      title: "角色预览已启用",
+      detail: `正在使用 ${asset.iconPath || "静态角色预览"}；${asset.actionCount || 0} 个项目动作已按设计稿适配，等待 Cubism 导出后切换为真实 Live2D 模型。`,
     };
   }
 
@@ -202,7 +274,7 @@ export function getLive2DAssetStatusText(asset: Live2DAssetInfo): { title: strin
 
   return {
     title: "正在识别模型资源",
-    detail: "正在读取 Live2D 模型清单；资源就绪后会挂载 Cubism WebGL 渲染器。",
+    detail: "正在读取桌宠模型清单；资源就绪后会挂载 Cubism WebGL 渲染器。",
   };
 }
 
@@ -214,6 +286,7 @@ export function Live2DStage({
   variant = "panel",
   petInteractions,
   speaking = false,
+  actionKeyOverride = null,
   active = true,
 }: {
   stage: Live2DStageView;
@@ -222,6 +295,7 @@ export function Live2DStage({
   canvasRef: RefObject<HTMLCanvasElement>;
   variant?: "panel" | "pet" | "stage";
   speaking?: boolean;
+  actionKeyOverride?: string | null;
   active?: boolean;
   petInteractions?: {
     onPointerDown: (event: PointerEvent<HTMLElement>) => void;
@@ -243,15 +317,13 @@ export function Live2DStage({
     message: string;
     renderMode?: Live2DRendererMode;
   }>(() => ({
-    status: getInitialLive2DRenderStatus(variant, shouldMountRenderer),
+    status: getInitialLive2DRenderStatus(variant, shouldMountRenderer, runtime.status),
     renderMode: "failed",
-    message: shouldMountRenderer ? "正在启动桌宠模型渲染。" : getLive2DStaticPreviewMessage(variant, runtime.detail),
+    message: shouldMountRenderer ? "正在启动桌宠模型渲染。" : getLive2DStaticPreviewMessage(variant, runtime.detail, runtime.status),
   }));
   const [layoutWarning, setLayoutWarning] = useState<string | null>(null);
   const [runtimeCommand, setRuntimeCommand] = useState<Live2DStageRuntimeDirective>(() =>
-    speaking
-      ? getLive2DSpeakingRuntimeDirective(asset.defaultMotionGroup, asset.defaultMotionIndex)
-      : getLive2DStageRuntimeDirective(stage.state, asset.defaultMotionGroup, asset.defaultMotionIndex),
+    getLive2DRuntimeDirective({ state: stage.state, asset, speaking, actionKeyOverride }),
   );
   const [runtimeDiagnostics, setRuntimeDiagnostics] = useState<Live2DRendererDiagnostics | null>(null);
   const live2dRuntimeHandleRef = useRef<Live2DRuntimeHandle | null>(null);
@@ -269,7 +341,7 @@ export function Live2DStage({
       setRenderLifecycle({
         status: getInactiveLive2DRenderStatus(variant, runtime.status),
         renderMode: "failed",
-        message: getLive2DStaticPreviewMessage(variant, runtime.detail),
+        message: getLive2DStaticPreviewMessage(variant, runtime.detail, runtime.status),
       });
       setRuntimeDiagnostics(null);
       return;
@@ -280,7 +352,7 @@ export function Live2DStage({
     const canvasElement = mountContext.canvas;
     const resizeRuntime = () => {
       const bounds = canvasElement.getBoundingClientRect();
-      const pixelRatio = window.devicePixelRatio || 1;
+      const pixelRatio = getLive2DCanvasPixelRatio(variant);
       const width = Math.max(1, Math.round(bounds.width * pixelRatio));
       const height = Math.max(1, Math.round(bounds.height * pixelRatio));
 
@@ -358,7 +430,7 @@ export function Live2DStage({
       setRenderLifecycle({
         status: "loading",
         renderMode: "failed",
-        message: "WebGL 上下文已恢复，正在重新挂载 Live2D 渲染器。",
+        message: "WebGL 上下文已恢复，正在重新挂载桌宠模型渲染器。",
       });
       mountRenderer();
     };
@@ -384,13 +456,13 @@ export function Live2DStage({
           );
         }
         setLayoutWarning((current) => (
-          current === "Live2D 已挂载，但当前画布没有检测到可见像素。" ? null : current
+          current === "模型已挂载，但当前画布没有检测到可见像素。" ? null : current
         ));
         return;
       }
       invisibleSampleMissCount = 0;
       setLayoutWarning((current) => (
-        current === "Live2D 已挂载，但当前画布没有检测到可见像素。" ? null : current
+        current === "模型已挂载，但当前画布没有检测到可见像素。" ? null : current
       ));
     };
 
@@ -424,9 +496,7 @@ export function Live2DStage({
   }, [asset, canvasRef, runtime.detail, runtime.status, shouldMountRenderer, variant]);
 
   useEffect(() => {
-    const command = speaking
-      ? getLive2DSpeakingRuntimeDirective(asset.defaultMotionGroup, asset.defaultMotionIndex)
-      : getLive2DStageRuntimeDirective(stage.state, asset.defaultMotionGroup, asset.defaultMotionIndex);
+    const command = getLive2DRuntimeDirective({ state: stage.state, asset, speaking, actionKeyOverride });
     setRuntimeCommand(command);
 
     const handle = live2dRuntimeHandleRef.current;
@@ -435,22 +505,26 @@ export function Live2DStage({
     }
 
     try {
-      handle.setExpression(command.expression);
-      if (command.motionGroup && command.motionIndex >= 0) {
+      if (command.expression) {
+        handle.setExpression(command.expression);
+      }
+      if (command.motionIndex >= 0) {
         handle.startMotion(command.motionGroup, command.motionIndex);
       }
       setRuntimeDiagnostics(handle.getDiagnostics?.() || null);
     } catch (error) {
       console.warn("[Live2D] 状态指令发送失败。", {
         state: stage.state,
+        actionKey: command.actionKey,
         speaking,
+        actionKeyOverride,
         expression: command.expression,
         motionGroup: command.motionGroup,
         motionIndex: command.motionIndex,
         error,
       });
     }
-  }, [asset.defaultMotionGroup, asset.defaultMotionIndex, renderLifecycle.status, speaking, stage.state]);
+  }, [actionKeyOverride, asset, renderLifecycle.status, speaking, stage.state]);
 
   useEffect(() => {
     if (!active || renderLifecycle.status !== "mounted") {
@@ -460,7 +534,7 @@ export function Live2DStage({
 
     const canvas = canvasRef.current;
     if (!canvas) {
-      setLayoutWarning("Live2D 已报告挂载，但未找到 canvas 节点。");
+      setLayoutWarning("模型已报告挂载，但未找到画布节点。");
       return;
     }
 
@@ -477,17 +551,17 @@ export function Live2DStage({
         (hostStyles ? hostStyles.display === "none" || hostStyles.visibility === "hidden" : false);
 
       if (hidden) {
-        setLayoutWarning("Live2D 已挂载，但 canvas 或宿主节点被 CSS 隐藏。");
+        setLayoutWarning("模型已挂载，但画布或宿主节点被样式隐藏。");
         return;
       }
 
       if (width < 24 || height < 24) {
-        setLayoutWarning(`Live2D 已挂载，但 canvas 可视尺寸过小：${width}x${height}px。`);
+        setLayoutWarning(`模型已挂载，但画布可视尺寸过小：${width}x${height}px。`);
         return;
       }
 
       if (opacity < 0.95) {
-        setLayoutWarning(`Live2D 已挂载，但 canvas 透明度为 ${styles.opacity}。`);
+        setLayoutWarning(`模型已挂载，但画布透明度为 ${styles.opacity}。`);
         return;
       }
 
@@ -565,6 +639,7 @@ export function Live2DStage({
         className={`panel live2d-panel live2d-panel-pet live2d-${stage.state}${speaking ? " live2d-speaking" : ""} live2d-runtime-${runtime.status} live2d-render-${renderLifecycle.status} live2d-render-mode-${renderLifecycle.renderMode || "unknown"}`}
         aria-label="桌宠模型"
         data-live2d-speaking={speaking ? "true" : "false"}
+        data-live2d-action-key={runtimeCommand.actionKey}
       >
         <div
           className="live2d-pet-stage"
@@ -573,8 +648,9 @@ export function Live2DStage({
           data-live2d-render={renderLifecycle.status}
           data-live2d-render-mode={renderLifecycle.renderMode || "unknown"}
           data-live2d-speaking={speaking ? "true" : "false"}
+          data-live2d-action-key={runtimeCommand.actionKey}
         >
-          <div className="live2d-runtime-host" aria-label="Live2D 运行时画布区域">
+          <div className="live2d-runtime-host" aria-label="桌宠模型运行时画布区域">
             <canvas
               ref={canvasRef}
               id={runtime.mountTargetId}
@@ -589,7 +665,7 @@ export function Live2DStage({
               {asset.hasIcon ? (
                 <div
                   className="live2d-cover live2d-cover-image"
-                  aria-label="Live2D 静态回退封面"
+                  aria-label="桌宠模型静态回退封面"
                   style={{ backgroundImage: `url("${asset.iconPath}")` }}
                 />
               ) : (
@@ -626,7 +702,7 @@ export function Live2DStage({
 
               {layoutWarning ? (
                 <div className="live2d-layout-warning" role="status" aria-live="polite">
-                  <strong>Live2D 布局提示</strong>
+                  <strong>模型布局提示</strong>
                   <span>{layoutWarning}</span>
                 </div>
               ) : null}
@@ -655,8 +731,9 @@ export function Live2DStage({
     return (
       <section
         className={`panel live2d-panel live2d-panel-stage live2d-${stage.state}${speaking ? " live2d-speaking" : ""} live2d-runtime-${runtime.status} live2d-render-${renderLifecycle.status} live2d-render-mode-${renderLifecycle.renderMode || "unknown"}`}
-        aria-label="陪伴 Live2D 模型"
+        aria-label="陪伴模型"
         data-live2d-speaking={speaking ? "true" : "false"}
+        data-live2d-action-key={runtimeCommand.actionKey}
       >
         <div
           className="live2d-stage"
@@ -665,8 +742,9 @@ export function Live2DStage({
           data-live2d-render={renderLifecycle.status}
           data-live2d-render-mode={renderLifecycle.renderMode || "unknown"}
           data-live2d-speaking={speaking ? "true" : "false"}
+          data-live2d-action-key={runtimeCommand.actionKey}
         >
-          <div className="live2d-runtime-host" aria-label="Live2D 运行时画布区域">
+          <div className="live2d-runtime-host" aria-label="桌宠模型运行时画布区域">
             <canvas
               ref={canvasRef}
               id={runtime.mountTargetId}
@@ -718,7 +796,7 @@ export function Live2DStage({
         </div>
         {layoutWarning ? (
           <div className="live2d-layout-warning" role="status" aria-live="polite">
-            <strong>Live2D 布局提示</strong>
+            <strong>模型布局提示</strong>
             <span>{layoutWarning}</span>
           </div>
         ) : null}
@@ -731,6 +809,7 @@ export function Live2DStage({
       className={`panel live2d-panel live2d-panel-${variant} live2d-${stage.state}${speaking ? " live2d-speaking" : ""} live2d-runtime-${runtime.status} live2d-render-${renderLifecycle.status} live2d-render-mode-${renderLifecycle.renderMode || "unknown"}`}
       aria-label="桌宠模型展示区"
       data-live2d-speaking={speaking ? "true" : "false"}
+      data-live2d-action-key={runtimeCommand.actionKey}
     >
       <div className="live2d-copy">
         <p className="eyebrow">桌宠模型</p>
@@ -740,7 +819,7 @@ export function Live2DStage({
           <strong>{assetStatusText.title}</strong>
           <span>{assetStatusText.detail}</span>
         </div>
-        <div className="live2d-status-grid" aria-label="Live2D 资源识别与渲染接入状态">
+        <div className="live2d-status-grid" aria-label="模型资源识别与渲染接入状态">
           <div>
             <span>模型清单地址</span>
             <strong>{asset.manifestPath}</strong>
@@ -765,8 +844,9 @@ export function Live2DStage({
         aria-label={`桌宠模型状态：${stage.label}`}
         data-live2d-render={renderLifecycle.status}
         data-live2d-speaking={speaking ? "true" : "false"}
+        data-live2d-action-key={runtimeCommand.actionKey}
       >
-        <div className="live2d-runtime-host" aria-label="Live2D 运行时画布区域">
+        <div className="live2d-runtime-host" aria-label="桌宠模型运行时画布区域">
           <canvas
             ref={canvasRef}
             id={runtime.mountTargetId}
@@ -788,7 +868,7 @@ export function Live2DStage({
         {asset.hasIcon ? (
           <figure className="live2d-cover">
             <img src={asset.iconPath} alt={`${asset.modelLabel} 桌宠模型资源封面`} />
-            <figcaption>静态封面，非 Live2D 渲染</figcaption>
+            <figcaption>静态封面，非动态渲染</figcaption>
           </figure>
         ) : (
           <div className="live2d-model" aria-label="样式回退展示壳">
@@ -821,11 +901,11 @@ export function Live2DStage({
       </div>
       {layoutWarning ? (
         <div className="live2d-layout-warning" role="status" aria-live="polite">
-          <strong>Live2D 布局提示</strong>
+          <strong>模型布局提示</strong>
           <span>{layoutWarning}</span>
         </div>
       ) : null}
-      <div className="live2d-runtime-card" aria-label="Live2D 运行时边界状态">
+      <div className="live2d-runtime-card" aria-label="模型运行时边界状态">
         <div>
           <span>挂载入口</span>
           <strong>#{runtime.mountTargetId}</strong>
@@ -839,7 +919,7 @@ export function Live2DStage({
           <strong>{renderLifecycle.message}</strong>
         </div>
       </div>
-      <dl className="live2d-diagnostic-summary" aria-label="Live2D 运行时诊断摘要">
+      <dl className="live2d-diagnostic-summary" aria-label="模型运行时诊断摘要">
         {diagnosticRows.map((row) => (
           <div key={row.label}>
             <dt>{row.label}</dt>

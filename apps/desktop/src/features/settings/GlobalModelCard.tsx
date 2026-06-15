@@ -81,7 +81,7 @@ export function GlobalModelCard({
           <input
             value={draft.api_key}
             onChange={(event) => onUpdateDraft({ api_key: event.target.value })}
-            placeholder="API 密钥"
+            placeholder="密钥"
             type="password"
           />
         </label>

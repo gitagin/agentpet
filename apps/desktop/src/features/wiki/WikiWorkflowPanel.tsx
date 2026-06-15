@@ -161,13 +161,13 @@ export function WikiWorkflowPanel({
 
   return (
     <Panel id="wiki-workflow-panel" icon={<FileDown size={18} />} title="日常知识整理">
-      <form className="wiki-daily-flow" aria-label="日常 Wiki 整理" onSubmit={onPreview}>
-        <section className="wiki-daily-primary" aria-label="创建或更新 Wiki 页面">
+      <form className="wiki-daily-flow" aria-label="日常知识整理" onSubmit={onPreview}>
+        <section className="wiki-daily-primary" aria-label="创建或更新知识页">
           <div className="section-heading">
             <strong>日常整理入口</strong>
-            <span>粘贴来源材料，选择要沉淀的知识类型，先预览计划，再应用到 Wiki 页面。</span>
+            <span>粘贴来源材料，选择要沉淀的知识类型，先预览计划，再应用到知识页。</span>
           </div>
-          <div className="wiki-flow-steps" aria-label="Wiki 整理步骤">
+          <div className="wiki-flow-steps" aria-label="知识整理步骤">
             <span>1 粘贴来源</span>
             <span>2 预览计划</span>
             <span>3 应用页面</span>
@@ -230,13 +230,13 @@ export function WikiWorkflowPanel({
           </div>
         </section>
 
-        <section className="wiki-daily-preview" aria-label="Wiki 预览结果">
+        <section className="wiki-daily-preview" aria-label="知识页预览结果">
           <div className="section-heading">
             <strong>预览</strong>
             <span>
               {preview
                 ? `${preview.page_plans.length} 个计划页面，确认路径后即可应用。`
-                : "应用任何 Wiki 更新前请先运行预览。"}
+                : "应用任何知识页更新前请先运行预览。"}
             </span>
           </div>
           {preview ? (
@@ -256,7 +256,7 @@ export function WikiWorkflowPanel({
             <p className="field-note">还没有预览。应用经过审查的计划前，这里保持只读。</p>
           )}
           {applyResult ? (
-            <div className="wiki-apply-summary" aria-label="最近 Wiki 应用结果">
+            <div className="wiki-apply-summary" aria-label="最近知识页应用结果">
               <strong>最近输出</strong>
               <span>{latestApplySummary}</span>
             </div>
@@ -266,7 +266,7 @@ export function WikiWorkflowPanel({
       <details className="stack advanced-vault-maintenance" aria-label="高级知识库维护工具">
         <summary>
           <strong>展开高级维护工具</strong>
-          <span>包含手工预览、审查、查询归档、综合整理和检查；部分操作会写入 Markdown，请先确认目标页面。</span>
+          <span>包含手工预览、审查、查询归档、综合整理和检查；部分操作会写入本地文本，请先确认目标页面。</span>
         </summary>
         <form className="stack" onSubmit={onPreview}>
           <div className="section-heading">
@@ -338,7 +338,7 @@ export function WikiWorkflowPanel({
             <textarea
               value={draft.content}
               onChange={(event) => onDraftChange({ content: event.target.value })}
-              placeholder="要写入资料库归档目录的 Markdown 内容"
+              placeholder="要写入资料库归档目录的本地文本内容"
             />
           </label>
           <div className="split">

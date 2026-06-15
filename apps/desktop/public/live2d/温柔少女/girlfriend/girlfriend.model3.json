@@ -1,0 +1,267 @@
+{
+  "Version": 3,
+  "FileReferences": {
+    "Moc": "girlfriend.moc3",
+    "Textures": [
+      "girlfriend.4096/texture_00.png",
+      "girlfriend.4096/texture_01.png",
+      "girlfriend.4096/texture_02.png",
+      "girlfriend.4096/texture_03.png",
+      "girlfriend.4096/texture_04.png",
+      "girlfriend.4096/texture_05.png",
+      "girlfriend.4096/texture_06.png"
+    ],
+    "Physics": "girlfriend.physics3.json",
+    "DisplayInfo": "girlfriend.cdi3.json",
+    "Expressions": [
+      {
+        "Name": "asmr",
+        "File": "asmr.exp3.json"
+      },
+      {
+        "Name": "asmr1",
+        "File": "asmr1.exp3.json"
+      },
+      {
+        "Name": "CRY",
+        "File": "CRY.exp3.json"
+      },
+      {
+        "Name": "facehand",
+        "File": "facehand.exp3.json"
+      },
+      {
+        "Name": "FT",
+        "File": "FT.exp3.json"
+      },
+      {
+        "Name": "hairbun",
+        "File": "hairbun.exp3.json"
+      },
+      {
+        "Name": "hat",
+        "File": "hat.exp3.json"
+      },
+      {
+        "Name": "pillow",
+        "File": "pillow.exp3.json"
+      },
+      {
+        "Name": "default_pillow",
+        "File": "default_pillow.exp3.json"
+      },
+      {
+        "Name": "pillow_comfort",
+        "File": "pillow_comfort.exp3.json"
+      },
+      {
+        "Name": "sy",
+        "File": "sy.exp3.json"
+      },
+      {
+        "Name": "害羞",
+        "File": "害羞.exp3.json"
+      },
+      {
+        "Name": "星星眼",
+        "File": "星星眼.exp3.json"
+      },
+      {
+        "Name": "爱心眼",
+        "File": "爱心眼.exp3.json"
+      },
+      {
+        "Name": "生气",
+        "File": "生气.exp3.json"
+      },
+      {
+        "Name": "黑发",
+        "File": "黑发.exp3.json"
+      },
+      {
+        "Name": "黑脸",
+        "File": "黑脸.exp3.json"
+      }
+    ],
+    "Motions": {
+      "Idle": [
+        {
+          "File": "motions/Idle/00_idle_breathe.motion3.json",
+          "FadeInTime": 0.35,
+          "FadeOutTime": 0.45
+        },
+        {
+          "File": "motions/Idle/01_idle_look_around.motion3.json",
+          "FadeInTime": 0.35,
+          "FadeOutTime": 0.45
+        },
+        {
+          "File": "motions/Idle/02_idle_hands_soft.motion3.json",
+          "FadeInTime": 0.35,
+          "FadeOutTime": 0.45
+        },
+        {
+          "File": "motions/Idle/03_idle_sleep_quiet.motion3.json",
+          "FadeInTime": 0.35,
+          "FadeOutTime": 0.45
+        }
+      ],
+      "Chat": [
+        {
+          "File": "motions/Chat/00_chat_listen.motion3.json",
+          "FadeInTime": 0.35,
+          "FadeOutTime": 0.45
+        },
+        {
+          "File": "motions/Chat/01_chat_think.motion3.json",
+          "FadeInTime": 0.35,
+          "FadeOutTime": 0.45
+        },
+        {
+          "File": "motions/Chat/02_chat_talk.motion3.json",
+          "FadeInTime": 0.35,
+          "FadeOutTime": 0.45
+        },
+        {
+          "File": "motions/Chat/03_chat_done.motion3.json",
+          "FadeInTime": 0.35,
+          "FadeOutTime": 0.45
+        }
+      ],
+      "Memory": [
+        {
+          "File": "motions/Memory/00_memory_search.motion3.json",
+          "FadeInTime": 0.35,
+          "FadeOutTime": 0.45
+        },
+        {
+          "File": "motions/Memory/01_memory_found.motion3.json",
+          "FadeInTime": 0.35,
+          "FadeOutTime": 0.45
+        },
+        {
+          "File": "motions/Memory/02_memory_not_found.motion3.json",
+          "FadeInTime": 0.35,
+          "FadeOutTime": 0.45
+        },
+        {
+          "File": "motions/Memory/03_memory_save.motion3.json",
+          "FadeInTime": 0.35,
+          "FadeOutTime": 0.45
+        },
+        {
+          "File": "motions/Memory/04_memory_confirm.motion3.json",
+          "FadeInTime": 0.35,
+          "FadeOutTime": 0.45
+        },
+        {
+          "File": "motions/Memory/05_memory_privacy_guard.motion3.json",
+          "FadeInTime": 0.35,
+          "FadeOutTime": 0.45
+        },
+        {
+          "File": "motions/Memory/06_memory_revert.motion3.json",
+          "FadeInTime": 0.35,
+          "FadeOutTime": 0.45
+        }
+      ],
+      "Wiki": [
+        {
+          "File": "motions/Wiki/00_wiki_organize.motion3.json",
+          "FadeInTime": 0.35,
+          "FadeOutTime": 0.45
+        },
+        {
+          "File": "motions/Wiki/01_wiki_check.motion3.json",
+          "FadeInTime": 0.35,
+          "FadeOutTime": 0.45
+        },
+        {
+          "File": "motions/Wiki/02_wiki_archive.motion3.json",
+          "FadeInTime": 0.35,
+          "FadeOutTime": 0.45
+        }
+      ],
+      "Task": [
+        {
+          "File": "motions/Task/00_task_create.motion3.json",
+          "FadeInTime": 0.35,
+          "FadeOutTime": 0.45
+        },
+        {
+          "File": "motions/Task/01_task_reminder.motion3.json",
+          "FadeInTime": 0.35,
+          "FadeOutTime": 0.45
+        },
+        {
+          "File": "motions/Task/02_task_complete.motion3.json",
+          "FadeInTime": 0.35,
+          "FadeOutTime": 0.45
+        }
+      ],
+      "Continuity": [
+        {
+          "File": "motions/Continuity/00_continuity_remember.motion3.json",
+          "FadeInTime": 0.35,
+          "FadeOutTime": 0.45
+        },
+        {
+          "File": "motions/Continuity/01_emotion_comfort.motion3.json",
+          "FadeInTime": 0.35,
+          "FadeOutTime": 0.45
+        }
+      ],
+      "System": [
+        {
+          "File": "motions/System/00_system_connecting.motion3.json",
+          "FadeInTime": 0.35,
+          "FadeOutTime": 0.45
+        },
+        {
+          "File": "motions/System/01_system_offline.motion3.json",
+          "FadeInTime": 0.35,
+          "FadeOutTime": 0.45
+        },
+        {
+          "File": "motions/System/02_system_error.motion3.json",
+          "FadeInTime": 0.35,
+          "FadeOutTime": 0.45
+        },
+        {
+          "File": "motions/System/03_system_diagnosed.motion3.json",
+          "FadeInTime": 0.35,
+          "FadeOutTime": 0.45
+        }
+      ],
+      "Reaction": [
+        {
+          "File": "motions/Reaction/00_tts_speaking.motion3.json",
+          "FadeInTime": 0.35,
+          "FadeOutTime": 0.45
+        },
+        {
+          "File": "motions/Reaction/01_celebrate_small.motion3.json",
+          "FadeInTime": 0.35,
+          "FadeOutTime": 0.45
+        }
+      ]
+    }
+  },
+  "Groups": [
+    {
+      "Target": "Parameter",
+      "Name": "LipSync",
+      "Ids": [
+        "ParamMouthOpenY"
+      ]
+    },
+    {
+      "Target": "Parameter",
+      "Name": "EyeBlink",
+      "Ids": [
+        "ParamEyeLOpen",
+        "ParamEyeROpen"
+      ]
+    }
+  ]
+}

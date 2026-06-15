@@ -73,6 +73,11 @@ const visibleHitTestAlphaPadding = 8;
 const enableIdleMotion = true;
 const enablePhysics = true;
 const enableBasicMeshFallback = false;
+const persistentParameterAddsByModelFile: Record<string, Array<{ id: string; value: number }>> = {
+  "girlfriend.model3.json": [
+    { id: "ParamBodyAngleZ3", value: 10 },
+  ],
+};
 const modelProfiles = {
   pet: {
     visibleScale: 1.08,
@@ -122,7 +127,7 @@ export async function createCubismRenderer(options: CubismRendererOptions): Prom
     throw new Error("当前设备不支持 Live2D 渲染所需的 WebGL 上下文。");
   }
 
-  const model = new SingleCubismModel(options.modelDirectoryUrl, options.variant || "stage");
+  const model = new SingleCubismModel(options.modelDirectoryUrl, options.modelFileName, options.variant || "stage");
   const manifestBuffer = await fetchArrayBuffer(`${options.modelDirectoryUrl}${options.modelFileName}`, "模型清单");
   await runCubismStage("模型初始化", () => model.loadFromManifest(manifestBuffer, gl, options.canvas));
 
@@ -245,6 +250,7 @@ function ensureCubismFrameworkStarted() {
 class SingleCubismModel extends CubismUserModel {
   public readonly startedAt = performance.now();
   private readonly modelDirectoryUrl: string;
+  private readonly persistentParameterAdds: Array<{ id: CubismIdHandle; value: number }>;
   private readonly modelProfile: (typeof modelProfiles)[CubismRendererVariant];
   private textureIds: WebGLTexture[] = [];
   private ready = false;
@@ -270,9 +276,13 @@ class SingleCubismModel extends CubismUserModel {
   private lastOfficialRenderError: string | undefined;
   private lastFallbackRenderError: string | undefined;
 
-  constructor(modelDirectoryUrl: string, variant: CubismRendererVariant) {
+  constructor(modelDirectoryUrl: string, modelFileName: string, variant: CubismRendererVariant) {
     super();
     this.modelDirectoryUrl = modelDirectoryUrl;
+    this.persistentParameterAdds = (persistentParameterAddsByModelFile[modelFileName] || []).map((parameter) => ({
+      id: CubismFramework.getIdManager().getId(parameter.id),
+      value: parameter.value,
+    }));
     this.modelProfile = modelProfiles[variant];
   }
 
@@ -371,6 +381,7 @@ class SingleCubismModel extends CubismUserModel {
       if (enablePhysics) {
         this.updatePhysicsSafely(deltaTimeSeconds);
       }
+      this.applyPersistentParameterAdds();
       runCubismStageSync("模型网格更新", () => this.getModel().update());
       const projection = this.createProjectionMatrix(canvas);
       this.currentMvpMatrix = new Float32Array(projection.getArray());
@@ -619,6 +630,17 @@ class SingleCubismModel extends CubismUserModel {
     } catch (error) {
       this.lastEffectError = `Live2D 物理摆动更新失败，已保留模型渲染：${describeCubismError(error)}`;
       console.warn(`[Cubism] ${this.lastEffectError}`, error);
+    }
+  }
+
+  private applyPersistentParameterAdds() {
+    if (this.persistentParameterAdds.length <= 0) {
+      return;
+    }
+
+    const model = this.getModel();
+    for (const parameter of this.persistentParameterAdds) {
+      model.addParameterValueById(parameter.id, parameter.value);
     }
   }
 

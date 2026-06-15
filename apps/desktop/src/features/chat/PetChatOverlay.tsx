@@ -120,7 +120,7 @@ export function PetChatOverlay({
             ) : (
               <button
                 type="submit"
-                aria-label={mode === "review" && !input.trim() ? "发送今日复盘请求" : "发送消息"}
+                aria-label={mode === "review" && !input.trim() ? "发送今日回顾请求" : "发送消息"}
                 disabled={(mode !== "review" && !input.trim()) || !connected}
               >
                 <Send size={13} aria-hidden="true" />

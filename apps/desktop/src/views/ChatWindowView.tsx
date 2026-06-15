@@ -17,16 +17,19 @@ import {
   type PetInputMode,
   type PetInputModeOption,
 } from "../features/chat/petInputModes";
+import { productCopy } from "../productCopy";
 import type { AgentAction, ChatMessage, TaskItem } from "../types";
 import { FeatureWindowShell } from "./FeatureWindowShell";
 
 const modeDescriptions: Record<PetInputMode, string> = {
-  chat: "直接问答",
-  note: "沉淀片段",
-  task: "设定提醒",
-  wiki: "整理知识",
-  review: "复盘今天",
+  chat: "直接说说",
+  note: "帮你记住",
+  task: "到时提醒",
+  wiki: "归好资料",
+  review: "回顾今天",
 };
+
+const primaryModeIds = new Set<PetInputMode>(["chat", "note"]);
 
 function renderModeIcon(mode: PetInputMode) {
   switch (mode) {
@@ -46,22 +49,22 @@ function renderModeIcon(mode: PetInputMode) {
 
 const chatTrialPrompts: Array<{ label: string; mode: PetInputMode; text: string }> = [
   {
-    label: "创建明天的提醒",
-    mode: "task",
-    text: "请在明天上午 9:00 提醒我检查发布清单。",
+    label: "我今天有点累",
+    mode: "chat",
+    text: "我今天有点累",
   },
   {
-    label: "保存一个偏好",
+    label: "记住我最近在准备一件重要的事",
     mode: "note",
-    text: "请记住我偏好简洁的发布清单。",
+    text: "记住我最近在准备一件重要的事",
   },
   {
-    label: "粘贴知识片段",
-    mode: "wiki",
-    text: "请整理成 Wiki 页面：决策记忆会把项目选择、理由和后续任务放在一起。",
+    label: "明天提醒我继续这件事",
+    mode: "task",
+    text: "明天提醒我继续这件事",
   },
   {
-    label: "生成今日复盘",
+    label: "帮我回顾今天",
     mode: "review",
     text: "",
   },
@@ -108,6 +111,8 @@ export default function ChatWindowView({
 }) {
   const visibleMessages = messages.filter((message) => message.role !== "system");
   const activeMode = modes.find((option) => option.id === mode) ?? defaultPetInputModes[0];
+  const primaryModes = modes.filter((option) => primaryModeIds.has(option.id));
+  const secondaryModes = modes.filter((option) => !primaryModeIds.has(option.id));
   const canSend = connected && !streaming && (input.trim().length > 0 || activeMode.id === "review");
   const shouldDeferOnboarding = Boolean(onboardingPanel) && (hasVaultInitialized || visibleMessages.length > 0);
   const deferredOnboarding = shouldDeferOnboarding ? (
@@ -123,15 +128,15 @@ export default function ChatWindowView({
 
   return (
     <FeatureWindowShell
-      eyebrow="对话"
-      title="聊天"
-      description="在这里提问、创建提醒、保存偏好，或把片段整理成 Wiki 上下文。"
-      activeTab="聊天"
+      eyebrow="和我说话"
+      title={productCopy.chatPage.title}
+      description={productCopy.chatPage.description}
+      activeTab="陪伴"
     >
-      <Panel icon={<MessageSquareText size={18} />} title="聊天" className="feature-window-panel chat-panel">
+      <Panel icon={<MessageSquareText size={18} />} title="和我说说" className="feature-window-panel chat-panel">
         {shouldDeferOnboarding ? null : onboardingPanel}
-        <div className="chat-action-board" role="tablist" aria-label="聊天能力">
-          {modes.map((option) => (
+        <div className="chat-action-board" role="tablist" aria-label="主要陪伴方式">
+          {primaryModes.map((option) => (
             <button
               key={option.id}
               type="button"
@@ -150,7 +155,24 @@ export default function ChatWindowView({
             </button>
           ))}
         </div>
-        <div className="guided-trial-actions chat-guided-trials" aria-label="聊天快捷示例">
+        <div className="guided-trial-actions chat-secondary-modes" role="tablist" aria-label="更多陪伴方式">
+          {secondaryModes.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              className={`secondary ${option.id === activeMode.id ? "active" : ""}`}
+              role="tab"
+              aria-selected={option.id === activeMode.id}
+              aria-label={option.ariaLabel}
+              disabled={streaming}
+              onClick={() => onModeChange(option.id)}
+            >
+              {renderModeIcon(option.id)}
+              {option.label}
+            </button>
+          ))}
+        </div>
+        <div className="guided-trial-actions chat-guided-trials" aria-label="可以这样说">
           {chatTrialPrompts.map((trial) => (
             <button
               key={trial.label}
@@ -180,7 +202,7 @@ export default function ChatWindowView({
           ) : (
             <button type="submit" disabled={!canSend}>
               <Send size={16} />
-              {activeMode.id === "review" && !input.trim() ? "复盘" : "发送"}
+              {activeMode.id === "review" && !input.trim() ? "回顾" : "发送"}
             </button>
           )}
         </form>

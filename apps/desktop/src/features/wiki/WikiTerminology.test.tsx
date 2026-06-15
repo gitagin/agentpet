@@ -139,13 +139,13 @@ describe("wiki terminology", () => {
   it("prioritizes recent Wiki output and collapses maintenance status", () => {
     renderBrowserPanel();
 
-    const recentPages = screen.getByLabelText("最近 Wiki 页面");
-    expect(within(recentPages).getByText("最近生成的 Wiki 页面")).toBeInTheDocument();
+    const recentPages = screen.getByLabelText("最近知识页");
+    expect(within(recentPages).getByText("最近生成的知识页")).toBeInTheDocument();
 
     const maintenance = screen.getByLabelText("知识库状态和维护记录");
     expect(maintenance).not.toHaveAttribute("open");
     expect(screen.getByText("状态、日志与只读检查")).toBeVisible();
-    expect(within(maintenance).getByText("Vault")).not.toBeVisible();
+    expect(within(maintenance).getByText("本机文件夹")).not.toBeVisible();
     expect(within(maintenance).getByText("页面")).not.toBeVisible();
     expect(within(maintenance).getByText("日志")).not.toBeVisible();
     expect(within(maintenance).getByText("只读检查和诊断提示")).not.toBeVisible();
@@ -170,7 +170,7 @@ describe("wiki terminology", () => {
       logStatus: null,
     });
 
-    const recentPages = screen.getByLabelText("最近 Wiki 页面");
+    const recentPages = screen.getByLabelText("最近知识页");
     const card = within(recentPages).getByText("项目总结").closest("article");
     expect(card).not.toBeNull();
     expect(card).toHaveTextContent("一次自动沉淀");
@@ -186,7 +186,7 @@ describe("wiki terminology", () => {
       indexStatus: null,
     });
 
-    expect(screen.getAllByText(/未绑定 Vault/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/未设置本机文件夹/).length).toBeGreaterThan(0);
     expect(screen.getByText("未绑定")).toBeInTheDocument();
 
     rerender(
@@ -240,7 +240,7 @@ describe("wiki terminology", () => {
         onOpenArchive={noop}
       />,
     );
-    expect(screen.getAllByText(/还没有 Wiki 页面/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/还没有知识页/).length).toBeGreaterThan(0);
   });
 
   it("offers a guided action for pasting a knowledge snippet", () => {
@@ -258,8 +258,8 @@ describe("wiki terminology", () => {
 
     const { rerender } = renderWorkflowPanel({ onPreview, onApply });
 
-    const organizer = screen.getByLabelText("日常 Wiki 整理");
-    expect(within(organizer).getByLabelText("创建或更新 Wiki 页面")).toBeInTheDocument();
+    const organizer = screen.getByLabelText("日常知识整理");
+    expect(within(organizer).getByLabelText("创建或更新知识页")).toBeInTheDocument();
     expect(within(organizer).getByLabelText("标题")).toBeInTheDocument();
     expect(within(organizer).getByLabelText("来源内容")).toBeInTheDocument();
     expect(within(organizer).getByLabelText("目标类型")).toBeInTheDocument();
@@ -319,8 +319,8 @@ describe("wiki terminology", () => {
       />,
     );
 
-    expect(screen.getByLabelText("Wiki 预览结果")).toHaveTextContent("Wiki/Concepts/Decision-Memory.md");
-    fireEvent.click(within(screen.getByLabelText("日常 Wiki 整理")).getByRole("button", { name: "应用" }));
+    expect(screen.getByLabelText("知识页预览结果")).toHaveTextContent("Wiki/Concepts/Decision-Memory.md");
+    fireEvent.click(within(screen.getByLabelText("日常知识整理")).getByRole("button", { name: "应用" }));
     expect(onApply).toHaveBeenCalledTimes(1);
   });
 
@@ -330,7 +330,7 @@ describe("wiki terminology", () => {
     const advancedTools = screen.getByLabelText("高级知识库维护工具");
     expect(advancedTools).not.toHaveAttribute("open");
     expect(screen.getByText("展开高级维护工具")).toBeInTheDocument();
-    expect(screen.getByText(/部分操作会写入 Markdown/)).toBeInTheDocument();
+    expect(screen.getByText(/部分操作会写入本地文本/)).toBeInTheDocument();
     expect(screen.queryByText(/高级 Vault|Vault 引用|归档最近一条带 Vault|不写入 Vault/)).not.toBeInTheDocument();
   });
 });

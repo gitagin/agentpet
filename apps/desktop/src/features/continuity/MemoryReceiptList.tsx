@@ -61,7 +61,7 @@ export function MemoryReceiptList({
               ) : (
                 <small className="visible-continuity-path muted">
                   <ShieldAlert size={14} aria-hidden="true" />
-                  没有可展示的安全 Markdown 目标。
+                  没有可展示的安全本地文件目标。
                 </small>
               )}
               {receipt.decision === "ask" && receipt.status === "pending" ? (
@@ -138,7 +138,7 @@ function formatDecision(value: VisibleContinuityReceipt["decision"]): string {
 
 function formatActionType(value: string): string {
   const labels: Record<string, string> = {
-    "agent_action.revert": "已恢复到之前的 Markdown 状态。",
+    "agent_action.revert": "已恢复到之前的本地文件状态。",
     "chat.auto_memory.skip": "已跳过自动记忆整理。",
     "chat.daily_archive": "已把聊天保存到本地日记。",
     "diary.structured_memory": "已提取结构化日记记忆。",
@@ -148,7 +148,7 @@ function formatActionType(value: string): string {
     "memory.long_term.skip": "已跳过长期记忆。",
     "wiki.answer_summary.write": "已保存可复用的 Wiki 摘要。",
     "wiki.answer_summary.skip": "已跳过 Wiki 摘要。",
-    "wiki.page.write": "已创建或更新 Wiki 页面。",
+    "wiki.page.write": "已创建或更新知识页。",
   };
   return labels[value] || value;
 }

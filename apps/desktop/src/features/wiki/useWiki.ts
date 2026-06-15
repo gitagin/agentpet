@@ -243,7 +243,7 @@ export function useWiki({
       error: null,
       updated_at: new Date().toISOString(),
     }));
-    onNotice({ tone: "info", message: "Vault 维护确认项已本地确认；仍需点击写入才会修改 Markdown。" });
+    onNotice({ tone: "info", message: "知识整理确认项已本地确认；仍需点击写入才会修改本地文本。" });
   }, [onNotice, updateChatWikiProposal]);
 
   const rejectChatWikiProposal = useCallback((messageId: string, proposalId: string) => {
@@ -253,7 +253,7 @@ export function useWiki({
       error: null,
       updated_at: new Date().toISOString(),
     }));
-    onNotice({ tone: "info", message: "Vault 维护确认项已拒绝，没有写入 Markdown。" });
+    onNotice({ tone: "info", message: "知识整理确认项已拒绝，没有写入本地文本。" });
   }, [onNotice, updateChatWikiProposal]);
 
   const toggleChatWikiProposalTarget = useCallback((
@@ -284,7 +284,7 @@ export function useWiki({
   ): Promise<ChatWikiApplyResponse> => {
     if (proposal.proposal_type === "ingest") {
       if (!proposal.run_id || !proposal.review_id) {
-        throw new Error("该 Vault 确认项缺少 run_id 或 review_id，不能安全写入。");
+        throw new Error("该知识整理确认项缺少必要校验信息，不能安全写入。");
       }
       return api.applyWikiIngest({
         run_id: proposal.run_id,
@@ -326,19 +326,19 @@ export function useWiki({
     const sourceMessage = messages.find((message) => message.id === messageId);
     const proposal = sourceMessage?.wiki_proposals?.find((item) => item.id === proposalId);
     if (!proposal) {
-      onNotice({ tone: "error", message: "没有在当前聊天消息中找到 Vault 维护确认项状态。" });
+      onNotice({ tone: "error", message: "没有在当前聊天消息中找到知识整理确认项状态。" });
       return;
     }
     if (!isSupportedChatWikiProposalType(proposal.proposal_type)) {
-      onNotice({ tone: "error", message: `该 Vault 确认项类型暂不支持从聊天中写入：${proposal.proposal_type}。` });
+      onNotice({ tone: "error", message: `该知识整理确认项类型暂不支持从聊天中写入：${proposal.proposal_type}。` });
       return;
     }
     if (proposal.proposal_type === "ingest" && (!proposal.run_id || !proposal.review_id)) {
-      onNotice({ tone: "error", message: "该 Vault 确认项缺少 run_id 或 review_id，不能安全写入。" });
+      onNotice({ tone: "error", message: "该知识整理确认项缺少必要校验信息，不能安全写入。" });
       return;
     }
     if (proposal.state !== "confirmed" && proposal.state !== "failed") {
-      onNotice({ tone: "error", message: "请先确认该 Vault 确认项，再执行写入。" });
+      onNotice({ tone: "error", message: "请先确认该知识整理确认项，再执行写入。" });
       return;
     }
 
@@ -384,7 +384,7 @@ export function useWiki({
       });
       onAgentActionsRefresh();
     } catch (error) {
-      const message = describeError(error, "Vault 确认项写入失败");
+      const message = describeError(error, "知识整理确认项写入失败");
       updateChatWikiProposal(messageId, proposalId, (current) => ({
         ...current,
         state: "failed",
@@ -468,7 +468,7 @@ export function useWiki({
       return;
     }
     if (!preview.preview_token && preview.status !== "planned") {
-      onNotice({ tone: "error", message: "当前 Wiki 预览缺少确认令牌，请重新运行预览。" });
+      onNotice({ tone: "error", message: "当前知识页预览缺少确认令牌，请重新运行预览。" });
       return;
     }
 
@@ -513,7 +513,7 @@ export function useWiki({
       return;
     }
     if (!preview.preview_token && preview.status !== "planned") {
-      onNotice({ tone: "error", message: "当前 Wiki 预览缺少确认令牌，请重新运行预览。" });
+      onNotice({ tone: "error", message: "当前知识页预览缺少确认令牌，请重新运行预览。" });
       return;
     }
 

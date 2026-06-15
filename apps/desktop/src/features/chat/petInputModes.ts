@@ -11,38 +11,38 @@ export type PetInputModeOption = {
 export const petInputModes: PetInputModeOption[] = [
   {
     id: "chat",
-    label: "聊天",
-    shortLabel: "聊",
-    ariaLabel: "切换到聊天模式",
-    placeholder: "和桌宠说点什么...",
+    label: "陪伴",
+    shortLabel: "陪",
+    ariaLabel: "切换到陪伴",
+    placeholder: "和我说说现在发生的事...",
   },
   {
     id: "note",
-    label: "记一个",
+    label: "记住",
     shortLabel: "记",
-    ariaLabel: "切换到记一个模式",
-    placeholder: "写下想法、偏好或片段...",
+    ariaLabel: "切换到记住",
+    placeholder: "告诉我一件希望以后还能接上的事...",
   },
   {
     id: "task",
-    label: "新任务",
-    shortLabel: "办",
-    ariaLabel: "切换到新任务模式",
-    placeholder: "要做什么，什么时候提醒...",
+    label: "提醒",
+    shortLabel: "醒",
+    ariaLabel: "切换到提醒",
+    placeholder: "要我在什么时候提醒你...",
   },
   {
     id: "wiki",
-    label: "整理 Wiki",
+    label: "整理资料",
     shortLabel: "理",
-    ariaLabel: "切换到整理 Wiki 模式",
-    placeholder: "粘贴要整理的知识片段...",
+    ariaLabel: "切换到整理资料",
+    placeholder: "粘贴想整理的资料或想法...",
   },
   {
     id: "review",
-    label: "今日复盘",
-    shortLabel: "复",
-    ariaLabel: "切换到今日复盘模式",
-    placeholder: "留空可直接复盘今天...",
+    label: "回顾今天",
+    shortLabel: "顾",
+    ariaLabel: "切换到回顾今天",
+    placeholder: "留空也可以直接回顾今天...",
   },
 ];
 
@@ -67,10 +67,10 @@ export function buildPetInputIntentMessage(mode: PetInputMode, rawText: string):
   }
 
   if (mode === "review") {
-    const subject = text || "请根据今天的本地记录做一次简短复盘。";
+    const subject = text || "请根据今天的本地记录做一次简短回顾。";
     return [
-      `今日复盘：${subject}`,
-      "请优先检索本地聊天日记、长期记忆、任务和 Wiki；没有依据的内容请明确说明。",
+      `回顾今天：${subject}`,
+      "请优先检索本地聊天日记、长期记忆、任务和知识整理内容；没有依据的内容请明确说明。用户可见回复请使用普通中文，不要使用工程词。",
     ].join("\n");
   }
 
@@ -79,14 +79,14 @@ export function buildPetInputIntentMessage(mode: PetInputMode, rawText: string):
   }
 
   const intentPrompts: Record<Exclude<PetInputMode, "chat" | "review">, string> = {
-    note: "记一个",
-    task: "新任务",
-    wiki: "整理成 Wiki",
+    note: "记住",
+    task: "提醒",
+    wiki: "整理资料到知识页",
   };
   const guardrails: Record<Exclude<PetInputMode, "chat" | "review">, string> = {
-    note: "请按现有记忆策略判断是否值得沉淀；敏感、高风险或低置信内容不要直接写入。",
-    task: "请按现有任务策略创建任务或提醒；需要确认的内容先进入确认流程。",
-    wiki: "请按现有 Wiki 策略规划整理；高风险写入仍需确认。",
+    note: "请按现有记忆策略判断是否值得沉淀；敏感、高风险或低置信内容不要直接写入。用户可见回复请用“记住”“记忆”表达。",
+    task: "请按现有任务策略创建任务或提醒；需要确认的内容先进入确认流程。用户可见回复请用“提醒”表达。",
+    wiki: "这是资料整理请求，请按现有知识页策略规划整理；高风险写入仍需确认。用户可见回复请用“资料”“知识页”表达，避免直接说技术格式或内部模块名。",
   };
   const focusedMode = mode as Exclude<PetInputMode, "chat" | "review">;
   return [`${intentPrompts[focusedMode]}：${text}`, guardrails[focusedMode]].join("\n");

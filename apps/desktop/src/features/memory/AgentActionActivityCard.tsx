@@ -62,7 +62,7 @@ export function AgentActionActivityCard({ entry, reverting, onRevert, onRevealTa
 
       {showAuditDetails && auditDetails.length > 0 ? (
         <details className="agent-action-audit-details">
-          <summary>审计详情</summary>
+          <summary>整理详情</summary>
           {auditDetails.map((detail) => (
             <small key={detail}>{detail}</small>
           ))}
@@ -80,7 +80,7 @@ export function AgentActionActivityCard({ entry, reverting, onRevert, onRevealTa
       ) : null}
 
       {onRevealTarget && targetPaths.length > 0 ? (
-        <div className="agent-action-targets" aria-label="Vault 目标文件">
+        <div className="agent-action-targets" aria-label="本机目标文件">
           {targetPaths.map((targetPath) => (
             <div key={targetPath} className="agent-action-target-row">
               <span>{targetPath}</span>
@@ -92,7 +92,7 @@ export function AgentActionActivityCard({ entry, reverting, onRevert, onRevealTa
                   title={`打开 ${targetPath}`}
                 >
                   <ExternalLink size={16} />
-                  打开 Markdown
+                  打开文件
                 </button>
                 <button
                   type="button"

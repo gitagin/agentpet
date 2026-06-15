@@ -1,5 +1,5 @@
-@import './styles/theme.css';
-@import './styles/glass.css';
+@import "./styles/theme.css";
+@import "./styles/glass.css";
 
 :root {
   color: #2b2931;
@@ -1411,70 +1411,101 @@ dt,
 
 .stage-command-layout {
   display: grid;
-  grid-template-columns: 1fr;
-  grid-template-rows: 1fr;
-  place-items: center;
-  padding: clamp(18px, 4vh, 46px) clamp(20px, 5vw, 72px) clamp(10px, 3vh, 28px);
+  grid-template-columns: minmax(250px, 0.82fr) minmax(320px, 1.36fr) minmax(250px, 0.82fr);
+  grid-template-rows: minmax(0, 1fr);
+  align-items: center;
+  gap: clamp(16px, 3vw, 36px);
+  overflow: visible;
+  padding: clamp(16px, 3.4vh, 42px) clamp(20px, 4.6vw, 64px) clamp(10px, 2.8vh, 26px);
 }
 
 .stage-command-panel {
   position: relative;
-  grid-area: 1 / 1;
-  justify-self: start;
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: stretch;
   align-self: center;
   z-index: 12;
-  width: min(340px, 32vw);
-  max-height: calc(100vh - 188px);
+  width: 100%;
+  max-width: 360px;
   display: grid;
-  align-content: center;
-  gap: 14px;
-  overflow: auto;
+  align-content: start;
+  gap: 12px;
+  overflow: visible;
   border: 1px solid rgba(255, 255, 255, 0.62);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.72);
-  box-shadow: 0 18px 42px rgba(67, 91, 103, 0.14);
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.9), rgba(252, 247, 243, 0.68)),
+    rgba(255, 255, 255, 0.62);
+  box-shadow: 0 20px 46px rgba(67, 91, 103, 0.15);
   padding: 16px;
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
 }
 
+.stage-command-panel:has(.stage-advanced-routes[open]) {
+  z-index: 24;
+}
+
 .stage-command-layout.has-outcome {
-  place-items: stretch;
   align-items: center;
-  justify-items: stretch;
 }
 
 .stage-outcome-panel {
-  grid-area: 1 / 1;
-  justify-self: start;
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: stretch;
   align-self: center;
   z-index: 13;
-  width: min(520px, 45vw);
-  max-height: calc(100vh - 176px);
-  overflow: auto;
+  width: 100%;
+  max-width: 430px;
+  overflow: visible;
 }
 
 .stage-continuity-panel {
   min-height: 0;
   height: auto;
-  padding: 14px;
-  box-shadow: 0 16px 42px rgba(69, 86, 91, 0.14);
+  padding: 13px;
+  box-shadow: 0 18px 42px rgba(69, 86, 91, 0.15);
+  contain: none;
 }
 
 .stage-continuity-panel .visible-continuity-content {
+  gap: 8px;
+}
+
+.stage-continuity-panel .panel-title {
+  margin-bottom: 8px;
+}
+
+.stage-continuity-panel .visible-continuity-header {
+  align-items: flex-start;
   gap: 10px;
 }
 
+.stage-continuity-panel .visible-continuity-kicker,
+.stage-continuity-panel .visible-continuity-content > .visible-continuity-section:not(:first-child),
+.stage-continuity-panel .visible-continuity-today-grid,
+.stage-continuity-panel .visible-continuity-meta {
+  display: none;
+}
+
+.stage-continuity-panel .visible-continuity-section {
+  border-color: rgba(70, 135, 134, 0.18);
+  background: rgba(248, 253, 250, 0.72);
+  padding: 10px;
+}
+
 .stage-command-layout.has-outcome .stage-command-panel {
-  justify-self: end;
+  grid-column: 3;
+  justify-self: stretch;
   align-self: end;
-  width: min(300px, 29vw);
-  max-height: min(360px, calc(100vh - 240px));
+  max-width: 330px;
 }
 
 .stage-command-heading {
   display: grid;
-  gap: 4px;
+  gap: 6px;
 }
 
 .stage-command-heading p,
@@ -1493,8 +1524,12 @@ dt,
 .stage-command-heading h1 {
   margin: 0;
   color: #1f3038;
-  font-size: 28px;
-  line-height: 1.05;
+  font-size: 26px;
+  line-height: 1.08;
+}
+
+.stage-value-list {
+  padding: 2px 0 0;
 }
 
 .stage-action-grid {
@@ -1503,13 +1538,13 @@ dt,
 }
 
 .stage-action-grid.compact {
-  margin-top: 10px;
+  margin-top: 8px;
 }
 
 .stage-advanced-routes {
-  margin-top: 10px;
+  margin-top: 4px;
   border-top: 1px solid rgba(80, 104, 118, 0.12);
-  padding-top: 10px;
+  padding-top: 8px;
 }
 
 .stage-advanced-routes summary {
@@ -1519,37 +1554,67 @@ dt,
   font-weight: 800;
 }
 
+.stage-advanced-routes .stage-action-grid.compact {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.stage-advanced-routes .stage-action-card {
+  min-height: 46px;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 8px;
+  padding: 7px 9px;
+}
+
+.stage-advanced-routes .stage-action-card svg {
+  width: 30px;
+  height: 30px;
+  padding: 7px;
+}
+
+.stage-advanced-routes .stage-action-card strong {
+  font-size: 13px;
+}
+
+.stage-advanced-routes .stage-action-card small {
+  display: none;
+}
+
 .stage-action-card {
   width: 100%;
-  min-height: 66px;
+  min-height: 62px;
   display: grid;
-  grid-template-columns: 38px minmax(0, 1fr);
+  grid-template-columns: 36px minmax(0, 1fr);
   align-items: center;
   justify-content: stretch;
   gap: 10px;
-  border: 1px solid rgba(79, 119, 132, 0.18);
+  border: 1px solid rgba(70, 111, 118, 0.16);
   border-radius: 8px;
-  background: rgba(248, 251, 250, 0.86);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(247, 253, 250, 0.76)),
+    rgba(255, 255, 255, 0.7);
   box-shadow: none;
-  color: #243943;
-  padding: 10px 12px;
+  color: #20333a;
+  padding: 9px 11px;
   text-align: left;
 }
 
 .stage-action-card:hover {
   border-color: rgba(192, 95, 135, 0.34);
-  background: rgba(255, 255, 255, 0.96);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(255, 248, 251, 0.9)),
+    rgba(255, 255, 255, 0.9);
   box-shadow: 0 10px 24px rgba(67, 91, 103, 0.14);
   transform: translateY(-1px);
 }
 
 .stage-action-card svg {
-  width: 38px;
-  height: 38px;
+  width: 36px;
+  height: 36px;
   border-radius: 8px;
-  background: rgba(214, 126, 160, 0.13);
+  background: rgba(70, 135, 134, 0.12);
   color: var(--brand-strong);
-  padding: 9px;
+  padding: 8px;
 }
 
 .stage-action-card span {
@@ -1566,13 +1631,14 @@ dt,
 
 .stage-action-card strong {
   color: #17242a;
-  font-size: 15px;
+  font-size: 14px;
   line-height: 1.2;
 }
 
 .stage-live2d-zone {
   position: relative;
-  grid-area: 1 / 1;
+  grid-column: 2;
+  grid-row: 1;
   z-index: 4;
   min-width: 0;
   width: 100%;
@@ -2029,6 +2095,31 @@ dt,
   resize: vertical;
   font-size: 13px;
   line-height: 1.45;
+}
+
+.first-use-onboarding-form > label,
+.first-use-onboarding-extra {
+  grid-column: 1 / -1;
+}
+
+.first-use-onboarding-extra {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(144, 111, 126, 0.14);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.42);
+}
+
+.first-use-onboarding-extra > summary {
+  cursor: pointer;
+  color: #71415f;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.first-use-onboarding-extra[open] > summary {
+  margin-bottom: 8px;
 }
 
 .chat-panel > .first-use-onboarding {
@@ -3259,6 +3350,11 @@ dt,
   background: rgba(241, 248, 250, 0.9);
 }
 
+.live2d-render-preview .live2d-runtime-placeholder {
+  border-color: rgba(31, 138, 138, 0.36);
+  background: rgba(241, 250, 248, 0.92);
+}
+
 .live2d-render-failed .live2d-runtime-placeholder {
   border-color: rgba(217, 103, 112, 0.46);
   background: rgba(255, 247, 247, 0.92);
@@ -3919,6 +4015,38 @@ dt,
   display: grid;
   gap: 10px;
   margin-top: 12px;
+}
+
+.memory-primary-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.memory-priority-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.memory-priority-block {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  border: 1px solid rgba(84, 102, 112, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.62);
+  padding: 14px;
+}
+
+.memory-priority-refresh {
+  justify-self: start;
+  min-height: 34px;
+}
+
+.memory-priority-list {
+  max-height: 430px;
+  overflow: auto;
 }
 
 .memory-workbench-panel {
@@ -5960,28 +6088,26 @@ dt,
   }
 
   .stage-command-layout {
-    grid-template-columns: 1fr;
-    gap: 0;
-    padding-inline: 20px;
+    grid-template-columns: minmax(220px, 0.8fr) minmax(280px, 1.2fr) minmax(220px, 0.8fr);
+    gap: 14px;
+    padding-inline: 18px;
   }
 
   .stage-command-panel {
-    width: min(300px, 34vw);
-    max-height: calc(100vh - 172px);
+    max-width: 300px;
     padding: 14px;
   }
 
   .stage-outcome-panel {
-    width: min(440px, 50vw);
-    max-height: calc(100vh - 172px);
+    max-width: 360px;
   }
 
   .stage-command-layout.has-outcome .stage-command-panel {
-    width: min(260px, 34vw);
+    max-width: 286px;
   }
 
   .stage-command-heading h1 {
-    font-size: 24px;
+    font-size: 23px;
   }
 
   .stage-action-card {
@@ -6020,6 +6146,10 @@ dt,
   .workflow-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .memory-priority-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 760px) {
@@ -6029,74 +6159,164 @@ dt,
 
   .stage-command-layout {
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
     place-items: center;
-    gap: 10px;
-    overflow: hidden;
-    padding: 12px 14px 8px;
+    gap: 8px;
+    overflow: visible;
+    padding: 10px 14px 8px;
   }
 
   .stage-command-layout.has-outcome {
     display: grid;
-    grid-template-rows: minmax(0, 1fr) auto;
-    align-items: stretch;
-    overflow: auto;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    align-items: center;
+    overflow: visible;
   }
 
   .stage-outcome-panel {
+    grid-area: 1 / 1;
     justify-self: stretch;
     align-self: start;
     width: 100%;
-    max-height: min(48vh, 430px);
+    max-width: none;
+  }
+
+  .stage-continuity-panel {
+    padding: 11px 12px;
+  }
+
+  .stage-continuity-panel .panel-title,
+  .stage-continuity-panel .visible-continuity-section-head svg,
+  .stage-continuity-panel .visible-continuity-section-head p {
+    display: none;
+  }
+
+  .stage-continuity-panel .visible-continuity-shell {
+    gap: 7px;
+  }
+
+  .stage-continuity-panel .visible-continuity-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+  }
+
+  .stage-continuity-panel .visible-continuity-header strong {
+    font-size: 14px;
+    line-height: 1.25;
+  }
+
+  .stage-continuity-panel .visible-continuity-refresh {
+    min-height: 32px;
+    padding: 0 10px;
+  }
+
+  .stage-continuity-panel .visible-continuity-section {
+    padding: 8px 10px;
+  }
+
+  .stage-continuity-panel .visible-continuity-section-head {
+    grid-template-columns: 1fr;
+  }
+
+  .stage-continuity-panel .visible-continuity-section-head h3 {
+    font-size: 13px;
   }
 
   .stage-command-layout.has-outcome .stage-command-panel {
-    grid-area: 2 / 1;
+    grid-area: 3 / 1;
     justify-self: stretch;
     align-self: end;
     width: 100%;
-    max-height: none;
+    max-width: none;
   }
 
   .stage-command-panel {
+    grid-area: 3 / 1;
     justify-self: stretch;
-    align-self: start;
+    align-self: end;
     width: 100%;
-    max-height: 42vh;
+    max-width: none;
     align-content: start;
-    padding: 12px;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .stage-command-panel .stage-value-list,
+  .stage-command-panel .stage-command-heading p,
+  .stage-command-panel .stage-action-card small {
+    display: none !important;
   }
 
   .stage-command-heading h1 {
-    font-size: 22px;
+    font-size: 18px;
   }
 
   .stage-action-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
   }
 
   .stage-action-card {
-    min-height: 84px;
+    min-height: 56px;
     grid-template-columns: 1fr;
-    align-content: start;
-    gap: 8px;
+    align-content: center;
+    justify-items: center;
+    gap: 5px;
+    padding: 6px;
+    text-align: center;
   }
 
   .stage-action-card svg {
-    width: 34px;
-    height: 34px;
+    width: 28px;
+    height: 28px;
+    padding: 6px;
   }
 
   .stage-action-card strong {
-    font-size: 13px;
+    font-size: 12px;
   }
 
   .stage-action-card small {
     font-size: 11px;
   }
 
+  .stage-advanced-routes {
+    margin-top: 0;
+    padding-top: 6px;
+  }
+
+  .stage-advanced-routes summary {
+    font-size: 11px;
+  }
+
+  .stage-advanced-routes .stage-action-grid.compact {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin-top: 6px;
+  }
+
+  .stage-advanced-routes .stage-action-card {
+    min-height: 42px;
+    grid-template-columns: 28px minmax(0, 1fr);
+    justify-items: stretch;
+    gap: 7px;
+    padding: 6px 8px;
+    text-align: left;
+  }
+
+  .stage-advanced-routes .stage-action-card svg {
+    width: 28px;
+    height: 28px;
+    padding: 6px;
+  }
+
+  .stage-advanced-routes .stage-action-card small {
+    display: none !important;
+  }
+
   .stage-live2d-zone {
-    min-height: 360px;
+    grid-area: 1 / 1 / 4 / 2;
+    min-height: 0;
     height: 100%;
   }
 
@@ -6154,6 +6374,10 @@ dt,
   .memory-workbench-search-form,
   .memory-add-grid {
     grid-template-columns: 1fr;
+  }
+
+  .memory-priority-list {
+    max-height: none;
   }
 
   .review-coach-grid,

@@ -74,7 +74,7 @@ export function ChatCitationSummary({ message }: ChatCitationSummaryProps) {
         </p>
       )}
       {!hasCitations || retrievalFailed ? (
-        <p className="message-citation-hint">可以检查是否已绑定 Vault、重建索引，或换用更具体的关键词后再问。</p>
+        <p className="message-citation-hint">可以检查是否已设置保存位置、重新整理索引，或换用更具体的关键词后再问。</p>
       ) : null}
     </section>
   );

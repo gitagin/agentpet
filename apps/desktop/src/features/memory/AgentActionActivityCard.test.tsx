@@ -12,8 +12,8 @@ function action(overrides: Partial<AgentAction> = {}): AgentAction {
     decision: "auto",
     status: "completed",
     title: "Saved summary",
-    summary: "Saved to Wiki/Summary.md",
-    target_paths: ["Wiki/Summary.md"],
+    summary: "Saved to Knowledge/Summary.md",
+    target_paths: ["Knowledge/Summary.md"],
     reversible: false,
     source: {},
     diff_summary: "",
@@ -36,7 +36,7 @@ function entry(agentAction = action()): Extract<AgentActivityLogEntry, { kind: "
 }
 
 describe("AgentActionActivityCard", () => {
-  it("routes target file commands through the provided Vault reveal callback", () => {
+  it("routes target file commands through the provided local reveal callback", () => {
     const onRevealTarget = vi.fn();
 
     render(
@@ -48,24 +48,24 @@ describe("AgentActionActivityCard", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "打开 Markdown" }));
+    fireEvent.click(screen.getByRole("button", { name: "打开文件" }));
     fireEvent.click(screen.getByRole("button", { name: "显示位置" }));
 
-    expect(onRevealTarget).toHaveBeenCalledWith("Wiki/Summary.md", "open");
-    expect(onRevealTarget).toHaveBeenCalledWith("Wiki/Summary.md", "show");
+    expect(onRevealTarget).toHaveBeenCalledWith("Knowledge/Summary.md", "open");
+    expect(onRevealTarget).toHaveBeenCalledWith("Knowledge/Summary.md", "show");
   });
 
-  it("does not offer local file controls for non-Markdown targets", () => {
+  it("does not offer local file controls for non-md targets", () => {
     render(
       <AgentActionActivityCard
-        entry={entry(action({ target_paths: ["Wiki/image.png"] }))}
+        entry={entry(action({ target_paths: ["Knowledge/image.png"] }))}
         reverting={false}
         onRevert={vi.fn()}
         onRevealTarget={vi.fn()}
       />,
     );
 
-    expect(screen.queryByRole("button", { name: "打开 Markdown" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "打开文件" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "显示位置" })).not.toBeInTheDocument();
   });
 
@@ -79,7 +79,7 @@ describe("AgentActionActivityCard", () => {
             decision: "notify",
             title: "Skipped automatic organization",
             summary:
-              "Skipped because automatic diary, structured memory, long-term memory, and Wiki organization are disabled; no local asset was written.",
+              "Skipped because automatic diary, structured memory, long-term memory, and knowledge organization are disabled; no local asset was written.",
             target_paths: [],
             metadata: { skipped_reason: "automation_disabled" },
           }),

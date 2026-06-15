@@ -18,6 +18,7 @@
     "live2d:sdk:check": "node scripts/validate-cubism-sdk.mjs --target public",
     "live2d:sdk:check:dist": "node scripts/validate-cubism-sdk.mjs --target dist",
     "live2d:sdk:check:all": "node scripts/validate-cubism-sdk.mjs --target all",
+    "live2d:companion:check": "node scripts/validate-agent-pet-companion-design.mjs",
     "runtime:mojibake:check": "node scripts/validate-runtime-mojibake.mjs",
     "pet:bubble:check": "node scripts/validate-pet-bubble-pagination.mjs",
     "package:check": "node scripts/validate-electron-packaging.mjs",

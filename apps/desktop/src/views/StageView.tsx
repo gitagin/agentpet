@@ -15,6 +15,7 @@ import type { DesktopApi } from "../services/desktopApi";
 import type { PetBubbleState } from "../features/chat/chatTypes";
 import { PetReplyBubble } from "../features/chat/PetReplyBubble";
 import { VisibleContinuityPanel } from "../features/continuity";
+import { productCopy } from "../productCopy";
 import { BottomNav } from "./BottomNav";
 
 type StageRoute = "agent" | "chat" | "memory" | "settings" | "world";
@@ -45,30 +46,24 @@ type StageViewProps = {
   api?: DesktopApi;
 };
 
-const profile = { name: "桌面记忆助手", mood: "待命" };
+const profile = { name: productCopy.displayName, mood: "在这里" };
 
 const stageActions: StageAction[] = [
   {
-    label: "聊天",
-    detail: "把新想法和提醒告诉我",
+    label: "陪我聊聊",
+    detail: "把今天的想法和感受告诉我",
     route: "chat",
     icon: MessageSquareText,
   },
   {
-    label: "任务",
-    detail: "看项目状态和今日任务",
-    route: "agent",
-    icon: FolderKanban,
-  },
-  {
-    label: "回放",
-    detail: "本周回放和月度复盘",
+    label: "看看记忆",
+    detail: "查看我记住的事，也能撤回",
     route: "memory",
     icon: CalendarCheck,
   },
   {
-    label: "设置",
-    detail: "模型、隐私和保存位置",
+    label: "设置边界",
+    detail: "调整保存、隐私和连接",
     route: "settings",
     icon: Settings,
   },
@@ -76,8 +71,14 @@ const stageActions: StageAction[] = [
 
 const advancedStageActions: StageAction[] = [
   {
-    label: "知识整理",
-    detail: "高级 Markdown 导出与 Wiki 维护",
+    label: "提醒和待办",
+    detail: "安排提醒，查看要跟进的事",
+    route: "agent",
+    icon: FolderKanban,
+  },
+  {
+    label: "整理资料",
+    detail: "把有用片段归到本机知识页",
     route: "world",
     icon: BookOpen,
   },
@@ -149,10 +150,17 @@ export default function StageView({
           </section>
         ) : null}
 
-        <section className="stage-command-panel" aria-label="功能指挥中心">
+        <section className="stage-command-panel" aria-label="陪伴入口">
           <div className="stage-command-heading">
-            <p>我帮你整理好最近的事</p>
-            <h1>今日</h1>
+            <p>{productCopy.promise}</p>
+            <h1>今天想从哪里继续？</h1>
+          </div>
+          <div className="stage-value-list" style={S.valueList} aria-label="陪伴承诺">
+            {productCopy.coreValues.map((item) => (
+              <span key={item.title} style={S.valueItem}>
+                {item.title}
+              </span>
+            ))}
           </div>
           <div className="stage-action-grid">
             {stageActions.map((action) => {
@@ -175,7 +183,7 @@ export default function StageView({
             })}
           </div>
           <details className="stage-advanced-routes">
-            <summary>高级工具</summary>
+            <summary>更多能力</summary>
             <div className="stage-action-grid compact">
               {advancedStageActions.map((action) => {
                 const Icon = action.icon;
@@ -199,7 +207,7 @@ export default function StageView({
           </details>
         </section>
 
-        <section className="stage-live2d-zone" aria-label="Live2D 桌宠">
+        <section className="stage-live2d-zone" aria-label="桌宠形象">
           <div className="stage-pet-anchor">
             {bubbleVisible ? (
               <PetReplyBubble
@@ -231,7 +239,7 @@ export default function StageView({
             style={S.chatInput}
             value={chatInput}
             onChange={(event) => setChatInput(event.target.value)}
-            placeholder="直接提问，或从上方工作流开始..."
+            placeholder={productCopy.chatPage.inputPlaceholder}
             disabled={streaming}
             aria-label="聊天输入"
           />
@@ -320,6 +328,21 @@ const S: Record<string, CSSProperties> = {
     minHeight: 0,
     overflow: "visible",
     isolation: "isolate",
+  },
+  valueList: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 6,
+    marginTop: -4,
+  },
+  valueItem: {
+    borderRadius: 999,
+    border: "1px solid rgba(192, 95, 135, 0.18)",
+    background: "rgba(255,255,255,0.62)",
+    color: "var(--brand-strong, #8d4f86)",
+    fontSize: 11,
+    fontWeight: 700,
+    padding: "3px 8px",
   },
   footer: {
     display: "grid",

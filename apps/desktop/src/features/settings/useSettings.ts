@@ -279,7 +279,7 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
         return;
       }
       if (!draft.masked && !draft.api_key.trim()) {
-        onNotice({ tone: "error", message: "请填写该结果路由的 API 密钥后再保存。" });
+        onNotice({ tone: "error", message: "请填写该结果路由的密钥后再保存。" });
         return;
       }
     }
@@ -360,7 +360,7 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
       }
 
       dispatch({ type: "setVaultPath", vaultPath: selectedPath });
-      onNotice({ tone: "info", message: "已填入知识库路径，请确认后点击初始化。" });
+      onNotice({ tone: "info", message: "已填入本机文件夹路径，请确认后点击保存位置。" });
     } catch (error) {
       onNotice({ tone: "error", message: describeError(error, "文件夹选择失败") });
     }
@@ -421,7 +421,7 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
         });
         onNotice({
           tone: "success",
-          message: `知识库 ${response.vault_id} 已${formatVaultStatus(response.status)}；索引任务 ${indexResponse.index_job_id} 状态：${formatTaskStatus(indexResponse.status)}。`,
+          message: `本机文件夹 ${response.vault_id} 已${formatVaultStatus(response.status)}；整理任务 ${indexResponse.index_job_id} 状态：${formatTaskStatus(indexResponse.status)}。`,
         });
       } catch (indexError) {
         onNotice({
@@ -431,7 +431,7 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
       }
       await loadVaultStatus({ silent: true });
     } catch (error) {
-      onNotice({ tone: "error", message: describeError(error, "知识库初始化失败") });
+      onNotice({ tone: "error", message: describeError(error, "保存位置初始化失败") });
     } finally {
       dispatch({ type: "setIndexingVault", indexingVault: false });
     }

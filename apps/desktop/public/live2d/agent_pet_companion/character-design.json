@@ -1,0 +1,179 @@
+{
+  "version": 1,
+  "id": "agent_pet_companion",
+  "displayName": "Archivist Companion",
+  "status": "design_spec_only",
+  "runtimeNote": "This project-specific character may be registered in models.json only as previewOnly until a real Cubism model export exists.",
+  "character": {
+    "role": "local-first memory companion for Agent Pet",
+    "personality": [
+      "calm",
+      "attentive",
+      "slightly playful",
+      "privacy-aware",
+      "organized"
+    ],
+    "visualConcept": {
+      "ageRead": "young adult",
+      "silhouette": "compact desktop companion with expressive upper-body motion",
+      "hair": "short layered dark teal hair with one small glowing memory-pin accessory",
+      "eyes": "warm amber eyes with subtle cyan UI reflections",
+      "outfit": "soft utility jacket over a simple dark dress or tunic, with small archive tags and a ribbon-shaped status light",
+      "signatureProp": "floating notebook shard and tiny local-database charm",
+      "palette": {
+        "primary": "#1f8a8a",
+        "secondary": "#f2c14e",
+        "accent": "#e85d75",
+        "neutralDark": "#242834",
+        "neutralLight": "#f6f4ef"
+      }
+    },
+    "designPrinciples": [
+      "Readable at small desktop-pet size",
+      "Hands and face should carry most actions",
+      "Avoid a busy silhouette that hides the chat bubble",
+      "Keep privacy and local-first identity visible through small archive/database motifs",
+      "Expressions should be distinct enough for compact 214x58 bubble context"
+    ]
+  },
+  "riggingRequirements": {
+    "canvasIntent": "upper-body desktop pet plus stage view",
+    "recommendedCanvas": {
+      "width": 2048,
+      "height": 2048
+    },
+    "coreParameters": [
+      "ParamAngleX",
+      "ParamAngleY",
+      "ParamAngleZ",
+      "ParamBodyAngleX",
+      "ParamBodyAngleY",
+      "ParamEyeLOpen",
+      "ParamEyeROpen",
+      "ParamEyeBallX",
+      "ParamEyeBallY",
+      "ParamBrowLY",
+      "ParamBrowRY",
+      "ParamMouthOpenY",
+      "ParamMouthForm",
+      "ParamArmL",
+      "ParamArmR",
+      "ParamHandL",
+      "ParamHandR",
+      "ParamPropNotebook",
+      "ParamPropDatabaseCharm",
+      "ParamStatusLight"
+    ],
+    "physicsTargets": [
+      "hair tips",
+      "jacket collar",
+      "status ribbon",
+      "floating notebook shard",
+      "database charm"
+    ],
+    "hitAreas": [
+      {
+        "id": "Head",
+        "name": "head"
+      },
+      {
+        "id": "Body",
+        "name": "body"
+      },
+      {
+        "id": "Notebook",
+        "name": "notebook"
+      }
+    ]
+  },
+  "expressions": [
+    { "name": "exp_idle_soft", "purpose": "default online idle" },
+    { "name": "exp_listen_mic", "purpose": "listening to user input" },
+    { "name": "exp_think_focus", "purpose": "chat generation and reasoning" },
+    { "name": "exp_talk_warm", "purpose": "replying or TTS speaking" },
+    { "name": "exp_memory_scan", "purpose": "memory retrieval and diary organization" },
+    { "name": "exp_memory_found", "purpose": "successful memory hit" },
+    { "name": "exp_memory_missing", "purpose": "no memory found" },
+    { "name": "exp_confirm_careful", "purpose": "confirmation required before high-risk memory/wiki action" },
+    { "name": "exp_privacy_guard", "purpose": "sensitive content protection" },
+    { "name": "exp_wiki_sort", "purpose": "wiki organization or lint check" },
+    { "name": "exp_task_note", "purpose": "task creation and reminder" },
+    { "name": "exp_task_done", "purpose": "task completion celebration" },
+    { "name": "exp_continuity_soft", "purpose": "unresolved thread or continuity presence" },
+    { "name": "exp_emotion_comfort", "purpose": "quiet emotional support" },
+    { "name": "exp_offline_sleepy", "purpose": "backend disconnected" },
+    { "name": "exp_error_alert", "purpose": "recoverable runtime error" },
+    { "name": "exp_diagnosed_ok", "purpose": "diagnostics complete" },
+    { "name": "exp_sleep_quiet", "purpose": "low-distraction idle" }
+  ],
+  "motionGroups": {
+    "Idle": [
+      "idle_breathe",
+      "idle_look_around",
+      "idle_notebook_float",
+      "idle_sleep_quiet"
+    ],
+    "Chat": [
+      "chat_listen",
+      "chat_think",
+      "chat_talk",
+      "chat_done"
+    ],
+    "Memory": [
+      "memory_search",
+      "memory_found",
+      "memory_not_found",
+      "memory_save",
+      "memory_confirm",
+      "memory_privacy_guard",
+      "memory_revert"
+    ],
+    "Wiki": [
+      "wiki_organize",
+      "wiki_check",
+      "wiki_archive"
+    ],
+    "Task": [
+      "task_create",
+      "task_reminder",
+      "task_complete"
+    ],
+    "Continuity": [
+      "continuity_remember",
+      "emotion_comfort"
+    ],
+    "System": [
+      "system_connecting",
+      "system_offline",
+      "system_error",
+      "system_diagnosed"
+    ],
+    "Reaction": [
+      "tts_speaking",
+      "celebrate_small"
+    ]
+  },
+  "exportContract": {
+    "modelFileName": "agent_pet_companion.model3.json",
+    "actionsFileName": "agent_pet_companion.actions.json",
+    "iconFileName": "preview.svg",
+    "modelsJsonEntryAfterExport": {
+      "id": "agent_pet_companion",
+      "label": "Archivist Companion",
+      "directory": "/live2d/agent_pet_companion/",
+      "model": "agent_pet_companion.model3.json",
+      "icon": "preview.svg",
+      "actions": "agent_pet_companion.actions.json"
+    },
+    "modelsJsonEntryWhilePreview": {
+      "id": "agent_pet_companion",
+      "label": "Archivist Companion",
+      "directory": "/live2d/agent_pet_companion/",
+      "model": "agent_pet_companion.model3.json",
+      "icon": "preview.svg",
+      "actions": "agent_pet_companion.actions.json",
+      "previewOnly": true,
+      "design": "character-design.json"
+    }
+  }
+}

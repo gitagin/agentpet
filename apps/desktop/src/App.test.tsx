@@ -330,25 +330,28 @@ vi.mock("./features/wiki/useWiki", () => ({
 }));
 
 const live2dAsset: Live2DAssetInfo = {
-  status: "recognized",
-  modelId: "UG",
-  modelLabel: "UG",
-  modelDirectoryUrl: "/live2d/UG/",
-  modelFileName: "ugofficial.model3.json",
-  manifestPath: "/live2d/UG/ugofficial.model3.json",
-  iconPath: "/live2d/UG/icon.png",
+  status: "preview",
+  modelId: "agent_pet_companion",
+  modelLabel: "Archivist Companion",
+  modelDirectoryUrl: "/live2d/agent_pet_companion/",
+  modelFileName: "agent_pet_companion.model3.json",
+  manifestPath: "/live2d/agent_pet_companion/agent_pet_companion.model3.json",
+  iconPath: "/live2d/agent_pet_companion/preview.svg",
   hasIcon: true,
-  textureCount: 2,
-  expressionCount: 4,
-  motionCount: 6,
-  hasPhysics: true,
-  hasDisplayInfo: true,
+  textureCount: 0,
+  expressionCount: 18,
+  motionCount: 28,
+  actionCount: 28,
+  previewOnly: true,
+  designPath: "/live2d/agent_pet_companion/character-design.json",
+  hasPhysics: false,
+  hasDisplayInfo: false,
 };
 
 const live2dRuntime: Live2DRuntimeBoundary = {
-  status: "assets-ready",
-  title: "资源已就绪",
-  detail: "测试 runtime",
+  status: "preview-only",
+  title: "角色预览",
+  detail: "项目角色静态预览已启用；导出 Cubism model3 后会接管为真实 Live2D 渲染。",
   mountTargetId: "live2d-runtime-canvas",
   rendererName: "Cubism WebGL",
   canMountRenderer: false,
@@ -360,7 +363,7 @@ vi.mock("./features/live2d/useLive2D", () => ({
     canvasRef: createRef<HTMLCanvasElement>(),
     models: [],
     runtime: live2dRuntime,
-    selectedModelId: "UG",
+    selectedModelId: "agent_pet_companion",
     selectModel: vi.fn(),
     stage: {
       state: "idle",
@@ -423,12 +426,12 @@ describe("App", () => {
   it("renders the Today route when desktop bridge is unavailable", async () => {
     render(<App />);
 
-    expect(await screen.findByRole("heading", { name: "Today" })).toBeInTheDocument();
-    const commandCenter = within(screen.getByLabelText("功能指挥中心"));
-    expect(commandCenter.getByRole("button", { name: /Chat/ })).toHaveAttribute("data-stage-route", "chat");
-    expect(commandCenter.getByRole("button", { name: /Projects/ })).toHaveAttribute("data-stage-route", "agent");
-    expect(commandCenter.getByRole("button", { name: /Playback/ })).toHaveAttribute("data-stage-route", "memory");
-    expect(commandCenter.getByRole("button", { name: /Settings/ })).toHaveAttribute("data-stage-route", "settings");
+    expect(await screen.findByRole("heading", { name: "今天想从哪里继续？" })).toBeInTheDocument();
+    const companionEntry = within(screen.getByLabelText("陪伴入口"));
+    expect(companionEntry.getByRole("button", { name: /陪我聊聊/ })).toHaveAttribute("data-stage-route", "chat");
+    expect(companionEntry.getByRole("button", { name: /看看记忆/ })).toHaveAttribute("data-stage-route", "memory");
+    expect(companionEntry.getByRole("button", { name: /设置边界/ })).toHaveAttribute("data-stage-route", "settings");
+    expect(companionEntry.getByText("更多能力").closest("details")).not.toHaveAttribute("open");
     expect(screen.queryByText("高级管理与诊断")).not.toBeInTheDocument();
   });
 
@@ -468,24 +471,38 @@ describe("App", () => {
 
     render(<App />);
 
-    expect(await screen.findByLabelText("首次使用引导")).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("最近主要在忙什么？"), {
-      target: { value: "准备产品加固任务" },
+    const onboarding = await screen.findByLabelText("首次使用引导");
+    expect(onboarding).toBeInTheDocument();
+    const submitButton = screen.getByRole("button", { name: "开始第一次聊天" });
+    expect(submitButton).toBeDisabled();
+    expect(
+      within(onboarding)
+        .getAllByRole("textbox")
+        .filter((field) => field.hasAttribute("required")),
+    ).toHaveLength(1);
+
+    fireEvent.change(screen.getByLabelText("今天想让我从哪里陪你继续？"), {
+      target: { value: "我今天有点累，想把昨天没说完的事接上" },
     });
-    fireEvent.change(screen.getByLabelText("要我帮你跟踪什么？"), {
-      target: { value: "偏好简洁可追踪的结果" },
-    });
-    fireEvent.change(screen.getByLabelText("保存或导出位置（可选）"), {
-      target: { value: "暂时只保存在本机，之后导出到 Markdown 文件夹" },
-    });
+
+    expect(submitButton).not.toBeDisabled();
+    expect(screen.getByText("可选补充").closest("details")).not.toHaveAttribute("open");
+    expect(
+      within(onboarding)
+        .getAllByRole("textbox")
+        .filter((field) => field.hasAttribute("required")),
+    ).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: "开始第一次聊天" }));
 
     await waitFor(() => expect(api.startChat).toHaveBeenCalledTimes(1));
     expect(mockTtsWaitingCueStart).toHaveBeenCalledTimes(1);
     const request = api.startChat.mock.calls[0][0];
-    expect(request.message).toContain("准备产品加固任务");
-    expect(request.message).toContain("偏好简洁可追踪的结果");
-    expect(request.message).toContain("暂时只保存在本机，之后导出到 Markdown 文件夹");
+    expect(request.message).toContain("今天想让我从哪里陪你继续：我今天有点累，想把昨天没说完的事接上");
+    expect(request.message).toContain("只沉淀高价值、非敏感、可复用的长期记忆");
+    expect(request.message).toContain("低置信、敏感或关系身份类内容必须等待用户确认或跳过");
+    expect(request.message).toContain("希望我怎么称呼你：未填写");
+    expect(request.message).toContain("记忆保存偏好：未填写");
+    expect(request.message).not.toContain("Markdown");
     await waitFor(() =>
       expect(window.agentDesktop?.setUiState).toHaveBeenCalledWith(
         "agent-pet.first-use-onboarding",
@@ -493,6 +510,40 @@ describe("App", () => {
       ),
     );
     expect(screen.queryByLabelText("首次使用引导")).not.toBeInTheDocument();
+  });
+
+  it("keeps first-use save preference optional instead of requiring a storage path", async () => {
+    const uiState = new Map<string, string>();
+    window.agentDesktop = {
+      platform: "win32",
+      versions: {},
+      getUiState: vi.fn((key: string) => uiState.get(key) ?? null),
+      setUiState: vi.fn((key: string, value: string | null) => {
+        if (value === null) {
+          uiState.delete(key);
+        } else {
+          uiState.set(key, value);
+        }
+      }),
+    };
+    window.location.hash = "#chat";
+
+    render(<App />);
+
+    expect(await screen.findByLabelText("首次使用引导")).toBeInTheDocument();
+    expect(screen.queryByText("保存位置")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("保存位置")).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("今天想让我从哪里陪你继续？"), {
+      target: { value: "先陪我接住今天这件事" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "开始第一次聊天" }));
+
+    await waitFor(() => expect(api.startChat).toHaveBeenCalledTimes(1));
+    const request = api.startChat.mock.calls[0][0];
+    expect(request.message).toContain("今天想让我从哪里陪你继续：先陪我接住今天这件事");
+    expect(request.message).toContain("记忆保存偏好：未填写");
+    expect(request.message).not.toContain("保存位置");
   });
 
   it("does not show first-use onboarding after completion is stored in Electron UI state", async () => {
@@ -527,19 +578,20 @@ describe("App", () => {
 
     render(<App />);
 
-    expect(await screen.findByLabelText("功能指挥中心")).toBeInTheDocument();
-    const commandCenter = within(screen.getByLabelText("功能指挥中心"));
-    expect(commandCenter.getByRole("button", { name: /Chat/ })).toHaveAttribute("data-stage-route", "chat");
-    expect(commandCenter.getByRole("button", { name: /Projects/ })).toHaveAttribute("data-stage-route", "agent");
-    expect(commandCenter.getByRole("button", { name: /Playback/ })).toHaveAttribute("data-stage-route", "memory");
-    expect(commandCenter.getByRole("button", { name: /Settings/ })).toHaveAttribute("data-stage-route", "settings");
-    expect(commandCenter.getByRole("button", { name: /知识整理/ })).toHaveAttribute("data-stage-route", "world");
+    expect(await screen.findByLabelText("陪伴入口")).toBeInTheDocument();
+    const companionEntry = within(screen.getByLabelText("陪伴入口"));
+    expect(companionEntry.getByRole("button", { name: /陪我聊聊/ })).toHaveAttribute("data-stage-route", "chat");
+    expect(companionEntry.getByRole("button", { name: /看看记忆/ })).toHaveAttribute("data-stage-route", "memory");
+    expect(companionEntry.getByRole("button", { name: /设置边界/ })).toHaveAttribute("data-stage-route", "settings");
+    fireEvent.click(companionEntry.getByText("更多能力"));
+    expect(companionEntry.getByRole("button", { name: /提醒和待办/ })).toHaveAttribute("data-stage-route", "agent");
+    expect(companionEntry.getByRole("button", { name: /整理资料/ })).toHaveAttribute("data-stage-route", "world");
   });
 
   it("renders core product routes as dedicated workspaces instead of chat-only surfaces", async () => {
     const routes = [
       { hash: "#agent", query: () => screen.findByLabelText("任务工作区") },
-      { hash: "#memory", query: () => screen.findByRole("heading", { name: "本周回放与月度复盘" }) },
+      { hash: "#memory", query: () => screen.findByRole("heading", { name: "我的记忆" }) },
       { hash: "#world", query: () => screen.findByRole("heading", { name: "知识整理" }) },
     ];
 

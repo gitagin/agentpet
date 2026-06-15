@@ -132,4 +132,20 @@ describe("ChatMessageList", () => {
     expect(screen.getByText("先给你结论。")).toBeInTheDocument();
     expect(screen.queryByRole("region", { name: "聊天进度" })).not.toBeInTheDocument();
   });
+
+  it("does not show assistant parenthetical stage directions", () => {
+    const messages: ChatMessage[] = [
+      {
+        id: "assistant-1",
+        role: "assistant",
+        content: "你好（微笑）我在这里 (thinking) 别担心",
+        status: "completed",
+      },
+    ];
+
+    render(<ChatMessageList messages={messages} />);
+
+    expect(screen.getByText("你好我在这里 别担心")).toBeInTheDocument();
+    expect(screen.queryByText(/微笑|thinking/)).not.toBeInTheDocument();
+  });
 });

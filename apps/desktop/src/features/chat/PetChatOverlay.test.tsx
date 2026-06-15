@@ -67,7 +67,7 @@ describe("PetChatOverlay", () => {
     const { onModeChange } = renderOverlay();
 
     expect(screen.getByRole("tablist", { name: "桌宠输入模式" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("tab", { name: "切换到新任务模式" }));
+    fireEvent.click(screen.getByRole("tab", { name: "切换到提醒" }));
 
     expect(onModeChange).toHaveBeenCalledWith("task");
   });
@@ -75,8 +75,8 @@ describe("PetChatOverlay", () => {
   it("uses the active mode placeholder and permits empty today review submission", () => {
     const { onSubmit } = renderOverlay({ mode: "review" });
 
-    expect(screen.getByPlaceholderText("留空可直接复盘今天...")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "发送今日复盘请求" }));
+    expect(screen.getByPlaceholderText("留空也可以直接回顾今天...")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "发送今日回顾请求" }));
 
     expect(onSubmit).toHaveBeenCalledTimes(1);
   });

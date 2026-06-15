@@ -85,7 +85,7 @@ export function ChatAgentActionSummary({
       </div>
       {artifacts.length === 0 ? (
         <p className="message-agent-action-empty-reason">
-          本轮没有创建任务、记忆、Wiki 页面或复盘报告。
+          本轮没有创建任务、记忆、知识页或复盘报告。
         </p>
       ) : (
         <>
@@ -239,9 +239,9 @@ function buildArtifactCards(
         id: `wiki-proposal-${proposal.id}`,
         kind: "wiki",
         tone: proposal.state === "failed" ? "failed" : proposal.state === "applied" ? "success" : "pending",
-        eyebrow: proposal.state === "applied" ? "已写入 Wiki 页面" : "Wiki 页面待确认",
-        title: proposal.title || path || "Wiki 页面",
-        summary: proposal.review_summary || proposal.summary || proposal.error || "有一条 Wiki 更新正在等待复核。",
+        eyebrow: proposal.state === "applied" ? "已写入知识页" : "知识页待确认",
+        title: proposal.title || path || "知识页",
+        summary: proposal.review_summary || proposal.summary || proposal.error || "有一条知识页更新正在等待复核。",
         meta: [formatWikiProposalState(proposal.state), proposal.proposal_type].filter(Boolean),
         path,
       });
@@ -288,7 +288,7 @@ function primaryArtifactAction(
     return { label: "打开记忆", onClick: onOpenMemory };
   }
   if (artifact.kind === "wiki" && onOpenWiki) {
-    return { label: "打开 Wiki 页面", onClick: () => onOpenWiki(artifact.path) };
+    return { label: "打开知识页", onClick: () => onOpenWiki(artifact.path) };
   }
   if (artifact.kind === "review" && onOpenReport) {
     return { label: "打开报告", onClick: () => onOpenReport(artifact.path) };
@@ -306,7 +306,7 @@ function actionEyebrow(action: AgentAction, kind: ArtifactKind): string {
   if (kind === "memory") {
     return action.decision === "ask" || action.status === "pending" ? "记忆待确认" : "已写入记忆";
   }
-  return action.decision === "ask" || action.status === "pending" ? "Wiki 页面待确认" : "已写入 Wiki 页面";
+  return action.decision === "ask" || action.status === "pending" ? "知识页待确认" : "已写入知识页";
 }
 
 function actionTone(action: AgentAction): ArtifactTone {

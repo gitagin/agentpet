@@ -81,6 +81,7 @@ import {
 } from "./features/tts";
 import { Live2DModelPanel } from "./features/live2d/Live2DModelPanel";
 import { live2dModelSelectionStorageKey } from "./features/live2d/live2dConstants";
+import { resolveLive2DReplyActionKey } from "./features/live2d/live2dReplyActions";
 import { useLive2D } from "./features/live2d/useLive2D";
 import { VisibleContinuityPanel } from "./features/continuity";
 import { fetchSseStream } from "./services/sse";
@@ -226,95 +227,115 @@ function buildPetShortcutButtonStyles(): CSSProperties[] {
 
 type FirstUseOnboardingDraft = {
   currentFocus: string;
+  preferredName: string;
   longTermContext: string;
   savePreference: string;
 };
 
 function buildFirstUseOnboardingMessage(draft: FirstUseOnboardingDraft): string | null {
   const currentFocus = draft.currentFocus.trim();
+  const preferredName = draft.preferredName.trim();
   const longTermContext = draft.longTermContext.trim();
   const savePreference = draft.savePreference.trim();
-  if (!currentFocus && !longTermContext && !savePreference) {
+  if (!currentFocus) {
     return null;
   }
   return [
-    "这是我的首次使用引导回答。请先用自然语言告诉我今天可以从哪里继续，再按现有自动整理策略判断哪些内容值得跟踪；如果没有可保存内容，请明确说明已跳过以及原因。",
+    "这是我的首次使用引导回答。请先自然回应用户，接住用户今天想继续的事，不要先要求配置系统。",
+    "记忆边界：只沉淀高价值、非敏感、可复用的长期记忆；低置信、敏感或关系身份类内容必须等待用户确认或跳过；不要编造或确认用户没有明确表达的内容。",
     "",
-    `最近主要在忙什么：${currentFocus || "未填写"}`,
-    `希望你帮我跟踪什么：${longTermContext || "未填写"}`,
-    `记忆保存或导出位置偏好：${savePreference || "未填写"}`,
+    `今天想让我从哪里陪你继续：${currentFocus}`,
+    `希望我怎么称呼你：${preferredName || "未填写"}`,
+    `以后希望我多留意什么：${longTermContext || "未填写"}`,
+    `记忆保存偏好：${savePreference || "未填写"}`,
   ].join("\n");
 }
 
 function FirstUseOnboardingCard({
   currentFocus,
+  preferredName,
   longTermContext,
   savePreference,
   connected,
   streaming,
   submitting,
-  hasVaultInitialized,
   onCurrentFocusChange,
+  onPreferredNameChange,
   onLongTermContextChange,
   onSavePreferenceChange,
   onSubmit,
   onSkip,
 }: {
   currentFocus: string;
+  preferredName: string;
   longTermContext: string;
   savePreference: string;
   connected: boolean;
   streaming: boolean;
   submitting: boolean;
-  hasVaultInitialized: boolean;
   onCurrentFocusChange: (value: string) => void;
+  onPreferredNameChange: (value: string) => void;
   onLongTermContextChange: (value: string) => void;
   onSavePreferenceChange: (value: string) => void;
   onSubmit: (event: FormEvent) => void;
   onSkip: () => void;
 }) {
-  const hasAnyAnswer = Boolean(currentFocus.trim() || longTermContext.trim() || savePreference.trim());
+  const hasRequiredAnswer = Boolean(currentFocus.trim());
   return (
     <section className="first-use-onboarding" aria-label="首次使用引导">
       <div className="section-heading">
-        <strong>今天从这里继续</strong>
+        <strong>今天想让我从哪里陪你继续？</strong>
         <span>
-          只要告诉我最近在推进什么、要我帮你盯住什么；保存位置可以之后再设。
+          先告诉我一句现在最想接上的事；称呼、长期留意内容和记忆偏好都可以之后再补。
         </span>
       </div>
       <form className="first-use-onboarding-form" onSubmit={onSubmit}>
         <label>
-          <span>最近主要在忙什么？</span>
+          <span>今天想让我从哪里陪你继续？</span>
           <textarea
             rows={2}
             value={currentFocus}
             onChange={(event) => onCurrentFocusChange(event.target.value)}
-            placeholder="例如：收尾一个桌面应用、准备考试、整理本周计划"
+            placeholder="例如：我今天有点累，想把昨天没说完的事接上"
+            required
             disabled={submitting || streaming}
           />
         </label>
-        <label>
-          <span>要我帮你跟踪什么？</span>
-          <textarea
-            rows={2}
-            value={longTermContext}
-            onChange={(event) => onLongTermContextChange(event.target.value)}
-            placeholder="例如：项目状态、待办承诺、复盘提醒、重要偏好"
-            disabled={submitting || streaming}
-          />
-        </label>
-        <label>
-          <span>保存或导出位置（可选）</span>
-          <textarea
-            rows={2}
-            value={savePreference}
-            onChange={(event) => onSavePreferenceChange(event.target.value)}
-            placeholder="例如：暂时只保存在本机；之后再导出到 Markdown 文件夹"
-            disabled={submitting || streaming}
-          />
-        </label>
+        <details className="first-use-onboarding-extra">
+          <summary>可选补充</summary>
+          <label>
+            <span>怎么称呼你（可选）</span>
+            <textarea
+              rows={1}
+              value={preferredName}
+              onChange={(event) => onPreferredNameChange(event.target.value)}
+              placeholder="例如：叫我小林"
+              disabled={submitting || streaming}
+            />
+          </label>
+          <label>
+            <span>以后希望我多留意什么（可选）</span>
+            <textarea
+              rows={2}
+              value={longTermContext}
+              onChange={(event) => onLongTermContextChange(event.target.value)}
+              placeholder="例如：重要承诺、长期目标、容易忘的偏好"
+              disabled={submitting || streaming}
+            />
+          </label>
+          <label>
+            <span>记忆保存偏好（可选）</span>
+            <textarea
+              rows={2}
+              value={savePreference}
+              onChange={(event) => onSavePreferenceChange(event.target.value)}
+              placeholder="例如：先留在本机，以后需要时再调整"
+              disabled={submitting || streaming}
+            />
+          </label>
+        </details>
         <div className="button-row">
-          <button type="submit" disabled={!connected || streaming || submitting || !hasAnyAnswer}>
+          <button type="submit" disabled={!connected || streaming || submitting || !hasRequiredAnswer}>
             {submitting ? <Loader2 className="spin" size={16} /> : <Send size={16} />}
             {submitting ? "正在开始" : "开始第一次聊天"}
           </button>
@@ -323,9 +344,7 @@ function FirstUseOnboardingCard({
           </button>
         </div>
         <p className="field-note">
-          {hasVaultInitialized
-            ? "当前已有保存位置；低风险整理会按设置记录，高风险或敏感内容仍需确认或会被跳过。"
-            : "没有设置保存位置也可以先聊；我不会偷偷绑定真实文件夹。"}
+          记下的内容之后可以在记忆里查看和撤回；敏感、不确定或关系身份类内容会先确认或跳过。
         </p>
       </form>
     </section>
@@ -360,6 +379,7 @@ function App() {
   const [petEntryHintStatus, setPetEntryHintStatus] = useState<PetEntryHintStatus>("unknown");
   const [firstUseOnboardingDraft, setFirstUseOnboardingDraft] = useState({
     currentFocus: "",
+    preferredName: "",
     longTermContext: "",
     savePreference: "",
   });
@@ -1126,11 +1146,11 @@ function App() {
     }
     const message = buildFirstUseOnboardingMessage(firstUseOnboardingDraft);
     if (!message) {
-      setNotice({ tone: "error", message: "请至少填写一个首次使用问题，再开始第一次整理。" });
+      setNotice({ tone: "error", message: "请先告诉我今天想从哪里陪你继续。" });
       return;
     }
     setSubmittingFirstUseOnboarding(true);
-    const completed = await sendChatText(message, () => undefined, { displayText: "首次偏好整理" });
+    const completed = await sendChatText(message, () => undefined, { displayText: firstUseOnboardingDraft.currentFocus });
     setSubmittingFirstUseOnboarding(false);
     if (!completed) {
       return;
@@ -1139,7 +1159,7 @@ function App() {
     setFirstUseOnboardingStatus("completed");
     setNotice({
       tone: "success",
-      message: "首次引导已完成；本轮整理结果会显示在聊天消息和最近自动整理活动中。",
+      message: "已经开始陪你接上这件事；之后可以在记忆里查看和撤回我记下的内容。",
     });
   }
 
@@ -1230,7 +1250,7 @@ function App() {
 
   async function revertAgentAction(action: AgentAction) {
     const confirmed = window.confirm(
-      `撤销“${action.title}”会通过后端恢复该活动记录的 Markdown 快照。确定继续吗？`,
+      `撤销“${action.title}”会通过本机服务恢复该活动记录的文件快照。确定继续吗？`,
     );
     if (!confirmed) {
       return;
@@ -1513,8 +1533,8 @@ function App() {
         tone: "success",
         message:
           action === "confirm"
-            ? "连续性整理项已确认，已进入运行时连续性状态；未写入 Markdown 文件。"
-            : "连续性整理项已拒绝，不会进入提示词或 Live2D 状态。",
+            ? "连续性整理项已确认，已进入本机陪伴状态；未写入本地文件。"
+            : "连续性整理项已拒绝，不会进入陪伴提示或角色状态。",
       });
     } catch (error) {
       setNotice({ tone: "error", message: describeError(error, "连续性整理项操作失败") });
@@ -1529,7 +1549,7 @@ function App() {
 
   async function resetLocalState() {
     const confirmed = window.confirm(
-      "这会清空本机桌宠的聊天记录、长期记忆、连续性状态、任务、保存位置绑定、索引缓存、模型配置和本地密钥。不会删除你选择的 Markdown 文件。确定要重置为初始化状态吗？",
+      "这会清空本机桌宠的聊天记录、长期记忆、连续性状态、任务、保存位置绑定、索引缓存、模型配置和本地密钥。不会删除你选择的本地文件。确定要重置为初始化状态吗？",
     );
     if (!confirmed) {
       return;
@@ -1699,7 +1719,7 @@ function App() {
         ? `最近索引 ${formatTaskStatus(lastIndexRun.status)}，文件 ${lastIndexRun.filesIndexed ?? 0}/${lastIndexRun.filesSeen ?? 0}`
         : hasVaultInitialized
           ? "保存位置已设置，下一步刷新本地索引。"
-          : "可选：设置 Markdown 导出文件夹，方便之后备份和复盘。",
+          : "可选：设置本地导出文件夹，方便之后备份和复盘。",
     },
     {
       label: "助手运行事件",
@@ -1756,6 +1776,7 @@ function App() {
     continuityState,
     continuitySignal: activeContinuitySignal,
   });
+  const live2dReplyActionKey = hasConnection ? resolveLive2DReplyActionKey(latestAssistantMessage) : null;
   const live2dStageCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const live2dPetCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const live2dPanelCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -1770,13 +1791,14 @@ function App() {
   const firstUseOnboardingPanel = showFirstUseOnboarding ? (
     <FirstUseOnboardingCard
       currentFocus={firstUseOnboardingDraft.currentFocus}
+      preferredName={firstUseOnboardingDraft.preferredName}
       longTermContext={firstUseOnboardingDraft.longTermContext}
       savePreference={firstUseOnboardingDraft.savePreference}
       connected={hasConnection}
       streaming={streaming}
       submitting={submittingFirstUseOnboarding}
-      hasVaultInitialized={hasVaultInitialized}
       onCurrentFocusChange={(value) => setFirstUseOnboardingDraft((current) => ({ ...current, currentFocus: value }))}
+      onPreferredNameChange={(value) => setFirstUseOnboardingDraft((current) => ({ ...current, preferredName: value }))}
       onLongTermContextChange={(value) => setFirstUseOnboardingDraft((current) => ({ ...current, longTermContext: value }))}
       onSavePreferenceChange={(value) => setFirstUseOnboardingDraft((current) => ({ ...current, savePreference: value }))}
       onSubmit={submitFirstUseOnboarding}
@@ -1813,7 +1835,7 @@ function App() {
           </button>
         </div>
         <p className="field-note error">
-          仅清理本机应用状态和本地凭据引用，不删除已选择的 Markdown 文件夹。打包发版前可用它确认客户首次启动不会带开发测试记录。
+          仅清理本机应用状态和本地凭据引用，不删除已选择的本地文件夹。打包发版前可用它确认客户首次启动不会带开发测试记录。
         </p>
       </section>
     </Panel>
@@ -2164,6 +2186,7 @@ function App() {
           canvasRef={live2dPetCanvasRef}
           variant="pet"
           speaking={ttsSpeaking}
+          actionKeyOverride={live2dReplyActionKey}
           petInteractions={{
             onPointerDown: beginPetDrag,
             onPointerMove: movePetDrag,
@@ -2260,6 +2283,7 @@ function App() {
           runtime={live2dRuntime}
           canvasRef={live2dPanelCanvasRef}
           speaking={ttsActive}
+          actionKeyOverride={live2dReplyActionKey}
         />
 
         <VisibleContinuityPanel api={api} className="control-continuity-panel" />
@@ -2370,7 +2394,7 @@ function App() {
           <section className="stack" aria-label="连续性状态">
             <div className="section-heading">
               <strong>关系与状态连续性</strong>
-              <span>确认后只进入本机运行时状态；不会写入 Markdown 文件。</span>
+              <span>确认后只进入本机陪伴状态；不会写入本地文件。</span>
             </div>
             <div className="button-row">
               <button type="button" className="secondary" onClick={() => void loadContinuity()} disabled={loadingContinuity}>
@@ -2417,7 +2441,7 @@ function App() {
         <details className="control-secondary-nav">
           <summary>
             <strong>高级管理与诊断</strong>
-            <span>模型、连接、Wiki、设置和 Live2D 资源仍可在这里展开，也可用底部导航进入独立窗口。</span>
+            <span>模型、连接、知识整理、设置和角色资源仍可在这里展开，也可用底部导航进入独立窗口。</span>
           </summary>
           <div className="control-secondary-grid">
             <Live2DModelPanel
@@ -2497,7 +2521,7 @@ function normalizeContinuitySignal(payload: Record<string, unknown> | null): Cha
     return null;
   }
   const intensity = pickPayloadString(payload, ["intensity"]) || "medium";
-  const displayHint = pickPayloadString(payload, ["display_hint"]) || "只作为运行时陪伴提示；不会写入 Markdown 文件。";
+  const displayHint = pickPayloadString(payload, ["display_hint"]) || "只作为本机陪伴提示；不会写入本地文件。";
   const keys = Array.isArray(payload.source_state_keys)
     ? payload.source_state_keys.filter((value): value is string => typeof value === "string")
     : [];
@@ -2591,9 +2615,9 @@ function getSearchEmptyNotice(
     ["completed", "done", "indexed", "success"].includes(job.status.toLowerCase()),
   );
   if (lastIndexRun || recentCompletedIndex) {
-    return `没有找到“${query}”的结果。最近已有索引记录，请换一个关键词，或确认目标 Markdown 已在当前知识库中。`;
+    return `没有找到“${query}”的结果。最近已有整理记录，请换一个关键词，或确认目标本地文件已在当前资料文件夹中。`;
   }
-  return `没有找到“${query}”的结果。当前页面还没有索引完成记录，请先初始化知识库或点击“索引”后再搜索。`;
+  return `没有找到“${query}”的结果。当前页面还没有整理完成记录，请先设置资料文件夹或点击“刷新”后再搜索。`;
 }
 
 export default App;

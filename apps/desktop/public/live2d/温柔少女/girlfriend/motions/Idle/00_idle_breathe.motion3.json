@@ -1,0 +1,126 @@
+{
+  "Version": 3,
+  "Meta": {
+    "Duration": 4.8,
+    "Fps": 30,
+    "Loop": true,
+    "AreBeziersRestricted": true,
+    "CurveCount": 7,
+    "TotalSegmentCount": 18,
+    "TotalPointCount": 25,
+    "UserDataCount": 0,
+    "TotalUserDataSize": 0
+  },
+  "Curves": [
+    {
+      "Target": "Parameter",
+      "Id": "ParamAngleX",
+      "Segments": [
+        0,
+        -2,
+        0,
+        1.2,
+        2,
+        0,
+        2.4,
+        -1,
+        0,
+        3.6,
+        2,
+        0,
+        4.8,
+        -2
+      ]
+    },
+    {
+      "Target": "Parameter",
+      "Id": "ParamAngleY",
+      "Segments": [
+        0,
+        1,
+        0,
+        2.4,
+        -1,
+        0,
+        4.8,
+        1
+      ]
+    },
+    {
+      "Target": "Parameter",
+      "Id": "ParamAngleZ",
+      "Segments": [
+        0,
+        -1.5,
+        0,
+        2.4,
+        1.5,
+        0,
+        4.8,
+        -1.5
+      ]
+    },
+    {
+      "Target": "Parameter",
+      "Id": "ParamBodyAngleX",
+      "Segments": [
+        0,
+        -1,
+        0,
+        2.4,
+        1,
+        0,
+        4.8,
+        -1
+      ]
+    },
+    {
+      "Target": "Parameter",
+      "Id": "ParamBreath",
+      "Segments": [
+        0,
+        0.25,
+        0,
+        1.2,
+        0.85,
+        0,
+        2.4,
+        0.35,
+        0,
+        3.6,
+        0.75,
+        0,
+        4.8,
+        0.25
+      ]
+    },
+    {
+      "Target": "Parameter",
+      "Id": "ParamHairFront",
+      "Segments": [
+        0,
+        -0.2,
+        0,
+        2.4,
+        0.4,
+        0,
+        4.8,
+        -0.2
+      ]
+    },
+    {
+      "Target": "Parameter",
+      "Id": "ParamHairSide",
+      "Segments": [
+        0,
+        0.2,
+        0,
+        2.4,
+        -0.4,
+        0,
+        4.8,
+        0.2
+      ]
+    }
+  ]
+}

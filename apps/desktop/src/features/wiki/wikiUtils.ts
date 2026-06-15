@@ -255,7 +255,7 @@ export function formatWikiPreview(preview: WikiIngestPreviewResponse): string {
 
 export function titleFromRelativePath(relativePath: string): string {
   const filename = relativePath.split(/[\\/]/).pop() || relativePath;
-  return filename.replace(/\.md$/i, "") || "Wiki 来源";
+  return filename.replace(/\.md$/i, "") || "知识页来源";
 }
 
 export function formatWikiDiagnosticKind(kind: string): string {
@@ -293,7 +293,7 @@ export function getChatWikiApplyNoticeTone(response: ChatWikiApplyResponse): "in
 
 export function formatChatWikiApplyNotice(response: ChatWikiApplyResponse): string {
   if ("page_results" in response) {
-    return `Vault 确认项已写入：写入 ${response.pages_written}/${response.page_results.length} 个页面。`;
+    return `知识整理确认项已写入：写入 ${response.pages_written}/${response.page_results.length} 个页面。`;
   }
   if ("lint" in response) {
     return `查询归档已写入：${response.page.relative_path}，引用 ${response.lint.normalized_citations.length} 条。`;

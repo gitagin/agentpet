@@ -103,7 +103,7 @@ export function AgentConfigForm({
                 <input
                   value={draft.api_key}
                   onChange={(event) => onUpdateDraft(draft.agent_id, { api_key: event.target.value })}
-                  placeholder={draft.masked || "请输入 API 密钥"}
+                  placeholder={draft.masked || "请输入密钥"}
                   type="password"
                   disabled={usingGlobalModel}
                 />

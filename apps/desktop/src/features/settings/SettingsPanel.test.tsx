@@ -155,8 +155,8 @@ describe("SettingsPanel", () => {
     expect(onSelectVaultDirectory).toHaveBeenCalledTimes(1);
     expect(onRefreshSettings).toHaveBeenCalledTimes(1);
     expect(screen.getByText("保存与导出位置")).toBeInTheDocument();
-    expect(screen.getByText("可选：选择一个本机 Markdown 文件夹，用来保存长期记忆和复盘报告。")).toBeInTheDocument();
-    expect(screen.getByText(/可直接用 Obsidian 打开/)).toBeInTheDocument();
+    expect(screen.getByText("可选：选择一个本机文件夹，用来保存长期记忆和复盘报告。")).toBeInTheDocument();
+    expect(screen.getByText(/可直接用常见笔记软件打开/)).toBeInTheDocument();
   });
 
   it("keeps specialist model configuration behind advanced outcome-oriented settings", () => {
@@ -232,7 +232,7 @@ describe("SettingsPanel", () => {
     );
   });
 
-  it("collects custom TTS API fields without storing the key in the draft", () => {
+  it("collects custom voice service fields without storing the key in the draft", () => {
     const { onUpdateTtsSettingsDraft, onSaveTtsSettings } = renderSettingsPanel({
       provider: "custom-http",
       base_url: "https://tts.example.test/synthesize",
@@ -241,7 +241,7 @@ describe("SettingsPanel", () => {
     });
     const ttsRegion = within(screen.getByRole("region", { name: "语音朗读设置" }));
 
-    fireEvent.change(ttsRegion.getByLabelText("TTS API 地址"), {
+    fireEvent.change(ttsRegion.getByLabelText("语音服务地址"), {
       target: { value: "https://tts.example.test/v2" },
     });
     expect(onUpdateTtsSettingsDraft).toHaveBeenCalledWith({
@@ -254,10 +254,10 @@ describe("SettingsPanel", () => {
     fireEvent.change(ttsRegion.getByLabelText("音频格式"), { target: { value: "wav" } });
     expect(onUpdateTtsSettingsDraft).toHaveBeenCalledWith({ response_format: "wav" });
 
-    fireEvent.click(ttsRegion.getByLabelText("TTS API 需要密钥"));
+    fireEvent.click(ttsRegion.getByLabelText("语音服务需要密钥"));
     expect(onUpdateTtsSettingsDraft).toHaveBeenCalledWith({ requires_api_key: false });
 
-    fireEvent.change(ttsRegion.getByLabelText("TTS API Key"), { target: { value: "secret-key" } });
+    fireEvent.change(ttsRegion.getByLabelText("语音服务密钥"), { target: { value: "secret-key" } });
     expect(onUpdateTtsSettingsDraft).not.toHaveBeenCalledWith(expect.objectContaining({ api_key: "secret-key" }));
 
     fireEvent.click(ttsRegion.getByRole("button", { name: /保存语音/ }));
@@ -281,7 +281,7 @@ describe("SettingsPanel", () => {
       }),
     );
 
-    expect(screen.getByText("语音未配置：请保存 TTS API Key。")).toBeInTheDocument();
+    expect(screen.getByText("语音未配置：请保存语音服务密钥。")).toBeInTheDocument();
     expect(screen.queryByText(/secret-key/)).not.toBeInTheDocument();
   });
 });

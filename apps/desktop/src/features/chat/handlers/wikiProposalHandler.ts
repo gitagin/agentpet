@@ -12,21 +12,21 @@ export function wikiProposalHandler({ messageId, sseEvent, payload, context }: S
     upsertChatWikiProposal(messageId, proposal);
   }
   appendChatEvent(messageId, {
-    label: "Vault 维护确认项",
+    label: "知识整理确认项",
     detail,
     tone: "info",
   });
   if (!petChat.replyStartedRef.current) {
     petChat.showBubble({
-      title: "收到 Vault 维护确认项",
+      title: "收到知识整理确认项",
       message: detail,
       tone: "tool",
     });
     petChat.scheduleStreamWatchdog(
       "还在想",
-      "Vault 维护确认项已展示，这次需要多等一会儿。",
+      "知识整理确认项已展示，这次需要多等一会儿。",
       14000,
-      () => petChat.failStream(messageId, "没有等到回复", "Vault 维护确认项已展示，但这次没有等到可显示的回复。"),
+      () => petChat.failStream(messageId, "没有等到回复", "知识整理确认项已展示，但这次没有等到可显示的回复。"),
     );
   }
 }

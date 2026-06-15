@@ -112,8 +112,8 @@ export function useMemory({ api, onNotice, getSearchEmptyNotice, onAgentActionsR
         tone: "success",
         message:
           action === "confirm"
-            ? `记忆整理项已确认写入${response.written_path ? `：${response.written_path}` : ""}${response.index_job_id ? `；索引任务 ${response.index_job_id}` : ""}。`
-            : "记忆整理项已拒绝，目标 Markdown 未写入。",
+            ? `记忆整理项已确认写入${response.written_path ? `：${response.written_path}` : ""}。`
+            : "记忆整理项已拒绝，目标文件未写入。",
       });
       onAgentActionsRefresh?.();
     } catch (error) {

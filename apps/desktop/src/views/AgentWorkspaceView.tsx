@@ -498,7 +498,7 @@ export default function AgentWorkspaceView({ api }: AgentWorkspaceViewProps) {
       eyebrow="本地执行"
       title="任务"
       description="直接创建提醒、管理任务卡片，并保留执行步骤和日志作为辅助细节。"
-      activeTab="任务"
+      activeTab="今日"
     >
       <div className="task-workspace-grid" aria-label="任务工作区">
         <Panel icon={<PlusCircle size={18} />} title="创建任务" className="feature-window-panel task-create-panel">

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from app.models.api import MemorySearchResponse
+from app.models.api import MemorySearchResponse, MemorySearchResult
 from app.models.enums import AgentId
 from app.services.memory_permissions import (
     MemoryPromptSections,
@@ -194,7 +194,7 @@ def _grounded_response_from_citations(results) -> str:
     snippets = [
         result.snippet.strip()
         for result in results[:3]
-        if result.snippet.strip() and result.recall_permissions.can_answer_context
+        if _can_use_result_as_answer_context(result)
     ]
     if not snippets:
         return _local_knowledge_not_found_response()
@@ -219,14 +219,15 @@ def _message_with_citation_context(state: AgentState, *, sections: MemoryPromptS
     source_instruction = (
         "这些只是聊天日记里的弱记录，不能称为已经确认的长期记忆；如果据此回答，必须明确说还没沉淀为长期记忆。"
         if source_scope == "daily_chat"
-        else f"可以概括为我翻到的{source_label}显示，并在不确定时主动说明。"
+        else f"只能概括为我翻到的{source_label}显示，并在不确定时主动说明。"
     )
     return (
         f"用户问题：{state.user_message}\n\n"
         f"上下文范围：{source_scope}（{source_label}）\n"
         f"回答风格：{answer_style}\n"
         f"已检索到的上下文片段：\n{prompt_sections}\n\n"
-        "请用桌宠口吻给出简短自然回答。不要逐条展开引用路径或原始 snippet；"
+        "请以本地长期记忆陪伴体的口吻给出简短自然回答。不要逐条展开引用路径或原始 snippet；"
+        "不要把候选、待确认、被拒绝、隔离、封存、标错或已撤回内容说成已确认记忆；"
         f"{source_instruction}"
     )
 
@@ -254,6 +255,27 @@ def _recall_prompt_sections_text(sections: MemoryPromptSections) -> str:
             + "\n".join(sections.action_suggestion_lines)
         )
     return "\n\n".join(blocks) if blocks else "No recalled item has permission to enter the reply prompt."
+
+
+def _can_use_result_as_answer_context(result: MemorySearchResult) -> bool:
+    if not result.snippet.strip() or not result.recall_permissions.can_answer_context:
+        return False
+    inactive_statuses = {
+        "candidate",
+        "pending",
+        "quarantined",
+        "rejected",
+        "archived",
+        "forgotten",
+        "sensitive_blocked",
+        "wrong",
+        "superseded",
+        "reverted",
+    }
+    if result.lifecycle_status and result.lifecycle_status.casefold() in inactive_statuses:
+        return False
+    snippet = result.snippet.casefold()
+    return not any(f"status={status}" in snippet for status in inactive_statuses)
 
 
 def _model_for_chat(services: AgentRuntimeServices, agent_id: AgentId):

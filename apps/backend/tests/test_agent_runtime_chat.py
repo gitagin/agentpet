@@ -21,6 +21,7 @@ from tests.agent_runtime_fakes import (
 )
 
 from app.agents import AgentRuntimeServices, LangGraphAgentRuntime
+from app.models.api import MemoryRecallPermissions, MemorySearchResponse, MemorySearchResult
 from app.services.chat_model import AgentId, AgentModelRegistry
 
 
@@ -39,6 +40,38 @@ class StreamingChatModel:
         for chunk in self.chunks:
             await asyncio.sleep(0)
             yield chunk
+
+
+class CandidateOnlyRetrieval:
+    def __init__(self) -> None:
+        self.calls = []
+
+    async def search(
+        self,
+        query: str,
+        top_k: int = 5,
+        mode: str = "fts",
+        source_scope: str = "all",
+    ) -> MemorySearchResponse:
+        self.calls.append((query, top_k, mode, source_scope))
+        return MemorySearchResponse(
+            results=[
+                MemorySearchResult(
+                    note_id="candidate-1",
+                    chunk_id="candidate-1",
+                    relative_path="MemoryGraph/LongTerm",
+                    title="待确认记忆",
+                    heading="preference",
+                    snippet="用户喜欢蓝莓 (status=candidate)",
+                    score=0.92,
+                    source_scope=source_scope,
+                    retrieval_mode="graph_activation",
+                    recall_permissions=MemoryRecallPermissions(can_answer_context=True),
+                    lifecycle_status="candidate",
+                    candidate_id="candidate-1",
+                )
+            ]
+        )
 
 
 def test_langgraph_runtime_streams_plain_chat_tokens_when_model_supports_streaming() -> None:
@@ -71,12 +104,35 @@ def test_langgraph_runtime_uses_configured_chat_model_for_plain_chat() -> None:
     chat_model, events = asyncio.run(run_case())
 
     assert chat_model.calls[0][0] == "你好"
-    assert "桌宠伙伴" in chat_model.calls[0][1]
+    assert "本地长期记忆陪伴体" in chat_model.calls[0][1]
+    assert "温和、稳定、有分寸的中文" in chat_model.calls[0][1]
+    assert "只有在相关时才引用检索到的记忆" in chat_model.calls[0][1]
+    assert "候选、待确认、被拒绝、隔离" in chat_model.calls[0][1]
+    assert "不要编造用户过去说过的话" in chat_model.calls[0][1]
+    assert "我可能记错了" in chat_model.calls[0][1]
+    assert "健康、法律、金钱、关系危机" in chat_model.calls[0][1]
     assert "避免客服式或工具式开场" in chat_model.calls[0][1]
     assert "有什么可以帮你" in chat_model.calls[0][1]
     assert_langgraph_events(events, ["token", "done"])
     assert first_event(events, "token").text == "LangGraph 聊天回复"
     assert events[-1].text == "LangGraph 聊天回复"
+
+
+def test_langgraph_runtime_does_not_fabricate_memory_when_no_context_exists() -> None:
+    async def run_case():
+        runtime = LangGraphAgentRuntime(AgentRuntimeServices())
+
+        events = [event async for event in runtime.run(make_state("你还记得我喜欢什么吗？"))]
+
+        return events
+
+    events = asyncio.run(run_case())
+
+    token_text = "".join(event.text for event in events if event.event == "token")
+    assert "没有找到能引用的记录" in token_text
+    assert "记得你喜欢" not in token_text
+    assert "你喜欢" not in token_text
+    assert_langgraph_events(events, ["token", "done"])
 
 
 def test_langgraph_runtime_injects_confirmed_continuity_context() -> None:
@@ -333,6 +389,32 @@ def test_langgraph_chat_agent_retrieves_memory_route_before_default_negotiation_
     assert any(event.event == "token" for event in events)
     token_text = "".join(event.text for event in events if event.event == "token")
     assert "Ada prefers concise status updates." in token_text
+
+
+def test_langgraph_chat_agent_does_not_treat_candidate_memory_as_confirmed() -> None:
+    async def run_case():
+        retrieval = CandidateOnlyRetrieval()
+        runtime = LangGraphAgentRuntime(
+            AgentRuntimeServices(
+                retrieval=retrieval,
+                automation_settings=SimpleNamespace(use_negotiation=False),
+            )
+        )
+
+        events = [event async for event in runtime.run(make_state("你记得我喜欢什么水果吗？"))]
+
+        return retrieval, events
+
+    retrieval, events = asyncio.run(run_case())
+
+    assert retrieval.calls
+    token_text = "".join(event.text for event in events if event.event == "token")
+    assert "蓝莓" not in token_text
+    assert "确认" not in token_text
+    assert "没有找到能引用的记录" in token_text
+    event_names = [event.event for event in events if event.event != "status"]
+    assert event_names[-2:] == ["token", "done"]
+    assert "citation" in event_names
 
 
 def test_langgraph_chat_agent_can_surface_wiki_manager_for_obsidian_note_request() -> None:

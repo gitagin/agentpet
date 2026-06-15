@@ -100,19 +100,19 @@ export function WikiBrowserPanel({
   const readinessState = !vaultConfigured
     ? {
         tone: "error",
-        title: "未绑定 Vault",
-        description: "请先在设置中绑定知识库，之后才能写入 Wiki 页面。",
+        title: "未设置本机文件夹",
+        description: "请先在设置中选择保存位置，之后才能写入知识页。",
       }
     : indexRequired
       ? {
           tone: "warning",
           title: "需要索引",
-          description: "索引完成后刷新状态，最近生成的 Wiki 页面会显示为卡片。",
+          description: "整理完成后刷新状态，最近生成的知识页会显示为卡片。",
         }
       : noWikiPages
         ? {
             tone: "empty",
-            title: "还没有 Wiki 页面",
+            title: "还没有知识页",
             description: "从上方整理器粘贴一段材料，预览后即可生成第一张卡片。",
           }
         : null;
@@ -125,11 +125,11 @@ export function WikiBrowserPanel({
         : "刷新状态后会显示最近整理出的页面。";
 
   return (
-    <Panel id="wiki-browser-panel" icon={<BookOpen size={18} />} title="最近整理出的 Wiki 页面">
+    <Panel id="wiki-browser-panel" icon={<BookOpen size={18} />} title="最近整理出的知识页">
       <div className="wiki-browser-shell">
-        <section className="wiki-recent-output" aria-label="最近 Wiki 页面">
+        <section className="wiki-recent-output" aria-label="最近知识页">
           <div className="section-heading">
-            <strong>最近生成的 Wiki 页面</strong>
+            <strong>最近生成的知识页</strong>
             <span>{recentSummary}</span>
           </div>
           {readinessState ? (
@@ -181,7 +181,7 @@ export function WikiBrowserPanel({
                 </article>
               ))
             ) : (
-              <p className="field-note">还没有可展示的 Wiki 页面。请从上方整理器创建或更新一个页面。</p>
+              <p className="field-note">还没有可展示的知识页。请从上方整理器创建或更新一个页面。</p>
             )}
           </div>
         </section>
@@ -194,7 +194,7 @@ export function WikiBrowserPanel({
           <section className="wiki-browser-hero" aria-label="知识库准备状态">
             <dl className="details wiki-browser-status-grid">
               <div>
-                <dt>Vault</dt>
+                <dt>本机文件夹</dt>
                 <dd>{vaultConfigured ? "已绑定" : "未绑定"}</dd>
               </div>
               <div>

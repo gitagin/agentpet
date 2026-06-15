@@ -42,7 +42,7 @@ export function VaultBindingSection({
     <form className="stack separated settings-card" onSubmit={onBindVault}>
       <div className="section-heading">
         <strong>保存与导出位置</strong>
-        <span>可选：选择一个本机 Markdown 文件夹，用来保存长期记忆和复盘报告。</span>
+        <span>可选：选择一个本机文件夹，用来保存长期记忆和复盘报告。</span>
       </div>
       <label>
         <span>文件夹路径</span>
@@ -77,7 +77,7 @@ export function VaultBindingSection({
       <section className="vault-summary-panel" aria-label="保存位置本地数据概览">
         <div className="section-heading compact">
           <strong>本地保存概览</strong>
-          <span>{configured ? "已设置，数据保存在本机 Markdown 文件夹。" : "未设置，当前只使用应用本机状态。"}</span>
+          <span>{configured ? "已设置，数据保存在本机文件夹。" : "未设置，当前只使用应用本机状态。"}</span>
         </div>
         <dl className="details vault-summary-grid">
           <div>
@@ -93,11 +93,11 @@ export function VaultBindingSection({
             <dd>{latestIndexedAt}</dd>
           </div>
           <div>
-            <dt>Markdown</dt>
+            <dt>本机文件</dt>
             <dd>{markdownCount}</dd>
           </div>
           <div>
-            <dt>Wiki</dt>
+            <dt>知识页</dt>
             <dd>{wikiPageCount}</dd>
           </div>
           <div>
@@ -108,7 +108,7 @@ export function VaultBindingSection({
         <div className="vault-backup-preview" aria-label="导出和备份说明">
           <strong>导出/备份预览</strong>
           <p>
-            保存位置是普通 Markdown 文件夹，可直接用 Obsidian 打开。备份时复制整个文件夹即可；本页只展示说明，不执行批量复制、移动或覆盖写入。
+            保存位置是普通本地文本文件夹，可直接用常见笔记软件打开。备份时复制整个文件夹即可；本页只展示说明，不执行批量复制、移动或覆盖写入。
           </p>
         </div>
       </section>

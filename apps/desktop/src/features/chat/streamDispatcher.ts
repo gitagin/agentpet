@@ -199,10 +199,14 @@ function applyTextOrCitationEvent({ messageId, sseEvent, payload, context }: Str
     : citation
       ? [citation]
       : undefined;
+  let visibleReplyText: string | null = null;
   if (token) {
-    petChat.replyStartedRef.current = true;
-    petChat.assistantReplyRef.current = `${petChat.assistantReplyRef.current}${token}`;
-    petChat.setReplyPagesFromText(petChat.assistantReplyRef.current, { preserveCurrentPage: true });
+    petChat.appendAssistantReplyText(token);
+    visibleReplyText = petChat.assistantReplyRef.current;
+    if (visibleReplyText.trim().length > 0) {
+      petChat.replyStartedRef.current = true;
+      petChat.setReplyPagesFromText(visibleReplyText, { preserveCurrentPage: true });
+    }
   } else if (citations?.length && !petChat.replyStartedRef.current) {
     petChat.scheduleStreamWatchdog(
       "正在整理",
@@ -218,7 +222,7 @@ function applyTextOrCitationEvent({ messageId, sseEvent, payload, context }: Str
       }
       return {
         ...message,
-        content: token ? `${message.content}${token}` : message.content,
+        content: token ? (visibleReplyText ?? message.content) : message.content,
         citations: citations ? [...(message.citations || []), ...citations] : message.citations,
       };
     }),

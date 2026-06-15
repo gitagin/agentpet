@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const desktopRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
-const defaultModelRelativePath = "live2d/UG/ugofficial.model3.json";
+const referenceModelRelativePath = "live2d/UG/ugofficial.model3.json";
 const allowedTargets = new Set(["public", "dist", "all"]);
 
 const options = parseArgs(process.argv.slice(2));
@@ -14,7 +14,7 @@ const manifests = [];
 function parseArgs(args) {
   const parsed = {
     target: "all",
-    model: defaultModelRelativePath,
+    model: referenceModelRelativePath,
     summary: false,
   };
 
@@ -67,7 +67,7 @@ function parseArgs(args) {
 
 function normalizeModelPath(modelPath) {
   if (!modelPath) {
-    return defaultModelRelativePath;
+    return referenceModelRelativePath;
   }
 
   const normalized = modelPath.replaceAll("\\", "/").replace(/^\.?\//, "");
@@ -383,7 +383,7 @@ function validateTarget(target) {
     modelFiles.length > 0 ? modelFiles.map(toDisplayPath).join(", ") : toDisplayPath(assetRoot),
   );
 
-  record(target, "默认 UG 模型存在且非空", fileExistsAndNotEmpty(modelPath), toDisplayPath(modelPath));
+  record(target, "参考 Cubism 模型存在且非空", fileExistsAndNotEmpty(modelPath), toDisplayPath(modelPath));
 
   if (fs.existsSync(modelPath)) {
     validateModelReferences(target, modelPath);

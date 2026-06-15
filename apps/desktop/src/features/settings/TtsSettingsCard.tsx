@@ -95,13 +95,13 @@ function formatTtsProviderStatus(status: TtsSettingsResponse | null | undefined)
     return null;
   }
   if (status.status === "ready") {
-    return status.provider === "custom-http" ? "自定义 TTS API 已就绪。" : "当前语音来源已就绪。";
+    return status.provider === "custom-http" ? "自定义语音服务已就绪。" : "当前语音来源已就绪。";
   }
   if (status.status === "provider_not_configured") {
-    return "语音未配置：请先填写 TTS API 地址。";
+    return "语音未配置：请先填写语音服务地址。";
   }
   if (status.status === "credential_missing") {
-    return "语音未配置：请保存 TTS API Key。";
+    return "语音未配置：请保存语音服务密钥。";
   }
   return "语音来源暂不可用，文字回复仍会正常显示。";
 }
@@ -204,7 +204,7 @@ export function TtsSettingsCard({
             <option value="system">系统语音</option>
             <option value="mock">静音测试</option>
             <option value="xiaomi-mimo">小米 MiMo</option>
-            <option value="custom-http">自定义 TTS API</option>
+            <option value="custom-http">自定义语音服务</option>
           </select>
         </label>
 
@@ -227,10 +227,10 @@ export function TtsSettingsCard({
       {cloudProvider ? (
         <div className="tts-custom-grid">
           <label>
-            <span>API 地址</span>
+            <span>服务地址</span>
             <input
               value={draft.base_url || ""}
-              aria-label="TTS API 地址"
+              aria-label="语音服务地址"
               placeholder="https://example.com/tts"
               onChange={(event) => onUpdateDraft({ base_url: event.target.value.trim() || null })}
             />
@@ -261,10 +261,10 @@ export function TtsSettingsCard({
             </select>
           </label>
           <label>
-            <span>API Key</span>
+            <span>密钥</span>
             <input
               value={apiKeyInput}
-              aria-label="TTS API Key"
+              aria-label="语音服务密钥"
               placeholder={draft.requires_api_key ? "输入后保存" : "可选"}
               type="password"
               onChange={(event) => setApiKeyInput(event.target.value)}
@@ -283,10 +283,10 @@ export function TtsSettingsCard({
             <input
               type="checkbox"
               checked={draft.requires_api_key}
-              aria-label="TTS API 需要密钥"
+              aria-label="语音服务需要密钥"
               onChange={(event) => onUpdateDraft({ requires_api_key: event.target.checked })}
             />
-            <span>需要 API Key</span>
+            <span>需要密钥</span>
           </label>
           <p className="field-note">
             {draft.requires_api_key
@@ -296,7 +296,7 @@ export function TtsSettingsCard({
               : "不需要密钥时，后端不会添加 Authorization header。"}
           </p>
           <details className="settings-advanced-actions tts-advanced-template">
-            <summary>高级 API 模板</summary>
+            <summary>高级请求模板</summary>
             <label>
               <span>请求模板 JSON</span>
               <textarea

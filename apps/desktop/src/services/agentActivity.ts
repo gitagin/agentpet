@@ -1,12 +1,14 @@
-import type { AgentAction, ChatMessage, ChatWikiProposal, ContinuityProposal, MemoryProposal, TaskItem } from "../types";
+import type { AgentAction, ChatMessage, ContinuityProposal, MemoryProposal, TaskItem } from "../types";
 import type { AgentOutcomeKey } from "./agentModelDrafts";
 import { agentOutcomeDefinitions } from "./agentModelDrafts";
+
+type ChatKnowledgeProposal = NonNullable<ChatMessage["wiki_proposals"]>[number];
 
 export type AgentActivityLogEntry =
   | { kind: "agent_action"; id: string; sortAt: string; sortKey: number; action: AgentAction }
   | { kind: "memory_proposal"; id: string; sortAt: string; sortKey: number; proposal: MemoryProposal }
   | { kind: "continuity_proposal"; id: string; sortAt: string; sortKey: number; proposal: ContinuityProposal }
-  | { kind: "wiki_proposal"; id: string; sortAt: string; sortKey: number; message: ChatMessage; proposal: ChatWikiProposal };
+  | { kind: "wiki_proposal"; id: string; sortAt: string; sortKey: number; message: ChatMessage; proposal: ChatKnowledgeProposal };
 
 export type MemoryTrustGroupKey =
   | "long_term"
@@ -32,9 +34,9 @@ export type AgentOutcomeActivity = {
 
 export const memoryTrustGroupDefinitions: Array<Omit<MemoryTrustGroup, "entries">> = [
   { key: "long_term", label: "长期记忆", description: "偏好、背景、连续性和需要确认的长期记忆。" },
-  { key: "chat_diary", label: "聊天日记", description: "普通对话归档到每日 Markdown 日记。" },
+  { key: "chat_diary", label: "聊天日记", description: "普通对话归档到本机日记。" },
   { key: "structured_diary", label: "结构化日记", description: "从对话中提取的主题、事件和可检索日记对象。" },
-  { key: "wiki_summary", label: "Wiki 摘要", description: "从有价值回答沉淀出的 Wiki 页面、摘要或待确认计划。" },
+  { key: "wiki_summary", label: "知识页摘要", description: "从有价值回答沉淀出的知识页、摘要或待确认计划。" },
   { key: "tasks", label: "任务/提醒", description: "从对话创建或更新的本地任务和提醒。" },
   { key: "skipped", label: "已跳过", description: "敏感、低价值、重复或没有可保存内容的安全记录。" },
 ];
@@ -139,7 +141,7 @@ export function formatAgentActionType(actionType: string): string {
     return "已跳过长期记忆";
   }
   if (actionType === "wiki.answer_summary.skip") {
-    return "已跳过 Wiki 摘要";
+    return "已跳过知识页摘要";
   }
   const labels: Record<string, string> = {
     "agent_action.revert": "撤销自动整理",
@@ -150,14 +152,14 @@ export function formatAgentActionType(actionType: string): string {
     "continuity.energy": "连续性能量整理",
     "continuity.open_thread": "连续性话题整理",
     "diary.structured_memory": "已提取结构化日记",
-    "markdown.bulk_rewrite": "批量改写 Markdown",
-    "markdown.delete": "删除 Markdown",
-    "markdown.move": "移动 Markdown",
+    "markdown.bulk_rewrite": "批量改写本机文本",
+    "markdown.delete": "删除本机文本",
+    "markdown.move": "移动本机文本",
     "memory.long_term.write": "已更新长期记忆",
     "memory.promote_conflict": "记忆冲突整理",
-    "sqlite.schema_change": "SQLite 结构变更",
-    "vault.bind": "绑定 Vault",
-    "vault.switch": "切换 Vault",
+    "sqlite.schema_change": "本机数据结构变更",
+    "vault.bind": "绑定本机文件夹",
+    "vault.switch": "切换本机文件夹",
     "wiki.ingest.apply": "资料库页面应用",
     "wiki.lint.repair": "资料库检查修复",
     "wiki.lint.report": "已生成资料库检查报告",
@@ -231,7 +233,7 @@ function isManualContinuityProposal(proposal: ContinuityProposal): boolean {
   return proposal.status === "pending";
 }
 
-function isManualChatWikiProposal(proposal: ChatWikiProposal): boolean {
+function isManualChatKnowledgeProposal(proposal: ChatKnowledgeProposal): boolean {
   return proposal.state !== "applied" && proposal.state !== "rejected";
 }
 
@@ -309,7 +311,7 @@ export function buildAgentOutcomeActivities(
   actions: AgentAction[],
   tasks: TaskItem[] = [],
   memoryProposals: MemoryProposal[] = [],
-  wikiProposals: ChatWikiProposal[] = [],
+  wikiProposals: ChatKnowledgeProposal[] = [],
 ): AgentOutcomeActivity[] {
   const details = new Map<AgentOutcomeKey, Set<string>>();
   const add = (key: AgentOutcomeKey, detail: string) => {
@@ -393,7 +395,7 @@ export function formatAgentActionSkippedReason(action: AgentAction): string {
   const searchable = `${reason} ${summary}`.toLocaleLowerCase();
 
   if (reason === "automation_disabled" || searchable.includes("organization are disabled") || searchable.includes("automation is disabled")) {
-    return "自动整理策略当前关闭，所以这次对话只保留聊天结果，没有写入日记、长期记忆或知识库。可在配置页的“自动整理策略”里开启低风险自动整理。";
+    return "自动整理策略当前关闭，所以这次对话只保留聊天结果，没有写入日记、长期记忆或知识页。可在配置页的“自动整理策略”里开启低风险自动整理。";
   }
   if (searchable.includes("sensitive")) {
     return "这次内容可能包含敏感信息，已按安全策略跳过写入。";
@@ -405,7 +407,7 @@ export function formatAgentActionSkippedReason(action: AgentAction): string {
     return "这次内容较短或临时性较强，没有形成值得长期保存的整理项。";
   }
   if (searchable.includes("not contain enough reusable knowledge") || searchable.includes("did not produce saveable")) {
-    return "这次回复没有提炼出适合沉淀到知识库的可复用内容。";
+    return "这次回复没有提炼出适合沉淀到知识页的可复用内容。";
   }
   if (summary) {
     return summary;
@@ -483,7 +485,7 @@ export function buildAgentActivityEntries(
   });
 
   messages.forEach((message, messageIndex) => {
-    (message.wiki_proposals || []).filter(isManualChatWikiProposal).forEach((proposal, proposalIndex) => {
+    (message.wiki_proposals || []).filter(isManualChatKnowledgeProposal).forEach((proposal, proposalIndex) => {
       entries.push({
         kind: "wiki_proposal",
         id: `wiki-proposal-${message.id}-${proposal.id}`,

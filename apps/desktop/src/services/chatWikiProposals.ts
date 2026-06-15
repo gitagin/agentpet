@@ -118,13 +118,13 @@ export function formatWikiProposalEventDetail(
   ].filter(Boolean);
 
   if (parts.length > 0) {
-    return truncateEventDetail(`${parts.join("；")}；需确认后才会写入 Vault。`);
+    return truncateEventDetail(`${parts.join("；")}；需确认后才会写入本机知识页。`);
   }
 
   const payloadPreview = formatStreamPayloadPreview(payload, rawData);
   return payloadPreview
-    ? `收到 ${eventName}：${payloadPreview}；需确认后才会写入 Vault。`
-    : `收到 ${eventName} 事件；需确认后才会写入 Vault。`;
+    ? `收到 ${eventName}：${payloadPreview}；需确认后才会写入本机知识页。`
+    : `收到 ${eventName} 事件；需确认后才会写入本机知识页。`;
 }
 
 function pickPayloadStringArray(payload: Record<string, unknown> | null, key: string): string[] {
@@ -161,7 +161,7 @@ export function normalizeChatWikiProposal(payload: Record<string, unknown> | nul
   const recommendedTargets = pickPayloadStringArray(payload, "recommended_targets");
   const selectedTargets = recommendedTargets.length > 0 ? recommendedTargets : targetPaths;
   const proposalType = pickPayloadString(payload, ["proposal_type"]) || "ingest";
-  const title = pickPayloadString(payload, ["title", "page_title"]) || "Vault proposal";
+  const title = pickPayloadString(payload, ["title", "page_title"]) || "知识整理确认项";
   const id = reviewId || runId || sourceId || sourceHash || crypto.randomUUID();
 
   return {

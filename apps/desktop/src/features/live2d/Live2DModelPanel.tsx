@@ -18,7 +18,7 @@ export function Live2DModelPanel({
 }: Live2DModelPanelProps) {
   return (
     <Panel id="live2d-panel" icon={<Bot size={18} />} title="桌宠形象">
-      <section className="stack" aria-label="Live2D 模型选择">
+      <section className="stack" aria-label="桌宠模型选择">
         <div className="section-heading">
           <strong>当前陪伴形象</strong>
           <span>切换后会立即影响桌宠窗口加载的 Cubism 模型。</span>

@@ -4,13 +4,16 @@ import {
   createInitialLive2DAssetInfo,
   createLive2DAssetInfo,
   createLive2DRuntimeBoundary,
+  createPreviewLive2DAssetInfo,
   defaultLive2DModelOption,
   initialLive2DAssetInfo,
+  live2DActionProfilePath,
   live2DIconPath,
   live2DManifestPath,
   live2dModelCatalogPath,
 } from "../../services/live2dRuntime";
 import type { Live2DAssetInfo, Live2DModelCatalog, Live2DModelManifest, Live2DModelOption } from "../../services/live2dRuntime";
+import { normalizeLive2DActionProfile } from "../../services/live2dActions";
 import { describeError } from "../../services/apiErrorMessages";
 import { live2dModelSelectionChannelName, live2dModelSelectionStorageKey } from "./live2dConstants";
 import { broadcastLive2DModelSelection, loadLive2DModelSelection, saveLive2DModelSelection } from "./live2dStorage";
@@ -28,6 +31,12 @@ type UseLive2DOptions = {
 };
 
 const live2DAssetCache = new Map<string, Live2DAssetInfo>();
+type Live2DActionProfileLoadResult = Parameters<typeof createLive2DAssetInfo>[3];
+
+type Live2DManifestPayloadResult =
+  | { status: "loaded"; manifest: Live2DModelManifest }
+  | { status: "missing"; error: string }
+  | { status: "error"; error: string };
 
 export function useLive2D({
   connected,
@@ -90,7 +99,7 @@ export function useLive2D({
         }
       } catch (error) {
         if (!abort.signal.aborted) {
-          console.warn("[Live2D] 模型列表读取失败，使用默认 UG 模型。", error);
+          console.warn("[Live2D] 模型列表读取失败，使用项目默认模型。", error);
         }
       }
     }
@@ -153,9 +162,24 @@ export function useLive2D({
       const cachedAsset = live2DAssetCache.get(selectedModel.id);
       setAsset(cachedAsset || initialAsset);
       try {
-        const [manifestResponse, hasIcon] = await Promise.all([
+        if (selectedModel.previewOnly) {
+          const [hasIcon, actionProfile] = await Promise.all([
+            selectedModel.icon ? checkImageExists(live2DIconPath(selectedModel)) : Promise.resolve(false),
+            loadLive2DActionProfile(selectedModel, abort.signal),
+          ]);
+
+          if (!cancelled) {
+            const nextAsset = createPreviewLive2DAssetInfo(selectedModel, hasIcon, actionProfile);
+            live2DAssetCache.set(selectedModel.id, nextAsset);
+            setAsset(nextAsset);
+          }
+          return;
+        }
+
+        const [manifestResponse, hasIcon, actionProfile] = await Promise.all([
           fetch(live2DManifestPath(selectedModel), { signal: abort.signal }),
           selectedModel.icon ? checkImageExists(live2DIconPath(selectedModel)) : Promise.resolve(false),
+          loadLive2DActionProfile(selectedModel, abort.signal),
         ]);
 
         if (!manifestResponse.ok) {
@@ -164,16 +188,42 @@ export function useLive2D({
               ...initialAsset,
               status: "missing",
               hasIcon,
+              actionProfilePath: live2DActionProfilePath(selectedModel),
+              actionProfile: actionProfile?.profile || null,
+              actionProfileStatus: selectedModel.actions
+                ? actionProfile?.profile
+                  ? "loaded"
+                  : "error"
+                : "none",
+              actionProfileError: actionProfile?.error,
+              actionCount: actionProfile?.profile ? Object.keys(actionProfile.profile.actions).length : 0,
               error: `HTTP ${manifestResponse.status}`,
             });
           }
           return;
         }
 
-        const manifest = (await manifestResponse.json()) as Live2DModelManifest;
+        const manifestPayload = await manifestResponse.text();
+        const manifestResult = parseLive2DManifestPayload(
+          manifestPayload,
+          manifestResponse.headers.get("content-type"),
+        );
+        if (manifestResult.status !== "loaded") {
+          if (!cancelled) {
+            setAsset(createUnavailableLive2DAssetInfo({
+              initialAsset,
+              selectedModel,
+              hasIcon,
+              actionProfile,
+              status: manifestResult.status,
+              error: manifestResult.error,
+            }));
+          }
+          return;
+        }
 
         if (!cancelled) {
-          const nextAsset = createLive2DAssetInfo(manifest, hasIcon, selectedModel);
+          const nextAsset = createLive2DAssetInfo(manifestResult.manifest, hasIcon, selectedModel, actionProfile);
           live2DAssetCache.set(selectedModel.id, nextAsset);
           setAsset(nextAsset);
         }
@@ -218,5 +268,91 @@ export function useLive2D({
     selectModel,
     stage,
     triggerTaskStage,
+  };
+}
+
+async function loadLive2DActionProfile(
+  model: Live2DModelOption,
+  signal: AbortSignal,
+): Promise<Parameters<typeof createLive2DAssetInfo>[3]> {
+  const profilePath = live2DActionProfilePath(model);
+  if (!profilePath) {
+    return { profile: null };
+  }
+
+  try {
+    const response = await fetch(profilePath, { signal });
+    if (!response.ok) {
+      return { profile: null, error: `HTTP ${response.status}` };
+    }
+    const profile = normalizeLive2DActionProfile(await response.json());
+    return profile ? { profile } : { profile: null, error: "动作配置格式无效" };
+  } catch (error) {
+    if (signal.aborted) {
+      return { profile: null };
+    }
+    return { profile: null, error: describeError(error, "动作配置读取失败") };
+  }
+}
+
+export function parseLive2DManifestPayload(
+  payload: string,
+  contentType?: string | null,
+): Live2DManifestPayloadResult {
+  const trimmedPayload = payload.trim();
+  const normalizedPayload = trimmedPayload.toLowerCase();
+  const normalizedContentType = (contentType || "").toLowerCase();
+  if (!trimmedPayload) {
+    return { status: "missing", error: "模型清单为空，可能尚未导出 Cubism model3.json。" };
+  }
+  if (
+    normalizedContentType.includes("text/html") ||
+    normalizedPayload.startsWith("<!doctype") ||
+    normalizedPayload.startsWith("<html") ||
+    normalizedPayload.startsWith("<")
+  ) {
+    return { status: "missing", error: "模型清单尚未导出，开发服务器返回了 HTML 页面。" };
+  }
+
+  try {
+    const manifest = JSON.parse(trimmedPayload) as Live2DModelManifest;
+    if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) {
+      return { status: "error", error: "模型清单 JSON 格式无效。" };
+    }
+    return { status: "loaded", manifest };
+  } catch (error) {
+    return { status: "error", error: describeError(error, "模型清单 JSON 解析失败") };
+  }
+}
+
+function createUnavailableLive2DAssetInfo({
+  initialAsset,
+  selectedModel,
+  hasIcon,
+  actionProfile,
+  status,
+  error,
+}: {
+  initialAsset: Live2DAssetInfo;
+  selectedModel: Live2DModelOption;
+  hasIcon: boolean;
+  actionProfile?: Live2DActionProfileLoadResult;
+  status: "missing" | "error";
+  error: string;
+}): Live2DAssetInfo {
+  return {
+    ...initialAsset,
+    status,
+    hasIcon,
+    actionProfilePath: live2DActionProfilePath(selectedModel),
+    actionProfile: actionProfile?.profile || null,
+    actionProfileStatus: selectedModel.actions
+      ? actionProfile?.profile
+        ? "loaded"
+        : "error"
+      : "none",
+    actionProfileError: actionProfile?.error,
+    actionCount: actionProfile?.profile ? Object.keys(actionProfile.profile.actions).length : 0,
+    error,
   };
 }
