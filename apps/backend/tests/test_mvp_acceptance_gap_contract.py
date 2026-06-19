@@ -95,7 +95,7 @@ def test_desktop_gaps_for_live2d_and_signed_update_remain_explicit() -> None:
     package_json = read_text(DESKTOP / "package.json")
 
     assert "桌宠模型" in text
-    assert "ugofficial.model3.json" in text
+    assert "girlfriend.model3.json" in text
     assert "Live2D Cubism WebGL 渲染器已挂载" in text
     assert not re.search(r"(@live2d|pixi-live2d)", package_json, flags=re.IGNORECASE)
     assert "validate-cubism-sdk.mjs" in package_json
