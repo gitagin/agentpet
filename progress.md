@@ -43,15 +43,15 @@ this repository. Validate current facts from code and commands, not git history.
 
 | Date | Status | Summary | Verification |
 | --- | --- | --- | --- |
+| 2026-06-19 | In Progress | TASK-0102: prepared manual verification record for the chat -> memory archive -> view -> rollback chain. | `docs/verification/task-0102/verification-record.md` created; no real Vault write or rollback has been performed by agent. |
 | 2026-06-19 | Completed | TASK-0101: user manually verified that double-clicking the Pet window opens the main stage/control window; user chose to skip recording evidence. | `docs/verification/task-0101/verification-record.md` records user-confirmed success and recording waiver; README boundary updated. |
 | 2026-06-19 | Completed | TASK-0004: archived detailed progress history and simplified `progress.md`. | Archive blob matches previous `progress.md`; compact ledger is 56 lines; `scripts/check-mvp-acceptance-gap.ps1` passed. |
 | 2026-06-19 | Completed | TASK-0003: accepted no-rename decision for `Agent Pet` / `agent-pet` and documented positioning. | `docs/decisions/naming.md` exists; README positioning statement added; `scripts/check-mvp-acceptance-gap.ps1` passed. |
 | 2026-06-19 | Completed | TASK-0002: added root MIT `LICENSE`; GitHub About/topics are ignored per user instruction to use local root as source of truth. | `LICENSE` exists; commit `451a647 docs: add project license`. |
-| 2026-06-19 | Completed | TASK-0001: removed tracked `pytest-of-ASUS/` artifacts, hardened `.gitignore`, and removed local absolute path strings. | No `pytest-of-*` directories; required ignore rules present; local path scans returned no matches; focused backend/desktop checks passed. |
 
 ## Next Direction
 
-1. Continue Phase 1 with TASK-0102 only after preparing a safe isolated/backed-up Vault verification path.
+1. Complete TASK-0102 only after the user performs the real Vault chat/memory/rollback chain and records evidence or explicit waivers.
 2. Keep remaining human-verification tasks human-owned and record explicit user evidence or waivers.
 3. Keep high-risk real Vault writes behind explicit confirmation while preserving low-risk automatic organization and reversible activity logs.
 4. Do not promote any item to `Covered` / `Completed` without matching command output or human evidence.
