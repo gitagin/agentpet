@@ -7,13 +7,6 @@ from ..tools import AgentToolName
 # 从 graph_runtime.py 迁移，原函数名：_select_after_memory_retrieval, _should_require_grounding, _chat_agent_tool_names, _automation_enabled, _should_offer_wiki_management
 
 
-def _select_after_memory_retrieval(graph_state: dict[str, object]) -> str:
-    plan = graph_state.get("retrieval_plan")
-    if isinstance(plan, dict) and plan.get("knowledge"):
-        return "knowledge_retrieval_agent"
-    return "chat_agent"
-
-
 def _should_require_grounding(message: str) -> bool:
     normalized = message.casefold()
     markers = (
@@ -43,6 +36,8 @@ def _should_require_grounding(message: str) -> bool:
 
 
 def _chat_agent_tool_names(state: AgentState, services: AgentRuntimeServices) -> tuple[AgentToolName, ...]:
+    if state.action_plan is not None:
+        return ()
     names: list[AgentToolName] = []
     if _should_require_grounding(state.user_message) and not state.response_text:
         names.append(AgentToolName.SEARCH_MEMORY)

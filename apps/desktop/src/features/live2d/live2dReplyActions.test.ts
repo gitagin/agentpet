@@ -29,6 +29,25 @@ describe("live2dReplyActions", () => {
     expect(resolveLive2DReplyActionKey(assistantMessage({ content: "\u6211\u628a\u8fd9\u6bb5\u5df2\u4fdd\u5b58\u5230\u65e5\u8bb0\u91cc\u3002" }))).toBe("memory_save_diary");
   });
 
+  it("uses hidden stage directions for Live2D without requiring them in visible text", () => {
+    expect(
+      resolveLive2DReplyActionKey(
+        assistantMessage({
+          content: "\u4f60\u597d\uff0c\u6211\u5728\u3002",
+          live2d_action_hints: ["\u62b1\u6795"],
+        }),
+      ),
+    ).toBe("chat_done");
+    expect(
+      resolveLive2DReplyActionKey(
+        assistantMessage({
+          content: "\u6211\u5728\u8fd9\u91cc\u3002",
+          live2d_action_hints: ["smile"],
+        }),
+      ),
+    ).toBe("celebrate_small");
+  });
+
   it("uses failure and no-result language for error-like actions", () => {
     expect(resolveLive2DReplyActionKey(assistantMessage({ content: "\u62b1\u6b49\uff0c\u8fd9\u6b21\u8fde\u63a5\u5931\u8d25\u4e86\u3002" }))).toBe("system_error");
     expect(resolveLive2DReplyActionKey(assistantMessage({ content: "\u6682\u65f6\u6ca1\u6709\u627e\u5230\u76f8\u5173\u8bb0\u5fc6\u3002" }))).toBe("memory_not_found");

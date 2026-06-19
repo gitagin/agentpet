@@ -116,7 +116,7 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
       dispatch({ type: "saveGlobalModelSuccess", config });
       onNotice({
         tone: "success",
-        message: `全局模型已更新，${config.agents_using_global} 个后台结果路由将使用此配置。`,
+        message: `全局模型已更新，${config.agents_using_global} 个 Agent 路由将使用此配置。`,
       });
     } catch (error) {
       dispatch({ type: "setGlobalModelSaveStatus", status: "error" });
@@ -271,7 +271,7 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
 
     if (draft.enabled) {
       if (!draft.provider.trim() || !draft.base_url.trim() || !draft.model.trim()) {
-        onNotice({ tone: "error", message: "请填写该结果路由的提供方、接口地址和模型。" });
+        onNotice({ tone: "error", message: "请填写该 Agent 路由的提供方、接口地址和模型。" });
         return;
       }
       if (!isSupportedProviderDraft(provider)) {
@@ -279,7 +279,7 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
         return;
       }
       if (!draft.masked && !draft.api_key.trim()) {
-        onNotice({ tone: "error", message: "请填写该结果路由的密钥后再保存。" });
+        onNotice({ tone: "error", message: "请填写该 Agent 路由的密钥后再保存。" });
         return;
       }
     }

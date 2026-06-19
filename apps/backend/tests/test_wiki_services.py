@@ -90,7 +90,7 @@ def test_wiki_service_writes_obsidian_frontmatter_and_index_metadata(tmp_path) -
                 "type": "concept",
                 "confidence": "high",
                 "expiry": "2026-12-31",
-                "authors": ["wiki_manager_agent"],
+                "authors": ["action_agent"],
                 "contributors": ["semantic_analysis_agent"],
                 "disputed": True,
                 "aliases": ["Runtime", "Agent Graph"],
@@ -103,7 +103,7 @@ def test_wiki_service_writes_obsidian_frontmatter_and_index_metadata(tmp_path) -
     assert parsed.frontmatter["type"] == "concept"
     assert parsed.frontmatter["confidence"] == "high"
     assert parsed.frontmatter["expiry"] == "2026-12-31"
-    assert parsed.frontmatter["authors"] == ["wiki_manager_agent"]
+    assert parsed.frontmatter["authors"] == ["action_agent"]
     assert parsed.frontmatter["contributors"] == ["semantic_analysis_agent"]
     assert parsed.frontmatter["disputed"] == "true"
     assert parsed.frontmatter["aliases"] == ["Runtime", "Agent Graph"]

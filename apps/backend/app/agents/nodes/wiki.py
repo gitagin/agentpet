@@ -194,7 +194,7 @@ async def _wiki_node(
                 )
             )
             response, tool_results = await run_model_agent_with_tools(
-                agent_id=AgentId.WIKI_MANAGER_AGENT,
+                agent_id=AgentId.ACTION_AGENT,
                 state=state,
                 tools=wiki_tools,
                 system_prompt=_wiki_system_prompt(auto_organize=auto_organize),
@@ -286,5 +286,5 @@ def _extract_wiki_paths(text: str) -> list[str]:
 
 def _model_for_wiki(services: AgentRuntimeServices):
     if services.model_registry is not None:
-        return services.model_registry.get(AgentId.WIKI_MANAGER_AGENT)
+        return services.model_registry.get(AgentId.ACTION_AGENT)
     return None

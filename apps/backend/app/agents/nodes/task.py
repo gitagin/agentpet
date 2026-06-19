@@ -76,5 +76,5 @@ async def _task_node(
 
 def _model_for_task(services: AgentRuntimeServices):
     if services.model_registry is not None:
-        return services.model_registry.get(AgentId.TASK_AGENT)
+        return services.model_registry.get(AgentId.ACTION_AGENT)
     return None

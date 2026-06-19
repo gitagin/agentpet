@@ -141,7 +141,7 @@ class AutomationSettingsRequest(BaseModel):
     auto_structured_memory: bool = False
     auto_long_term_memory: bool = False
     auto_wiki_organize: bool = False
-    use_negotiation: bool = True
+    use_negotiation: bool = False
     max_rounds: int = Field(default=5, ge=2, le=10)
 
 

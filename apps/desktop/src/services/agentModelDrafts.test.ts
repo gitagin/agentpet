@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AgentModelSettings } from "../types";
 import {
+  agentModelDefinitions,
   buildSavedAgentModelDraftPatch,
   defaultAgentModelDrafts,
   hasUnsavedAgentModelDraft,
@@ -18,6 +19,17 @@ const baseStatus: AgentModelSettings = {
 };
 
 describe("agentModelDrafts", () => {
+  it("defines the v2 five-agent model routes", () => {
+    expect(agentModelDefinitions.map((definition) => definition.id)).toEqual([
+      "chat_agent",
+      "semantic_analysis_agent",
+      "retrieval_agent",
+      "action_agent",
+      "reflection_agent",
+    ]);
+    expect(defaultAgentModelDrafts()).toHaveLength(5);
+  });
+
   it("normalizes Chinese OpenAI-compatible provider drafts", () => {
     expect(normalizeProviderDraft(" OpenAI 兼容接口 ")).toBe("openai-compatible");
   });
@@ -44,6 +56,22 @@ describe("agentModelDrafts", () => {
     expect(chatDraft?.model).toBe("draft-model");
     expect(chatDraft?.masked).toBe("sk-***1234");
     expect(chatDraft?.saved_base_url).toBe(baseStatus.base_url);
+  });
+
+  it("drops legacy drafts when status refreshes", () => {
+    const merged = mergeAgentModelStatus(
+      [
+        ...defaultAgentModelDrafts(),
+        {
+          ...defaultAgentModelDrafts()[0],
+          agent_id: "task_agent" as never,
+          model: "legacy-task-model",
+        },
+      ],
+      [baseStatus],
+    );
+
+    expect(merged.map((draft) => draft.agent_id)).toEqual(agentModelDefinitions.map((definition) => definition.id));
   });
 
   it("clears plaintext keys and stores masked values after save", () => {

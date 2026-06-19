@@ -153,6 +153,7 @@ export type ChatMessage = {
   task_actions?: TaskItem[];
   agent_run_id?: string;
   retrieval_attempted?: boolean;
+  live2d_action_hints?: string[];
 };
 
 export type ChatContextBudget = {
@@ -893,14 +894,10 @@ export type ModelKeyResponse = {
 
 export type AgentModelId =
   | "chat_agent"
-  | "diary_memory_extractor_agent"
   | "semantic_analysis_agent"
-  | "memory_retrieval_agent"
-  | "knowledge_retrieval_agent"
-  | "wiki_manager_agent"
-  | "memory_proposal_agent"
-  | "continuity_agent"
-  | "task_agent";
+  | "retrieval_agent"
+  | "action_agent"
+  | "reflection_agent";
 
 export type AgentModelSettings = {
   agent_id: AgentModelId | string;

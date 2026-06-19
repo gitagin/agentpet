@@ -41,7 +41,7 @@ class LoopingNegotiationChatModel:
             return json.dumps(
                 {
                     "action": "invoke_agent",
-                    "agent": "memory_retrieval_agent",
+                    "agent": "retrieval_agent",
                     "agent_input": "Ada",
                     "reasoning": "需要更多记忆上下文。",
                     "confidence": 0.1,
@@ -88,7 +88,7 @@ def test_negotiation_fast_path_bypasses_orchestrator_for_confident_chat() -> Non
     assert_langgraph_events(events, ["token", "done"])
 
 
-def test_negotiation_calls_orchestrator_for_non_fast_path() -> None:
+def test_v2_foreground_path_ignores_legacy_negotiation_switch() -> None:
     recorded_actions: list[AgentActionCreate] = []
 
     async def run_case():
@@ -107,21 +107,12 @@ def test_negotiation_calls_orchestrator_for_non_fast_path() -> None:
 
     chat_model, events = asyncio.run(run_case())
 
-    assert any(call[1] == "orchestrator-json-only" for call in chat_model.calls)
-    assert_langgraph_events(events, ["negotiation_step", "token", "negotiation_done", "done"])
-    step = next(event for event in events if event.event == "negotiation_step")
-    done = next(event for event in events if event.event == "negotiation_done")
-    assert step.action == "synthesizing"
-    assert step.confidence == 0.95
-    assert done.total_rounds == 0
-    assert done.final_confidence == 0.95
-    assert recorded_actions[0].action_type == "agent.negotiation"
-    assert recorded_actions[0].negotiation_rounds == 0
-    assert recorded_actions[0].total_latency_ms == 0
-    assert recorded_actions[0].metadata["fallback"] is False
+    assert not any(call[1] == "orchestrator-json-only" for call in chat_model.calls)
+    assert_langgraph_events(events, ["token", "done"])
+    assert recorded_actions == []
 
 
-def test_negotiation_orchestrator_stops_at_max_rounds() -> None:
+def test_v2_foreground_path_does_not_run_max_rounds_loop() -> None:
     recorded_actions: list[AgentActionCreate] = []
 
     async def run_case():
@@ -141,15 +132,6 @@ def test_negotiation_orchestrator_stops_at_max_rounds() -> None:
     chat_model, events = asyncio.run(run_case())
 
     orchestrator_calls = [call for call in chat_model.calls if call[1] == "orchestrator-json-only"]
-    assert len(orchestrator_calls) == 2
-    assert_langgraph_events(
-        events,
-        ["negotiation_step", "negotiation_step", "negotiation_step", "token", "negotiation_done", "done"],
-    )
-    done = next(event for event in events if event.event == "negotiation_done")
-    assert done.total_rounds == 2
-    assert done.agents_invoked == ["memory_retrieval_agent", "memory_retrieval_agent"]
-    assert done.fallback is True
-    assert recorded_actions[0].negotiation_rounds == 2
-    assert recorded_actions[0].metadata["agents_invoked"] == ["memory_retrieval_agent", "memory_retrieval_agent"]
-    assert recorded_actions[0].metadata["fallback"] is True
+    assert orchestrator_calls == []
+    assert_langgraph_events(events, ["token", "done"])
+    assert recorded_actions == []

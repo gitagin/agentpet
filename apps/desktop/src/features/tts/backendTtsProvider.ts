@@ -13,6 +13,7 @@ import {
 } from "./ttsProvider";
 
 type AudioTtsSynthesisResult = Extract<TtsSynthesisResult, { kind: "audio" }>;
+const MAX_BACKEND_TTS_DETAIL_LENGTH = 240;
 
 type ActivePlayback = {
   audio: HTMLAudioElement;
@@ -224,7 +225,7 @@ function base64ToArrayBuffer(value: string, providerId: string): ArrayBuffer {
 function mapBackendTtsError(error: unknown, providerId: string) {
   if (error instanceof ApiError) {
     const code = mapBackendTtsErrorCode(error.code, error.status);
-    return createTtsProviderError(providerId, code, error.message || fallbackTtsErrorMessage(code));
+    return createTtsProviderError(providerId, code, backendTtsErrorMessage(error, code));
   }
   if (error instanceof DOMException && error.name === "AbortError") {
     return createTtsProviderError(providerId, "cancelled", "TTS 播放请求已取消。");
@@ -234,6 +235,27 @@ function mapBackendTtsError(error: unknown, providerId: string) {
     "provider_failed",
     error instanceof Error ? error.message : fallbackTtsErrorMessage("provider_failed"),
   );
+}
+
+function backendTtsErrorMessage(error: ApiError, code: TtsPlaybackErrorCode): string {
+  const message = error.message || fallbackTtsErrorMessage(code);
+  const detail = backendTtsErrorDetail(error);
+  return detail ? `${message} (${detail})` : message;
+}
+
+function backendTtsErrorDetail(error: ApiError): string {
+  const detail = error.details?.detail;
+  if (typeof detail !== "string") {
+    return "";
+  }
+  const trimmed = detail.trim();
+  if (!trimmed) {
+    return "";
+  }
+  if (trimmed.length <= MAX_BACKEND_TTS_DETAIL_LENGTH) {
+    return trimmed;
+  }
+  return `${trimmed.slice(0, MAX_BACKEND_TTS_DETAIL_LENGTH - 3)}...`;
 }
 
 function mapBackendTtsErrorCode(code: string | undefined, status: number): TtsPlaybackErrorCode {

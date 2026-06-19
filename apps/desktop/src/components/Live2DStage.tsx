@@ -47,7 +47,7 @@ const live2DStageActionKeys: Record<Live2DStageState, string> = {
 
 type Live2DRenderLifecycleStatus = "loading" | "mounted" | "preview" | "failed";
 
-const petCanvasSupersampleRatio = 2;
+const petCanvasSupersampleRatio = 1.5;
 const maxCanvasPixelRatio = 4;
 
 function getLive2DCanvasPixelRatio(variant: "panel" | "pet" | "stage" | undefined): number {
@@ -287,7 +287,9 @@ export function Live2DStage({
   petInteractions,
   speaking = false,
   actionKeyOverride = null,
+  actionTriggerKey = null,
   active = true,
+  suppressCanvasLayoutWarning = false,
 }: {
   stage: Live2DStageView;
   asset: Live2DAssetInfo;
@@ -296,7 +298,9 @@ export function Live2DStage({
   variant?: "panel" | "pet" | "stage";
   speaking?: boolean;
   actionKeyOverride?: string | null;
+  actionTriggerKey?: string | null;
   active?: boolean;
+  suppressCanvasLayoutWarning?: boolean;
   petInteractions?: {
     onPointerDown: (event: PointerEvent<HTMLElement>) => void;
     onPointerMove: (event: PointerEvent<HTMLElement>) => void;
@@ -518,16 +522,17 @@ export function Live2DStage({
         actionKey: command.actionKey,
         speaking,
         actionKeyOverride,
+        actionTriggerKey,
         expression: command.expression,
         motionGroup: command.motionGroup,
         motionIndex: command.motionIndex,
         error,
       });
     }
-  }, [actionKeyOverride, asset, renderLifecycle.status, speaking, stage.state]);
+  }, [actionKeyOverride, actionTriggerKey, asset, renderLifecycle.status, speaking, stage.state]);
 
   useEffect(() => {
-    if (!active || renderLifecycle.status !== "mounted") {
+    if (!active || renderLifecycle.status !== "mounted" || suppressCanvasLayoutWarning) {
       setLayoutWarning(null);
       return;
     }
@@ -580,7 +585,7 @@ export function Live2DStage({
       resizeObserver.disconnect();
       window.removeEventListener("resize", inspectCanvasLayout);
     };
-  }, [active, canvasRef, renderLifecycle.status]);
+  }, [active, canvasRef, renderLifecycle.status, suppressCanvasLayoutWarning]);
 
   const lifecycleText = getLive2DRenderLifecycleText(renderLifecycle.status);
   const renderModeText = getLive2DRenderModeText(renderLifecycle.renderMode || "failed");
@@ -640,6 +645,7 @@ export function Live2DStage({
         aria-label="桌宠模型"
         data-live2d-speaking={speaking ? "true" : "false"}
         data-live2d-action-key={runtimeCommand.actionKey}
+        data-live2d-action-trigger={actionTriggerKey || ""}
       >
         <div
           className="live2d-pet-stage"
@@ -649,6 +655,7 @@ export function Live2DStage({
           data-live2d-render-mode={renderLifecycle.renderMode || "unknown"}
           data-live2d-speaking={speaking ? "true" : "false"}
           data-live2d-action-key={runtimeCommand.actionKey}
+          data-live2d-action-trigger={actionTriggerKey || ""}
         >
           <div className="live2d-runtime-host" aria-label="桌宠模型运行时画布区域">
             <canvas
@@ -734,6 +741,7 @@ export function Live2DStage({
         aria-label="陪伴模型"
         data-live2d-speaking={speaking ? "true" : "false"}
         data-live2d-action-key={runtimeCommand.actionKey}
+        data-live2d-action-trigger={actionTriggerKey || ""}
       >
         <div
           className="live2d-stage"
@@ -743,6 +751,7 @@ export function Live2DStage({
           data-live2d-render-mode={renderLifecycle.renderMode || "unknown"}
           data-live2d-speaking={speaking ? "true" : "false"}
           data-live2d-action-key={runtimeCommand.actionKey}
+          data-live2d-action-trigger={actionTriggerKey || ""}
         >
           <div className="live2d-runtime-host" aria-label="桌宠模型运行时画布区域">
             <canvas
@@ -810,6 +819,7 @@ export function Live2DStage({
       aria-label="桌宠模型展示区"
       data-live2d-speaking={speaking ? "true" : "false"}
       data-live2d-action-key={runtimeCommand.actionKey}
+      data-live2d-action-trigger={actionTriggerKey || ""}
     >
       <div className="live2d-copy">
         <p className="eyebrow">桌宠模型</p>

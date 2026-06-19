@@ -62,7 +62,7 @@ async def _memory_node(
         chat_model = _model_for_memory(services)
         if chat_model is not None:
             response, tool_results = await run_model_agent_with_tools(
-                agent_id=AgentId.MEMORY_PROPOSAL_AGENT,
+                agent_id=AgentId.ACTION_AGENT,
                 state=state,
                 tools=(AgentToolName.PROPOSE_MEMORY,),
                 system_prompt=_memory_system_prompt(),
@@ -107,5 +107,5 @@ async def _memory_node(
 
 def _model_for_memory(services: AgentRuntimeServices):
     if services.model_registry is not None:
-        return services.model_registry.get(AgentId.MEMORY_PROPOSAL_AGENT)
+        return services.model_registry.get(AgentId.ACTION_AGENT)
     return None

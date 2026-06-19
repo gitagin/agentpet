@@ -97,11 +97,14 @@ class AgentIntent(StrEnum):
 class AgentId(StrEnum):
     CHAT_AGENT = "chat_agent"
     SEMANTIC_ANALYSIS_AGENT = "semantic_analysis_agent"
+    RETRIEVAL_AGENT = "retrieval_agent"
+    ACTION_AGENT = "action_agent"
     DIARY_MEMORY_EXTRACTOR_AGENT = "diary_memory_extractor_agent"
     MEMORY_RETRIEVAL_AGENT = "memory_retrieval_agent"
     KNOWLEDGE_RETRIEVAL_AGENT = "knowledge_retrieval_agent"
     WIKI_MANAGER_AGENT = "wiki_manager_agent"
     MEMORY_PROPOSAL_AGENT = "memory_proposal_agent"
+    REFLECTION_AGENT = "reflection_agent"
     CONTINUITY_AGENT = "continuity_agent"
     TASK_AGENT = "task_agent"
 

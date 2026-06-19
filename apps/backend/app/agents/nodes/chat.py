@@ -4,6 +4,7 @@ from typing import Any, Callable
 
 from app.models.api import MemorySearchResponse, MemorySearchResult
 from app.models.enums import AgentId
+from app.services.chat_model import AgentModelNotConfiguredError
 from app.services.memory_permissions import (
     MemoryPromptSections,
     record_prompt_section_usage,
@@ -44,7 +45,13 @@ async def _chat_node(
             _events(graph_state).append(_continuity_signal_event(state.agent_run_id, signal))
             graph_state["continuity_signal_emitted"] = True
         _append_status(graph_state, "正在生成桌宠回复。", stage="chat_generation")
-        chat_model = _model_for_chat(services, AgentId.CHAT_AGENT)
+        try:
+            chat_model = _model_for_chat(services, AgentId.CHAT_AGENT)
+        except AgentModelNotConfiguredError as exc:
+            if state.action_plan is not None and state.response_text:
+                chat_model = None
+            else:
+                raise exc
         if chat_model is not None:
             if state.citations:
                 response = await _answer_with_chat_model(services, state)
@@ -180,6 +187,16 @@ def _message_with_runtime_context(services: AgentRuntimeServices, state: AgentSt
             agent_run_id=state.agent_run_id,
         )
     user_message = _message_with_citation_context(state, sections=sections)
+    if state.action_plan is not None:
+        user_message = (
+            f"{user_message}\n\n"
+            "Planned local action:\n"
+            f"- type: {state.action_plan.action_type}\n"
+            f"- risk: {state.action_plan.risk_score}\n"
+            f"- decision: {state.action_plan.decision}\n"
+            f"- user-facing draft: {state.action_plan.confirm_text}\n"
+            "Reply naturally using this draft. Do not claim the action has finished yet."
+        )
     immediate_block = _immediate_understanding_context_prompt(state.immediate_understanding)
     if immediate_block:
         user_message = f"{immediate_block}\n\nCurrent user message:\n{user_message}"

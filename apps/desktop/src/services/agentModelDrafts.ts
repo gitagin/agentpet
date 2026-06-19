@@ -17,6 +17,10 @@ export type AgentModelDraft = {
 
 export type AgentOutcomeKey =
   | "chat"
+  | "classification"
+  | "retrieval"
+  | "action"
+  | "reflection"
   | "task_reminder"
   | "knowledge_page"
   | "memory_review"
@@ -33,8 +37,24 @@ export type AgentModelDefinition = {
 
 export const agentOutcomeDefinitions: Record<AgentOutcomeKey, { label: string; description: string }> = {
   chat: {
-    label: "聊天",
-    description: "把检索、记忆和任务结果组织成最终回复。",
+    label: "聊天回复",
+    description: "把检索、动作草稿和连续性上下文组织成用户可见回复。",
+  },
+  classification: {
+    label: "意图分类",
+    description: "判断用户意图、检索范围、查询词和动作类型。",
+  },
+  retrieval: {
+    label: "统一检索",
+    description: "按范围检索个人记忆、日记对象、每日聊天和知识库。",
+  },
+  action: {
+    label: "本地动作",
+    description: "统一规划任务、Wiki 和记忆提案，执行仍走确定性工具和风险策略。",
+  },
+  reflection: {
+    label: "后台反思",
+    description: "在回复后整理日记对象、长期记忆候选、连续性更新和摘要。",
   },
   task_reminder: {
     label: "任务",
@@ -59,18 +79,44 @@ export const agentOutcomeDefinitions: Record<AgentOutcomeKey, { label: string; d
 };
 
 export const agentModelDefinitions: AgentModelDefinition[] = [
-  { id: "chat_agent", label: "最终回复", description: "生成用户可见的聊天回复。", outcome: "chat", outcomeLabel: "聊天" },
-  { id: "task_agent", label: "任务创建", description: "创建本地任务和提醒。", outcome: "task_reminder", outcomeLabel: "任务" },
-  { id: "wiki_manager_agent", label: "知识页写入", description: "维护本机知识页。", outcome: "knowledge_page", outcomeLabel: "知识" },
-  { id: "memory_proposal_agent", label: "记忆复核", description: "准备可能需要确认的长期记忆项。", outcome: "memory_review", outcomeLabel: "记忆" },
-  { id: "diary_memory_extractor_agent", label: "日记结构化", description: "从聊天日记提取事件、主题和情绪。", outcome: "memory_review", outcomeLabel: "记忆" },
-  { id: "memory_retrieval_agent", label: "记忆检索", description: "搜索个人记忆和每日聊天记录。", outcome: "cited_answer", outcomeLabel: "带引用回答" },
-  { id: "knowledge_retrieval_agent", label: "知识检索", description: "搜索本机知识页。", outcome: "cited_answer", outcomeLabel: "带引用回答" },
-  { id: "continuity_agent", label: "连续性", description: "提取身份、关系和情绪连续性；高风险内容仍需复核。", outcome: "relationship_continuity", outcomeLabel: "连续性" },
-  { id: "semantic_analysis_agent", label: "意图路由", description: "判断意图与上下文需求。", outcome: "chat", outcomeLabel: "聊天" },
+  {
+    id: "chat_agent",
+    label: "Chat Agent",
+    description: "唯一的用户可见回复出口，负责把上下文、动作结果和陪伴状态合成为自然语言。",
+    outcome: "chat",
+    outcomeLabel: "聊天回复",
+  },
+  {
+    id: "semantic_analysis_agent",
+    label: "Router Agent",
+    description: "轻量分类器，判断意图、检索范围、查询词和动作类型；强规则命中时可跳过模型调用。",
+    outcome: "classification",
+    outcomeLabel: "意图分类",
+  },
+  {
+    id: "retrieval_agent",
+    label: "Retrieval Agent",
+    description: "统一检索个人记忆、日记对象、每日聊天和知识库，必要时整理成引用上下文。",
+    outcome: "retrieval",
+    outcomeLabel: "统一检索",
+  },
+  {
+    id: "action_agent",
+    label: "Action Agent",
+    description: "统一规划任务、Wiki 和记忆提案；真正写入和提醒由本地工具按风险策略执行。",
+    outcome: "action",
+    outcomeLabel: "本地动作",
+  },
+  {
+    id: "reflection_agent",
+    label: "Reflection Agent",
+    description: "回复后在后台整理日记对象、长期记忆候选、连续性更新和可复用摘要。",
+    outcome: "reflection",
+    outcomeLabel: "后台反思",
+  },
 ];
 
-export const agentModelCountLabel = "结果路由";
+export const agentModelCountLabel = "Agent 路由";
 
 export function agentOutcomeLabel(agentId: AgentModelId | string): string {
   return agentModelDefinitions.find((agent) => agent.id === agentId)?.outcomeLabel || "路由";
@@ -96,8 +142,10 @@ export function mergeAgentModelStatus(
   current: AgentModelDraft[],
   statusItems: AgentModelSettings[] | undefined,
 ): AgentModelDraft[] {
+  const currentById = new Map(current.map((draft) => [draft.agent_id, draft]));
   const statusById = new Map((statusItems || []).map((item) => [item.agent_id, item]));
-  return current.map((draft) => {
+  return defaultAgentModelDrafts().map((defaultDraft) => {
+    const draft = currentById.get(defaultDraft.agent_id) || defaultDraft;
     const status = statusById.get(draft.agent_id);
     if (!status) {
       return draft;

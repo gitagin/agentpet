@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "./apiClient";
-import { businessAuthMismatchMessage, describeBusinessAuthFailure, describeError } from "./apiErrorMessages";
+import {
+  businessAuthMismatchMessage,
+  describeBusinessAuthFailure,
+  describeError,
+  isSidecarStartingError,
+} from "./apiErrorMessages";
 
 function buildApiError(message: string, status: number, code?: string, requestId?: string): ApiError {
   return new ApiError(message, status, {
@@ -42,5 +47,10 @@ describe("apiErrorMessages", () => {
   it("returns a reusable mismatch notice for health-success auth mismatch", () => {
     expect(businessAuthMismatchMessage()).toContain("后端健康检查通过");
     expect(businessAuthMismatchMessage()).toContain("npm run electron:dev");
+  });
+  it("recognizes Electron sidecar startup responses as transient", () => {
+    expect(isSidecarStartingError(buildApiError("starting", 503, "sidecar_starting"))).toBe(true);
+    expect(isSidecarStartingError(buildApiError("unavailable", 503, "provider_unreachable"))).toBe(false);
+    expect(isSidecarStartingError(new Error("starting"))).toBe(false);
   });
 });

@@ -156,18 +156,18 @@ def test_langgraph_semantic_agent_drives_memory_retrieval_before_chat() -> None:
                 "reason": "personal preference question",
             }
         )
-        memory_retrieval_model = FakeRegistryChatModel(None, "memory checked")
+        retrieval_model = FakeRegistryChatModel(None, "memory checked")
         chat_model = FakeRegistryChatModel(None, "我翻到记录里写着你喜欢苹果。")
-        memory_model = FakeRegistryChatModel("propose_memory", "memory answer")
+        action_model = FakeRegistryChatModel("propose_memory", "memory answer")
         runtime = LangGraphAgentRuntime(
             AgentRuntimeServices(
                 retrieval=retrieval,
                 model_registry=AgentModelRegistry(
                     {
                         AgentId.SEMANTIC_ANALYSIS_AGENT: semantic_model,
-                        AgentId.MEMORY_RETRIEVAL_AGENT: memory_retrieval_model,
+                        AgentId.RETRIEVAL_AGENT: retrieval_model,
                         AgentId.CHAT_AGENT: chat_model,
-                        AgentId.MEMORY_PROPOSAL_AGENT: memory_model,
+                        AgentId.ACTION_AGENT: action_model,
                     }
                 ),
                 automation_settings=SimpleNamespace(use_negotiation=False),
@@ -175,14 +175,14 @@ def test_langgraph_semantic_agent_drives_memory_retrieval_before_chat() -> None:
         )
 
         events = [event async for event in runtime.run(make_state("Can you use the earlier context?"))]
-        return retrieval, semantic_model, memory_retrieval_model, chat_model, memory_model, events
+        return retrieval, semantic_model, retrieval_model, chat_model, action_model, events
 
-    retrieval, semantic_model, memory_retrieval_model, chat_model, memory_model, events = asyncio.run(run_case())
+    retrieval, semantic_model, retrieval_model, chat_model, action_model, events = asyncio.run(run_case())
 
     assert semantic_model.calls[0][0] == "Can you use the earlier context?"
-    assert memory_retrieval_model.calls[0][2] == ["search_memory"]
+    assert retrieval_model.calls[0][2] == ["search_memory"]
     assert retrieval.calls == [("用户喜欢什么水果", 5, "fts", "personal_memory")]
-    assert memory_model.calls == []
+    assert action_model.calls == []
     assert "用户喜欢苹果" in chat_model.calls[-1][0]
     assert "Memories/Preferences.md" in chat_model.calls[-1][0]
     assert_langgraph_events(events, ["citation", "token", "done"])
@@ -202,7 +202,7 @@ def test_langgraph_semantic_agent_drives_knowledge_retrieval_before_chat() -> No
                 "reason": "knowledge-base question",
             }
         )
-        knowledge_retrieval_model = FakeRegistryChatModel(None, "knowledge checked")
+        retrieval_model = FakeRegistryChatModel(None, "knowledge checked")
         chat_model = FakeRegistryChatModel(None, "knowledge answer")
         runtime = LangGraphAgentRuntime(
             AgentRuntimeServices(
@@ -210,7 +210,7 @@ def test_langgraph_semantic_agent_drives_knowledge_retrieval_before_chat() -> No
                 model_registry=AgentModelRegistry(
                     {
                         AgentId.SEMANTIC_ANALYSIS_AGENT: semantic_model,
-                        AgentId.KNOWLEDGE_RETRIEVAL_AGENT: knowledge_retrieval_model,
+                        AgentId.RETRIEVAL_AGENT: retrieval_model,
                         AgentId.CHAT_AGENT: chat_model,
                     }
                 ),
@@ -219,11 +219,11 @@ def test_langgraph_semantic_agent_drives_knowledge_retrieval_before_chat() -> No
         )
 
         events = [event async for event in runtime.run(make_state("search docs for runtime"))]
-        return retrieval, knowledge_retrieval_model, chat_model, events
+        return retrieval, retrieval_model, chat_model, events
 
-    retrieval, knowledge_retrieval_model, chat_model, events = asyncio.run(run_case())
+    retrieval, retrieval_model, chat_model, events = asyncio.run(run_case())
 
-    assert knowledge_retrieval_model.calls[0][2] == ["search_memory"]
+    assert retrieval_model.calls[0][2] == ["search_memory"]
     assert retrieval.calls == [("runtime docs", 5, "fts", "knowledge_base")]
     assert "Wiki/Runtime.md" in chat_model.calls[-1][0]
     assert_langgraph_events(events, ["citation", "token", "done"])
@@ -242,7 +242,7 @@ def test_langgraph_falls_back_to_daily_chat_as_weak_evidence_when_personal_memor
                 "reason": "personal preference question",
             }
         )
-        memory_retrieval_model = FakeRegistryChatModel(None, "memory checked")
+        retrieval_model = FakeRegistryChatModel(None, "memory checked")
         chat_model = FakeRegistryChatModel(None, "我只在聊天日记里看到你提过苹果，还没沉淀为长期记忆。")
         runtime = LangGraphAgentRuntime(
             AgentRuntimeServices(
@@ -250,7 +250,7 @@ def test_langgraph_falls_back_to_daily_chat_as_weak_evidence_when_personal_memor
                 model_registry=AgentModelRegistry(
                     {
                         AgentId.SEMANTIC_ANALYSIS_AGENT: semantic_model,
-                        AgentId.MEMORY_RETRIEVAL_AGENT: memory_retrieval_model,
+                        AgentId.RETRIEVAL_AGENT: retrieval_model,
                         AgentId.CHAT_AGENT: chat_model,
                     }
                 ),
@@ -289,7 +289,7 @@ def test_langgraph_forces_date_recall_to_daily_chat_even_when_semantic_model_mis
                 "reason": "bad model route",
             }
         )
-        memory_retrieval_model = FakeRegistryChatModel(None, "memory checked")
+        retrieval_model = FakeRegistryChatModel(None, "memory checked")
         chat_model = FakeRegistryChatModel(None, "5月4号的聊天日记里，你说过自己喜欢苹果。")
         runtime = LangGraphAgentRuntime(
             AgentRuntimeServices(
@@ -297,7 +297,7 @@ def test_langgraph_forces_date_recall_to_daily_chat_even_when_semantic_model_mis
                 model_registry=AgentModelRegistry(
                     {
                         AgentId.SEMANTIC_ANALYSIS_AGENT: semantic_model,
-                        AgentId.MEMORY_RETRIEVAL_AGENT: memory_retrieval_model,
+                        AgentId.RETRIEVAL_AGENT: retrieval_model,
                         AgentId.CHAT_AGENT: chat_model,
                     }
                 ),

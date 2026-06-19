@@ -208,10 +208,31 @@ dt,
   height: 100%;
   overflow: hidden;
   background: transparent;
+  isolation: isolate;
   cursor: default;
   user-select: none;
   touch-action: none;
   -webkit-user-drag: none;
+}
+
+.pet-shell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: transparent;
+}
+
+.pet-shell.pet-dragging::before {
+  background: rgba(0, 0, 0, 0.004);
+  transform: translateZ(0);
+  will-change: opacity;
+}
+
+.pet-shell > * {
+  position: relative;
+  z-index: 1;
 }
 
 .pet-shell:active {
@@ -226,10 +247,11 @@ dt,
   width: var(--pet-shortcut-bar-width);
   min-height: var(--pet-shortcut-bar-height);
   display: grid;
-  grid-template-columns: repeat(2, 38px);
+  grid-template-columns: 34px;
+  grid-template-rows: repeat(5, 34px);
   align-content: center;
   justify-content: center;
-  gap: 8px;
+  gap: 7px;
   pointer-events: none;
   -webkit-app-region: no-drag;
 }
@@ -277,10 +299,13 @@ dt,
 .pet-shortcut-button {
   --pet-shortcut-origin-x: -108px;
   --pet-shortcut-origin-y: 0px;
-  width: 38px;
-  height: 38px;
-  min-height: 38px;
+  width: 34px;
+  height: 34px;
+  min-height: 34px;
   min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid rgba(202, 113, 151, 0.24);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.86);
@@ -298,6 +323,12 @@ dt,
   transform: translate(var(--pet-shortcut-origin-x), var(--pet-shortcut-origin-y)) scale(0.34) rotate(720deg);
   transform-origin: center;
   will-change: transform, opacity;
+}
+
+.pet-shortcut-icon {
+  display: block;
+  flex: 0 0 auto;
+  color: currentColor;
 }
 
 .pet-shortcut-bar.is-visible .pet-shortcut-button {
@@ -321,13 +352,15 @@ dt,
 }
 
 .pet-shortcut-button.danger {
-  border-color: rgba(196, 75, 75, 0.24);
-  color: #8f3a3a;
+  border-color: rgba(196, 75, 75, 0.42);
+  background: rgba(196, 75, 75, 0.9);
+  color: #fff8f8;
 }
 
 .pet-shortcut-bar.is-visible .pet-shortcut-button.danger:hover {
-  border-color: rgba(196, 75, 75, 0.42);
-  color: #b53939;
+  border-color: rgba(172, 50, 50, 0.54);
+  background: rgba(181, 57, 57, 0.96);
+  color: #fff;
 }
 
 @keyframes pet-shortcut-roll-out {
@@ -966,23 +999,36 @@ dt,
 }
 
 .visible-continuity-prompt-row {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
   margin-top: 10px;
+  min-width: 0;
 }
 
 .visible-continuity-prompt-button {
-  display: inline-flex;
-  align-items: center;
-  max-width: 100%;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: start;
+  justify-content: start;
+  width: 100%;
+  max-width: none;
   gap: 6px;
-  min-height: 32px;
-  padding: 6px 10px;
+  min-height: 0;
+  border-radius: 8px;
+  padding: 9px 10px;
   text-align: left;
+  line-height: 1.45;
+  white-space: normal;
+}
+
+.visible-continuity-prompt-button svg {
+  margin-top: 2px;
+  flex: 0 0 auto;
 }
 
 .visible-continuity-prompt-button span {
+  min-width: 0;
   overflow-wrap: anywhere;
 }
 
@@ -1115,9 +1161,9 @@ dt,
 }
 
 .bottom-nav {
-  --bottom-nav-item-width: 72px;
+  --bottom-nav-item-width: 64px;
   --bottom-nav-item-height: 36px;
-  --bottom-nav-gap: 6px;
+  --bottom-nav-gap: 5px;
   --bottom-nav-padding: 4px;
   position: relative;
   z-index: 10;
@@ -1410,10 +1456,11 @@ dt,
 }
 
 .stage-command-layout {
+  --stage-side-card-height: clamp(360px, 56vh, 520px);
   display: grid;
   grid-template-columns: minmax(250px, 0.82fr) minmax(320px, 1.36fr) minmax(250px, 0.82fr);
   grid-template-rows: minmax(0, 1fr);
-  align-items: center;
+  align-items: stretch;
   gap: clamp(16px, 3vw, 36px);
   overflow: visible;
   padding: clamp(16px, 3.4vh, 42px) clamp(20px, 4.6vw, 64px) clamp(10px, 2.8vh, 26px);
@@ -1428,6 +1475,7 @@ dt,
   z-index: 12;
   width: 100%;
   max-width: 360px;
+  height: min(100%, var(--stage-side-card-height));
   display: grid;
   align-content: start;
   gap: 12px;
@@ -1448,7 +1496,7 @@ dt,
 }
 
 .stage-command-layout.has-outcome {
-  align-items: center;
+  align-items: stretch;
 }
 
 .stage-outcome-panel {
@@ -1459,12 +1507,14 @@ dt,
   z-index: 13;
   width: 100%;
   max-width: 430px;
+  height: min(100%, var(--stage-side-card-height));
+  display: grid;
   overflow: visible;
 }
 
 .stage-continuity-panel {
   min-height: 0;
-  height: auto;
+  height: 100%;
   padding: 13px;
   box-shadow: 0 18px 42px rgba(69, 86, 91, 0.15);
   contain: none;
@@ -1499,7 +1549,7 @@ dt,
 .stage-command-layout.has-outcome .stage-command-panel {
   grid-column: 3;
   justify-self: stretch;
-  align-self: end;
+  align-self: center;
   max-width: 330px;
 }
 
@@ -1518,7 +1568,7 @@ dt,
 }
 
 .stage-command-heading p {
-  text-transform: uppercase;
+  display: none;
 }
 
 .stage-command-heading h1 {
@@ -1582,7 +1632,7 @@ dt,
 
 .stage-action-card {
   width: 100%;
-  min-height: 62px;
+  min-height: 56px;
   display: grid;
   grid-template-columns: 36px minmax(0, 1fr);
   align-items: center;
@@ -1620,7 +1670,7 @@ dt,
 .stage-action-card span {
   min-width: 0;
   display: grid;
-  gap: 3px;
+  gap: 0;
 }
 
 .stage-action-card strong,
@@ -1633,6 +1683,10 @@ dt,
   color: #17242a;
   font-size: 14px;
   line-height: 1.2;
+}
+
+.stage-command-panel > .stage-action-grid:not(.compact) .stage-action-card small {
+  display: none;
 }
 
 .stage-live2d-zone {
@@ -2932,9 +2986,34 @@ dt,
 }
 
 .live2d-panel-pet .live2d-runtime-canvas {
+  display: block;
   opacity: 1;
   width: 100%;
   height: 100%;
+  background: transparent;
+  backface-visibility: hidden;
+  transform: translateZ(0);
+}
+
+.pet-shell.pet-dragging .live2d-panel-pet .live2d-runtime-canvas {
+  will-change: transform;
+}
+
+.pet-shell.pet-dragging.pet-drag-snapshot-ready .live2d-panel-pet .live2d-runtime-canvas {
+  opacity: 0;
+}
+
+.pet-drag-frame-cache {
+  position: absolute;
+  z-index: 6;
+  display: block;
+  object-fit: fill;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+  backface-visibility: hidden;
+  transform: translateZ(0);
+  will-change: transform;
 }
 
 .live2d-panel-pet .live2d-pet-composition {
@@ -6088,6 +6167,7 @@ dt,
   }
 
   .stage-command-layout {
+    --stage-side-card-height: clamp(340px, 55vh, 480px);
     grid-template-columns: minmax(220px, 0.8fr) minmax(280px, 1.2fr) minmax(220px, 0.8fr);
     gap: 14px;
     padding-inline: 18px;
@@ -6158,6 +6238,7 @@ dt,
   }
 
   .stage-command-layout {
+    --stage-side-card-height: auto;
     grid-template-columns: 1fr;
     grid-template-rows: auto minmax(0, 1fr) auto;
     place-items: center;
@@ -6179,9 +6260,11 @@ dt,
     align-self: start;
     width: 100%;
     max-width: none;
+    height: auto;
   }
 
   .stage-continuity-panel {
+    height: auto;
     padding: 11px 12px;
   }
 
@@ -6237,6 +6320,7 @@ dt,
     align-self: end;
     width: 100%;
     max-width: none;
+    height: auto;
     align-content: start;
     gap: 8px;
     padding: 10px 12px;

@@ -41,6 +41,7 @@ from ..services.settings import (
     ModelKeyStatus,
     SettingsStore,
     is_supported_model_provider,
+    normalize_agent_id,
 )
 from .wiring import database, settings_store_dependency
 from .wiring import refresh_retrieval_vector_index
@@ -704,6 +705,10 @@ def _resolve_optional_agent_id(agent_id: str | None) -> str | None:
 
 
 def _resolve_agent_id(agent_id: object) -> str:
+    try:
+        return normalize_agent_id(getattr(agent_id, "value", str(agent_id)).strip())
+    except ValueError:
+        pass
     normalized = getattr(agent_id, "value", str(agent_id)).strip()
     if normalized not in AGENT_MODEL_IDS:
         raise HTTPException(

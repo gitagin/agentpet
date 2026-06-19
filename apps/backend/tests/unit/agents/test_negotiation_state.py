@@ -28,7 +28,7 @@ def test_negotiation_state_defaults() -> None:
 def test_negotiation_state_invocation_history_accepts_results() -> None:
     state = _state()
     result = AgentInvocationResult(
-        agent_id="memory_retrieval_agent",
+        agent_id="retrieval_agent",
         round=1,
         input_query="今天的状态",
         output={"summary": "状态稳定"},
@@ -40,7 +40,7 @@ def test_negotiation_state_invocation_history_accepts_results() -> None:
     state.invocation_history.append(result)
 
     assert state.invocation_history == [result]
-    assert state.invocation_history[0].agent_id == "memory_retrieval_agent"
+    assert state.invocation_history[0].agent_id == "retrieval_agent"
     assert state.invocation_history[0].tool_calls == ["search_memory"]
 
 

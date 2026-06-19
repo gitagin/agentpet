@@ -99,6 +99,7 @@ function renderStage(
   petInteractions?: Parameters<typeof Live2DStage>[0]["petInteractions"],
   speaking = false,
   actionKeyOverride?: string | null,
+  actionTriggerKey?: string | null,
 ) {
   return render(
     <Live2DStage
@@ -110,6 +111,7 @@ function renderStage(
       petInteractions={petInteractions}
       speaking={speaking}
       actionKeyOverride={actionKeyOverride}
+      actionTriggerKey={actionTriggerKey}
     />,
   );
 }
@@ -245,6 +247,68 @@ describe("Live2DStage", () => {
     expect(startMotion).toHaveBeenCalledWith("Continuity", 1);
   });
 
+  it("replays the same reply-driven action when a new reply trigger arrives", async () => {
+    const mountedRuntime: Live2DRuntimeBoundary = {
+      ...runtime,
+      canMountRenderer: true,
+    };
+    const setExpression = vi.fn();
+    const startMotion = vi.fn();
+    const handle = createMountedRuntimeHandle({ setExpression, startMotion });
+    const expressiveAsset: Live2DAssetInfo = {
+      ...asset,
+      expressions: ["comfort"],
+      motions: [{ group: "Continuity", index: 1 }],
+      actionProfile: {
+        actions: {
+          emotion_comfort: {
+            expression: "comfort",
+            motion: { group: "Continuity", index: 1 },
+          },
+        },
+      },
+    };
+    mountLive2DRendererBoundaryMock.mockResolvedValueOnce({
+      status: "mounted",
+      renderMode: "official",
+      message: "mounted",
+      diagnostics: handle.getDiagnostics(),
+      handle,
+    });
+    const canvasRef = createRef<HTMLCanvasElement>();
+    const { rerender } = render(
+      <Live2DStage
+        stage={stage}
+        asset={expressiveAsset}
+        runtime={mountedRuntime}
+        canvasRef={canvasRef}
+        variant="stage"
+        actionKeyOverride="emotion_comfort"
+        actionTriggerKey="assistant-1:completed"
+      />,
+    );
+
+    await waitFor(() => expect(setExpression).toHaveBeenCalledWith("comfort"));
+    expect(startMotion).toHaveBeenCalledWith("Continuity", 1);
+    setExpression.mockClear();
+    startMotion.mockClear();
+
+    rerender(
+      <Live2DStage
+        stage={stage}
+        asset={expressiveAsset}
+        runtime={mountedRuntime}
+        canvasRef={canvasRef}
+        variant="stage"
+        actionKeyOverride="emotion_comfort"
+        actionTriggerKey="assistant-2:completed"
+      />,
+    );
+
+    await waitFor(() => expect(setExpression).toHaveBeenCalledWith("comfort"));
+    expect(startMotion).toHaveBeenCalledWith("Continuity", 1);
+  });
+
   it("supersamples the pet runtime canvas without changing the stage canvas scale", async () => {
     const mountedRuntime: Live2DRuntimeBoundary = {
       ...runtime,
@@ -271,7 +335,7 @@ describe("Live2DStage", () => {
     );
 
     await waitFor(() => expect(petResize).toHaveBeenCalled());
-    expect(petResize).toHaveBeenLastCalledWith({ width: 640, height: 960, pixelRatio: 2 });
+    expect(petResize).toHaveBeenLastCalledWith({ width: 480, height: 720, pixelRatio: 1.5 });
     petResult.unmount();
 
     const stageResize = vi.fn();
@@ -297,6 +361,38 @@ describe("Live2DStage", () => {
     await waitFor(() => expect(stageResize).toHaveBeenCalled());
     expect(stageResize).toHaveBeenLastCalledWith({ width: 320, height: 480, pixelRatio: 1 });
     stageResult.unmount();
+  });
+
+  it("suppresses canvas layout warnings while a pet drag snapshot is active", async () => {
+    const mountedRuntime: Live2DRuntimeBoundary = {
+      ...runtime,
+      canMountRenderer: true,
+    };
+    const handle = createMountedRuntimeHandle();
+    const getComputedStyleSpy = vi.spyOn(window, "getComputedStyle").mockImplementation(() => {
+      throw new Error("canvas layout should not be inspected while warnings are suppressed");
+    });
+    mountLive2DRendererBoundaryMock.mockResolvedValueOnce({
+      status: "mounted",
+      renderMode: "official",
+      message: "mounted",
+      diagnostics: handle.getDiagnostics(),
+      handle,
+    });
+
+    render(
+      <Live2DStage
+        stage={stage}
+        asset={asset}
+        runtime={mountedRuntime}
+        canvasRef={createRef<HTMLCanvasElement>()}
+        variant="pet"
+        suppressCanvasLayoutWarning
+      />,
+    );
+
+    await waitFor(() => expect(mountLive2DRendererBoundaryMock).toHaveBeenCalled());
+    getComputedStyleSpy.mockRestore();
   });
 
   it("describes missing assets with the manifest path", () => {

@@ -4,7 +4,12 @@ import type { ChatContinuitySignal, ChatMessage, TtsPlaybackItem, TtsPlaybackSta
 import { getPetBubblePageDelay, paginatePetBubbleReply } from "../../services/petBubblePagination";
 import type { PetBubblePhase, PetBubbleState, PetBubbleTone } from "./chatTypes";
 import { petStreamFinalTimeoutMs, petStreamFinalWatchdogDelayMs } from "./chatTypes";
-import { createAssistantReplyTextFilter, normalizeVisibleAssistantReplyText, stripAssistantHiddenReplyText } from "./assistantReplyVisibility";
+import {
+  createAssistantReplyTextFilter,
+  filterAssistantReplyText,
+  normalizeVisibleAssistantReplyText,
+  stripAssistantHiddenReplyText,
+} from "./assistantReplyVisibility";
 import type { TtsPlaybackQueueController } from "../tts";
 import type { TtsProviderPlaybackStatus } from "../tts";
 
@@ -55,6 +60,7 @@ export function usePetChatBubble({
   const petInputRef = useRef<HTMLInputElement | null>(null);
   const petReplyScrollRef = useRef<HTMLDivElement | null>(null);
   const assistantReplyRef = useRef("");
+  const assistantHiddenReplyTextsRef = useRef<string[]>([]);
   const assistantReplyFilterRef = useRef(createAssistantReplyTextFilter());
   const replyStartedRef = useRef(false);
   const replyCompleteRef = useRef(false);
@@ -190,6 +196,10 @@ export function usePetChatBubble({
 
   function appendAssistantReplyText(text: string): string {
     const visibleText = assistantReplyFilterRef.current.append(text);
+    const hiddenTexts = assistantReplyFilterRef.current.takeHiddenTexts();
+    if (hiddenTexts.length > 0) {
+      assistantHiddenReplyTextsRef.current = [...assistantHiddenReplyTextsRef.current, ...hiddenTexts];
+    }
     if (!visibleText) {
       return "";
     }
@@ -199,7 +209,9 @@ export function usePetChatBubble({
 
   function setAssistantReplyText(text: string): string {
     assistantReplyFilterRef.current.reset();
-    assistantReplyRef.current = stripAssistantHiddenReplyText(text);
+    const { visibleText, hiddenTexts } = filterAssistantReplyText(text);
+    assistantReplyRef.current = visibleText;
+    assistantHiddenReplyTextsRef.current = hiddenTexts;
     return assistantReplyRef.current;
   }
 
@@ -864,6 +876,7 @@ export function usePetChatBubble({
 
   function resetStreamState(messageId?: string) {
     assistantReplyRef.current = "";
+    assistantHiddenReplyTextsRef.current = [];
     assistantReplyFilterRef.current.reset();
     replyStartedRef.current = false;
     replyCompleteRef.current = false;
@@ -900,6 +913,7 @@ export function usePetChatBubble({
 
   return {
     assistantReplyRef,
+    assistantHiddenReplyTextsRef,
     appendAssistantReplyText,
     bubble: petBubble,
     input: petInput,

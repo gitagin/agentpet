@@ -192,19 +192,15 @@ def test_agent_model_settings_are_persisted_per_agent(client: TestClient) -> Non
     agents = {item["agent_id"]: item for item in listed.json()["agents"]}
     assert set(agents) == {
         "chat_agent",
-        "diary_memory_extractor_agent",
         "semantic_analysis_agent",
-        "memory_retrieval_agent",
-        "knowledge_retrieval_agent",
-        "wiki_manager_agent",
-        "memory_proposal_agent",
-        "continuity_agent",
-        "task_agent",
+        "retrieval_agent",
+        "action_agent",
+        "reflection_agent",
     }
     assert agents["chat_agent"]["model"] == "chat-model"
     assert agents["chat_agent"]["configured"] is True
-    assert agents["task_agent"]["model"] == "task-model"
-    assert agents["task_agent"]["configured"] is False
+    assert agents["action_agent"]["model"] == "task-model"
+    assert agents["action_agent"]["configured"] is False
     assert "sk-chat-secret" not in listed.text
 
     db_path = client.app.state.database.path
@@ -217,7 +213,7 @@ def test_agent_model_settings_are_persisted_per_agent(client: TestClient) -> Non
             "SELECT agent_id, provider, masked, credential_ref FROM agent_model_keys"
         ).fetchone()
 
-    assert [row["agent_id"] for row in config_rows] == ["chat_agent", "task_agent"]
+    assert [row["agent_id"] for row in config_rows] == ["action_agent", "chat_agent"]
     assert key_row["agent_id"] == "chat_agent"
     assert key_row["masked"] == "****cret"
     assert key_row["credential_ref"]
@@ -262,9 +258,9 @@ def test_agent_model_bulk_put_updates_current_configs_and_global_defaults(
     agents = {item["agent_id"]: item for item in bulk_response.json()["agents"]}
     assert "knowledge_agent" not in agents
     assert "context_retrieval_agent" not in agents
-    assert agents["knowledge_retrieval_agent"]["base_url"] == "https://knowledge.example.test/v1"
-    assert agents["knowledge_retrieval_agent"]["model"] == "knowledge-model"
-    assert agents["memory_proposal_agent"]["model"] == "memory-model"
+    assert agents["retrieval_agent"]["base_url"] == "https://knowledge.example.test/v1"
+    assert agents["retrieval_agent"]["model"] == "knowledge-model"
+    assert agents["action_agent"]["model"] == "memory-model"
 
     status_response = client.get("/api/settings", headers=auth())
     assert status_response.status_code == 200
@@ -272,7 +268,7 @@ def test_agent_model_bulk_put_updates_current_configs_and_global_defaults(
     assert status_response.json()["chat_model"] == "global-model"
 
 
-def test_continuity_agent_model_config_is_accepted(client: TestClient) -> None:
+def test_legacy_continuity_agent_model_config_maps_to_reflection_agent(client: TestClient) -> None:
     response = client.put(
         "/api/settings/agent-models/continuity_agent/model-config",
         headers=auth(),
@@ -285,19 +281,19 @@ def test_continuity_agent_model_config_is_accepted(client: TestClient) -> None:
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["agent_id"] == "continuity_agent"
+    assert payload["agent_id"] == "reflection_agent"
     assert payload["base_url"] == "https://continuity.example.test/v1"
     assert payload["model"] == "continuity-model"
 
 
-def test_agent_model_endpoints_reject_legacy_agent_ids(client: TestClient) -> None:
+def test_agent_model_endpoints_map_legacy_agent_ids(client: TestClient) -> None:
     bulk_response = client.put(
         "/api/settings/agent-models",
         headers=auth(),
         json={
             "agents": [
                 {
-                    "agent_id": "knowledge_agent",
+                    "agent_id": "memory_retrieval_agent",
                     "provider": "openai-compatible",
                     "base_url": "https://knowledge.example.test/v1",
                     "model": "knowledge-model",
@@ -315,10 +311,12 @@ def test_agent_model_endpoints_reject_legacy_agent_ids(client: TestClient) -> No
         },
     )
 
-    assert bulk_response.status_code == 422
-    assert config_response.status_code == 422
-    assert "validation_error" in bulk_response.text
-    assert "unsupported agent_id" in config_response.text
+    assert bulk_response.status_code == 200
+    assert config_response.status_code == 200
+    bulk_agents = {item["agent_id"]: item for item in bulk_response.json()["agents"]}
+    assert bulk_agents["retrieval_agent"]["model"] == "knowledge-model"
+    assert config_response.json()["agent_id"] == "retrieval_agent"
+    assert config_response.json()["model"] == "context-model"
 
 
 def test_legacy_agent_model_configs_are_migrated_and_removed(tmp_path: Path) -> None:
@@ -387,14 +385,14 @@ def test_legacy_agent_model_configs_are_migrated_and_removed(tmp_path: Path) -> 
 
     store = SettingsStore(db_path, credential_store=InMemoryCredentialStore())
     try:
-        memory_config = store.get_agent_model_config(
-            "memory_retrieval_agent",
+        retrieval_config = store.get_agent_model_config(
+            "retrieval_agent",
             default_provider="openai-compatible",
             default_base_url="",
             default_model="",
         )
-        knowledge_config = store.get_agent_model_config(
-            "knowledge_retrieval_agent",
+        legacy_memory_alias_config = store.get_agent_model_config(
+            "memory_retrieval_agent",
             default_provider="openai-compatible",
             default_base_url="",
             default_model="",
@@ -408,10 +406,13 @@ def test_legacy_agent_model_configs_are_migrated_and_removed(tmp_path: Path) -> 
             for row in conn.execute("SELECT agent_id FROM agent_model_configs").fetchall()
         }
 
-    assert memory_config is not None
-    assert knowledge_config is not None
-    assert memory_config.model == "existing-memory-model"
-    assert knowledge_config.model == "knowledge-model"
+    assert retrieval_config is not None
+    assert legacy_memory_alias_config is not None
+    assert retrieval_config.model == "existing-memory-model"
+    assert legacy_memory_alias_config.model == "existing-memory-model"
+    assert "retrieval_agent" in remaining_ids
+    assert "memory_retrieval_agent" not in remaining_ids
+    assert "knowledge_retrieval_agent" not in remaining_ids
     assert "context_retrieval_agent" not in remaining_ids
     assert "knowledge_agent" not in remaining_ids
 
@@ -548,7 +549,7 @@ def test_model_test_accepts_agent_id_and_uses_agent_credentials(
     assert response.status_code == 200
     payload = response.json()
     assert payload["status"] == "ok"
-    assert payload["agent_id"] == "task_agent"
+    assert payload["agent_id"] == "action_agent"
     assert payload["base_url"] == "https://task.example.test/v1"
     assert payload["model"] == "task-model"
     assert captured["api_key"] == "sk-task-secret"

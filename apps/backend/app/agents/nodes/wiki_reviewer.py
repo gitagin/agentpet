@@ -113,7 +113,7 @@ class WikiReviewerNode:
         if self.model is not None:
             return self.model
         if self.model_registry is not None:
-            return self.model_registry.get(AgentId.WIKI_MANAGER_AGENT)
+            return self.model_registry.get(AgentId.ACTION_AGENT)
         if optional:
             return None
         raise ValueError("Wiki reviewer requires a model or model registry.")

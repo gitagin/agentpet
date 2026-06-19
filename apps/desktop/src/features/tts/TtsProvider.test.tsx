@@ -284,6 +284,34 @@ describe("TTS providers", () => {
     });
   });
 
+  it("includes backend TTS failure details in provider errors", async () => {
+    const body: ApiErrorBody = {
+      error: {
+        code: "provider_failed",
+        message: "TTS upstream failed",
+        details: {
+          detail: "HTTP 400 invalid voice: Chloe is unavailable",
+        },
+      },
+    };
+    const api = {
+      synthesizeTts: vi.fn(async () => {
+        throw new ApiError("TTS upstream failed", 502, body);
+      }),
+    };
+    const provider = createBackendTtsProvider({ api: api as never });
+
+    await expect(provider.synthesize(request({ provider: "custom-http" }))).rejects.toMatchObject({
+      message: expect.stringContaining("HTTP 400 invalid voice"),
+      playbackError: {
+        code: "provider_failed",
+        provider: "custom-http",
+        recoverable: true,
+        message: expect.stringContaining("HTTP 400 invalid voice"),
+      },
+    });
+  });
+
   it("rejects custom HTTP responses that are not playable audio", async () => {
     const api = {
       synthesizeTts: vi.fn(async () => ({

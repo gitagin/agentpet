@@ -26,6 +26,27 @@ class SemanticAnalysisResult(BaseModel):
     reason: str = ""
 
 
+class ClassifierResult(BaseModel):
+    intent: Literal["chat", "need_retrieval", "action"] = "chat"
+    retrieval_scope: Literal["personal_memory", "knowledge_base", "both"] | None = None
+    retrieval_query: str | None = None
+    action_type: Literal["task", "wiki", "memory_proposal"] | None = None
+    action_params: dict[str, Any] = Field(default_factory=dict)
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    reason: str = ""
+
+
+class ActionPlan(BaseModel):
+    action_type: Literal["task", "wiki", "memory_proposal"]
+    payload: dict[str, Any] = Field(default_factory=dict)
+    risk_score: Literal["low", "medium", "high"] = "low"
+    decision: Literal["auto", "notify", "ask"] = "auto"
+    status: Literal["planned", "executed", "pending_confirm", "skipped", "failed"] = "planned"
+    confirm_text: str = ""
+    reversible: bool = False
+    executed: bool = False
+
+
 class AgentState(BaseModel):
     conversation_id: str
     message_id: str
@@ -35,6 +56,8 @@ class AgentState(BaseModel):
     route: AgentRoute | None = None
     memory_route: MemoryRoute | None = None
     semantic_analysis: SemanticAnalysisResult | None = None
+    classifier: ClassifierResult | None = None
+    action_plan: ActionPlan | None = None
     immediate_understanding: ImmediateUnderstanding | None = None
     citations: list[MemorySearchResult] = Field(default_factory=list)
     response_text: str = ""

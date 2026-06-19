@@ -62,7 +62,7 @@ async def test_orchestrator_invokes_agent_when_confidence_is_low() -> None:
     model = JsonModel(
         {
             "action": "invoke_agent",
-            "agent": AgentId.MEMORY_RETRIEVAL_AGENT.value,
+            "agent": AgentId.RETRIEVAL_AGENT.value,
             "agent_input": "今天的状态",
             "reasoning": "需要检索长期记忆补充上下文。",
             "confidence": 0.4,
@@ -74,9 +74,9 @@ async def test_orchestrator_invokes_agent_when_confidence_is_low() -> None:
     result = await node(_state())
 
     assert result["next"] == "invoke_agent"
-    assert result["next_agent"] == AgentId.MEMORY_RETRIEVAL_AGENT
+    assert result["next_agent"] == AgentId.RETRIEVAL_AGENT
     assert result["agent_input"] == "今天的状态"
-    assert result["orchestrator_decisions"][0]["agent"] == AgentId.MEMORY_RETRIEVAL_AGENT.value
+    assert result["orchestrator_decisions"][0]["agent"] == AgentId.RETRIEVAL_AGENT.value
 
 
 @pytest.mark.asyncio
@@ -84,7 +84,7 @@ async def test_orchestrator_falls_back_when_max_rounds_reached() -> None:
     model = JsonModel(
         {
             "action": "invoke_agent",
-            "agent": AgentId.MEMORY_RETRIEVAL_AGENT.value,
+            "agent": AgentId.RETRIEVAL_AGENT.value,
             "agent_input": "今天的状态",
             "reasoning": "需要更多信息。",
             "confidence": 0.2,
@@ -106,7 +106,7 @@ def test_build_prompt_contains_agent_names_and_context() -> None:
         collected_context="已检索到近期状态记录。",
         invocation_history=[
             AgentInvocationResult(
-                agent_id=AgentId.MEMORY_RETRIEVAL_AGENT.value,
+                agent_id=AgentId.RETRIEVAL_AGENT.value,
                 round=1,
                 input_query="今天的状态",
                 output={"summary": "状态稳定"},
@@ -121,6 +121,12 @@ def test_build_prompt_contains_agent_names_and_context() -> None:
 
     assert "帮我总结今天的状态" in prompt
     assert "已检索到近期状态记录。" in prompt
-    assert AgentId.MEMORY_RETRIEVAL_AGENT.value in prompt
-    for agent_id in AgentId:
+    assert AgentId.RETRIEVAL_AGENT.value in prompt
+    for agent_id in {
+        AgentId.CHAT_AGENT,
+        AgentId.SEMANTIC_ANALYSIS_AGENT,
+        AgentId.RETRIEVAL_AGENT,
+        AgentId.ACTION_AGENT,
+        AgentId.REFLECTION_AGENT,
+    }:
         assert f"## {agent_id.value}" in prompt

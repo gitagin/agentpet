@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import type { TtsProviderId, TtsSynthesisRequest, TtsSynthesisResult, TtsVoice } from "./ttsTypes";
-import { clampTtsVolume, type TtsProvider } from "./ttsProvider";
+import { clampTtsVolume, TtsProviderError, type TtsProvider } from "./ttsProvider";
 import type { TtsProviderRegistry } from "./useTtsPlaybackQueue";
 
 const defaultWaitingCuePrompts = [
@@ -36,6 +36,7 @@ export type UseTtsWaitingCueOptions = {
   enabled: boolean;
   providers: TtsProviderRegistry;
   provider: TtsProviderId;
+  fallbackProvider?: TtsProviderId | null;
   voice: TtsVoice | null;
   speed: number;
   volume: number;
@@ -53,6 +54,7 @@ export function useTtsWaitingCue({
   enabled,
   providers,
   provider,
+  fallbackProvider = null,
   voice,
   speed,
   volume,
@@ -64,10 +66,12 @@ export function useTtsWaitingCue({
   const cacheRef = useRef<Map<string, CachedWaitingCue>>(new Map());
   const activeRef = useRef<ActiveWaitingCue | null>(null);
   const runIdRef = useRef(0);
+  const unavailableProvidersRef = useRef<Set<TtsProviderId>>(new Set());
   const optionsRef = useRef({
     enabled,
     providers,
     provider,
+    fallbackProvider,
     voice,
     speed,
     volume,
@@ -80,13 +84,18 @@ export function useTtsWaitingCue({
       enabled,
       providers,
       provider,
+      fallbackProvider,
       voice,
       speed,
       volume,
       cueSpeed,
       promptList,
     };
-  }, [cueSpeed, enabled, providers, provider, promptList, speed, voice, volume]);
+  }, [cueSpeed, enabled, fallbackProvider, providers, provider, promptList, speed, voice, volume]);
+
+  useEffect(() => {
+    unavailableProvidersRef.current.clear();
+  }, [fallbackProvider, provider, voice]);
 
   const disposeCue = useCallback((cue: CachedWaitingCue) => {
     cue.controller.abort();
@@ -113,26 +122,42 @@ export function useTtsWaitingCue({
     active.provider.stop?.(reason);
   }, []);
 
-  const cacheKeyForPrompt = useCallback((prompt: string) => {
+  const fallbackProviderFor = useCallback((providerId: TtsProviderId) => {
+    const { fallbackProvider: fallbackProviderId, providers: registry } = optionsRef.current;
+    if (!fallbackProviderId || fallbackProviderId === providerId || !registry[fallbackProviderId]) {
+      return null;
+    }
+    return fallbackProviderId;
+  }, []);
+
+  const providerIdForPrompt = useCallback(() => {
+    const { provider: providerId, providers: registry } = optionsRef.current;
+    const fallbackProviderId = fallbackProviderFor(providerId);
+    if ((!registry[providerId] || unavailableProvidersRef.current.has(providerId)) && fallbackProviderId) {
+      return fallbackProviderId;
+    }
+    return providerId;
+  }, [fallbackProviderFor]);
+
+  const cacheKeyForPrompt = useCallback((prompt: string, providerId: TtsProviderId) => {
     const {
-      provider: providerId,
       voice: selectedVoice,
       cueSpeed: selectedCueSpeed,
       volume: selectedVolume,
     } = optionsRef.current;
+    const voice = selectedVoice?.provider === providerId ? selectedVoice : null;
     return JSON.stringify({
       text: prompt,
       provider: providerId,
-      voice: selectedVoice?.id ?? null,
+      voice: voice?.id ?? null,
       speed: selectedCueSpeed,
       volume: selectedVolume,
       cacheEnabled: true,
     });
   }, []);
 
-  const requestForPrompt = useCallback((prompt: string): TtsSynthesisRequest => {
+  const requestForPrompt = useCallback((prompt: string, providerId: TtsProviderId): TtsSynthesisRequest => {
     const {
-      provider: providerId,
       voice: selectedVoice,
       cueSpeed: selectedCueSpeed,
       volume: selectedVolume,
@@ -141,31 +166,65 @@ export function useTtsWaitingCue({
       requestId: `waiting-cue:${providerId}:${prompt}`,
       text: prompt,
       provider: providerId,
-      voice: selectedVoice,
+      voice: selectedVoice?.provider === providerId ? selectedVoice : null,
       speed: selectedCueSpeed,
       volume: selectedVolume,
       cacheEnabled: true,
     };
   }, []);
 
+  const synthesizePrompt = useCallback(
+    async (
+      prompt: string,
+      providerId: TtsProviderId,
+      signal: AbortSignal,
+      onResolvedProvider?: (provider: TtsProvider<TtsSynthesisResult>) => void,
+    ) => {
+      const provider = optionsRef.current.providers[providerId];
+      if (!provider) {
+        throw new Error(`TTS provider ${providerId} is not configured.`);
+      }
+      try {
+        return await provider.synthesize(requestForPrompt(prompt, providerId), signal);
+      } catch (error) {
+        const fallbackProviderId = fallbackProviderFor(providerId);
+        if (!isProviderConfigurationError(error) || !fallbackProviderId || signal.aborted) {
+          throw error;
+        }
+        const fallback = optionsRef.current.providers[fallbackProviderId];
+        if (!fallback) {
+          throw error;
+        }
+        unavailableProvidersRef.current.add(providerId);
+        onResolvedProvider?.(fallback);
+        return fallback.synthesize(requestForPrompt(prompt, fallbackProviderId), signal);
+      }
+    },
+    [fallbackProviderFor, requestForPrompt],
+  );
+
   const ensureCachedPrompt = useCallback(
     (prompt: string) => {
-      const { enabled: isEnabled, providers: registry, provider: providerId } = optionsRef.current;
+      const { enabled: isEnabled, providers: registry } = optionsRef.current;
       if (!isEnabled) {
         return null;
       }
+      const providerId = providerIdForPrompt();
       const cueProvider = registry[providerId];
       if (!cueProvider) {
         return null;
       }
-      const key = cacheKeyForPrompt(prompt);
+      const key = cacheKeyForPrompt(prompt, providerId);
       const existing = cacheRef.current.get(key);
       if (existing) {
         return existing;
       }
       const controller = new AbortController();
-      const promise = cueProvider.synthesize(requestForPrompt(prompt), controller.signal);
-      const cue: CachedWaitingCue = {
+      let cue: CachedWaitingCue;
+      const promise = synthesizePrompt(prompt, providerId, controller.signal, (resolvedProvider) => {
+        cue.provider = resolvedProvider;
+      });
+      cue = {
         controller,
         key,
         provider: cueProvider,
@@ -184,7 +243,7 @@ export function useTtsWaitingCue({
       });
       return cue;
     },
-    [cacheKeyForPrompt, requestForPrompt],
+    [cacheKeyForPrompt, providerIdForPrompt, synthesizePrompt],
   );
 
   const prefetch = useCallback(() => {
@@ -286,7 +345,7 @@ export function useTtsWaitingCue({
     cacheRef.current.forEach(disposeCue);
     cacheRef.current.clear();
     prefetch();
-  }, [cueSpeed, disposeCue, enabled, prefetch, provider, promptList, speed, stop, voice, volume]);
+  }, [cueSpeed, disposeCue, enabled, fallbackProvider, prefetch, provider, promptList, speed, stop, voice, volume]);
 
   useEffect(() => {
     return () => {
@@ -301,4 +360,12 @@ export function useTtsWaitingCue({
     stop,
     prefetch,
   };
+}
+
+function isProviderConfigurationError(error: unknown): boolean {
+  return error instanceof TtsProviderError && (
+    error.playbackError.code === "authentication_failed" ||
+    error.playbackError.code === "credential_missing" ||
+    error.playbackError.code === "provider_not_configured"
+  );
 }

@@ -28,17 +28,31 @@ from app.utils.time import utc_now_iso
 AGENT_MODEL_IDS = (
     "chat_agent",
     "semantic_analysis_agent",
-    "diary_memory_extractor_agent",
-    "memory_retrieval_agent",
-    "knowledge_retrieval_agent",
-    "wiki_manager_agent",
-    "memory_proposal_agent",
-    "continuity_agent",
-    "task_agent",
+    "retrieval_agent",
+    "action_agent",
+    "reflection_agent",
 )
+_AGENT_MODEL_ALIASES = {
+    "memory_retrieval_agent": "retrieval_agent",
+    "knowledge_retrieval_agent": "retrieval_agent",
+    "context_retrieval_agent": "retrieval_agent",
+    "knowledge_agent": "retrieval_agent",
+    "wiki_manager_agent": "action_agent",
+    "memory_proposal_agent": "action_agent",
+    "task_agent": "action_agent",
+    "diary_memory_extractor_agent": "reflection_agent",
+    "continuity_agent": "reflection_agent",
+}
 _LEGACY_RETRIEVAL_AGENT_MIGRATIONS = (
-    ("knowledge_agent", ("knowledge_retrieval_agent",)),
-    ("context_retrieval_agent", ("memory_retrieval_agent", "knowledge_retrieval_agent")),
+    ("memory_retrieval_agent", ("retrieval_agent",)),
+    ("knowledge_retrieval_agent", ("retrieval_agent",)),
+    ("context_retrieval_agent", ("retrieval_agent",)),
+    ("knowledge_agent", ("retrieval_agent",)),
+    ("wiki_manager_agent", ("action_agent",)),
+    ("memory_proposal_agent", ("action_agent",)),
+    ("task_agent", ("action_agent",)),
+    ("diary_memory_extractor_agent", ("reflection_agent",)),
+    ("continuity_agent", ("reflection_agent",)),
 )
 _LEGACY_RETRIEVAL_AGENT_IDS = tuple(
     legacy_agent_id for legacy_agent_id, _target_agent_ids in _LEGACY_RETRIEVAL_AGENT_MIGRATIONS
@@ -1108,6 +1122,7 @@ def credential_ref_for_agent(agent_id: str) -> str:
 
 def normalize_agent_id(agent_id: str) -> str:
     normalized = getattr(agent_id, "value", str(agent_id)).strip()
+    normalized = _AGENT_MODEL_ALIASES.get(normalized, normalized)
     if normalized not in AGENT_MODEL_IDS:
         raise ValueError(f"unsupported agent_id: {agent_id}")
     return normalized

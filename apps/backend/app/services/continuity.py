@@ -324,7 +324,7 @@ class ContinuityService:
             text = await model_client.complete(
                 user_message=_continuity_model_prompt(user_message, assistant_answer),
                 system_prompt=(
-                    "你是 continuity_agent。仅返回紧凑的中文 JSON 提案，用于审阅把关的陪伴连续性。"
+                    "你是 reflection_agent。仅返回紧凑的中文 JSON 提案，用于审阅把关的陪伴连续性。"
                     "摘要与证据使用简体中文。不要包含密钥。不要声称任何内容已确认。"
                 ),
             )

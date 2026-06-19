@@ -360,7 +360,12 @@ def test_agent_actions_trace_automatic_memory_activity(client_factory, tmp_path:
         enable_automation(client, long_term_memory=True)
 
         chat_payload, events = stream_chat(client, "Remember this: my favorite editor is VS Code.")
-        assert "agent_action" not in [event["event"] for event in events]
+        foreground_actions = [
+            json.loads(event["data"])
+            for event in events
+            if event["event"] == "agent_action"
+        ]
+        assert any(action["action_type"] == "memory.proposal.defer" for action in foreground_actions)
 
         action_payloads = wait_for_agent_actions(
             client,

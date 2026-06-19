@@ -12,14 +12,28 @@ from app.models.enums import AgentId
 AGENT_IDS: tuple[AgentId, ...] = (
     AgentId.CHAT_AGENT,
     AgentId.SEMANTIC_ANALYSIS_AGENT,
-    AgentId.DIARY_MEMORY_EXTRACTOR_AGENT,
-    AgentId.MEMORY_RETRIEVAL_AGENT,
-    AgentId.KNOWLEDGE_RETRIEVAL_AGENT,
-    AgentId.WIKI_MANAGER_AGENT,
-    AgentId.MEMORY_PROPOSAL_AGENT,
-    AgentId.CONTINUITY_AGENT,
-    AgentId.TASK_AGENT,
+    AgentId.RETRIEVAL_AGENT,
+    AgentId.ACTION_AGENT,
+    AgentId.REFLECTION_AGENT,
 )
+
+_AGENT_MODEL_FALLBACKS: dict[AgentId, tuple[AgentId, ...]] = {
+    # Compatibility for manually constructed registries or pre-v2 persisted
+    # clients. Runtime-owned registries are built only from AGENT_IDS above.
+    AgentId.RETRIEVAL_AGENT: (
+        AgentId.MEMORY_RETRIEVAL_AGENT,
+        AgentId.KNOWLEDGE_RETRIEVAL_AGENT,
+    ),
+    AgentId.REFLECTION_AGENT: (
+        AgentId.DIARY_MEMORY_EXTRACTOR_AGENT,
+        AgentId.CONTINUITY_AGENT,
+    ),
+    AgentId.ACTION_AGENT: (
+        AgentId.WIKI_MANAGER_AGENT,
+        AgentId.MEMORY_PROPOSAL_AGENT,
+        AgentId.TASK_AGENT,
+    ),
+}
 
 
 class ChatModelError(Exception):
@@ -75,6 +89,11 @@ class AgentModelRegistry:
     def get(self, agent_id: AgentId | str) -> ChatModelClientProtocol:
         normalized = AgentId(agent_id)
         client = self.clients.get(normalized)
+        if client is None:
+            for fallback_agent_id in _AGENT_MODEL_FALLBACKS.get(normalized, ()):
+                client = self.clients.get(fallback_agent_id)
+                if client is not None:
+                    return client
         if client is None:
             raise AgentModelNotConfiguredError(normalized)
         return client

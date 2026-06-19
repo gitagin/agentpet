@@ -47,11 +47,11 @@ def test_langgraph_runtime_preserves_core_tool_agents() -> None:
     assert memory.requests == []
     assert tasks.requests[0].title == "review tests"
     assert_langgraph_events(memory_events, ["token", "done"])
-    assert "后台自动整理流程" in first_event(memory_events, "token").text
-    assert_langgraph_events(task_events, ["task", "token", "done"])
+    assert "后台长期记忆整理流程" in first_event(memory_events, "token").text
+    assert_langgraph_events(task_events, ["token", "task", "done"])
 
 
-def test_langgraph_memory_agent_defers_to_auto_background_archive_by_default() -> None:
+def test_langgraph_action_agent_defers_memory_to_auto_background_archive_by_default() -> None:
     async def run_case():
         memory = FakeMemory()
         memory_model = FakeToolCallingChatModel("propose_memory", "已创建待确认记忆。")
@@ -59,7 +59,7 @@ def test_langgraph_memory_agent_defers_to_auto_background_archive_by_default() -
             AgentRuntimeServices(
                 memory=memory,
                 model_registry=AgentModelRegistry(
-                    {AgentId.MEMORY_PROPOSAL_AGENT: memory_model}
+                    {AgentId.ACTION_AGENT: memory_model}
                 ),
                 automation_settings=SimpleNamespace(use_negotiation=False),
             )
@@ -79,7 +79,7 @@ def test_langgraph_memory_agent_defers_to_auto_background_archive_by_default() -
     assert memory.requests == []
     assert memory_model.calls == []
     assert_langgraph_events(events, ["token", "done"])
-    assert "后台自动整理流程" in first_event(events, "token").text
+    assert "后台长期记忆整理流程" in first_event(events, "token").text
 
 
 def test_langgraph_chat_agent_maps_model_memory_tool_call_to_proposal_event_when_auto_disabled() -> None:
@@ -90,7 +90,7 @@ def test_langgraph_chat_agent_maps_model_memory_tool_call_to_proposal_event_when
             AgentRuntimeServices(
                 memory=memory,
                 model_registry=AgentModelRegistry(
-                    {AgentId.MEMORY_PROPOSAL_AGENT: memory_model}
+                    {AgentId.ACTION_AGENT: memory_model}
                 ),
                 automation_settings=AutomationSettingsResponse(auto_long_term_memory=False, use_negotiation=False),
             )
@@ -107,20 +107,20 @@ def test_langgraph_chat_agent_maps_model_memory_tool_call_to_proposal_event_when
 
     memory, events = asyncio.run(run_case())
 
-    assert memory.requests[0].content == "Ada likes tests"
-    assert_langgraph_events(events, ["memory_proposal", "token", "done"])
+    assert memory.requests[0].content == "请把 Ada likes tests 作为长期偏好保存下来"
+    assert_langgraph_events(events, ["token", "memory_proposal", "done"])
     assert first_event(events, "memory_proposal").proposal_id == "proposal-1"
-    assert first_event(events, "token").text == "已创建待确认记忆。"
+    assert first_event(events, "token").text == "我会先创建一条待确认的长期记忆提案。"
 
 
-def test_langgraph_task_agent_uses_model_for_confirmation_after_local_task_create() -> None:
+def test_langgraph_action_agent_creates_task_without_legacy_task_model_call() -> None:
     async def run_case():
         tasks = FakeTasks()
         task_model = FakeRegistryChatModel(None, "已创建任务。")
         runtime = LangGraphAgentRuntime(
             AgentRuntimeServices(
                 tasks=tasks,
-                model_registry=AgentModelRegistry({AgentId.TASK_AGENT: task_model}),
+                model_registry=AgentModelRegistry({AgentId.ACTION_AGENT: task_model}),
                 automation_settings=SimpleNamespace(use_negotiation=False),
             )
         )
@@ -132,23 +132,23 @@ def test_langgraph_task_agent_uses_model_for_confirmation_after_local_task_creat
     tasks, task_model, events = asyncio.run(run_case())
 
     assert tasks.requests[0].title == "安排一次测试事项"
-    assert task_model.calls[0][2] == []
-    assert_langgraph_events(events, ["task", "token", "done"])
+    assert task_model.calls == []
+    assert_langgraph_events(events, ["token", "task", "done"])
     assert first_event(events, "task").task_id == "task-1"
     assert first_event(events, "task").title == "安排一次测试事项"
     assert first_event(events, "task").reminder_status == "scheduled"
     assert first_event(events, "task").timezone_label == "北京时间"
-    assert first_event(events, "token").text == "已创建任务。"
+    assert first_event(events, "token").text == "好，我先把它整理成一个本地提醒：安排一次测试事项"
 
 
-def test_langgraph_task_agent_creates_task_when_provider_rejects_model_params() -> None:
+def test_langgraph_action_agent_creates_task_when_provider_rejects_model_params() -> None:
     async def run_case():
         tasks = FakeTasks()
         task_model = FakeBadRequestTaskModel()
         runtime = LangGraphAgentRuntime(
             AgentRuntimeServices(
                 tasks=tasks,
-                model_registry=AgentModelRegistry({AgentId.TASK_AGENT: task_model}),
+                model_registry=AgentModelRegistry({AgentId.ACTION_AGENT: task_model}),
                 automation_settings=SimpleNamespace(use_negotiation=False),
             )
         )
@@ -161,11 +161,11 @@ def test_langgraph_task_agent_creates_task_when_provider_rejects_model_params() 
 
     assert tasks.requests[0].title == "写笔记"
     assert tasks.requests[0].source_text == "5秒钟后提醒我写笔记"
-    assert task_model.calls[0][2] == []
-    assert_langgraph_events(events, ["task", "token", "done"])
+    assert task_model.calls == []
+    assert_langgraph_events(events, ["token", "task", "done"])
     assert first_event(events, "task").task_id == "task-1"
     assert first_event(events, "task").reminder_id == "reminder-1"
-    assert first_event(events, "token").text == "我已创建任务。"
+    assert first_event(events, "token").text == "好，我先把它整理成一个本地提醒：写笔记"
 
 
 def test_langgraph_chat_agent_returns_error_when_model_tool_call_fails() -> None:
@@ -175,13 +175,13 @@ def test_langgraph_chat_agent_returns_error_when_model_tool_call_fails() -> None
             AgentRuntimeServices(
                 memory=memory,
                 model_registry=AgentModelRegistry(
-                    {AgentId.MEMORY_PROPOSAL_AGENT: FakeFailingToolCallingChatModel()}
+                    {AgentId.ACTION_AGENT: FakeFailingToolCallingChatModel()}
                 ),
                 automation_settings=AutomationSettingsResponse(auto_long_term_memory=False, use_negotiation=False),
             )
         )
 
-        events = [event async for event in runtime.run(make_state("请把这个密钥保存到长期偏好里"))]
+        events = [event async for event in runtime.run(make_state("remember this: sk-agent-memory-secret-1234567890"))]
 
         return memory, events
 

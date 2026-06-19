@@ -14,22 +14,22 @@ function health(details: AgentModelHealth[], globalConfigured = true): ModelHeal
 }
 
 describe("ModelHealthBanner", () => {
-  it("describes model health as outcome support instead of agent count", () => {
+  it("describes model health as five core agents", () => {
     const response = health(
       agentModelDefinitions.map((definition) => ({
         agent_id: definition.id,
-        source: definition.id === "task_agent" || definition.id === "wiki_manager_agent" ? "agent_specific" : "global_fallback",
+        source: definition.id === "action_agent" || definition.id === "retrieval_agent" ? "agent_specific" : "global_fallback",
         model: "model-a",
       })),
     );
 
     const banner = getModelHealthBannerState(response);
 
-    expect(banner?.message).toContain("结果路由");
-    expect(banner?.message).not.toMatch(/9 agents|9 个智能体|9个智能体|所有智能体/);
+    expect(banner?.message).toContain("2/5 个核心 Agent");
+    expect(banner?.message).not.toMatch(/9 agents|9 个智能体|结果路由|task_agent|wiki_manager_agent/);
   });
 
-  it("explains that global fallback still supports product outcomes", () => {
+  it("explains that global fallback still supports all core agents", () => {
     const response = health(
       agentModelDefinitions.map((definition) => ({
         agent_id: definition.id,
@@ -38,6 +38,6 @@ describe("ModelHealthBanner", () => {
       })),
     );
 
-    expect(getModelHealthBannerState(response)?.message).toContain("任务、记忆、知识库和回答");
+    expect(getModelHealthBannerState(response)?.message).toContain("5 个核心 Agent 正在继承全局模型");
   });
 });

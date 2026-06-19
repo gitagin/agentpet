@@ -73,6 +73,16 @@ const visibleHitTestAlphaPadding = 8;
 const enableIdleMotion = true;
 const enablePhysics = true;
 const enableBasicMeshFallback = false;
+const renderTimingProfiles = {
+  pet: {
+    foregroundFrameIntervalMs: 1000 / 24,
+    hiddenFrameIntervalMs: 1000,
+  },
+  stage: {
+    foregroundFrameIntervalMs: 1000 / 30,
+    hiddenFrameIntervalMs: 1000,
+  },
+} satisfies Record<CubismRendererVariant, { foregroundFrameIntervalMs: number; hiddenFrameIntervalMs: number }>;
 const persistentParameterAddsByModelFile: Record<string, Array<{ id: string; value: number }>> = {
   "girlfriend.model3.json": [
     { id: "ParamBodyAngleZ3", value: 10 },
@@ -132,6 +142,8 @@ export async function createCubismRenderer(options: CubismRendererOptions): Prom
   await runCubismStage("模型初始化", () => model.loadFromManifest(manifestBuffer, gl, options.canvas));
 
   let frameId: number | null = null;
+  let frameTimerId: number | null = null;
+  let lastRenderedAt = 0;
   let disposed = false;
   let firstFrameSettled = false;
   let resolveFirstFrame: (() => void) | null = null;
@@ -158,31 +170,74 @@ export async function createCubismRenderer(options: CubismRendererOptions): Prom
     rejectFirstFrame?.(error instanceof Error ? error : new Error("Cubism 首帧渲染失败。"));
   };
 
-  const handle: CubismRendererHandle = {
-    start() {
-      if (disposed || frameId !== null) {
+  const timingProfile = renderTimingProfiles[options.variant || "stage"];
+
+  const clearScheduledFrame = () => {
+    if (frameId !== null) {
+      window.cancelAnimationFrame(frameId);
+      frameId = null;
+    }
+    if (frameTimerId !== null) {
+      window.clearTimeout(frameTimerId);
+      frameTimerId = null;
+    }
+  };
+
+  const scheduleNextFrame = (delayMs = 0) => {
+    if (disposed || frameId !== null || frameTimerId !== null) {
+      return;
+    }
+    const normalizedDelayMs = Math.max(0, delayMs);
+    if (normalizedDelayMs > 1) {
+      frameTimerId = window.setTimeout(() => {
+        frameTimerId = null;
+        if (!disposed) {
+          frameId = window.requestAnimationFrame(tick);
+        }
+      }, normalizedDelayMs);
+      return;
+    }
+    frameId = window.requestAnimationFrame(tick);
+  };
+
+  const tick = () => {
+    frameId = null;
+    if (disposed) {
+      return;
+    }
+    if (document.visibilityState === "hidden" || options.canvas.width <= 0 || options.canvas.height <= 0) {
+      scheduleNextFrame(timingProfile.hiddenFrameIntervalMs);
+      return;
+    }
+
+    const now = performance.now();
+    if (lastRenderedAt > 0) {
+      const elapsedMs = now - lastRenderedAt;
+      if (elapsedMs < timingProfile.foregroundFrameIntervalMs) {
+        scheduleNextFrame(timingProfile.foregroundFrameIntervalMs - elapsedMs);
         return;
       }
-      const tick = () => {
-        if (disposed) {
-          return;
-        }
-        if (document.visibilityState === "hidden" || options.canvas.width <= 0 || options.canvas.height <= 0) {
-          frameId = window.requestAnimationFrame(tick);
-          return;
-        }
-        try {
-          if (model.render(options.canvas, gl)) {
-            settleFirstFrame();
-          }
-        } catch (error) {
-          failFirstFrame(error);
-          handle.dispose();
-          return;
-        }
-        frameId = window.requestAnimationFrame(tick);
-      };
-      frameId = window.requestAnimationFrame(tick);
+    }
+
+    try {
+      if (model.render(options.canvas, gl)) {
+        lastRenderedAt = now;
+        settleFirstFrame();
+      }
+    } catch (error) {
+      failFirstFrame(error);
+      handle.dispose();
+      return;
+    }
+    scheduleNextFrame(timingProfile.foregroundFrameIntervalMs);
+  };
+
+  const handle: CubismRendererHandle = {
+    start() {
+      if (disposed || frameId !== null || frameTimerId !== null) {
+        return;
+      }
+      scheduleNextFrame();
     },
     resize(size) {
       resizeCanvas(options.canvas, size);
@@ -191,10 +246,7 @@ export async function createCubismRenderer(options: CubismRendererOptions): Prom
     },
     dispose() {
       disposed = true;
-      if (frameId !== null) {
-        window.cancelAnimationFrame(frameId);
-        frameId = null;
-      }
+      clearScheduledFrame();
       model.release();
     },
     getRenderMode() {

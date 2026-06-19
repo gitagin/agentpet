@@ -24,7 +24,7 @@ def _registry(handler) -> AgentRegistry:
     registry = AgentRegistry()
     registry.register(
         AgentCapability(
-            agent_id=AgentId.MEMORY_RETRIEVAL_AGENT,
+            agent_id=AgentId.RETRIEVAL_AGENT,
             description="检索用户记忆库。",
             input_schema="搜索关键词字符串。",
             output_schema="相关记忆列表。",
@@ -49,9 +49,9 @@ async def test_run_agent_returns_invocation_result_from_handler_output() -> None
             "round": state.round,
         }
 
-    result = await run_agent(AgentId.MEMORY_RETRIEVAL_AGENT, "今天的状态", _state(), _registry(handler))
+    result = await run_agent(AgentId.RETRIEVAL_AGENT, "今天的状态", _state(), _registry(handler))
 
-    assert result.agent_id == AgentId.MEMORY_RETRIEVAL_AGENT
+    assert result.agent_id == AgentId.RETRIEVAL_AGENT
     assert result.round == 2
     assert result.input_query == "今天的状态"
     assert result.output["confidence"] == 0.84
@@ -66,9 +66,9 @@ async def test_run_agent_wraps_handler_exception() -> None:
     async def handler(input_query: str, state: NegotiationState) -> dict:
         raise RuntimeError("retrieval failed")
 
-    result = await run_agent(AgentId.MEMORY_RETRIEVAL_AGENT, "今天的状态", _state(), _registry(handler))
+    result = await run_agent(AgentId.RETRIEVAL_AGENT, "今天的状态", _state(), _registry(handler))
 
-    assert result.agent_id == AgentId.MEMORY_RETRIEVAL_AGENT
+    assert result.agent_id == AgentId.RETRIEVAL_AGENT
     assert result.round == 2
     assert result.output == {"error": "retrieval failed"}
     assert result.confidence == 0.0

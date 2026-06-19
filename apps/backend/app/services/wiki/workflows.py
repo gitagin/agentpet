@@ -29,5 +29,5 @@ class WikiWorkflowService(
         self.database = database
         self.wiki = wiki
         self.review_model = review_model
-        self.review_agent_id = AgentId(review_agent_id or AgentId.WIKI_MANAGER_AGENT)
+        self.review_agent_id = AgentId(review_agent_id or AgentId.ACTION_AGENT)
         self.review_model_resolver = review_model_resolver

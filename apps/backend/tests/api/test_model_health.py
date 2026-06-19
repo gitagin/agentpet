@@ -32,8 +32,8 @@ def test_health_all_default(client: TestClient) -> None:
     assert payload["global_configured"] is False
     assert payload["agents_configured"] == 0
     assert payload["agents_fallback_to_global"] == 0
-    assert payload["agents_fallback_to_default"] == 9
-    assert len(payload["agent_details"]) == 9
+    assert payload["agents_fallback_to_default"] == 5
+    assert len(payload["agent_details"]) == 5
     assert {detail["source"] for detail in payload["agent_details"]} == {"hardcoded_default"}
 
 
@@ -61,7 +61,7 @@ def test_health_global_only(client: TestClient) -> None:
     payload = response.json()
     assert payload["global_configured"] is True
     assert payload["agents_configured"] == 0
-    assert payload["agents_fallback_to_global"] == 9
+    assert payload["agents_fallback_to_global"] == 5
     assert payload["agents_fallback_to_default"] == 0
     assert {detail["source"] for detail in payload["agent_details"]} == {"global_fallback"}
     assert {detail["model"] for detail in payload["agent_details"]} == {"global-model"}
@@ -106,7 +106,7 @@ def test_health_mixed(client: TestClient) -> None:
         headers=auth(),
         json={"provider": "openai-compatible", "api_key": "sk-global-secret"},
     )
-    for agent_id in ("chat_agent", "task_agent"):
+    for agent_id in ("chat_agent", "action_agent"):
         response = client.put(
             f"/api/settings/agent-models/{agent_id}/config",
             headers=auth(),
@@ -125,8 +125,8 @@ def test_health_mixed(client: TestClient) -> None:
     payload = response.json()
     assert payload["global_configured"] is True
     assert payload["agents_configured"] == 2
-    assert payload["agents_fallback_to_global"] == 7
+    assert payload["agents_fallback_to_global"] == 3
     assert payload["agents_fallback_to_default"] == 0
     details = {detail["agent_id"]: detail for detail in payload["agent_details"]}
     assert details["chat_agent"]["source"] == "agent_specific"
-    assert details["task_agent"]["source"] == "agent_specific"
+    assert details["action_agent"]["source"] == "agent_specific"

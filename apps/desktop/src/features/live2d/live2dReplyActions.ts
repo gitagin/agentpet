@@ -17,6 +17,37 @@ export type Live2DReplyActionKey =
 
 const minPartialReplyCharacters = 12;
 
+const hiddenReplyActionPatterns: Array<{ action: Live2DReplyActionKey; patterns: string[] }> = [
+  {
+    action: "chat_done",
+    patterns: ["pillow", "\u62b1\u6795", "\u9ed8\u8ba4", "\u5f85\u673a"],
+  },
+  {
+    action: "emotion_comfort",
+    patterns: ["comfort", "\u5b89\u6170", "\u6e29\u67d4", "\u62b1\u62b1", "\u5fc3\u75bc", "\u966a"],
+  },
+  {
+    action: "celebrate_small",
+    patterns: ["smile", "happy", "\u5fae\u7b11", "\u7b11", "\u5f00\u5fc3", "\u7231\u5fc3", "\u661f\u661f", "\u5e86\u795d"],
+  },
+  {
+    action: "system_error",
+    patterns: ["angry", "cry", "qaq", "\u751f\u6c14", "\u9ed1\u8138", "\u54ed", "\u96be\u8fc7", "\u7591\u60d1"],
+  },
+  {
+    action: "task_create",
+    patterns: ["todo", "task", "\u4efb\u52a1", "\u63d0\u9192", "\u8bb0\u4e00\u4e0b"],
+  },
+  {
+    action: "wiki_organize",
+    patterns: ["wiki", "\u6574\u7406", "\u5f52\u6863", "\u8d44\u6599"],
+  },
+  {
+    action: "memory_found",
+    patterns: ["memory", "\u56de\u5fc6", "\u60f3\u8d77", "\u8bb0\u5fc6"],
+  },
+];
+
 const systemErrorPatterns = [
   "error",
   "failed",
@@ -126,6 +157,11 @@ export function resolveLive2DReplyActionKey(message?: ChatMessage | null): Live2
     return "continuity_remember";
   }
 
+  const hiddenActionKey = resolveHiddenReplyActionKey(message.live2d_action_hints);
+  if (hiddenActionKey) {
+    return hiddenActionKey;
+  }
+
   const text = normalizeReplyText(message.content);
   if (!text) {
     return null;
@@ -162,6 +198,19 @@ export function resolveLive2DReplyActionKey(message?: ChatMessage | null): Live2
     return "memory_found";
   }
   return message.status === "completed" ? "chat_done" : "chat_talk";
+}
+
+function resolveHiddenReplyActionKey(hints: string[] | undefined): Live2DReplyActionKey | null {
+  const text = normalizeReplyText((hints || []).join(" "));
+  if (!text) {
+    return null;
+  }
+  for (const { action, patterns } of hiddenReplyActionPatterns) {
+    if (includesAny(text, patterns)) {
+      return action;
+    }
+  }
+  return null;
 }
 
 function normalizeReplyText(text: string): string {

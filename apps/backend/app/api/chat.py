@@ -21,7 +21,7 @@ from ..models.api import ChatAcceptedResponse, ChatRequest
 from ..services.agent_actions import AgentActionCreate, AutomationPolicy
 from ..services.chat_pipeline import agent_action_event, archive_chat_memory, automation_settings
 from ..models.common import new_id
-from ..models.enums import AgentRunStatus, ConversationStatus, MessageRole, MessageStatus
+from ..models.enums import AgentId, AgentRunStatus, ConversationStatus, MessageRole, MessageStatus
 from ..utils.time import utc_now_iso
 from .wiring import (
     AppContext,
@@ -179,9 +179,9 @@ async def _complete_assistant_message_background(
     final_text: str,
 ) -> None:
     _update_assistant_message(context, assistant_message_id, final_text, MessageStatus.COMPLETED.value)
+    await _archive_chat_memory_in_background(context, state, assistant_message_id, final_text)
     async for _ in _create_continuity_proposals(context, state, assistant_answer=final_text):
         pass
-    await _archive_chat_memory_in_background(context, state, assistant_message_id, final_text)
 
 
 def _log_post_reply_task_result(task: asyncio.Task[None]) -> None:
@@ -233,7 +233,7 @@ async def _create_continuity_proposals(
             conversation_id=state.conversation_id,
             source_message_id=state.message_id,
             agent_run_id=state.agent_run_id,
-            model_client=chat_model_client(request, "continuity_agent"),
+            model_client=chat_model_client(request, AgentId.REFLECTION_AGENT.value),
         )
     except Exception as exc:
         logger.warning(

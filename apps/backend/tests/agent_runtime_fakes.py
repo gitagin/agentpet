@@ -360,7 +360,7 @@ class FakeWikiWorkflow:
                 )
             ],
             recommended_targets=["Wiki/Sources/Runtime.md"],
-            reviewer_agent_id="wiki_manager_agent",
+            reviewer_agent_id="action_agent",
         )
 
     async def lint_query_archive(self, request):

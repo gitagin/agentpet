@@ -144,7 +144,7 @@ def test_automation_settings_api_roundtrip(client: TestClient) -> None:
         "auto_structured_memory": False,
         "auto_long_term_memory": False,
         "auto_wiki_organize": False,
-        "use_negotiation": True,
+        "use_negotiation": False,
         "max_rounds": 5,
         "high_risk_confirmation_required": True,
         "updated_at": None,
@@ -1025,7 +1025,7 @@ def test_structured_diary_memory_api_search_detail_and_source_scope_are_wired(
                 agent_run_id="run-1",
                 markdown_path="Memories/Daily/2026/05/week/2026-05-13.md",
             ),
-            extraction_model="diary_memory_extractor_agent",
+            extraction_model="reflection_agent",
         )
     finally:
         store.close()
@@ -1508,7 +1508,12 @@ def test_chat_done_auto_long_term_records_candidate_without_vault_profile(
     chat_payload, events = stream_chat_with_payload(client, "Remember this: my favorite editor is VS Code.")
 
     assert_successful_chat_events(events)
-    assert "agent_action" not in event_names(events)
+    foreground_actions = [
+        json.loads(event["data"])
+        for event in events
+        if event["event"] == "agent_action"
+    ]
+    assert any(action["action_type"] == "memory.proposal.defer" for action in foreground_actions)
     action_payloads = wait_for_agent_actions(
         client,
         chat_payload["agent_run_id"],

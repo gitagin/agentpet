@@ -23,19 +23,19 @@ def _select_retrieval_entry_node(graph_state: dict[str, object]) -> str:
             "memory": any(scope != "knowledge_base" for scope in aggregation_scopes),
             "knowledge": "knowledge_base" in aggregation_scopes,
         }
-        return "memory_retrieval_agent"
+        return "retrieval_agent"
     effective_scope = _effective_retrieval_source_scope(state, semantic)
     if effective_scope == "knowledge_base":
         graph_state["retrieval_plan"] = {"memory": False, "knowledge": True}
-        return "knowledge_retrieval_agent"
+        return "retrieval_agent"
     if effective_scope == "diary_objects":
         graph_state["retrieval_plan"] = {"memory": True, "knowledge": False}
-        return "memory_retrieval_agent"
+        return "retrieval_agent"
     if effective_scope == "all":
         graph_state["retrieval_plan"] = {"memory": True, "knowledge": True}
-        return "memory_retrieval_agent"
+        return "retrieval_agent"
     graph_state["retrieval_plan"] = {"memory": True, "knowledge": False}
-    return "memory_retrieval_agent"
+    return "retrieval_agent"
 
 
 def _effective_retrieval_source_scope(state: AgentState, semantic: SemanticAnalysisResult) -> str:

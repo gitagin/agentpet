@@ -74,9 +74,9 @@ def test_agent_model_registry_returns_stable_agent_clients() -> None:
     assert registry.get("chat_agent") is chat_model
 
     with pytest.raises(Exception) as exc_info:
-        registry.get(AgentId.TASK_AGENT)
+        registry.get(AgentId.ACTION_AGENT)
     assert getattr(exc_info.value, "code") == "agent_model_not_configured"
-    assert getattr(exc_info.value, "agent_id") == AgentId.TASK_AGENT
+    assert getattr(exc_info.value, "agent_id") == AgentId.ACTION_AGENT
 
 
 def test_langgraph_runtime_uses_independent_registry_models_and_allowed_tools() -> None:
@@ -87,11 +87,8 @@ def test_langgraph_runtime_uses_independent_registry_models_and_allowed_tools() 
         wiki_workflow = FakeWikiWorkflow()
         chat_model = FakeRegistryChatModel(None, "chat-only")
         semantic_model = FakeKeywordSemanticModel()
-        memory_retrieval_model = FakeRegistryChatModel("search_memory", "memory answer")
-        knowledge_retrieval_model = FakeRegistryChatModel("search_memory", "knowledge answer")
-        wiki_model = FakeRegistryChatModel(None, "wiki answer")
-        memory_model = FakeRegistryChatModel("propose_memory", "memory answer")
-        task_model = FakeRegistryChatModel("create_task", "task answer")
+        retrieval_model = FakeRegistryChatModel("search_memory", "retrieval answer")
+        action_model = FakeRegistryChatModel(None, "action answer")
         runtime = LangGraphAgentRuntime(
             AgentRuntimeServices(
                 retrieval=retrieval,
@@ -102,11 +99,8 @@ def test_langgraph_runtime_uses_independent_registry_models_and_allowed_tools() 
                     {
                         AgentId.CHAT_AGENT: chat_model,
                         AgentId.SEMANTIC_ANALYSIS_AGENT: semantic_model,
-                        AgentId.MEMORY_RETRIEVAL_AGENT: memory_retrieval_model,
-                        AgentId.KNOWLEDGE_RETRIEVAL_AGENT: knowledge_retrieval_model,
-                        AgentId.WIKI_MANAGER_AGENT: wiki_model,
-                        AgentId.MEMORY_PROPOSAL_AGENT: memory_model,
-                        AgentId.TASK_AGENT: task_model,
+                        AgentId.RETRIEVAL_AGENT: retrieval_model,
+                        AgentId.ACTION_AGENT: action_model,
                     }
                 ),
                 automation_settings=SimpleNamespace(use_negotiation=False),
@@ -123,11 +117,8 @@ def test_langgraph_runtime_uses_independent_registry_models_and_allowed_tools() 
             retrieval,
             chat_model,
             semantic_model,
-            memory_retrieval_model,
-            knowledge_retrieval_model,
-            wiki_model,
-            memory_model,
-            task_model,
+            retrieval_model,
+            action_model,
             chat_events,
             search_events,
             wiki_events,
@@ -139,11 +130,8 @@ def test_langgraph_runtime_uses_independent_registry_models_and_allowed_tools() 
         retrieval,
         chat_model,
         semantic_model,
-        memory_retrieval_model,
-        knowledge_retrieval_model,
-        wiki_model,
-        memory_model,
-        task_model,
+        retrieval_model,
+        action_model,
         chat_events,
         search_events,
         wiki_events,
@@ -153,15 +141,12 @@ def test_langgraph_runtime_uses_independent_registry_models_and_allowed_tools() 
 
     assert chat_model.calls[0][2] == []
     assert semantic_model.calls
-    assert memory_retrieval_model.calls[0][2] == ["search_memory"]
-    assert knowledge_retrieval_model.calls[0][2] == ["search_memory"]
+    assert [call[2] for call in retrieval_model.calls] == [["search_memory"], ["search_memory"]]
     assert retrieval.calls == [
         ("Ada", 5, "fts", "personal_memory"),
         ("Ada", 5, "fts", "knowledge_base"),
     ]
-    assert wiki_model.calls[0][2] == ["manage_wiki_page"]
-    assert memory_model.calls == []
-    assert task_model.calls[0][2] == []
+    assert action_model.calls == []
     assert_langgraph_events(chat_events, ["token", "done"])
     search_event_names = non_status_event_names(search_events)
     assert search_event_names == ["citation", "citation", "token", "done"]
@@ -169,9 +154,9 @@ def test_langgraph_runtime_uses_independent_registry_models_and_allowed_tools() 
         "personal_memory",
         "knowledge_base",
     ]
-    assert_langgraph_events(wiki_events, ["wiki_proposal", "token", "done"])
+    assert_langgraph_events(wiki_events, ["token", "wiki_proposal", "done"])
     assert_langgraph_events(memory_events, ["token", "done"])
-    assert_langgraph_events(task_events, ["task", "token", "done"])
+    assert_langgraph_events(task_events, ["token", "task", "done"])
 
 
 def test_langgraph_runtime_returns_stable_error_when_registry_missing_agent_model() -> None:

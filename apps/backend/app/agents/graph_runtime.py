@@ -17,22 +17,19 @@ from .events_helpers import _agent_state, _append_status, _events
 from .immediate_understanding import extract_immediate_understanding
 from .intent import route_intent
 from .memory_router import route_memory
-from .negotiation_graph import build_negotiation_graph
+from .nodes.action import _action_planner_node, _execute_action_plan
 from .nodes.chat import _chat_node, _message_with_runtime_context
 from .nodes.finish import _finish_node
-from .nodes.memory import _memory_node
 from .nodes.orchestrator import OrchestratorNode
-from .nodes.retrieval import _knowledge_retrieval_node, _memory_retrieval_node
-from .nodes.task import _task_node
-from .nodes.wiki import _wiki_node
+from .nodes.retrieval import _retrieval_node
 from .prompts.system import _semantic_system_prompt
 from .registry import AgentRegistry, default_agent_registry
-from .retrieval.router import _chat_agent_tool_names, _select_after_memory_retrieval
+from .retrieval.router import _chat_agent_tool_names
 from .retrieval.scoping import _force_search_memory_source_scope, _select_retrieval_entry_node, _semantic_from_memory_route
 from .runtime_helpers import _chat_system_prompt, _continuity_signal, _continuity_signal_event
-from .semantic import _fallback_semantic_analysis, _parse_semantic_analysis
+from .semantic import _fallback_classifier, _fallback_semantic_analysis, _parse_classifier_analysis
 from .services import AgentRuntimeServices, ToolCallingChatModelProtocol
-from .state import AgentState, NegotiationState, SemanticAnalysisResult
+from .state import AgentRoute, AgentState, NegotiationState, SemanticAnalysisResult
 from .tools import AgentToolResult, AgentToolSet, AgentToolName
 
 
@@ -183,27 +180,13 @@ class LangGraphAgentRuntime:
         )
 
     def _build_graph(self):
-        if self._should_use_negotiation():
-            return build_negotiation_graph(
-                route_node=self._route_node,
-                semantic_node=self._semantic_node,
-                select_after_semantic=self._select_after_semantic_for_negotiation,
-                orchestrator_node=self._orchestrator_node_adapter,
-                invoke_agent_node=self._invoke_agent_node_adapter,
-                synthesizer_node=self._synthesizer_node_adapter,
-                finish_node=_finish_node,
-            )
-
         graph = StateGraph(dict)
         graph.add_node("route", self._route_node)
         graph.add_node("semantic_analysis_agent", self._semantic_node)
-        graph.add_node("memory_retrieval_agent", self._memory_retrieval_node_adapter)
-        graph.add_node("knowledge_retrieval_agent", self._knowledge_retrieval_node_adapter)
+        graph.add_node("retrieval_agent", self._retrieval_node_adapter)
+        graph.add_node("action_agent", self._action_node_adapter)
         graph.add_node("chat_agent", self._chat_node_adapter)
-        graph.add_node("wiki_manager_agent", self._wiki_node_adapter)
-        graph.add_node("memory_proposal_agent", self._memory_node_adapter)
-        graph.add_node("task_agent", self._task_node_adapter)
-        graph.add_node("finish", _finish_node)
+        graph.add_node("finish", self._finish_node_adapter)
 
         graph.add_edge(START, "route")
         graph.add_edge("route", "semantic_analysis_agent")
@@ -212,26 +195,13 @@ class LangGraphAgentRuntime:
             self._select_agent_node,
             {
                 "chat_agent": "chat_agent",
-                "memory_retrieval_agent": "memory_retrieval_agent",
-                "knowledge_retrieval_agent": "knowledge_retrieval_agent",
-                "wiki_manager_agent": "wiki_manager_agent",
-                "memory_proposal_agent": "memory_proposal_agent",
-                "task_agent": "task_agent",
+                "retrieval_agent": "retrieval_agent",
+                "action_agent": "action_agent",
             },
         )
         graph.add_edge("chat_agent", "finish")
-        graph.add_conditional_edges(
-            "memory_retrieval_agent",
-            _select_after_memory_retrieval,
-            {
-                "knowledge_retrieval_agent": "knowledge_retrieval_agent",
-                "chat_agent": "chat_agent",
-            },
-        )
-        graph.add_edge("knowledge_retrieval_agent", "chat_agent")
-        graph.add_edge("wiki_manager_agent", "finish")
-        graph.add_edge("memory_proposal_agent", "finish")
-        graph.add_edge("task_agent", "finish")
+        graph.add_edge("retrieval_agent", "chat_agent")
+        graph.add_edge("action_agent", "chat_agent")
         graph.add_edge("finish", END)
         return graph.compile()
 
@@ -255,9 +225,27 @@ class LangGraphAgentRuntime:
 
     async def _semantic_node(self, graph_state: dict[str, Any]) -> dict[str, Any]:
         state = _agent_state(graph_state)
+        if state.route and state.route.intent in {
+            AgentIntent.PROPOSE_MEMORY,
+            AgentIntent.MANAGE_WIKI,
+            AgentIntent.CREATE_TASK,
+        }:
+            state.semantic_analysis = SemanticAnalysisResult(
+                needs_context=False,
+                source_scope="none",
+                query=state.user_message,
+                answer_style="concise",
+                confidence=state.route.confidence,
+                reason=state.route.reason,
+            )
+            state.classifier = _fallback_classifier(state)
+            _append_status(graph_state, "已规划本地动作。", stage="classifier")
+            return graph_state
+
         state.memory_route = route_memory(state.user_message)
         route_semantic = _semantic_from_memory_route(state.memory_route, state)
         state.semantic_analysis = route_semantic
+        state.classifier = _fallback_classifier(state)
         if not _should_call_semantic_agent(state):
             _append_status(graph_state, "已选择上下文范围。", stage="memory_router")
             return graph_state
@@ -268,24 +256,35 @@ class LangGraphAgentRuntime:
                 user_message=state.user_message,
                 system_prompt=_semantic_system_prompt(),
             )
-            state.semantic_analysis = _parse_semantic_analysis(response, state.user_message)
+            classifier, semantic = _parse_classifier_analysis(response, state.user_message)
+            state.classifier = classifier
+            state.semantic_analysis = semantic
+            _apply_classifier_route(state)
         except Exception:
             logger.warning("Semantic analysis agent failed; using fallback semantic analysis", exc_info=True)
             state.semantic_analysis = route_semantic or _fallback_semantic_analysis(state)
+            state.classifier = _fallback_classifier(state)
         return graph_state
 
     def _select_agent_node(self, graph_state: dict[str, Any]) -> str:
         state = _agent_state(graph_state)
-        if state.route.intent == AgentIntent.PROPOSE_MEMORY:
-            return "memory_proposal_agent"
-        if state.route.intent == AgentIntent.MANAGE_WIKI:
-            return "wiki_manager_agent"
-        if state.route.intent == AgentIntent.CREATE_TASK:
-            return "task_agent"
+        if state.route.intent in {
+            AgentIntent.PROPOSE_MEMORY,
+            AgentIntent.MANAGE_WIKI,
+            AgentIntent.CREATE_TASK,
+        }:
+            return "action_agent"
+        if state.classifier is not None and state.classifier.intent == "action":
+            return "action_agent"
         if state.route.intent == AgentIntent.SEARCH_MEMORY:
-            return _select_retrieval_entry_node(graph_state)
+            _select_retrieval_entry_node(graph_state)
+            return "retrieval_agent"
+        if state.classifier is not None and state.classifier.intent == "need_retrieval":
+            _select_retrieval_entry_node(graph_state)
+            return "retrieval_agent"
         if state.semantic_analysis and state.semantic_analysis.needs_context:
-            return _select_retrieval_entry_node(graph_state)
+            _select_retrieval_entry_node(graph_state)
+            return "retrieval_agent"
         return "chat_agent"
 
     def _select_after_semantic_for_negotiation(self, graph_state: dict[str, Any]) -> str:
@@ -346,7 +345,7 @@ class LangGraphAgentRuntime:
         return await self._chat_node_adapter(graph_state)
 
     def _should_use_negotiation(self) -> bool:
-        return bool(getattr(self.services.automation_settings, "use_negotiation", True))
+        return False
 
     def _should_use_fast_path(self, state: AgentState) -> bool:
         semantic = state.semantic_analysis
@@ -371,17 +370,13 @@ class LangGraphAgentRuntime:
             graph_state: dict[str, Any] = {"agent_state": state, "events": [], "failed": False}
             original_message = state.user_message
             state.user_message = input_query
+            canonical_agent_id = _canonical_runtime_agent_id(agent_id)
             try:
-                if agent_id == AgentId.MEMORY_RETRIEVAL_AGENT:
-                    await self._memory_retrieval_node_adapter(graph_state)
-                elif agent_id == AgentId.KNOWLEDGE_RETRIEVAL_AGENT:
-                    await self._knowledge_retrieval_node_adapter(graph_state)
-                elif agent_id == AgentId.WIKI_MANAGER_AGENT:
-                    await self._wiki_node_adapter(graph_state)
-                elif agent_id == AgentId.MEMORY_PROPOSAL_AGENT:
-                    await self._memory_node_adapter(graph_state)
-                elif agent_id == AgentId.TASK_AGENT:
-                    await self._task_node_adapter(graph_state)
+                if canonical_agent_id == AgentId.RETRIEVAL_AGENT:
+                    _select_retrieval_entry_node(graph_state)
+                    await self._retrieval_node_adapter(graph_state)
+                elif canonical_agent_id == AgentId.ACTION_AGENT:
+                    await self._action_node_adapter(graph_state)
                 else:
                     await self._chat_node_adapter(graph_state)
             finally:
@@ -451,19 +446,11 @@ class LangGraphAgentRuntime:
             return
 
         graph_state["pre_chat_context_attempted"] = True
-        entry_node = _select_retrieval_entry_node(graph_state)
-        if entry_node == "memory_retrieval_agent":
-            await self._memory_retrieval_node_adapter(graph_state)
-            if graph_state.get("failed"):
-                return
-            if _select_after_memory_retrieval(graph_state) == "knowledge_retrieval_agent":
-                await self._knowledge_retrieval_node_adapter(graph_state)
-            return
-        if entry_node == "knowledge_retrieval_agent":
-            await self._knowledge_retrieval_node_adapter(graph_state)
+        _select_retrieval_entry_node(graph_state)
+        await self._retrieval_node_adapter(graph_state)
 
-    async def _memory_retrieval_node_adapter(self, graph_state: dict[str, Any]) -> dict[str, Any]:
-        return await _memory_retrieval_node(
+    async def _retrieval_node_adapter(self, graph_state: dict[str, Any]) -> dict[str, Any]:
+        return await _retrieval_node(
             graph_state,
             self.services,
             self._run_model_agent_with_tools,
@@ -471,34 +458,13 @@ class LangGraphAgentRuntime:
             _has_empty_search_result,
         )
 
-    async def _knowledge_retrieval_node_adapter(self, graph_state: dict[str, Any]) -> dict[str, Any]:
-        return await _knowledge_retrieval_node(
-            graph_state,
-            self.services,
-            self._run_model_agent_with_tools,
-            _has_tool_result,
-            _has_empty_search_result,
-        )
+    async def _action_node_adapter(self, graph_state: dict[str, Any]) -> dict[str, Any]:
+        return await _action_planner_node(graph_state, self.services)
 
-    async def _memory_node_adapter(self, graph_state: dict[str, Any]) -> dict[str, Any]:
-        return await _memory_node(
-            graph_state,
-            self.services,
-            self.toolset,
-            self._run_model_agent_with_tools,
-            _has_tool_result,
-        )
-
-    async def _wiki_node_adapter(self, graph_state: dict[str, Any]) -> dict[str, Any]:
-        return await _wiki_node(
-            graph_state,
-            self.services,
-            self._run_model_agent_with_tools,
-            _has_wiki_action_result,
-        )
-
-    async def _task_node_adapter(self, graph_state: dict[str, Any]) -> dict[str, Any]:
-        return await _task_node(graph_state, self.services)
+    async def _finish_node_adapter(self, graph_state: dict[str, Any]) -> dict[str, Any]:
+        if not graph_state.get("failed"):
+            await _execute_action_plan(graph_state, self.services)
+        return await _finish_node(graph_state)
 
     def _record_negotiation_stats(self, state: NegotiationState) -> None:
         recorder = self.services.agent_action_recorder
@@ -533,6 +499,26 @@ class LangGraphAgentRuntime:
             logger.warning("Failed to record negotiation stats", exc_info=True)
 
 
+def _canonical_runtime_agent_id(agent_id: AgentId) -> AgentId:
+    if agent_id in {
+        AgentId.MEMORY_RETRIEVAL_AGENT,
+        AgentId.KNOWLEDGE_RETRIEVAL_AGENT,
+    }:
+        return AgentId.RETRIEVAL_AGENT
+    if agent_id in {
+        AgentId.WIKI_MANAGER_AGENT,
+        AgentId.MEMORY_PROPOSAL_AGENT,
+        AgentId.TASK_AGENT,
+    }:
+        return AgentId.ACTION_AGENT
+    if agent_id in {
+        AgentId.DIARY_MEMORY_EXTRACTOR_AGENT,
+        AgentId.CONTINUITY_AGENT,
+    }:
+        return AgentId.REFLECTION_AGENT
+    return agent_id
+
+
 def _negotiation_state(graph_state: dict[str, Any]) -> NegotiationState:
     state = _agent_state(graph_state)
     if isinstance(state, NegotiationState):
@@ -540,6 +526,27 @@ def _negotiation_state(graph_state: dict[str, Any]) -> NegotiationState:
     negotiation_state = NegotiationState(**state.model_dump())
     graph_state["agent_state"] = negotiation_state
     return negotiation_state
+
+
+def _apply_classifier_route(state: AgentState) -> None:
+    classifier = state.classifier
+    if classifier is None:
+        return
+    if classifier.intent == "action":
+        intent = {
+            "task": AgentIntent.CREATE_TASK,
+            "wiki": AgentIntent.MANAGE_WIKI,
+            "memory_proposal": AgentIntent.PROPOSE_MEMORY,
+        }.get(classifier.action_type or "", AgentIntent.CHAT)
+    elif classifier.intent == "need_retrieval":
+        intent = AgentIntent.SEARCH_MEMORY
+    else:
+        intent = AgentIntent.CHAT
+    state.route = AgentRoute(
+        intent=intent,
+        confidence=classifier.confidence,
+        reason=classifier.reason or "classifier",
+    )
 
 
 class _PromptOnlyModel:
@@ -630,6 +637,12 @@ def _latest_negotiation_confidence(state: NegotiationState) -> float:
 
 
 def _should_call_semantic_agent(state: AgentState) -> bool:
+    if state.route and state.route.intent in {
+        AgentIntent.PROPOSE_MEMORY,
+        AgentIntent.MANAGE_WIKI,
+        AgentIntent.CREATE_TASK,
+    }:
+        return False
     if state.memory_route and state.memory_route.semantic_fallback:
         return True
     if state.route and state.route.intent == AgentIntent.SEARCH_MEMORY:
@@ -663,22 +676,4 @@ def _has_empty_search_result(results: list[AgentToolResult]) -> bool:
         and not result.value.results
         for result in results
     )
-
-
-def _has_wiki_action_result(results: list[AgentToolResult]) -> bool:
-    return any(
-        result.name
-        in {
-            "manage_wiki_page",
-            "archive_wiki_query",
-            "synthesize_wiki",
-            "run_wiki_lint",
-            "plan_wiki_ingest",
-            "plan_wiki_query_archive",
-            "plan_wiki_synthesis",
-            "plan_wiki_lint",
-        }
-        for result in results
-    )
-
 

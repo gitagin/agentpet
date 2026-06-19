@@ -28,6 +28,12 @@ function createElectronMock() {
     window.setMinimumSize = vi.fn();
     window.setMaximumSize = vi.fn();
     window.setResizable = vi.fn();
+    window.getBounds = vi.fn(() => ({
+      x: options.x || 0,
+      y: options.y || 0,
+      width: options.width || 0,
+      height: options.height || 0,
+    }));
     window.getPosition = vi.fn(() => [0, 0]);
     window.getSize = vi.fn(() => [options.width || 0, options.height || 0]);
     window.setBounds = vi.fn();
@@ -59,6 +65,7 @@ function createElectronMock() {
       openExternal: vi.fn(),
     },
     screen: {
+      getCursorScreenPoint: vi.fn(() => ({ x: 0, y: 0 })),
       getPrimaryDisplay: vi.fn(() => ({
         workArea: { x: 0, y: 0, width: 1920, height: 1080 },
       })),
@@ -96,6 +103,7 @@ function createManager(createWindowManager, state) {
 
 describe("createWindowManager stage window lifecycle", () => {
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
     delete require.cache[windowsPath];
     Module._load = originalModuleLoad;
@@ -182,5 +190,26 @@ describe("createWindowManager stage window lifecycle", () => {
     expect(stageWindow.webContents.send).toHaveBeenCalledWith("agent-pet:show-stage-route", "chat");
     expect(stageWindow.webContents.send).toHaveBeenCalledWith("agent-pet:show-stage-route", "agent");
     expect(stageWindow.webContents.send).toHaveBeenCalledWith("agent-pet:show-stage-route", "settings");
+  });
+
+  it("backs off pet mouse hit testing after the startup capture grace period", async () => {
+    vi.useFakeTimers();
+    const electron = createElectronMock();
+    electron.screen.getCursorScreenPoint.mockReturnValue({ x: 10, y: 10 });
+    const setTimeoutSpy = vi.spyOn(global, "setTimeout");
+    const { createWindowManager } = loadWindowsWithMocks({ electron });
+    const state = { isQuitting: false };
+    const manager = createManager(createWindowManager, state);
+
+    const petWindow = manager.createPetWindow();
+    petWindow.emit("ready-to-show");
+
+    expect(setTimeoutSpy).toHaveBeenLastCalledWith(expect.any(Function), 80);
+    expect(petWindow.setIgnoreMouseEvents).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(2500);
+
+    expect(petWindow.setIgnoreMouseEvents).toHaveBeenCalledWith(true, { forward: true });
+    expect(setTimeoutSpy).toHaveBeenLastCalledWith(expect.any(Function), 500);
   });
 });

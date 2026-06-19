@@ -2,7 +2,7 @@ import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { TtsSynthesisRequest, TtsSynthesisResult } from "./ttsTypes";
-import type { TtsProvider, TtsProviderPlaybackOptions, TtsProviderPlaybackResult } from "./ttsProvider";
+import { createTtsProviderError, type TtsProvider, type TtsProviderPlaybackOptions, type TtsProviderPlaybackResult } from "./ttsProvider";
 import { useTtsWaitingCue } from "./useTtsWaitingCue";
 
 function createControlledProvider() {
@@ -188,5 +188,43 @@ describe("useTtsWaitingCue", () => {
       }),
       expect.any(AbortSignal),
     );
+  });
+
+  it("falls back to system TTS when the configured waiting cue provider has an invalid key", async () => {
+    const cloud = createControlledProvider();
+    cloud.synthesize.mockRejectedValue(createTtsProviderError("xiaomi-mimo", "authentication_failed", "Invalid API Key"));
+    const system = createControlledProvider();
+
+    const { result } = renderHook(() =>
+      useTtsWaitingCue({
+        enabled: true,
+        providers: { "xiaomi-mimo": cloud.provider, system: system.provider },
+        provider: "xiaomi-mimo",
+        fallbackProvider: "system",
+        voice: { id: "Chloe", provider: "xiaomi-mimo", label: "Chloe" },
+        speed: 1,
+        volume: 0.6,
+        prompts: ["等我一下。"],
+      }),
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    act(() => {
+      expect(result.current.start()).toBe("等我一下。");
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(cloud.synthesize).toHaveBeenCalledTimes(1);
+    expect(system.synthesize).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: "system", voice: null, text: "等我一下。" }),
+      expect.any(AbortSignal),
+    );
+    expect(system.play).toHaveBeenCalledTimes(1);
   });
 });

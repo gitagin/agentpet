@@ -35,10 +35,10 @@ export function AgentConfigForm({
   onTestAgentModel,
 }: AgentConfigFormProps) {
   return (
-    <section className="agent-model-section" aria-label="高级模型路由">
+    <section className="agent-model-section" aria-label="高级 Agent 模型路由">
       <div className="section-heading">
-        <strong>按结果覆盖模型</strong>
-        <span>默认使用全局模型；只有某类结果需要单独优化时再覆盖。</span>
+        <strong>5 个核心 Agent</strong>
+        <span>默认继承全局模型；只有某个职责需要单独优化时再覆盖。</span>
       </div>
       <button type="button" className="secondary" onClick={onRefreshSettings} disabled={loadingSettingsStatus}>
         {loadingSettingsStatus ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />}
@@ -69,7 +69,7 @@ export function AgentConfigForm({
                 </label>
                 {usingGlobalModel ? (
                   <span className="agent-model-inherited">
-                    继承：{globalModelDraft.provider || "未配置"} / {globalModelDraft.base_url || "未配置接口地址"} / {globalModelDraft.model || "未配置模型"}
+                    继承：{globalModelDraft.provider || "未配置提供方"} / {globalModelDraft.base_url || "未配置接口地址"} / {globalModelDraft.model || "未配置模型"}
                   </span>
                 ) : null}
               </div>

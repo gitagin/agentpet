@@ -298,8 +298,8 @@ class VaultServiceContainer:
         )
 
     def long_term_memory_service(self) -> LongTermMemoryService:
-        extraction_model = chat_model_client(self.request, AgentId.DIARY_MEMORY_EXTRACTOR_AGENT.value)
-        extraction_model_name = AgentId.DIARY_MEMORY_EXTRACTOR_AGENT.value if extraction_model is not None else None
+        extraction_model = chat_model_client(self.request, AgentId.REFLECTION_AGENT.value)
+        extraction_model_name = AgentId.REFLECTION_AGENT.value if extraction_model is not None else None
         if extraction_model is None:
             extraction_model = chat_model_client(self.request, AgentId.SEMANTIC_ANALYSIS_AGENT.value)
             extraction_model_name = AgentId.SEMANTIC_ANALYSIS_AGENT.value if extraction_model is not None else None
@@ -348,8 +348,8 @@ def chat_auto_memory_service(request: Request | AppContext) -> ChatAutoMemorySer
 
 def diary_memory_service(request: Request | AppContext) -> DiaryMemoryService:
     vault_id = active_vault_id(request)
-    extractor_agent = chat_model_client(request, AgentId.DIARY_MEMORY_EXTRACTOR_AGENT.value)
-    extraction_model = AgentId.DIARY_MEMORY_EXTRACTOR_AGENT.value if extractor_agent is not None else None
+    extractor_agent = chat_model_client(request, AgentId.REFLECTION_AGENT.value)
+    extraction_model = AgentId.REFLECTION_AGENT.value if extractor_agent is not None else None
     model = extractor_agent
     if model is None:
         model = chat_model_client(request, AgentId.SEMANTIC_ANALYSIS_AGENT.value)
@@ -408,7 +408,7 @@ def wiki_workflow_service(request: Request | AppContext) -> WikiWorkflowService:
     return WikiWorkflowService(
         database(request),
         wiki_service(request),
-        review_agent_id="wiki_manager_agent",
+        review_agent_id=AgentId.ACTION_AGENT,
         review_model_resolver=lambda agent_id: chat_model_client(request, agent_id.value),
     )
 

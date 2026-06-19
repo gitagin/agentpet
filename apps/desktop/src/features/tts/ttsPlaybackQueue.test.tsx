@@ -207,6 +207,46 @@ function renderQueue(
   );
 }
 
+function createImmediateProvider(providerId: string, failCode?: "authentication_failed" | "provider_failed") {
+  const synthesize = vi.fn(async (request: TtsSynthesisRequest): Promise<TtsSynthesisResult> => {
+    if (failCode) {
+      throw createTtsProviderError(providerId, failCode, failCode === "authentication_failed" ? "Invalid API Key" : "failed");
+    }
+    return {
+      kind: "mock",
+      requestId: request.requestId,
+      provider: "mock",
+      durationMs: 100,
+    };
+  });
+  const play = vi.fn(
+    async (result: TtsSynthesisResult): Promise<TtsProviderPlaybackResult> => ({
+      provider: providerId,
+      result,
+      status: "played",
+    }),
+  );
+  const provider: TtsProvider<TtsSynthesisResult> = {
+    id: providerId,
+    synthesize,
+    play,
+    stop: vi.fn(),
+  };
+  return { play, provider, synthesize };
+}
+
+function playbackItemForProvider(id: string, provider: string): TtsPlaybackItem {
+  const item = playbackItem(id);
+  return {
+    ...item,
+    synthesis: {
+      ...item.synthesis,
+      provider,
+      requestId: `request-${provider}-${id}`,
+    },
+  };
+}
+
 async function finishCurrentPlayback(complete: () => void) {
   await act(async () => {
     complete();
@@ -526,6 +566,113 @@ describe("useTtsPlaybackQueue", () => {
 
     await waitFor(() => expect(result.current.state.status).toBe("idle"));
     expect(result.current.state.error).toBeNull();
+  });
+
+  it("drops queued pages for the same provider after an authentication failure", async () => {
+    const controlled = createControlledProvider();
+    controlled.synthesize.mockImplementation(async (request: TtsSynthesisRequest): Promise<TtsSynthesisResult> => {
+      if (request.requestId === "request-page-1") {
+        throw createTtsProviderError("mock", "authentication_failed", "Invalid API Key");
+      }
+      return {
+        kind: "mock",
+        requestId: request.requestId,
+        provider: "mock",
+        durationMs: 100,
+      };
+    });
+    const { result } = renderQueue(controlled.provider);
+
+    act(() => {
+      result.current.enqueue(playbackItem("page-1"));
+      result.current.enqueue(playbackItem("page-2"));
+    });
+
+    await waitFor(() => expect(result.current.state.status).toBe("failed"));
+    expect(result.current.state.error).toMatchObject({
+      code: "authentication_failed",
+      itemId: "page-1",
+      provider: "mock",
+    });
+    expect(result.current.state.queue).toEqual([]);
+    expect(controlled.play).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the configured fallback provider after cloud authentication fails", async () => {
+    const cloud = createImmediateProvider("xiaomi-mimo", "authentication_failed");
+    const system = createImmediateProvider("system");
+    const onProviderFallback = vi.fn();
+    const { result } = renderHook(() =>
+      useTtsPlaybackQueue({
+        providers: {
+          "xiaomi-mimo": cloud.provider,
+          system: system.provider,
+        },
+        fallbackProvider: "system",
+        now: () => "2026-06-04T00:00:00.000Z",
+        onProviderFallback,
+      }),
+    );
+
+    act(() => {
+      result.current.enqueue(playbackItemForProvider("page-1", "xiaomi-mimo"));
+    });
+
+    await waitFor(() => expect(system.play).toHaveBeenCalledTimes(1));
+    expect(cloud.synthesize).toHaveBeenCalledTimes(1);
+    expect(system.synthesize).toHaveBeenCalledTimes(1);
+    expect(system.synthesize).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: "system", voice: null }),
+      expect.any(AbortSignal),
+    );
+    expect(onProviderFallback).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fallbackProvider: "system",
+        provider: "xiaomi-mimo",
+        error: expect.objectContaining({ code: "authentication_failed" }),
+      }),
+    );
+
+    act(() => {
+      result.current.enqueue(playbackItemForProvider("page-2", "xiaomi-mimo"));
+    });
+
+    await waitFor(() => expect(system.play).toHaveBeenCalledTimes(2));
+    expect(cloud.synthesize).toHaveBeenCalledTimes(1);
+    expect(system.synthesize).toHaveBeenCalledTimes(2);
+  });
+
+  it("clears same-provider queued pages when prefetch detects an authentication failure", async () => {
+    const controlled = createControlledProvider();
+    controlled.synthesize.mockImplementation(async (request: TtsSynthesisRequest): Promise<TtsSynthesisResult> => {
+      if (request.requestId === "request-page-2") {
+        throw createTtsProviderError("mock", "authentication_failed", "Invalid API Key");
+      }
+      return {
+        kind: "mock",
+        requestId: request.requestId,
+        provider: "mock",
+        durationMs: 100,
+      };
+    });
+    const { result } = renderQueue(controlled.provider);
+
+    act(() => {
+      result.current.enqueue(playbackItem("page-1"));
+    });
+    await waitFor(() => expect(controlled.play).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      result.current.enqueue(playbackItem("page-2"));
+    });
+
+    await waitFor(() => expect(result.current.state.error?.code).toBe("authentication_failed"));
+    expect(result.current.state.queue).toEqual([]);
+
+    await finishCurrentPlayback(controlled.completeNext);
+
+    await waitFor(() => expect(result.current.state.status).toBe("idle"));
+    expect(controlled.play).toHaveBeenCalledTimes(1);
   });
 
   it("clamps volume before passing it to the provider", async () => {

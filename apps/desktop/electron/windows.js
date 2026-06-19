@@ -22,6 +22,10 @@ const PET_SHORTCUT_BAR_HIT_WIDTH = petHitboxConfig.hitboxes.shortcutBar.width;
 const PET_SHORTCUT_BAR_HIT_HEIGHT = petHitboxConfig.hitboxes.shortcutBar.height;
 const PET_SHORTCUT_BAR_HIT_RIGHT = petHitboxConfig.hitboxes.shortcutBar.right;
 const PET_SHORTCUT_BAR_HIT_BOTTOM = petHitboxConfig.hitboxes.shortcutBar.bottom;
+const PET_MOUSE_HIT_TEST_ACTIVE_INTERVAL_MS = 80;
+const PET_MOUSE_HIT_TEST_IDLE_INTERVAL_MS = 500;
+const PET_MOUSE_HIT_TEST_NEAR_PADDING_PX = 96;
+const PET_ENTRY_CAPTURE_GRACE_MS = 2500;
 const PET_INPUT_MODES = new Set(["chat", "note", "task", "wiki", "review"]);
 function createWindowManager({ devServerUrl, state, quitApp }) {
   let petWindow = null;
@@ -35,8 +39,10 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
   let petDragTimer = null;
   let petDragWatchdog = null;
   let petMouseHitTestTimer = null;
+  let petMouseHitTestIntervalMs = PET_MOUSE_HIT_TEST_ACTIVE_INTERVAL_MS;
   let petMousePassthrough = false;
   let petEntryCaptureActive = false;
+  let petEntryCaptureTimer = null;
   let petShortcutBarVisible = false;
   let petInputDockVisible = false;
   let pendingControlTargetId = null;
@@ -234,6 +240,43 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     );
   }
 
+  function clearPetEntryCapture() {
+    petEntryCaptureActive = false;
+    if (petEntryCaptureTimer) {
+      clearTimeout(petEntryCaptureTimer);
+      petEntryCaptureTimer = null;
+    }
+  }
+
+  function startPetEntryCapture() {
+    clearPetEntryCapture();
+    petEntryCaptureActive = true;
+    petEntryCaptureTimer = setTimeout(() => {
+      petEntryCaptureTimer = null;
+      petEntryCaptureActive = false;
+      updatePetMousePassthroughFromCursor();
+      reschedulePetMouseHitTest();
+    }, PET_ENTRY_CAPTURE_GRACE_MS);
+    petEntryCaptureTimer?.unref?.();
+  }
+
+  function isCursorNearPetWindow(cursor, bounds) {
+    return cursor.x >= bounds.x - PET_MOUSE_HIT_TEST_NEAR_PADDING_PX
+      && cursor.x <= bounds.x + bounds.width + PET_MOUSE_HIT_TEST_NEAR_PADDING_PX
+      && cursor.y >= bounds.y - PET_MOUSE_HIT_TEST_NEAR_PADDING_PX
+      && cursor.y <= bounds.y + bounds.height + PET_MOUSE_HIT_TEST_NEAR_PADDING_PX;
+  }
+
+  function getPetMouseHitTestInterval(cursor, bounds) {
+    if (petEntryCaptureActive || petDragState?.active) {
+      return PET_MOUSE_HIT_TEST_ACTIVE_INTERVAL_MS;
+    }
+    if (cursor && bounds && isCursorNearPetWindow(cursor, bounds)) {
+      return PET_MOUSE_HIT_TEST_ACTIVE_INTERVAL_MS;
+    }
+    return PET_MOUSE_HIT_TEST_IDLE_INTERVAL_MS;
+  }
+
   function getDesktopWindowStatePath() {
     return path.join(app.getPath("userData"), DESKTOP_WINDOW_STATE_FILE);
   }
@@ -306,36 +349,61 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
 
   function updatePetMousePassthroughFromCursor() {
     if (!petWindow || petWindow.isDestroyed()) {
+      petMouseHitTestIntervalMs = PET_MOUSE_HIT_TEST_IDLE_INTERVAL_MS;
       return getPetMousePassthroughStatus("no_pet_window", false);
     }
     if (petEntryCaptureActive) {
+      petMouseHitTestIntervalMs = PET_MOUSE_HIT_TEST_ACTIVE_INTERVAL_MS;
       return setPetMousePassthrough(false, "entry_hint_capture");
     }
     if (petDragState?.active) {
+      petMouseHitTestIntervalMs = PET_MOUSE_HIT_TEST_ACTIVE_INTERVAL_MS;
       return setPetMousePassthrough(false, "dragging");
     }
 
     const cursor = screen.getCursorScreenPoint();
     const bounds = petWindow.getBounds();
     const insideInteractiveRegion = isCursorInsidePetInteractiveRegion(cursor, bounds);
+    petMouseHitTestIntervalMs = getPetMouseHitTestInterval(cursor, bounds);
     return setPetMousePassthrough(
       !insideInteractiveRegion,
       insideInteractiveRegion ? "interactive_region" : "transparent_area",
     );
   }
 
+  function schedulePetMouseHitTest(delayMs = petMouseHitTestIntervalMs) {
+    if (petMouseHitTestTimer || !petWindow || petWindow.isDestroyed()) {
+      return;
+    }
+    petMouseHitTestTimer = setTimeout(() => {
+      petMouseHitTestTimer = null;
+      updatePetMousePassthroughFromCursor();
+      schedulePetMouseHitTest();
+    }, delayMs);
+    petMouseHitTestTimer?.unref?.();
+  }
+
+  function reschedulePetMouseHitTest(delayMs = petMouseHitTestIntervalMs) {
+    if (!petMouseHitTestTimer) {
+      return;
+    }
+    clearTimeout(petMouseHitTestTimer);
+    petMouseHitTestTimer = null;
+    schedulePetMouseHitTest(delayMs);
+  }
+
   function startPetMouseHitTest() {
     if (petMouseHitTestTimer) {
       return;
     }
-    petMouseHitTestTimer = setInterval(updatePetMousePassthroughFromCursor, 80);
+    schedulePetMouseHitTest();
   }
 
   function stopPetMouseHitTest() {
     if (!petMouseHitTestTimer) {
       return;
     }
-    clearInterval(petMouseHitTestTimer);
+    clearTimeout(petMouseHitTestTimer);
     petMouseHitTestTimer = null;
   }
 
@@ -386,7 +454,7 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     }
 
     petShortcutBarVisible = false;
-    petEntryCaptureActive = true;
+    startPetEntryCapture();
     const initialBounds = getInitialPetWindowBounds();
     petWindow = new BrowserWindow({
       x: initialBounds.x,
@@ -423,6 +491,7 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     petWindow.once("ready-to-show", () => {
       enforcePetWindowSize();
       petWindow?.show();
+      startPetEntryCapture();
       updatePetMousePassthroughFromCursor();
       startPetMouseHitTest();
     });
@@ -440,15 +509,15 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     petWindow.on("closed", () => {
       clearPetWindowDrag();
       stopPetMouseHitTest();
+      clearPetEntryCapture();
       petMousePassthrough = false;
-      petEntryCaptureActive = false;
       petShortcutBarVisible = false;
       petInputDockVisible = false;
       petWindow = null;
     });
     petWindow.webContents.on("context-menu", (event) => {
       event.preventDefault();
-      petEntryCaptureActive = false;
+      clearPetEntryCapture();
       showPetContextMenu();
     });
     petWindow.webContents.on("did-finish-load", () => {
@@ -783,9 +852,11 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
 
     petShortcutBarVisible = Boolean(visible);
     if (petShortcutBarVisible) {
-      petEntryCaptureActive = false;
+      clearPetEntryCapture();
     }
-    return updatePetMousePassthroughFromCursor();
+    const status = updatePetMousePassthroughFromCursor();
+    reschedulePetMouseHitTest();
+    return status;
   }
 
   function setPetInputDockVisible(sender, visible) {
@@ -795,9 +866,11 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
 
     petInputDockVisible = Boolean(visible);
     if (petInputDockVisible) {
-      petEntryCaptureActive = false;
+      clearPetEntryCapture();
     }
-    return updatePetMousePassthroughFromCursor();
+    const status = updatePetMousePassthroughFromCursor();
+    reschedulePetMouseHitTest();
+    return status;
   }
 
   function beginPetWindowDrag(sender) {
@@ -806,7 +879,7 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     }
 
     setPetMousePassthrough(false, "begin_drag");
-    petEntryCaptureActive = false;
+    clearPetEntryCapture();
     const cursor = screen.getCursorScreenPoint();
     const bounds = petWindow.getBounds();
     petDragState = {
@@ -828,6 +901,8 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
 
     setPetMousePassthrough(false, "activate_drag");
     petDragState.active = true;
+    petMouseHitTestIntervalMs = PET_MOUSE_HIT_TEST_ACTIVE_INTERVAL_MS;
+    reschedulePetMouseHitTest();
     movePetWindowFromCursor();
     if (!petDragTimer) {
       petDragTimer = setInterval(movePetWindowFromCursor, 16);
@@ -850,6 +925,7 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     enforcePetWindowSize();
     persistPetWindowBounds();
     updatePetMousePassthroughFromCursor();
+    reschedulePetMouseHitTest();
   }
 
   return {

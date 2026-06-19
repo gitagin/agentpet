@@ -42,6 +42,8 @@ type StageViewProps = {
   onPausePaging?: () => void;
   onResumePaging?: () => void;
   ttsSpeaking?: boolean;
+  live2dActionKeyOverride?: string | null;
+  live2dActionTriggerKey?: string | null;
   active?: boolean;
   api?: DesktopApi;
 };
@@ -103,6 +105,8 @@ export default function StageView({
   onPausePaging,
   onResumePaging,
   ttsSpeaking = false,
+  live2dActionKeyOverride = null,
+  live2dActionTriggerKey = null,
   active = true,
   api,
 }: StageViewProps) {
@@ -227,6 +231,8 @@ export default function StageView({
               canvasRef={live2dCanvasRef}
               variant="stage"
               speaking={ttsSpeaking}
+              actionKeyOverride={live2dActionKeyOverride}
+              actionTriggerKey={live2dActionTriggerKey}
               active={active}
             />
           </div>

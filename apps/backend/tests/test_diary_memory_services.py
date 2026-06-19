@@ -64,7 +64,7 @@ async def test_diary_memory_service_archives_objects_sources_and_searches_fts(tm
         DiaryMemoryStore(migrate_db_with_vault(tmp_path / "state.sqlite3")),
         vault_id="vault-1",
         extractor=extractor,
-        extraction_model="diary_memory_extractor_agent",
+        extraction_model="reflection_agent",
     )
 
     result = await service.archive_chat_exchange(
@@ -86,7 +86,7 @@ async def test_diary_memory_service_archives_objects_sources_and_searches_fts(tm
         MemoryFactStatus.ACTIVE,
         MemoryFactStatus.QUARANTINED,
     ]
-    assert records[0].extraction_model == "diary_memory_extractor_agent"
+    assert records[0].extraction_model == "reflection_agent"
     assert records[0].occurred_at == "2026-05-13T10:30:00+08:00"
     detail = service.get(records[0].id)
     assert detail.sources[0].conversation_id == "conversation-1"

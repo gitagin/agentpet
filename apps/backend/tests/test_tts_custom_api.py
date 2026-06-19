@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import base64
+import io
 import json
+import logging
+import urllib.error
 from typing import Any
 
 import pytest
@@ -245,3 +248,53 @@ def test_tts_synthesis_rejects_non_audio_response(
 
     assert response.status_code == 502
     assert response.json()["error"]["code"] == "invalid_audio"
+
+
+def test_tts_synthesis_returns_and_logs_upstream_error_detail(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    def fake_urlopen(request, timeout):
+        raise urllib.error.HTTPError(
+            request.full_url,
+            400,
+            "Bad Request",
+            {},
+            io.BytesIO(b'{"error":"invalid voice"}'),
+        )
+
+    monkeypatch.setattr("app.services.tts.urllib.request.urlopen", fake_urlopen)
+    settings_response = client.put(
+        "/api/settings/tts",
+        headers=auth_headers(),
+        json={
+            "enabled": True,
+            "auto_play_assistant_reply": True,
+            "provider": "custom-http",
+            "base_url": "https://tts.example.test/synthesize",
+            "speed": 1,
+            "volume": 1,
+            "response_format": "mp3",
+            "requires_api_key": False,
+        },
+    )
+    assert settings_response.status_code == 200
+
+    with caplog.at_level(logging.WARNING, logger="app.api.tts"):
+        response = client.post(
+            "/api/tts/synthesize",
+            headers=auth_headers(),
+            json={"text": "hello", "provider": "custom-http", "speed": 1, "volume": 1},
+        )
+
+    assert response.status_code == 502
+    payload = response.json()
+    assert payload["error"]["code"] == "provider_failed"
+    assert payload["error"]["details"]["detail"] == '{"error":"invalid voice"}'
+    assert any(
+        "TTS synthesis failed: provider=custom-http code=provider_failed status=502 detail="
+        '{"error":"invalid voice"}'
+        in record.getMessage()
+        for record in caplog.records
+    )

@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { ApiError } from "../../services/apiClient";
 import type { DesktopApi } from "../../services/desktopApi";
 import { VisibleContinuityPanel } from "./VisibleContinuityPanel";
 import type { RetrospectiveResponse } from "../../types";
@@ -145,6 +146,15 @@ function retrospectiveResponse(): RetrospectiveResponse {
   };
 }
 
+function sidecarStartingError(): ApiError {
+  return new ApiError("本地后端正在启动，请稍候再试", 503, {
+    error: {
+      code: "sidecar_starting",
+      message: "本地后端正在启动，请稍候再试",
+    },
+  });
+}
+
 describe("VisibleContinuityPanel", () => {
   it("renders useful empty snapshot data", () => {
     render(<VisibleContinuityPanel snapshot={emptySnapshot()} />);
@@ -200,6 +210,26 @@ describe("VisibleContinuityPanel", () => {
     expect(screen.getByText("正在加载最新本地连续性快照。")).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText("已保存周摘要")).toBeInTheDocument());
     expect(api.getVisibleContinuitySnapshot).toHaveBeenCalledOnce();
+  });
+
+  it("retries snapshot loading while the sidecar is still starting", async () => {
+    const api = {
+      getVisibleContinuitySnapshot: vi
+        .fn()
+        .mockRejectedValueOnce(sidecarStartingError())
+        .mockResolvedValueOnce(fullSnapshot()),
+      revertAgentAction: vi.fn(),
+      getRetrospectives: vi.fn(),
+      writeRetrospectivePeriodReport: vi.fn(),
+    } as unknown as DesktopApi;
+
+    render(<VisibleContinuityPanel api={api} />);
+
+    await waitFor(() => expect(api.getVisibleContinuitySnapshot).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText(/sidecar_starting/)).not.toBeInTheDocument();
+    await waitFor(() => expect(api.getVisibleContinuitySnapshot).toHaveBeenCalledTimes(2), { timeout: 2000 });
+    await waitFor(() => expect(screen.getByText("Continue from the latest local context")).toBeInTheDocument());
+    expect(screen.queryByText(/连续性快照加载失败/)).not.toBeInTheDocument();
   });
 
   it("reverts a reversible receipt through the desktop API and refreshes the snapshot", async () => {

@@ -47,7 +47,7 @@ async def _memory_retrieval_node(
         graph_state["retrieval_plan"] = {"memory": True, "knowledge": False}
         return await _split_retrieval_node(
             graph_state, services, run_model_agent_with_tools, has_tool_result, has_empty_search_result,
-            agent_id=AgentId.MEMORY_RETRIEVAL_AGENT,
+            agent_id=AgentId.RETRIEVAL_AGENT,
             source_scope="diary_objects",
             stage=_stage_for_source_scope("diary_objects"),
             system_prompt_factory=_memory_retrieval_system_prompt,
@@ -58,7 +58,7 @@ async def _memory_retrieval_node(
     source_scope = "daily_chat" if effective_scope == "daily_chat" else "personal_memory"
     return await _split_retrieval_node(
         graph_state, services, run_model_agent_with_tools, has_tool_result, has_empty_search_result,
-        agent_id=AgentId.MEMORY_RETRIEVAL_AGENT,
+        agent_id=AgentId.RETRIEVAL_AGENT,
         source_scope=source_scope,
         stage=_stage_for_source_scope(source_scope),
         system_prompt_factory=_memory_retrieval_system_prompt,
@@ -154,13 +154,63 @@ async def _knowledge_retrieval_node(
 ) -> dict[str, Any]:
     return await _split_retrieval_node(
         graph_state, services, run_model_agent_with_tools, has_tool_result, has_empty_search_result,
-        agent_id=AgentId.KNOWLEDGE_RETRIEVAL_AGENT,
+        agent_id=AgentId.RETRIEVAL_AGENT,
         source_scope="knowledge_base",
         stage="knowledge_base_retrieval",
         system_prompt_factory=_knowledge_retrieval_system_prompt,
         daily_chat_fallback=False,
         update_state_scope=False,
     )
+
+
+async def _retrieval_node(
+    graph_state: dict[str, Any],
+    services: AgentRuntimeServices,
+    run_model_agent_with_tools,
+    has_tool_result: Callable[[list[AgentToolResult], str], bool],
+    has_empty_search_result: Callable[[list[AgentToolResult]], bool],
+) -> dict[str, Any]:
+    plan = graph_state.get("retrieval_plan")
+    if not isinstance(plan, dict):
+        state = _agent_state(graph_state)
+        semantic = state.semantic_analysis or _fallback_semantic_analysis(state)
+        aggregation_scopes = _memory_aggregation_scopes(state, semantic)
+        if aggregation_scopes:
+            plan = {
+                "memory": any(scope != "knowledge_base" for scope in aggregation_scopes),
+                "knowledge": "knowledge_base" in aggregation_scopes,
+            }
+        else:
+            effective_scope = _effective_retrieval_source_scope(state, semantic)
+            plan = {
+                "memory": effective_scope != "knowledge_base",
+                "knowledge": effective_scope in {"all", "knowledge_base"},
+            }
+        graph_state["retrieval_plan"] = plan
+
+    if plan.get("memory"):
+        await _memory_retrieval_node(
+            graph_state,
+            services,
+            run_model_agent_with_tools,
+            has_tool_result,
+            has_empty_search_result,
+        )
+        if graph_state.get("failed"):
+            return graph_state
+        updated_plan = graph_state.get("retrieval_plan")
+        if isinstance(updated_plan, dict):
+            plan = updated_plan
+
+    if plan.get("knowledge"):
+        await _knowledge_retrieval_node(
+            graph_state,
+            services,
+            run_model_agent_with_tools,
+            has_tool_result,
+            has_empty_search_result,
+        )
+    return graph_state
 
 
 async def _split_retrieval_node(

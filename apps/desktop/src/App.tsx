@@ -1,9 +1,13 @@
 ﻿import {
+  BookOpen,
   Check,
   CircleAlert,
+  FolderKanban,
   HeartPulse,
+  House,
   Loader2,
   MessageSquareText,
+  Power,
   RefreshCw,
   Send,
   Settings,
@@ -11,6 +15,7 @@
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import type { AnimationEvent, CSSProperties, FormEvent, PointerEvent } from "react";
 import type {
   AgentAction,
@@ -28,6 +33,7 @@ import type {
   DesktopVaultRevealMode,
   SettingsStatusResponse,
   TtsPlaybackItem,
+  TtsPlaybackError,
   TtsVoiceGender,
 } from "./types";
 import { describeError } from "./services/apiErrorMessages";
@@ -103,6 +109,10 @@ type Notice = {
 type DesktopWindowMode = "pet" | "control" | "stage" | "agent" | DesktopFeatureWindowMode;
 type AsyncStatus = "idle" | "loading" | "success" | "empty" | "error";
 type PetShortcutMotion = "idle" | "opening" | "closing";
+type PetDragSnapshot = {
+  url: string;
+  style: CSSProperties;
+} | null;
 type FirstUseOnboardingStatus = "unknown" | "pending" | "completed";
 type PetEntryHintStatus = "unknown" | "pending" | "completed";
 type SendChatTextOptions = {
@@ -121,10 +131,10 @@ function hasExplicitWindowRoute(): boolean {
   return Boolean(hash);
 }
 
-const petShortcutButtonSize = 38;
-const petShortcutButtonGap = 8;
-const petShortcutButtonCount = 4;
-const petShortcutColumnCount = 2;
+const petShortcutButtonSize = 34;
+const petShortcutButtonGap = 7;
+const petShortcutButtonCount = 5;
+const petShortcutColumnCount = 1;
 const petShortcutButtonStyles = buildPetShortcutButtonStyles();
 const firstUseOnboardingStorageKey = "agent-pet.first-use-onboarding";
 const firstUseOnboardingCompletedValue = "completed:v1";
@@ -373,6 +383,8 @@ function App() {
   const [desktopHostMode, setDesktopHostMode] = useState<DesktopWindowMode>(() => detectDesktopWindowMode());
   const [petShortcutsVisible, setPetShortcutsVisible] = useState(false);
   const [petShortcutMotion, setPetShortcutMotion] = useState<PetShortcutMotion>("idle");
+  const [petDragging, setPetDragging] = useState(false);
+  const [petDragSnapshot, setPetDragSnapshot] = useState<PetDragSnapshot>(null);
   const [petInputMode, setPetInputMode] = useState<PetInputMode>("chat");
   const [firstUseOnboardingStatus, setFirstUseOnboardingStatus] =
     useState<FirstUseOnboardingStatus>("unknown");
@@ -389,6 +401,9 @@ function App() {
   const streamingRef = useRef(false);
   const conversationIdRef = useRef<string | null>(conversationId);
   const live2dTaskStageRef = useRef<() => void>(() => undefined);
+  const petShellRef = useRef<HTMLElement | null>(null);
+  const petDragSnapshotClearTimerRef = useRef<number | null>(null);
+  const petShortcutMotionTimerRef = useRef<number | null>(null);
   const petDragRef = useRef<{
     pointerId: number;
     startX: number;
@@ -599,16 +614,36 @@ function App() {
     }),
     [api],
   );
+  const ttsSettings = settingsStatus?.tts_settings;
+  const ttsFallbackProvider = ttsSettings?.provider && ttsSettings.provider !== "system" ? "system" : null;
+  const ttsProviderResetKey = [
+    ttsSettings?.provider || "",
+    ttsSettings?.updated_at || "",
+    ttsSettings?.key_masked || "",
+  ].join(":");
   const petTtsPlaybackStartRef = useRef<(item: TtsPlaybackItem) => void>(() => undefined);
   const petTtsPlaybackEndRef = useRef<(item: TtsPlaybackItem, status: TtsProviderPlaybackStatus) => void>(() => undefined);
   const previousTtsWindowModeRef = useRef<DesktopWindowMode | null>(null);
   const lastTtsErrorNoticeRef = useRef<string | null>(null);
+  const lastTtsFallbackNoticeRef = useRef<string | null>(null);
   const ttsQueue = useTtsPlaybackQueue({
     providers: ttsProviders,
+    fallbackProvider: ttsFallbackProvider,
     onPlaybackStart: (item) => petTtsPlaybackStartRef.current(item),
     onPlaybackEnd: (item, status) => petTtsPlaybackEndRef.current(item, status),
+    onProviderFallback: ({ error, fallbackProvider, provider }) => {
+      const noticeKey = `${provider}:${fallbackProvider}:${error.code}`;
+      if (lastTtsFallbackNoticeRef.current === noticeKey) {
+        return;
+      }
+      lastTtsFallbackNoticeRef.current = noticeKey;
+      setNotice({
+        tone: "error",
+        message: formatTtsProviderFallbackNotice(provider, fallbackProvider, error),
+      });
+    },
+    providerResetKey: ttsProviderResetKey,
   });
-  const ttsSettings = settingsStatus?.tts_settings;
   const ttsActive = ttsQueue.state.status === "synthesizing" || ttsQueue.state.status === "playing";
   const ttsSpeaking = ttsQueue.state.status === "playing";
   const ttsEnabled = Boolean(
@@ -641,6 +676,7 @@ function App() {
     enabled: ttsEnabled,
     providers: ttsProviders,
     provider: ttsSettings?.provider || "system",
+    fallbackProvider: ttsFallbackProvider,
     voice: ttsVoice,
     speed: ttsSettings?.speed ?? 1,
     cueSpeed: 0.82,
@@ -683,7 +719,7 @@ function App() {
     lastTtsErrorNoticeRef.current = noticeKey;
     setNotice({
       tone: "error",
-      message: `语音播放失败：${error.message}`,
+      message: formatTtsPlaybackErrorNotice(error),
     });
   }, [
     ttsQueue.state.error?.code,
@@ -706,19 +742,12 @@ function App() {
         ttsQueue.stop(reason);
       }
     };
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "hidden") {
-        stopIfActive("window_hidden");
-      }
-    };
     const handlePageHide = () => stopIfActive("window_hidden");
     const handleBeforeUnload = () => stopIfActive("window_unload");
 
-    document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("pagehide", handlePageHide);
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => {
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("pagehide", handlePageHide);
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };
@@ -730,6 +759,8 @@ function App() {
       delete document.body.dataset.windowMode;
     };
   }, [windowMode]);
+
+  useEffect(() => () => clearPetShortcutMotionTimer(), []);
 
   useEffect(() => {
     const visible = windowMode === "pet" && petShortcutsVisible;
@@ -853,6 +884,7 @@ function App() {
         // 透明桌宠窗口在失焦或系统拖动中可能丢失 pointer capture；本地状态必须照常清理。
       } finally {
         petDragRef.current = null;
+        finishPetDragVisualState();
       }
     };
     const unsubscribe = window.agentDesktop?.onPetDragCancelled?.(cancelPetDrag);
@@ -864,6 +896,10 @@ function App() {
       window.removeEventListener("blur", cancelPetDrag);
       window.removeEventListener("pointercancel", cancelPetDrag);
       window.removeEventListener("pointerup", cancelPetDrag);
+      if (petDragSnapshotClearTimerRef.current !== null) {
+        window.clearTimeout(petDragSnapshotClearTimerRef.current);
+        petDragSnapshotClearTimerRef.current = null;
+      }
     };
   }, []);
 
@@ -1058,6 +1094,7 @@ function App() {
               upsertChatWikiProposal,
               addTaskFromChat,
               triggerLive2DTaskStage,
+              onVisibleAssistantReply: () => ttsWaitingCue.stop("assistant_visible_reply"),
             });
             if (sseEvent.event === "reply_ready") {
               streamingRef.current = false;
@@ -1177,14 +1214,55 @@ function App() {
     setPetEntryHintStatus("completed");
   }
 
+  function clearPetShortcutMotionTimer() {
+    if (petShortcutMotionTimerRef.current !== null) {
+      window.clearTimeout(petShortcutMotionTimerRef.current);
+      petShortcutMotionTimerRef.current = null;
+    }
+  }
+
+  function settlePetShortcutMotion() {
+    clearPetShortcutMotionTimer();
+    setPetShortcutMotion("idle");
+  }
+
+  function setPetShortcutMotionWithFallback(nextMotion: PetShortcutMotion) {
+    clearPetShortcutMotionTimer();
+    setPetShortcutMotion(nextMotion);
+    if (nextMotion === "idle") {
+      return;
+    }
+    petShortcutMotionTimerRef.current = window.setTimeout(() => {
+      petShortcutMotionTimerRef.current = null;
+      setPetShortcutMotion("idle");
+    }, nextMotion === "opening" ? 420 : 380);
+  }
+
   function openPetInputMode(mode: PetInputMode) {
     completePetEntryHint();
     setPetInputMode(mode);
     setPetShortcutsVisible(false);
-    setPetShortcutMotion("idle");
+    settlePetShortcutMotion();
     petChat.showInput();
   }
   openPetInputModeRef.current = openPetInputMode;
+
+  function closePetShortcutMenu() {
+    completePetEntryHint();
+    setPetShortcutsVisible(false);
+    settlePetShortcutMotion();
+    petChat.setInputVisible(false);
+  }
+
+  function openPetShortcutStage(mode: "stage" | "agent" | DesktopFeatureWindowMode) {
+    closePetShortcutMenu();
+    void window.agentDesktop?.openStage?.(mode);
+  }
+
+  function quitFromPetShortcut() {
+    closePetShortcutMenu();
+    void window.agentDesktop?.quitApp?.();
+  }
 
   function appendChatEvent(
     messageId: string,
@@ -1589,6 +1667,70 @@ function App() {
     }
   }
 
+  function clearPetDragSnapshot(delayMs = 120) {
+    if (petDragSnapshotClearTimerRef.current !== null) {
+      window.clearTimeout(petDragSnapshotClearTimerRef.current);
+      petDragSnapshotClearTimerRef.current = null;
+    }
+
+    if (delayMs <= 0) {
+      setPetDragSnapshot(null);
+      return;
+    }
+
+    petDragSnapshotClearTimerRef.current = window.setTimeout(() => {
+      petDragSnapshotClearTimerRef.current = null;
+      setPetDragSnapshot(null);
+    }, delayMs);
+  }
+
+  function capturePetDragSnapshot() {
+    if (petDragSnapshotClearTimerRef.current !== null) {
+      window.clearTimeout(petDragSnapshotClearTimerRef.current);
+      petDragSnapshotClearTimerRef.current = null;
+    }
+
+    const canvas = live2dPetCanvasRef.current;
+    const shell = petShellRef.current;
+    if (!canvas || !shell || canvas.width <= 1 || canvas.height <= 1) {
+      setPetDragSnapshot(null);
+      return false;
+    }
+
+    const canvasBounds = canvas.getBoundingClientRect();
+    const shellBounds = shell.getBoundingClientRect();
+    if (canvasBounds.width <= 1 || canvasBounds.height <= 1 || shellBounds.width <= 1 || shellBounds.height <= 1) {
+      setPetDragSnapshot(null);
+      return false;
+    }
+
+    try {
+      const url = canvas.toDataURL("image/png");
+      if (!url || url === "data:,") {
+        setPetDragSnapshot(null);
+        return false;
+      }
+      setPetDragSnapshot({
+        url,
+        style: {
+          left: `${canvasBounds.left - shellBounds.left}px`,
+          top: `${canvasBounds.top - shellBounds.top}px`,
+          width: `${canvasBounds.width}px`,
+          height: `${canvasBounds.height}px`,
+        },
+      });
+      return true;
+    } catch {
+      setPetDragSnapshot(null);
+      return false;
+    }
+  }
+
+  function finishPetDragVisualState() {
+    setPetDragging(false);
+    clearPetDragSnapshot();
+  }
+
   function beginPetDrag(event: PointerEvent<HTMLElement>) {
     if (windowMode !== "pet" || event.button !== 0) {
       return;
@@ -1628,6 +1770,10 @@ function App() {
 
     if (!dragState.dragging) {
       dragState.dragging = true;
+      flushSync(() => {
+        capturePetDragSnapshot();
+        setPetDragging(true);
+      });
       window.agentDesktop?.activatePetWindowDrag?.();
     }
   }
@@ -1642,6 +1788,7 @@ function App() {
       // 即使释放 pointer capture 或 IPC 失败，也不能让拖动状态残留。
     } finally {
       petDragRef.current = null;
+      finishPetDragVisualState();
     }
   }
 
@@ -1651,14 +1798,14 @@ function App() {
       if (!visible) {
         petChat.setInputVisible(false);
       }
-      setPetShortcutMotion(visible ? "closing" : "opening");
+      setPetShortcutMotionWithFallback(visible ? "closing" : "opening");
       return !visible;
     });
   }
 
   function finishPetShortcutMotion(event: AnimationEvent<HTMLElement>) {
     if (event.animationName === "pet-shortcut-roll-out" || event.animationName === "pet-shortcut-roll-in") {
-      setPetShortcutMotion("idle");
+      settlePetShortcutMotion();
     }
   }
 
@@ -1777,6 +1924,14 @@ function App() {
     continuitySignal: activeContinuitySignal,
   });
   const live2dReplyActionKey = hasConnection ? resolveLive2DReplyActionKey(latestAssistantMessage) : null;
+  const live2dReplyActionTriggerKey =
+    live2dReplyActionKey && latestAssistantMessage
+      ? [
+          latestAssistantMessage.id,
+          latestAssistantMessage.status || "",
+          (latestAssistantMessage.live2d_action_hints || []).join("|"),
+        ].join(":")
+      : null;
   const live2dStageCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const live2dPetCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const live2dPanelCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -1982,6 +2137,8 @@ function App() {
       onPausePaging={petChat.pausePaging}
       onResumePaging={petChat.resumePaging}
       ttsSpeaking={ttsSpeaking}
+      live2dActionKeyOverride={live2dReplyActionKey}
+      live2dActionTriggerKey={live2dReplyActionTriggerKey}
       active={!isStageHostWindow || windowMode === "stage"}
       api={api}
     />
@@ -2171,7 +2328,10 @@ function App() {
           "pet-shell",
           petHitboxDebug ? "pet-debug-hitbox" : "",
           petChat.bubble.visible ? "pet-bubble-visible" : "",
+          petDragging ? "pet-dragging" : "",
+          petDragSnapshot ? "pet-drag-snapshot-ready" : "",
         ].filter(Boolean).join(" ")}
+        ref={petShellRef}
         style={petHitboxStyle}
         aria-label="桌面记忆助手桌宠"
         onDragStart={(event) => event.preventDefault()}
@@ -2187,6 +2347,8 @@ function App() {
           variant="pet"
           speaking={ttsSpeaking}
           actionKeyOverride={live2dReplyActionKey}
+          actionTriggerKey={live2dReplyActionTriggerKey}
+          suppressCanvasLayoutWarning={petDragging && Boolean(petDragSnapshot)}
           petInteractions={{
             onPointerDown: beginPetDrag,
             onPointerMove: movePetDrag,
@@ -2209,6 +2371,16 @@ function App() {
             },
           }}
         />
+        {petDragSnapshot ? (
+          <img
+            className="pet-drag-frame-cache"
+            src={petDragSnapshot.url}
+            style={petDragSnapshot.style}
+            alt=""
+            aria-hidden="true"
+            draggable={false}
+          />
+        ) : null}
         {showPetEntryHint ? (
           <div className="pet-entry-hint" aria-label="桌宠入口提示">
             右键我打开功能
@@ -2241,17 +2413,20 @@ function App() {
           onContextMenu={(event) => event.preventDefault()}
           onAnimationEnd={finishPetShortcutMotion}
         >
-          <button type="button" className="pet-shortcut-button" style={petShortcutButtonStyles[0]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="继续对话" onClick={() => openPetInputMode("chat")}>
-            继续
+          <button type="button" className="pet-shortcut-button" style={petShortcutButtonStyles[0]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="打开首页" title="打开首页" onClick={() => openPetShortcutStage("stage")}>
+            <House className="pet-shortcut-icon" size={17} strokeWidth={2.3} aria-hidden="true" />
           </button>
-          <button type="button" className="pet-shortcut-button" style={petShortcutButtonStyles[1]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="记录一条笔记" onClick={() => openPetInputMode("note")}>
-            记录
+          <button type="button" className="pet-shortcut-button" style={petShortcutButtonStyles[1]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="打开任务工作台" title="打开任务工作台" onClick={() => openPetShortcutStage("agent")}>
+            <FolderKanban className="pet-shortcut-icon" size={17} strokeWidth={2.3} aria-hidden="true" />
           </button>
-          <button type="button" className="pet-shortcut-button" style={petShortcutButtonStyles[2]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="打开任务工作台" onClick={() => void window.agentDesktop?.openStage?.("agent")}>
-            任务
+          <button type="button" className="pet-shortcut-button" style={petShortcutButtonStyles[2]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="打开知识库窗口" title="打开知识库窗口" onClick={() => openPetShortcutStage("world")}>
+            <BookOpen className="pet-shortcut-icon" size={17} strokeWidth={2.3} aria-hidden="true" />
           </button>
-          <button type="button" className="pet-shortcut-button" style={petShortcutButtonStyles[3]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="开始今日复盘" onClick={() => openPetInputMode("review")}>
-            复盘
+          <button type="button" className="pet-shortcut-button" style={petShortcutButtonStyles[3]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="打开设置窗口" title="打开设置窗口" onClick={() => openPetShortcutStage("settings")}>
+            <Settings className="pet-shortcut-icon" size={17} strokeWidth={2.3} aria-hidden="true" />
+          </button>
+          <button type="button" className="pet-shortcut-button danger" style={petShortcutButtonStyles[4]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="退出应用" title="退出应用" onClick={quitFromPetShortcut}>
+            <Power className="pet-shortcut-icon" size={17} strokeWidth={2.5} aria-hidden="true" />
           </button>
         </nav>
       </main>
@@ -2284,6 +2459,7 @@ function App() {
           canvasRef={live2dPanelCanvasRef}
           speaking={ttsActive}
           actionKeyOverride={live2dReplyActionKey}
+          actionTriggerKey={live2dReplyActionTriggerKey}
         />
 
         <VisibleContinuityPanel api={api} className="control-continuity-panel" />
@@ -2604,6 +2780,36 @@ function normalizeTtsVoiceGender(gender: string | null | undefined): TtsVoiceGen
     return gender;
   }
   return gender ? "unknown" : undefined;
+}
+
+function formatTtsPlaybackErrorNotice(error: TtsPlaybackError): string {
+  if (error.code === "authentication_failed") {
+    const providerLabel = error.provider === "xiaomi-mimo" ? "小米 MiMo" : error.provider || "当前 TTS 服务";
+    return `语音播放失败：${providerLabel} API Key 无效，请在设置里重新保存语音服务密钥，或临时切换到系统语音。${error.message ? `（${error.message}）` : ""}`;
+  }
+  if (error.code === "credential_missing") {
+    return "语音播放失败：尚未保存语音服务密钥，请在设置里填写并保存后再试。";
+  }
+  if (error.code === "provider_not_configured") {
+    return "语音播放失败：语音来源尚未配置完成，请在设置里检查服务地址、声音来源和密钥。";
+  }
+  return `语音播放失败：${error.message}`;
+}
+
+function formatTtsProviderFallbackNotice(
+  provider: string | undefined,
+  fallbackProvider: string | undefined,
+  error: TtsPlaybackError,
+): string {
+  const providerLabel = provider === "xiaomi-mimo" ? "小米 MiMo" : provider || "当前 TTS 服务";
+  const fallbackLabel = fallbackProvider === "system" ? "系统语音" : fallbackProvider || "备用语音";
+  if (error.code === "authentication_failed") {
+    return `${providerLabel} API Key 无效，已临时改用${fallbackLabel}。请在设置里重新保存语音服务密钥。`;
+  }
+  if (error.code === "credential_missing") {
+    return `${providerLabel} 尚未保存密钥，已临时改用${fallbackLabel}。`;
+  }
+  return `${providerLabel} 暂不可用，已临时改用${fallbackLabel}。`;
 }
 
 function getSearchEmptyNotice(

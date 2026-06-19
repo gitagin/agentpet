@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends
 
 from ..config import get_settings
@@ -9,6 +11,7 @@ from ..services.tts_cache import TtsAudioCache
 from .wiring import settings_store_dependency
 
 router = APIRouter(prefix="/tts", tags=["tts"])
+logger = logging.getLogger(__name__)
 
 
 @router.post("/synthesize", response_model=TtsSynthesisResponse)
@@ -22,6 +25,13 @@ async def synthesize_tts(
     try:
         return await service.synthesize(request)
     except TtsServiceError as exc:
+        logger.warning(
+            "TTS synthesis failed: provider=%s code=%s status=%s detail=%s",
+            request.provider or "configured",
+            exc.code,
+            exc.status_code,
+            exc.detail or "",
+        )
         raise AppError(
             code=exc.code,
             message=exc.message,

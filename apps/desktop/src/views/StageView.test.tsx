@@ -8,11 +8,23 @@ import type { Live2DAssetInfo, Live2DRuntimeBoundary } from "../services/live2dR
 import type { Live2DStageView } from "../components/Live2DStage";
 
 vi.mock("../components/Live2DStage", () => ({
-  Live2DStage: ({ active = true, speaking = false }: { active?: boolean; speaking?: boolean }) => (
+  Live2DStage: ({
+    active = true,
+    speaking = false,
+    actionKeyOverride = null,
+    actionTriggerKey = null,
+  }: {
+    active?: boolean;
+    speaking?: boolean;
+    actionKeyOverride?: string | null;
+    actionTriggerKey?: string | null;
+  }) => (
     <section
       aria-label="mock live2d stage"
       data-active={active ? "true" : "false"}
       data-speaking={speaking ? "true" : "false"}
+      data-action-key={actionKeyOverride || ""}
+      data-action-trigger={actionTriggerKey || ""}
     />
   ),
 }));
@@ -67,7 +79,13 @@ const live2dAsset: Live2DAssetInfo = {
 
 function renderStageView(
   bubble: PetBubbleState,
-  options: { active?: boolean; ttsSpeaking?: boolean; api?: object } = {},
+  options: {
+    active?: boolean;
+    ttsSpeaking?: boolean;
+    api?: object;
+    live2dActionKeyOverride?: string | null;
+    live2dActionTriggerKey?: string | null;
+  } = {},
 ) {
   const onSendChat = vi.fn();
   const rendered = render(
@@ -85,6 +103,8 @@ function renderStageView(
       onPausePaging={vi.fn()}
       onResumePaging={vi.fn()}
       ttsSpeaking={options.ttsSpeaking}
+      live2dActionKeyOverride={options.live2dActionKeyOverride}
+      live2dActionTriggerKey={options.live2dActionTriggerKey}
       active={options.active}
       api={options.api as never}
     />,
@@ -264,6 +284,19 @@ describe("StageView", () => {
     }, { ttsSpeaking: true });
 
     expect(screen.getByLabelText("mock live2d stage")).toHaveAttribute("data-speaking", "true");
+  });
+
+  it("passes reply-driven Live2D action controls to the stage model", () => {
+    renderStageView({
+      visible: false,
+      title: "",
+      message: "",
+      tone: "thinking",
+      phase: "idle",
+    }, { live2dActionKeyOverride: "emotion_comfort", live2dActionTriggerKey: "assistant-1:completed" });
+
+    expect(screen.getByLabelText("mock live2d stage")).toHaveAttribute("data-action-key", "emotion_comfort");
+    expect(screen.getByLabelText("mock live2d stage")).toHaveAttribute("data-action-trigger", "assistant-1:completed");
   });
 
   it("does not move the Live2D mouth while TTS is only synthesizing", () => {

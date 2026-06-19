@@ -148,4 +148,20 @@ describe("ChatMessageList", () => {
     expect(screen.getByText("你好我在这里 别担心")).toBeInTheDocument();
     expect(screen.queryByText(/微笑|thinking/)).not.toBeInTheDocument();
   });
+
+  it("does not show assistant single-star stage directions", () => {
+    const messages: ChatMessage[] = [
+      {
+        id: "assistant-1",
+        role: "assistant",
+        content: "你好*微笑*我在这里",
+        status: "completed",
+      },
+    ];
+
+    render(<ChatMessageList messages={messages} />);
+
+    expect(screen.getByText("你好我在这里")).toBeInTheDocument();
+    expect(screen.queryByText(/微笑|\*/)).not.toBeInTheDocument();
+  });
 });

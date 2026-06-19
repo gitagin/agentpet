@@ -23,35 +23,26 @@ export function getModelHealthBannerState(health: ModelHealthResponse): BannerSt
   }
 
   const specialistCount = health.agent_details.filter((agent) => agent.source === "agent_specific").length;
-  const totalOutcomes = new Set(agentModelDefinitions.map((agent) => agent.outcome)).size;
-  const configuredOutcomes = new Set(
-    health.agent_details.flatMap((detail) => {
-      if (detail.source !== "agent_specific") {
-        return [];
-      }
-      const definition = agentModelDefinitions.find((agent) => agent.id === detail.agent_id);
-      return definition ? [definition.outcome] : [];
-    }),
-  ).size;
+  const totalAgents = agentModelDefinitions.length;
 
   if (health.global_configured && specialistCount === 0) {
     return {
       tone: "info",
-      message: "所有结果路由正在继承全局模型；任务、记忆、知识库和回答仍会正常工作。",
+      message: "5 个核心 Agent 正在继承全局模型；聊天、分类、检索、动作和后台反思都会正常工作。",
     };
   }
 
-  if (configuredOutcomes >= totalOutcomes) {
+  if (specialistCount >= totalAgents) {
     return {
       tone: "success",
-      message: "所有核心结果路由都有独立模型配置；仍会以任务、记忆、知识库和回答呈现。",
+      message: "5 个核心 Agent 都有独立模型配置；仍会统一按新架构路由运行。",
     };
   }
 
   if (health.global_configured && specialistCount > 0) {
     return {
       tone: "info",
-      message: `${configuredOutcomes} 个结果路由有独立模型，其他结果路由继承全局模型。`,
+      message: `${specialistCount}/${totalAgents} 个核心 Agent 有独立模型，其余继续继承全局模型。`,
     };
   }
 

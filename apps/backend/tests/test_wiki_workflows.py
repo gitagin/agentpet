@@ -560,7 +560,7 @@ def test_ingest_review_without_model_is_stable_degraded_path(tmp_path: Path) -> 
     assert applied.pages_written == 1
 
 
-def test_ingest_review_falls_back_to_semantic_model_when_wiki_model_missing(tmp_path: Path) -> None:
+def test_ingest_review_falls_back_to_semantic_model_when_action_model_missing(tmp_path: Path) -> None:
     database = Database(tmp_path / "state.sqlite3")
     vault_root = tmp_path / "Vault"
     semantic_model = FakeReviewModel('{"summary":"Semantic review","findings":[],"recommended_targets":[]}')
@@ -589,15 +589,15 @@ def test_ingest_review_falls_back_to_semantic_model_when_wiki_model_missing(tmp_
 def test_ingest_review_uses_requested_reviewer_agent(tmp_path: Path) -> None:
     database = Database(tmp_path / "state.sqlite3")
     vault_root = tmp_path / "Vault"
-    wiki_model = FakeReviewModel('{"summary":"Wiki review","findings":[],"recommended_targets":[]}')
+    action_model = FakeReviewModel('{"summary":"Action review","findings":[],"recommended_targets":[]}')
     semantic_model = FakeReviewModel('{"summary":"Semantic review","findings":[],"recommended_targets":[]}')
     service = _workflow_service(
         database,
         vault_root,
         review_model_resolver=lambda agent_id: semantic_model
         if agent_id == AgentId.SEMANTIC_ANALYSIS_AGENT
-        else wiki_model
-        if agent_id == AgentId.WIKI_MANAGER_AGENT
+        else action_model
+        if agent_id == AgentId.ACTION_AGENT
         else None,
     )
     preview = service.preview_ingest(
@@ -621,22 +621,22 @@ def test_ingest_review_uses_requested_reviewer_agent(tmp_path: Path) -> None:
     assert review.status == "reviewed"
     assert review.reviewer_agent_id == "semantic_analysis_agent"
     assert review.summary == "Semantic review"
-    assert not wiki_model.calls
+    assert not action_model.calls
     assert semantic_model.calls
 
 
 def test_ingest_review_cache_is_scoped_to_requested_reviewer(tmp_path: Path) -> None:
     database = Database(tmp_path / "state.sqlite3")
     vault_root = tmp_path / "Vault"
-    wiki_model = FakeReviewModel('{"summary":"Wiki review","findings":[],"recommended_targets":[]}')
+    action_model = FakeReviewModel('{"summary":"Action review","findings":[],"recommended_targets":[]}')
     semantic_model = FakeReviewModel('{"summary":"Semantic review","findings":[],"recommended_targets":[]}')
     service = _workflow_service(
         database,
         vault_root,
         review_model_resolver=lambda agent_id: semantic_model
         if agent_id == AgentId.SEMANTIC_ANALYSIS_AGENT
-        else wiki_model
-        if agent_id == AgentId.WIKI_MANAGER_AGENT
+        else action_model
+        if agent_id == AgentId.ACTION_AGENT
         else None,
     )
     preview = service.preview_ingest(
@@ -648,7 +648,7 @@ def test_ingest_review_cache_is_scoped_to_requested_reviewer(tmp_path: Path) -> 
     )
     preview = _confirm_ingest(service, preview)
 
-    wiki_review = asyncio.run(service.review_ingest(WikiIngestReviewRequest(run_id=preview.run_id)))
+    action_review = asyncio.run(service.review_ingest(WikiIngestReviewRequest(run_id=preview.run_id)))
     semantic_review = asyncio.run(
         service.review_ingest(
             WikiIngestReviewRequest(
@@ -658,10 +658,10 @@ def test_ingest_review_cache_is_scoped_to_requested_reviewer(tmp_path: Path) -> 
         )
     )
 
-    assert wiki_review.review_id != semantic_review.review_id
-    assert wiki_review.reviewer_agent_id == "wiki_manager_agent"
+    assert action_review.review_id != semantic_review.review_id
+    assert action_review.reviewer_agent_id == "action_agent"
     assert semantic_review.reviewer_agent_id == "semantic_analysis_agent"
-    assert wiki_model.calls
+    assert action_model.calls
     assert semantic_model.calls
 
 

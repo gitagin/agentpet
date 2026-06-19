@@ -525,7 +525,7 @@ export function useWiki({
         : preview;
       const response = await api.reviewWikiIngest({
         run_id: confirmedPreview.run_id,
-        reviewer_agent_id: "wiki_manager_agent",
+        reviewer_agent_id: "action_agent",
         force_refresh: reviewForceRefresh,
       });
       dispatch({ type: "reviewIngestSuccess", preview: confirmedPreview, response });

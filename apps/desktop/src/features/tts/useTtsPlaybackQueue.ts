@@ -15,10 +15,18 @@ export type TtsProviderRegistry = Readonly<Record<string, TtsProvider<TtsSynthes
 
 export type UseTtsPlaybackQueueOptions = {
   providers: TtsProviderRegistry;
+  fallbackProvider?: TtsProviderId | null;
   initialVolume?: number;
   now?: () => string;
   onPlaybackStart?: (item: TtsPlaybackItem) => void;
   onPlaybackEnd?: (item: TtsPlaybackItem, status: TtsProviderPlaybackStatus) => void;
+  onProviderFallback?: (event: {
+    error: TtsPlaybackError;
+    fallbackProvider: TtsProviderId;
+    item: TtsPlaybackItem;
+    provider: TtsProviderId;
+  }) => void;
+  providerResetKey?: string | null;
 };
 
 export type TtsPlaybackQueueController = {
@@ -78,15 +86,25 @@ function itemAlreadyScheduled(
   return currentItem?.id === item.id || queue.some((queuedItem) => queuedItem.id === item.id);
 }
 
-function synthesisKeyForItem(item: TtsPlaybackItem) {
+function synthesisKeyForItem(item: TtsPlaybackItem, providerId = item.synthesis.provider) {
+  const voice = item.synthesis.voice?.provider === providerId ? item.synthesis.voice : null;
   return JSON.stringify({
     text: item.text,
-    provider: item.synthesis.provider,
-    voice: item.synthesis.voice?.id ?? null,
+    provider: providerId,
+    voice: voice?.id ?? null,
     speed: item.synthesis.speed,
     volume: item.synthesis.volume ?? null,
     cacheEnabled: item.synthesis.cacheEnabled ?? null,
   });
+}
+
+function synthesisRequestForProvider(item: TtsPlaybackItem, providerId: TtsProviderId) {
+  return {
+    ...item.synthesis,
+    text: item.text,
+    provider: providerId,
+    voice: item.synthesis.voice?.provider === providerId ? item.synthesis.voice : null,
+  };
 }
 
 function playbackErrorFromUnknown(
@@ -110,17 +128,28 @@ function playbackErrorFromUnknown(
   };
 }
 
+function isProviderConfigurationFailure(error: TtsPlaybackError): boolean {
+  return error.code === "authentication_failed" ||
+    error.code === "credential_missing" ||
+    error.code === "provider_not_configured";
+}
+
 export function useTtsPlaybackQueue({
   providers,
+  fallbackProvider = null,
   initialVolume = 1,
   now = currentIsoTime,
   onPlaybackStart,
   onPlaybackEnd,
+  onProviderFallback,
+  providerResetKey = null,
 }: UseTtsPlaybackQueueOptions): TtsPlaybackQueueController {
   const providersRef = useRef(providers);
+  const fallbackProviderRef = useRef<TtsProviderId | null>(fallbackProvider);
   const nowRef = useRef(now);
   const onPlaybackStartRef = useRef(onPlaybackStart);
   const onPlaybackEndRef = useRef(onPlaybackEnd);
+  const onProviderFallbackRef = useRef(onProviderFallback);
   const queueRef = useRef<TtsPlaybackItem[]>([]);
   const currentItemRef = useRef<TtsPlaybackItem | null>(null);
   const statusRef = useRef<TtsPlaybackStatus>("idle");
@@ -132,6 +161,7 @@ export function useTtsPlaybackQueue({
   const prefetchedSynthesisRef = useRef<Map<string, PrefetchedSynthesis>>(new Map());
   const pendingPrefetchQueueRef = useRef<TtsPlaybackItem[]>([]);
   const activePrefetchCountRef = useRef(0);
+  const unavailableProvidersRef = useRef<Set<TtsProviderId>>(new Set());
   const startNextRef = useRef<() => void>(() => undefined);
   const pumpPrefetchRef = useRef<() => void>(() => undefined);
   const [state, setState] = useState<TtsPlaybackState>(() =>
@@ -141,6 +171,18 @@ export function useTtsPlaybackQueue({
   useEffect(() => {
     providersRef.current = providers;
   }, [providers]);
+
+  useEffect(() => {
+    fallbackProviderRef.current = fallbackProvider;
+  }, [fallbackProvider]);
+
+  useEffect(() => {
+    onProviderFallbackRef.current = onProviderFallback;
+  }, [onProviderFallback]);
+
+  useEffect(() => {
+    unavailableProvidersRef.current.clear();
+  }, [fallbackProvider, providerResetKey]);
 
   useEffect(() => {
     nowRef.current = now;
@@ -191,30 +233,110 @@ export function useTtsPlaybackQueue({
     });
   }, [disposePrefetchedResult]);
 
+  const clearProviderWork = useCallback((provider: TtsProviderId) => {
+    queueRef.current = queueRef.current.filter((item) => item.synthesis.provider !== provider);
+    pendingPrefetchQueueRef.current = pendingPrefetchQueueRef.current.filter((item) => item.synthesis.provider !== provider);
+    clearPrefetchedItems((item) => item.synthesis.provider === provider);
+  }, [clearPrefetchedItems]);
+
+  const fallbackProviderFor = useCallback((providerId: TtsProviderId) => {
+    const candidate = fallbackProviderRef.current;
+    if (!candidate || candidate === providerId || !providersRef.current[candidate]) {
+      return null;
+    }
+    return candidate;
+  }, []);
+
+  const resolveProviderForItem = useCallback((item: TtsPlaybackItem) => {
+    const primaryProviderId = item.synthesis.provider;
+    const fallbackProviderId = fallbackProviderFor(primaryProviderId);
+    const providerId =
+      (!providersRef.current[primaryProviderId] || unavailableProvidersRef.current.has(primaryProviderId)) &&
+      fallbackProviderId
+        ? fallbackProviderId
+        : primaryProviderId;
+    const provider = providersRef.current[providerId];
+    return provider ? { provider, providerId } : null;
+  }, [fallbackProviderFor]);
+
+  const synthesizeWithFallback = useCallback(
+    async (
+      item: TtsPlaybackItem,
+      providerId: TtsProviderId,
+      signal: AbortSignal | undefined,
+      onResolvedProvider?: (provider: TtsProvider<TtsSynthesisResult>, providerId: TtsProviderId) => void,
+    ) => {
+      const provider = providersRef.current[providerId];
+      if (!provider) {
+        throw new TtsProviderError({
+          code: "provider_not_configured",
+          message: `TTS 服务 ${providerId} 尚未配置。`,
+          provider: providerId,
+          recoverable: true,
+        });
+      }
+
+      try {
+        return await provider.synthesize(synthesisRequestForProvider(item, providerId), signal);
+      } catch (error) {
+        const playbackError = playbackErrorFromUnknown(error, providerId, item.id);
+        const fallbackProviderId = fallbackProviderFor(providerId);
+        if (!isProviderConfigurationFailure(playbackError) || !fallbackProviderId || signal?.aborted) {
+          throw error;
+        }
+        const fallback = providersRef.current[fallbackProviderId];
+        if (!fallback) {
+          throw error;
+        }
+        unavailableProvidersRef.current.add(providerId);
+        onProviderFallbackRef.current?.({
+          error: playbackError,
+          fallbackProvider: fallbackProviderId,
+          item,
+          provider: providerId,
+        });
+        onResolvedProvider?.(fallback, fallbackProviderId);
+        return fallback.synthesize(synthesisRequestForProvider(item, fallbackProviderId), signal);
+      }
+    },
+    [fallbackProviderFor],
+  );
+
   const startPrefetch = useCallback((item: TtsPlaybackItem) => {
-    const provider = providersRef.current[item.synthesis.provider];
-    if (!provider) {
+    const resolved = resolveProviderForItem(item);
+    if (!resolved) {
       return;
     }
-    const key = synthesisKeyForItem(item);
+    const key = synthesisKeyForItem(item, resolved.providerId);
     const controller = new AbortController();
-    const promise = provider.synthesize({ ...item.synthesis, text: item.text }, controller.signal);
-    void promise.catch(() => undefined);
+    let entry: PrefetchedSynthesis;
+    const promise = synthesizeWithFallback(item, resolved.providerId, controller.signal, (provider) => {
+      entry.provider = provider;
+    });
     activePrefetchCountRef.current += 1;
-    const entry: PrefetchedSynthesis = {
+    entry = {
       controller,
       item,
       key,
       promise,
-      provider,
+      provider: resolved.provider,
       used: false,
     };
     prefetchedSynthesisRef.current.set(item.id, entry);
+    void promise.catch((error) => {
+      const playbackError = playbackErrorFromUnknown(error, item.synthesis.provider, item.id);
+      if (isProviderConfigurationFailure(playbackError)) {
+        errorRef.current = playbackError;
+        clearProviderWork(item.synthesis.provider);
+        clearProviderWork(playbackError.provider || item.synthesis.provider);
+        publish();
+      }
+    });
     void promise.finally(() => {
       activePrefetchCountRef.current = Math.max(0, activePrefetchCountRef.current - 1);
       pumpPrefetchRef.current();
     }).catch(() => undefined);
-  }, []);
+  }, [clearProviderWork, publish, resolveProviderForItem, synthesizeWithFallback]);
 
   const pumpPrefetchQueue = useCallback(() => {
     while (activePrefetchCountRef.current < maxConcurrentPrefetches && pendingPrefetchQueueRef.current.length > 0) {
@@ -280,7 +402,9 @@ export function useTtsPlaybackQueue({
   }, [publish]);
 
   const startPlayback = useCallback((item: TtsPlaybackItem) => {
-    const provider = providersRef.current[item.synthesis.provider];
+    const resolved = resolveProviderForItem(item);
+    const provider = resolved?.provider;
+    const providerId = resolved?.providerId ?? item.synthesis.provider;
     const runId = activeRunIdRef.current + 1;
     activeRunIdRef.current = runId;
     currentItemRef.current = item;
@@ -298,8 +422,11 @@ export function useTtsPlaybackQueue({
         itemId: item.id,
         recoverable: true,
       };
+      clearProviderWork(item.synthesis.provider);
       publish();
-      startNextRef.current();
+      if (queueRef.current.length > 0) {
+        startNextRef.current();
+      }
       return;
     }
 
@@ -308,7 +435,7 @@ export function useTtsPlaybackQueue({
     );
     const prefetchedCandidate = prefetchedSynthesisRef.current.get(item.id);
     const prefetched =
-      prefetchedCandidate && prefetchedCandidate.key === synthesisKeyForItem(item)
+      prefetchedCandidate && prefetchedCandidate.key === synthesisKeyForItem(item, providerId)
         ? prefetchedCandidate
         : null;
     if (prefetchedCandidate && !prefetched) {
@@ -320,7 +447,7 @@ export function useTtsPlaybackQueue({
       prefetchedSynthesisRef.current.delete(item.id);
       prefetched.used = true;
     }
-    const playbackProvider = prefetched?.provider ?? provider;
+    let playbackProvider = prefetched?.provider ?? provider;
     const abortController = prefetched?.controller ?? new AbortController();
     activeAbortControllerRef.current = abortController;
     activeProviderRef.current = playbackProvider;
@@ -332,13 +459,10 @@ export function useTtsPlaybackQueue({
         try {
           synthesis = prefetched
             ? await prefetched.promise
-            : await provider.synthesize(
-                {
-                  ...item.synthesis,
-                  text: item.text,
-                },
-                abortController.signal,
-              );
+            : await synthesizeWithFallback(item, providerId, abortController.signal, (nextProvider) => {
+                playbackProvider = nextProvider;
+                activeProviderRef.current = nextProvider;
+              });
         } catch (error) {
           if (!prefetched) {
             throw error;
@@ -346,13 +470,10 @@ export function useTtsPlaybackQueue({
           if (activeRunIdRef.current !== runId || abortController.signal.aborted) {
             return;
           }
-          synthesis = await provider.synthesize(
-              {
-                ...item.synthesis,
-                text: item.text,
-              },
-              abortController.signal,
-            );
+          synthesis = await synthesizeWithFallback(item, providerId, abortController.signal, (nextProvider) => {
+            playbackProvider = nextProvider;
+            activeProviderRef.current = nextProvider;
+          });
         }
         if (activeRunIdRef.current !== runId || abortController.signal.aborted) {
           playbackProvider.dispose?.(synthesis);
@@ -390,12 +511,19 @@ export function useTtsPlaybackQueue({
         activeProviderRef.current = null;
         currentItemRef.current = null;
         statusRef.current = "failed";
-        errorRef.current = playbackErrorFromUnknown(error, item.synthesis.provider, item.id);
+        const playbackError = playbackErrorFromUnknown(error, item.synthesis.provider, item.id);
+        errorRef.current = playbackError;
+        if (isProviderConfigurationFailure(playbackError)) {
+          clearProviderWork(item.synthesis.provider);
+          clearProviderWork(playbackError.provider || item.synthesis.provider);
+        }
         publish();
-        startNextRef.current();
+        if (queueRef.current.length > 0) {
+          startNextRef.current();
+        }
       }
     })();
-  }, [publish]);
+  }, [clearProviderWork, publish, resolveProviderForItem, synthesizeWithFallback]);
 
   const startNext = useCallback(() => {
     if (currentItemRef.current) {

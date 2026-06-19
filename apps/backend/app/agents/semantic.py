@@ -7,7 +7,7 @@ from html import unescape
 from app.models.enums import AgentIntent
 
 from .runtime_helpers import _strip_search_command
-from .state import AgentState, SemanticAnalysisResult
+from .state import AgentState, ClassifierResult, SemanticAnalysisResult
 
 # 从 graph_runtime.py 迁移，原函数名：_parse_semantic_analysis, _extract_json_object, _fallback_semantic_analysis, _fallback_source_scope, _forced_source_scope, _is_daily_chat_date_recall, _parse_text_search_tool_call
 
@@ -31,12 +31,97 @@ def _parse_semantic_analysis(text: str, user_message: str) -> SemanticAnalysisRe
     return result
 
 
+def _parse_classifier_analysis(text: str, user_message: str) -> tuple[ClassifierResult, SemanticAnalysisResult]:
+    data = json.loads(_extract_json_object(text))
+    if "intent" not in data:
+        semantic = _semantic_from_legacy_payload(data, user_message)
+        return _classifier_from_semantic(semantic), semantic
+
+    classifier = ClassifierResult.model_validate(data)
+    semantic = _semantic_from_classifier(classifier, user_message)
+    return classifier, semantic
+
+
 def _extract_json_object(text: str) -> str:
     start = text.find("{")
     end = text.rfind("}")
     if start < 0 or end < start:
         raise ValueError("semantic_analysis_json_missing")
     return text[start : end + 1]
+
+
+def _semantic_from_legacy_payload(data: dict[str, object], user_message: str) -> SemanticAnalysisResult:
+    result = SemanticAnalysisResult.model_validate(data)
+    forced_scope = _forced_source_scope(user_message)
+    if forced_scope is not None:
+        return result.model_copy(
+            update={
+                "needs_context": True,
+                "source_scope": forced_scope,
+                "query": user_message,
+                "answer_style": "grounded",
+                "reason": "forced_date_or_memory_scope",
+            }
+        )
+    if result.needs_context and not result.query.strip():
+        return result.model_copy(update={"query": user_message})
+    return result
+
+
+def _semantic_from_classifier(classifier: ClassifierResult, user_message: str) -> SemanticAnalysisResult:
+    if classifier.intent != "need_retrieval":
+        return SemanticAnalysisResult(
+            needs_context=False,
+            source_scope="none",
+            query=classifier.retrieval_query or user_message,
+            answer_style="casual" if classifier.intent == "chat" else "concise",
+            confidence=classifier.confidence,
+            reason=classifier.reason or "classifier_action_or_chat",
+        )
+    source_scope = _semantic_scope_from_classifier_scope(classifier.retrieval_scope)
+    return SemanticAnalysisResult(
+        needs_context=source_scope != "none",
+        source_scope=source_scope,
+        query=(classifier.retrieval_query or user_message).strip(),
+        answer_style="grounded",
+        confidence=classifier.confidence,
+        reason=classifier.reason or "classifier_retrieval",
+    )
+
+
+def _classifier_from_semantic(semantic: SemanticAnalysisResult) -> ClassifierResult:
+    if semantic.needs_context and semantic.source_scope != "none":
+        return ClassifierResult(
+            intent="need_retrieval",
+            retrieval_scope=_classifier_scope_from_semantic_scope(semantic.source_scope),
+            retrieval_query=semantic.query,
+            confidence=semantic.confidence,
+            reason=semantic.reason,
+        )
+    return ClassifierResult(
+        intent="chat",
+        retrieval_query=None,
+        confidence=semantic.confidence,
+        reason=semantic.reason,
+    )
+
+
+def _semantic_scope_from_classifier_scope(scope: str | None) -> str:
+    if scope == "both":
+        return "all"
+    if scope in {"personal_memory", "knowledge_base"}:
+        return scope
+    return "none"
+
+
+def _classifier_scope_from_semantic_scope(scope: str) -> str | None:
+    if scope == "all":
+        return "both"
+    if scope in {"personal_memory", "knowledge_base"}:
+        return scope
+    if scope in {"daily_chat", "diary_objects"}:
+        return "personal_memory"
+    return None
 
 
 def _fallback_semantic_analysis(state: AgentState) -> SemanticAnalysisResult:
@@ -76,6 +161,35 @@ def _fallback_semantic_analysis(state: AgentState) -> SemanticAnalysisResult:
         confidence=0.4,
         reason="fallback_chat",
     )
+
+
+def _fallback_classifier(state: AgentState) -> ClassifierResult:
+    semantic = state.semantic_analysis or _fallback_semantic_analysis(state)
+    if state.route and state.route.intent == AgentIntent.PROPOSE_MEMORY:
+        return ClassifierResult(
+            intent="action",
+            action_type="memory_proposal",
+            action_params={"content": state.user_message},
+            confidence=state.route.confidence,
+            reason=state.route.reason,
+        )
+    if state.route and state.route.intent == AgentIntent.MANAGE_WIKI:
+        return ClassifierResult(
+            intent="action",
+            action_type="wiki",
+            action_params={"content": state.user_message},
+            confidence=state.route.confidence,
+            reason=state.route.reason,
+        )
+    if state.route and state.route.intent == AgentIntent.CREATE_TASK:
+        return ClassifierResult(
+            intent="action",
+            action_type="task",
+            action_params={"source_text": state.user_message},
+            confidence=state.route.confidence,
+            reason=state.route.reason,
+        )
+    return _classifier_from_semantic(semantic)
 
 
 def _fallback_source_scope(message: str) -> str:

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { describeError } from "../../services/apiErrorMessages";
+import { describeError, isSidecarStartingError } from "../../services/apiErrorMessages";
 import type { DesktopApi } from "../../services/desktopApi";
 import type { VisibleContinuityLoadStatus, VisibleContinuitySnapshotResponse } from "./visibleContinuityTypes";
 
@@ -10,6 +10,9 @@ type UseVisibleContinuityOptions = {
   enabled?: boolean;
   autoLoad?: boolean;
 };
+
+const SIDECAR_STARTING_RETRY_DELAY_MS = 500;
+const SIDECAR_STARTING_RETRY_COUNT = 4;
 
 export function useVisibleContinuity({
   api,
@@ -26,19 +29,30 @@ export function useVisibleContinuity({
     }
     setStatus("loading");
     setError(null);
-    try {
-      const response = await api.getVisibleContinuitySnapshot(signal);
-      setSnapshot(response);
-      setStatus("success");
-      return response;
-    } catch (cause) {
-      if (cause instanceof DOMException && cause.name === "AbortError") {
+
+    for (let attempt = 0; attempt <= SIDECAR_STARTING_RETRY_COUNT; attempt += 1) {
+      try {
+        const response = await api.getVisibleContinuitySnapshot(signal);
+        setSnapshot(response);
+        setStatus("success");
+        return response;
+      } catch (cause) {
+        if (isAbortError(cause) || signal?.aborted) {
+          return null;
+        }
+        if (isSidecarStartingError(cause) && attempt < SIDECAR_STARTING_RETRY_COUNT) {
+          const canRetry = await waitForRetry(SIDECAR_STARTING_RETRY_DELAY_MS, signal);
+          if (!canRetry) {
+            return null;
+          }
+          continue;
+        }
+        setStatus("error");
+        setError(describeError(cause, "连续性快照加载失败"));
         return null;
       }
-      setStatus("error");
-      setError(describeError(cause, "连续性快照加载失败"));
-      return null;
     }
+    return null;
   }, [api, enabled]);
 
   useEffect(() => {
@@ -56,4 +70,26 @@ export function useVisibleContinuity({
     snapshot,
     status,
   };
+}
+
+function isAbortError(cause: unknown): boolean {
+  return cause instanceof DOMException && cause.name === "AbortError";
+}
+
+function waitForRetry(ms: number, signal?: AbortSignal): Promise<boolean> {
+  if (signal?.aborted) {
+    return Promise.resolve(false);
+  }
+
+  return new Promise((resolve) => {
+    const timeout = window.setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve(true);
+    }, ms);
+    const onAbort = () => {
+      window.clearTimeout(timeout);
+      resolve(false);
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }
