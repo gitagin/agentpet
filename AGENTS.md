@@ -1,6 +1,6 @@
 # AGENTS.md
 
-本文件给在 `E:\agentproject` 工作的编码 Agent 使用。除非子目录里存在更近的 `AGENTS.md`，否则这些约定适用于整个仓库。
+本文件给在本仓库根目录工作的编码 Agent 使用。除非子目录里存在更近的 `AGENTS.md`，否则这些约定适用于整个仓库。
 
 ## TL;DR
 
@@ -46,7 +46,7 @@ Agent Pet 是本地优先的 Windows 桌面 AI 伴随应用，使用 Obsidian/Ma
 ## 工作环境
 
 - Shell：Windows PowerShell
-- 工作目录：`E:\agentproject`
+- 工作目录：仓库根目录
 - Git：不要假设 Git 一定可用；使用 Git 状态前先检查当前工作区，且不要只依赖 `git status`、`git diff`、`git history` 判断状态
 
 禁止修改的路径列表：
@@ -54,14 +54,14 @@ Agent Pet 是本地优先的 Windows 桌面 AI 伴随应用，使用 Obsidian/Ma
 - `apps/desktop/node_modules/` （原因：依赖安装目录，手工编辑会污染可复现构建）
 - `apps/desktop/dist/` （原因：Vite 构建产物，内容由 `npm run build` 生成）
 - `apps/desktop/release/` （原因：electron-builder 输出目录，内容由打包命令生成）
-- `apps/backend/pytest-of-ASUS/` （原因：pytest 临时数据库与测试工件，手工编辑不能修复源代码问题）
+- `pytest-of-*/` （原因：pytest 临时数据库与测试工件，手工编辑不能修复源代码问题）
 - `.tmp/` （原因：本地 smoke 和手工试运行临时状态，内容可被脚本重建）
 - `.idea/` （原因：本地 IDE 配置，不属于运行时行为）
 - `.codex/` （原因：本地 Agent 元数据，项目逻辑不读取它）
 
 ### 已知环境坑
 
-- `E:\agentproject` 的 Git 可用性以当前工作区检查结果为准 （原因：状态判断要依赖文件检查、测试、进度日志，不能只依赖 Git 历史）
+- 当前 checkout 的 Git 可用性以当前工作区检查结果为准 （原因：状态判断要依赖文件检查、测试、进度日志，不能只依赖 Git 历史）
 - PowerShell 可能出现 `[Console]::OutputEncoding` / ConstrainedLanguage 警告 （原因：该运行环境限制控制台编码设置，命令退出码和实际输出才是判断依据）
 - `Development_Documentation.md` 存在中文 mojibake （原因：补丁要锚定 ASCII 或当前可读片段，避免破坏周边内容）
 - `npm run build` 在 Codex sandbox 里可能报 Vite/esbuild `spawn EPERM` （原因：受限环境阻止子进程生成，不等同于源码错误，普通 Windows PowerShell 复跑确认）
@@ -346,7 +346,7 @@ Live2D assets/runtime      → Push-Location apps\desktop; npm run live2d:check:
 
 ### Vault 内部路径校验要求
 
-以下限制仅针对 **Vault 内部 Markdown 文件访问**，不影响项目工作目录 `E:\agentproject` 下的其他文件操作：
+以下限制仅针对 **Vault 内部 Markdown 文件访问**，不影响项目工作目录下的其他文件操作：
 
 - 禁止把 Vault root 设为 UNC 或扩展 Windows 路径 （原因：`canonical_root()` 明确拒绝 `\\` 和 `\\?\` 前缀）
 - 禁止使用绝对路径、盘符路径、`..`、`.`、隐藏目录、`.git`、`.obsidian`、短文件名样式路径访问 Vault 内部文件 （原因：`resolve_vault_path()` 只允许 Vault 内 `.md` 相对路径）

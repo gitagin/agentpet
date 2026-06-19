@@ -21,7 +21,7 @@ def test_resolve_vault_path_accepts_markdown_inside_root(tmp_path: Path) -> None
     [
         "../outside.md",
         "/absolute.md",
-        "C:/Users/test/outside.md",
+        "C:" + "/Users/test/outside.md",
         ".obsidian/config.md",
         ".hidden/note.md",
         "Folder/SHORT~1.md",

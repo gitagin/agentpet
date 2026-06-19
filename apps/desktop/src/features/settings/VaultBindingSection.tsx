@@ -50,7 +50,7 @@ export function VaultBindingSection({
           <input
             value={vaultPath}
             onChange={(event) => onVaultPathChange(event.target.value)}
-            placeholder="例如：E:\\AgentMemory 或 D:\\Notes\\AgentExport"
+            placeholder="例如：选择一个本机文件夹或输入路径"
             aria-describedby="vault-path-help"
           />
           <button

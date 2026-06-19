@@ -1,7 +1,9 @@
 # Python
 __pycache__/
+*.pyc
 *.py[cod]
 .pytest_cache/
+pytest-of-*/
 .venv/
 venv/
 
@@ -21,7 +23,6 @@ logs/
 .tmp/
 *.tmp
 **/.tmp/
-apps/backend/pytest-of-*/
 
 # SQLite WAL 文件
 *.sqlite-wal

@@ -210,16 +210,16 @@ describe("settingsReducer", () => {
 
   it("updates vault and indexing state", () => {
     const loading = settingsReducer(createInitialSettingsState(), { type: "setLoadingSettingsStatus", loading: true });
-    const withPath = settingsReducer(loading, { type: "setVaultPath", vaultPath: "E:/Vault" });
+    const withPath = settingsReducer(loading, { type: "setVaultPath", vaultPath: "%USERPROFILE%/Vault" });
     const withVault = settingsReducer(withPath, {
       type: "setVaultStatus",
       vaultId: "vault-1",
-      vaultPath: "E:/Vault",
+      vaultPath: "%USERPROFILE%/Vault",
       vaultStatus: {
         configured: true,
         active_vault_id: "vault-1",
-        root_path: "E:/Vault",
-        root_path_label: "E:\\...\\Vault",
+        root_path: "%USERPROFILE%/Vault",
+        root_path_label: "%USERPROFILE%\\...\\Vault",
         name: "Vault",
         latest_indexed_at: "2026-06-02T00:00:00Z",
         markdown_count: 3,
@@ -234,9 +234,9 @@ describe("settingsReducer", () => {
     const indexing = settingsReducer(withIndex, { type: "setIndexingVault", indexingVault: true });
 
     expect(loading.loadingSettingsStatus).toBe(true);
-    expect(withPath.vaultPath).toBe("E:/Vault");
+    expect(withPath.vaultPath).toBe("%USERPROFILE%/Vault");
     expect(withVault.vaultId).toBe("vault-1");
-    expect(withVault.vaultStatus?.root_path_label).toBe("E:\\...\\Vault");
+    expect(withVault.vaultStatus?.root_path_label).toBe("%USERPROFILE%\\...\\Vault");
     expect(withVault.vaultStatus?.markdown_count).toBe(3);
     expect(indexing.lastIndexRun?.jobId).toBe("job-1");
     expect(indexing.indexingVault).toBe(true);

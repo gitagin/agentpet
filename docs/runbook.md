@@ -1,6 +1,6 @@
 # v0.1 Local Trial Runbook
 
-This runbook covers the Windows developer-machine trial for the v0.1 backend sidecar, Electron desktop shell, core console workflow, smoke endpoints, and environment variables. Run commands from `E:\agentproject` unless a step says otherwise.
+This runbook covers the Windows developer-machine trial for the v0.1 backend sidecar, Electron desktop shell, core console workflow, smoke endpoints, and environment variables. Run commands from the repository root unless a step says otherwise.
 
 ## Current v0.1 Trial Focus
 
@@ -21,7 +21,7 @@ Use this short path for routine QA:
 .\scripts\check-trial-processes.ps1
 .\scripts\preflight-windows.ps1
 .\scripts\runbook-smoke.ps1 -Port 8766
-Push-Location E:\agentproject\apps\desktop
+Push-Location .\apps\desktop
 npm run typecheck
 npm run package:check
 npm run live2d:check:public
@@ -38,13 +38,13 @@ Pop-Location
 
 ## Test Directories
 
-`E:\agentproject\.tmp` is only a temporary artifact folder for local trial runs. It is not the required user knowledge-base path.
+`.\.tmp` is only a temporary artifact folder for local trial runs. It is not the required user knowledge-base path.
 
 | Scenario | Recommended path | Notes |
 | --- | --- | --- |
-| One-key runbook smoke | `E:\agentproject\.tmp\runbook-smoke-<timestamp>` | Created by `scripts\runbook-smoke.ps1`. |
-| Manual backend smoke | `E:\agentproject\.tmp\manual-v0.1-smoke` | Use with `scripts\smoke-backend.ps1 -WorkDir ...`. |
-| Manual Vault practice | `E:\agentproject\.tmp\PetMemoryVault` | Disposable local test Vault. |
+| One-key runbook smoke | `.\.tmp\runbook-smoke-<timestamp>` | Created by `scripts\runbook-smoke.ps1`. |
+| Manual backend smoke | `.\.tmp\manual-v0.1-smoke` | Use with `scripts\smoke-backend.ps1 -WorkDir ...`. |
+| Manual Vault practice | `.\.tmp\PetMemoryVault` | Disposable local test Vault. |
 | User folder trial | Any writable user directory or Obsidian Vault copy | Use a backup/copy for real notes. |
 
 Do not point `-WorkDir` at a real Vault unless the goal is a controlled trial on a backed-up test Vault.
@@ -84,7 +84,7 @@ To check only for leftover uvicorn/Electron trial processes and default trial li
 
 The checker is read-only. It reports leftover `uvicorn app.main:app`, workspace Electron processes, and default trial listeners. Use it before and after manual Electron trial runs. The phrase `leftover uvicorn/Electron` is the expected cleanup concept for this runbook.
 
-From `E:\agentproject\apps\desktop`, the same preflight is available through npm:
+From `apps\desktop`, the same preflight is available through npm:
 
 ```powershell
 npm run preflight
@@ -124,12 +124,12 @@ $env:AGENT_PET_SQLITE_PATH = "$PWD\.tmp\agent-pet-dev.sqlite3"
 .\scripts\dev-backend.ps1 -Port 8765
 ```
 
-Equivalent direct command from `E:\agentproject\apps\backend`:
+Equivalent direct command from `apps\backend`:
 
 ```powershell
-Push-Location E:\agentproject\apps\backend
+Push-Location .\apps\backend
 $env:AGENT_PET_SESSION_TOKEN = "dev-token"
-$env:AGENT_PET_SQLITE_PATH = "E:\agentproject\.tmp\agent-pet-dev.sqlite3"
+$env:AGENT_PET_SQLITE_PATH = "..\..\.tmp\agent-pet-dev.sqlite3"
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8765 --reload
 Pop-Location
 ```
@@ -168,7 +168,7 @@ Use:
 Electron shell:
 
 ```powershell
-Push-Location E:\agentproject\apps\desktop
+Push-Location .\apps\desktop
 npm run preflight
 npm run electron:dev
 Pop-Location
@@ -189,7 +189,7 @@ Use this chain when validating the developer-machine flow by hand:
 1. Run `.\scripts\check-trial-processes.ps1`.
 2. Run `.\scripts\preflight-windows.ps1`.
 3. Run `.\scripts\runbook-smoke.ps1 -Port 8766`.
-4. From `E:\agentproject\apps\desktop`, run `npm run build`.
+4. From `apps\desktop`, run `npm run build`.
 5. Run `npm run electron:dev`.
 6. Open the control console.
 7. Run Health.
@@ -209,7 +209,7 @@ Use this chain when validating the developer-machine flow by hand:
 If a backend is already running:
 
 ```powershell
-.\scripts\smoke-backend.ps1 -BaseUrl http://127.0.0.1:8765 -SessionToken dev-token -WorkDir E:\agentproject\.tmp\manual-v0.1-smoke
+.\scripts\smoke-backend.ps1 -BaseUrl http://127.0.0.1:8765 -SessionToken dev-token -WorkDir .\.tmp\manual-v0.1-smoke
 ```
 
 The lower-level smoke verifies:
@@ -272,7 +272,7 @@ Backend:
 Dual-track memory regression:
 
 ```powershell
-Push-Location E:\agentproject\apps\backend
+Push-Location .\apps\backend
 python -m pytest -q tests/test_memory_taxonomy.py tests/test_dual_track_memory_schema.py tests/test_immediate_understanding.py tests/test_memory_consolidation.py tests/test_memory_lifecycle.py tests/test_memory_activation.py tests/test_memory_permissions.py tests/test_memory_feedback_api.py tests/test_memory_hygiene.py tests/test_memory_pollution_regression.py tests/test_agent_runtime_chat.py tests/test_agent_runtime_retrieval.py tests/test_api_wiring_mvp.py
 Pop-Location
 ```
@@ -289,7 +289,7 @@ Push-Location apps\desktop; node scripts\validate-electron-migration.mjs; Pop-Lo
 Desktop:
 
 ```powershell
-Push-Location E:\agentproject\apps\desktop
+Push-Location .\apps\desktop
 npm run typecheck
 npm run package:check
 npm run live2d:check:public

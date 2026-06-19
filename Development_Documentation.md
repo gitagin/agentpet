@@ -199,7 +199,7 @@ MVP 不面向以下场景：
 
 v0.1 验收 F-005/F-006 时要求主界面中的桌宠展示区可见，并能随健康检查、聊天、搜索、记忆提案、任务和诊断等状态提供基础反馈。当前已推进到单模型 Cubism idle 渲染路径：只覆盖一个已导入模型的 manifest、SDK 文件、canvas 宿主和 idle 渲染，不代表口型同步、复杂动作编排或多角色资源管理已经实现。
 
-当前 Live2D 资源识别与渲染入口使用 `E:\agentproject\apps\desktop\public\live2d\UG\ugofficial.model3.json`，前端 URL 为 `/live2d/UG/ugofficial.model3.json`。官方 Cubism SDK 已导入到 `E:\agentproject\apps\desktop\public\live2d\CubismSdkForWeb-5-r.5`，并通过 `npm run live2d:sdk:check` 校验 `Core`、`Framework` WebGL renderer、官方 TypeScript 示例入口和许可证文件。当前 runtime 路径通过 React/Electron canvas 挂载单个 `UG` 模型，加载 model3、moc3、贴图、物理配置和首个 idle motion，并提供静态封面回退。物理效果、口型同步、复杂动作映射和多角色切换仍归入后续增强。
+当前 Live2D 资源识别与渲染入口使用 `apps\desktop\public\live2d\UG\ugofficial.model3.json`，前端 URL 为 `/live2d/UG/ugofficial.model3.json`。官方 Cubism SDK 已导入到 `apps\desktop\public\live2d\CubismSdkForWeb-5-r.5`，并通过 `npm run live2d:sdk:check` 校验 `Core`、`Framework` WebGL renderer、官方 TypeScript 示例入口和许可证文件。当前 runtime 路径通过 React/Electron canvas 挂载单个 `UG` 模型，加载 model3、moc3、贴图、物理配置和首个 idle motion，并提供静态封面回退。物理效果、口型同步、复杂动作映射和多角色切换仍归入后续增强。
 
 ### 5.2 对话与 Agent
 
@@ -1026,7 +1026,7 @@ GET /api/index-jobs/{job_id}
 ```json
 {
   "mode": "create",
-  "path": "D:/PetMemoryVault",
+  "path": "%USERPROFILE%/PetMemoryVault",
   "name": "PetMemoryVault"
 }
 ```
@@ -1036,7 +1036,7 @@ GET /api/index-jobs/{job_id}
 ```json
 {
   "vault_id": "uuid",
-  "root_path": "D:/PetMemoryVault",
+  "root_path": "%USERPROFILE%/PetMemoryVault",
   "created_files": [
     "00_Profile/User.md",
     "Inbox/Pending Memories.md"

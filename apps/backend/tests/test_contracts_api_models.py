@@ -50,7 +50,7 @@ def test_health_response_contract_excludes_sensitive_runtime_state() -> None:
             "version": "0.2.0",
             "database": "ok",
             "active_vault_id": "must-not-leak",
-            "root_path": "D:/PetMemoryVault",
+            "root_path": "%USERPROFILE%/PetMemoryVault",
             "model_provider": "openai-compatible",
         }
     )

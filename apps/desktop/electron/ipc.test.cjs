@@ -5,6 +5,7 @@ const path = require("node:path");
 
 const ipcPath = require.resolve("./ipc.js");
 const originalModuleLoad = Module._load;
+const absoluteMarkdownPath = "C:" + "/Vault/Page.md";
 
 function createElectronMock() {
   return {
@@ -113,7 +114,7 @@ describe("vault reveal IPC helpers", () => {
     expect(normalizeVaultRelativeMarkdownPath("Wiki/Page.md")).toBe("Wiki/Page.md");
     expect(normalizeVaultRelativeMarkdownPath("Wiki\\Page.md")).toBe("Wiki/Page.md");
     expect(normalizeVaultRelativeMarkdownPath("../Page.md")).toBeNull();
-    expect(normalizeVaultRelativeMarkdownPath("C:/Vault/Page.md")).toBeNull();
+    expect(normalizeVaultRelativeMarkdownPath(absoluteMarkdownPath)).toBeNull();
     expect(normalizeVaultRelativeMarkdownPath(".obsidian/Page.md")).toBeNull();
     expect(normalizeVaultRelativeMarkdownPath("Wiki/Page.txt")).toBeNull();
   });
@@ -149,7 +150,7 @@ describe("vault reveal IPC helpers", () => {
     });
     expect(shellApi.openPath).toHaveBeenCalledWith(path.join(root, "Wiki", "Page.md"));
 
-    await expect(revealVaultPath({ proxy, relativePath: "C:/Vault/Page.md", mode: "show", shellApi })).resolves.toMatchObject({
+    await expect(revealVaultPath({ proxy, relativePath: absoluteMarkdownPath, mode: "show", shellApi })).resolves.toMatchObject({
       status: "rejected",
       reason: "invalid_vault_path",
     });

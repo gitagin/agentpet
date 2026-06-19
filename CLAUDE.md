@@ -13,16 +13,16 @@ Agent Pet is a local-first Windows desktop agent pet with transparent long-term 
 
 ## Common Commands
 
-Run repository-level PowerShell scripts from `E:\agentproject` unless noted otherwise.
+Run repository-level PowerShell scripts from the repository root unless noted otherwise.
 
 ### Install
 
 ```powershell
-Push-Location E:\agentproject\apps\backend
+Push-Location .\apps\backend
 python -m pip install -e ".[dev]"
 Pop-Location
 
-Push-Location E:\agentproject\apps\desktop
+Push-Location .\apps\desktop
 npm install
 Pop-Location
 ```
@@ -37,7 +37,7 @@ Pop-Location
 Equivalent direct test commands:
 
 ```powershell
-Push-Location E:\agentproject\apps\backend
+Push-Location .\apps\backend
 python -m pytest
 python -m pytest tests/test_tasks_services.py::test_create_task_converts_local_times_to_utc_and_schedules_reminder
 Pop-Location
@@ -48,7 +48,7 @@ Pop-Location
 ```powershell
 .\scripts\dev-frontend.ps1 -Port 5173
 
-Push-Location E:\agentproject\apps\desktop
+Push-Location .\apps\desktop
 npm run electron:dev
 npm run typecheck
 npm run build

@@ -4,7 +4,7 @@ Scope: Windows `apps/desktop` build failures where `npm run build` fails while V
 
 ## Current Reproduction
 
-From `E:\agentproject\apps\desktop`:
+From `apps\desktop`:
 
 ```powershell
 npm run build
@@ -13,7 +13,7 @@ npm run build
 Current result:
 
 ```text
-failed to load config from E:\agentproject\apps\desktop\vite.config.ts
+failed to load config from <repo-root>\apps\desktop\vite.config.ts
 error during build:
 Error: spawn EPERM
     at ensureServiceIsRunning (...\node_modules\esbuild\lib\main.js:1975:29)
@@ -38,7 +38,7 @@ The script emits JSON with:
 - Basic filesystem access checks for the launchers.
 - Direct spawn checks for `node`, `npm`, the esbuild binary, `npm exec esbuild`, and Vite.
 
-In the current sandboxed run, the script reproduced `EPERM` even for a nested `spawnSync` of `C:\Program Files\nodejs\node.exe --version`, and direct execution of `node_modules\@esbuild\win32-x64\esbuild.exe --version` also returned `EPERM`. That means esbuild is likely the first visible symptom of a broader child-process execution block in the environment.
+In the current sandboxed run, the script reproduced `EPERM` even for a nested `spawnSync` of `%ProgramFiles%\nodejs\node.exe --version`, and direct execution of `node_modules\@esbuild\win32-x64\esbuild.exe --version` also returned `EPERM`. That means esbuild is likely the first visible symptom of a broader child-process execution block in the environment.
 
 ## Triage Steps
 

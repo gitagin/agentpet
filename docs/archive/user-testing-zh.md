@@ -9,15 +9,15 @@
 
 - 页面、按钮、提示、错误信息面向中国用户，必须显示正常中文。
 - 知识库内部路径不强制中文。为了兼容测试、脚本和历史数据，默认记忆提案路径统一使用英文：`Inbox/Pending Memories.md`。
-- `E:\agentproject\.tmp` 只是临时测试产物目录，不是用户必须使用的知识库路径。
+- `.\.tmp` 只是临时测试产物目录，不是用户必须使用的知识库路径。
 - 如果要测试真实 Obsidian Vault，先使用副本或备份目录，不要直接绑定唯一的生产笔记目录。
 
 ## 推荐测试路径
 
 | 测试目标 | 推荐路径 | 说明 |
 | --- | --- | --- |
-| 一键后端 smoke | `E:\agentproject\.tmp\runbook-smoke-<timestamp>` | 由 `.\scripts\runbook-smoke.ps1` 自动创建。 |
-| 手动临时知识库 | `E:\agentproject\.tmp\PetMemoryVault` | 适合试运行初始化、索引、记忆写入和搜索。 |
+| 一键后端 smoke | `.\.tmp\runbook-smoke-<timestamp>` | 由 `.\scripts\runbook-smoke.ps1` 自动创建。 |
+| 手动临时知识库 | `.\.tmp\PetMemoryVault` | 适合试运行初始化、索引、记忆写入和搜索。 |
 | 用户目录试用 | 任意可读写目录或 Obsidian Vault 副本 | 需要确认权限、备份和文件占用情况。 |
 
 初始化知识库后，后端会创建：
@@ -52,7 +52,7 @@ Memories/
 4. 构建并启动桌面端：
 
 ```powershell
-cd E:\agentproject\apps\desktop
+cd .\apps\desktop
 npm run build
 npm run electron:dev
 ```
@@ -64,7 +64,7 @@ npm run electron:dev
 打开控制台后，按以下顺序测试：
 
 1. 点击“健康检查”，确认后端可用，或显示明确中文错误。
-2. 在“知识库路径”填写临时目录，例如 `E:\agentproject\.tmp\PetMemoryVault`。
+2. 在“知识库路径”填写临时目录，例如 `.\.tmp\PetMemoryVault`。
 3. 点击“初始化”，再点击“索引”。
 4. 在临时目录中准备一个 Markdown 文件，例如 `test.md`，内容包含 `memorytest123` 和中文句子。
 5. 在“记忆搜索”中搜索 `memorytest123`，确认能看到结果。
