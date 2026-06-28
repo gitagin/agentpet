@@ -4,7 +4,7 @@ Date: 2026-05-02
 Executor: Codex, Backend Core Worker, Desktop Workflow Worker
 Last reconciled: 2026-06-07 by Codex against current implementation files, private desktop-pet auto-organization, post-chat Wiki distillation guardrails, and dual-track memory regression evidence.
 
-This matrix maps `Development_Documentation.md` section 22.1 MVP acceptance criteria to the current implementation. It is a QA artifact only; no core business implementation was changed.
+This matrix maps the archived `docs/archive/Development_Documentation.md` section 22.1 MVP acceptance criteria to the current implementation. It is a QA artifact only; no core business implementation was changed.
 
 Status legend:
 
@@ -40,8 +40,8 @@ Status legend:
 
 | Area | Status | Evidence | Notes |
 | --- | --- | --- | --- |
-| Full Live2D | Partial / Gap | `Development_Documentation.md` keeps full Live2D under later enhancement. v0.1 now has a single-model Cubism WebGL runtime path for the `UG` model, plus SDK/model validation gates, but still lacks lip sync, complex motion sequencing, multi-character resource management, and full Agent state action mapping. | Current desktop UI can render one `UG` model in the canvas path and keep static fallback behavior; it is not a full Live2D desktop-pet system. |
-| Actual signed auto-update | Out of scope / Gap | `Development_Documentation.md` places automatic update under formal release; `apps/desktop/package.json` uses `electron-builder` but has no `publish`, signing, or `autoUpdater` contract. | Current packaging is a Windows trial dir/zip path, not a signed update channel. |
+| Full Live2D | Partial / Gap | The archived `docs/archive/Development_Documentation.md` kept full Live2D under later enhancement. v0.1 now has a single-model Cubism WebGL runtime path for the `UG` model, plus SDK/model validation gates, but still lacks lip sync, complex motion sequencing, multi-character resource management, and full Agent state action mapping. | Current desktop UI can render one `UG` model in the canvas path and keep static fallback behavior; it is not a full Live2D desktop-pet system. |
+| Actual signed auto-update | Out of scope / Gap | The archived `docs/archive/Development_Documentation.md` placed automatic update under formal release; `apps/desktop/package.json` uses `electron-builder` but has no `publish`, signing, or `autoUpdater` contract. | Current packaging is a Windows trial dir/zip path, not a signed update channel. |
 | APScheduler-backed reminder runtime | Covered | `apps/backend/app/scheduler/reminders.py` implements `APSchedulerReminderScheduler` with SQLite `SQLAlchemyJobStore`; `apps/backend/app/main.py` starts it paused, recovers reminders, then resumes it; `apps/backend/tests/test_reminder_scheduler.py` covers persistence, delivery, and cancellation. | Persistent scheduler runtime is now part of the v0.2 reminder contract; desktop notification permission behavior remains tracked under MVP-16. |
 | Tray integration | Partial | `apps/desktop/electron/main.cjs` creates a `Tray` with desktop-pet, control-console, and quit entries when an icon is available. | Tray presence is implemented for local trial convenience; OS-specific tray behavior and notification delivery remain outside backend smoke scope. |
 | Desktop-pet compact reply bubble | Covered | `apps/desktop/src/App.tsx` stores the full streamed Agent reply while `apps/desktop/src/services/petBubblePagination.ts` generates compact semantic pages; `apps/desktop/pet-hitbox.json` keeps `chatBubble` at 214x58; `apps/desktop/scripts/validate-pet-bubble-pagination.mjs` validates pagination boundaries and grapheme preservation; user-confirmed manual Electron validation on 2026-05-15 verified readability and click-through behavior for the fixed compact bubble. | Covered for the v0.2 compact-bubble scope; a scrollable or growing bubble is not part of this acceptance row. |

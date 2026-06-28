@@ -73,8 +73,8 @@ export const agentOutcomeDefinitions: Record<AgentOutcomeKey, { label: string; d
     description: "检索本地记忆、聊天日记和知识整理上下文，为回答提供来源。",
   },
   relationship_continuity: {
-    label: "连续性",
-    description: "维护身份、关系、情绪和未完话题等长期陪伴状态。",
+    label: "陪伴状态",
+    description: "维护身份、关系、情绪和下次接着聊等长期陪伴状态。",
   },
 };
 

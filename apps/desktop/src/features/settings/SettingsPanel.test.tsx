@@ -32,6 +32,8 @@ const automationSettingsDraft: AutomationSettingsDraft = {
   auto_structured_memory: false,
   auto_long_term_memory: false,
   auto_wiki_organize: false,
+  local_privacy_mode: false,
+  proactive_trigger_frequency: "low",
   use_negotiation: true,
   max_rounds: 5,
   high_risk_confirmation_required: true,
@@ -84,6 +86,7 @@ function renderSettingsPanel(
   const onRefreshSettings = vi.fn();
   const onTestGlobalModel = vi.fn();
   const onSelectVaultDirectory = vi.fn();
+  const onUpdateAutomationSettingsDraft = vi.fn();
 
   const rendered = render(
     <SettingsPanel
@@ -113,7 +116,7 @@ function renderSettingsPanel(
       onUpdateGlobalModelDraft={vi.fn()}
       onSaveGlobalModel={vi.fn()}
       onTestGlobalModel={onTestGlobalModel}
-      onUpdateAutomationSettingsDraft={vi.fn()}
+      onUpdateAutomationSettingsDraft={onUpdateAutomationSettingsDraft}
       onSaveAutomationSettings={vi.fn()}
       onUpdateTtsSettingsDraft={onUpdateTtsSettingsDraft}
       onSaveTtsSettings={onSaveTtsSettings}
@@ -137,6 +140,7 @@ function renderSettingsPanel(
     onRefreshSettings,
     onTestGlobalModel,
     onSelectVaultDirectory,
+    onUpdateAutomationSettingsDraft,
   };
 }
 
@@ -172,6 +176,32 @@ describe("SettingsPanel", () => {
     expect(screen.getByText("Action Agent")).toBeInTheDocument();
     expect(screen.getByText("Reflection Agent")).toBeInTheDocument();
     expect(container.textContent).not.toMatch(/9 agents|9 个智能体|9个智能体/);
+  });
+
+  it("explains the local privacy mode tradeoff in automation settings", () => {
+    const { onUpdateAutomationSettingsDraft } = renderSettingsPanel();
+    const automationRegion = within(screen.getByRole("region", { name: "自动整理策略" }));
+
+    expect(automationRegion.getByText("本地隐私模式")).toBeInTheDocument();
+    expect(automationRegion.getByText(/敏感输入只做本机关键词检索/)).toBeInTheDocument();
+    expect(automationRegion.getByText(/不发送到模型 API/)).toBeInTheDocument();
+    expect(automationRegion.getByText(/智能程度会下降/)).toBeInTheDocument();
+
+    fireEvent.click(automationRegion.getByLabelText(/本地隐私模式/));
+
+    expect(onUpdateAutomationSettingsDraft).toHaveBeenCalledWith({ local_privacy_mode: true });
+  });
+
+  it("lets the user adjust proactive trigger frequency", () => {
+    const { onUpdateAutomationSettingsDraft } = renderSettingsPanel();
+    const automationRegion = within(screen.getByRole("region", { name: "自动整理策略" }));
+
+    expect(automationRegion.getByText("日常主动开口")).toBeInTheDocument();
+    expect(automationRegion.getByText(/低频每天最多 1 次/)).toBeInTheDocument();
+
+    fireEvent.click(automationRegion.getByLabelText("中频"));
+
+    expect(onUpdateAutomationSettingsDraft).toHaveBeenCalledWith({ proactive_trigger_frequency: "normal" });
   });
 
   it("updates and saves TTS voice settings", () => {

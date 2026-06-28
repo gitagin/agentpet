@@ -103,6 +103,12 @@ describe("ChatWindowView", () => {
     expect(screen.queryByText("补充首次偏好")).not.toBeInTheDocument();
   });
 
+  it("focuses the composer when the companion chat opens", () => {
+    const { container } = renderChatWindow({ hasVaultInitialized: true });
+
+    expect(container.querySelector(".chat-form input")).toHaveFocus();
+  });
+
   it("moves onboarding behind the recent conversation when chat history exists", () => {
     const messages: ChatMessage[] = [
       {
@@ -122,8 +128,8 @@ describe("ChatWindowView", () => {
     expect(form).toBeTruthy();
     expect(drawer).toBeTruthy();
     expect(drawer).not.toHaveAttribute("open");
-    expect(appearsBefore(form as Element, message)).toBe(true);
-    expect(appearsBefore(message, onboarding)).toBe(true);
+    expect(appearsBefore(message, form as Element)).toBe(true);
+    expect(appearsBefore(form as Element, onboarding)).toBe(true);
   });
 
   it("deemphasizes onboarding when an active vault already exists", () => {

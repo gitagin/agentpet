@@ -21,7 +21,7 @@ def _default_data_dir() -> Path:
 
 class Settings(BaseSettings):
     app_name: str = "Agent Pet Backend"
-    app_version: str = "0.2.0"
+    app_version: str = "0.0.1-alpha"
     environment: str = "development"
     session_token: str | None = Field(default=None, alias="AGENT_PET_SESSION_TOKEN")
     data_dir: Path = Field(default_factory=_default_data_dir, alias="AGENT_PET_DATA_DIR")

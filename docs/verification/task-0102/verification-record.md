@@ -1,7 +1,6 @@
 # TASK-0102 Manual Verification Record
 
-Status: In Progress - waiting for human verification on an isolated or backed-up
-real Vault path.
+Status: Skipped by user request on 2026-06-19; not completed.
 
 Task: Core interaction path, chat and memory control loop.
 
@@ -87,13 +86,15 @@ LIMIT 10;
 
 ## Actual Result
 
-Pending human verification.
+User requested skipping the real Vault chat -> memory archive -> memory view ->
+rollback validation and proceeding to TASK-0201. No real Vault write, rollback,
+database query screenshot, or file-state evidence was produced in this run.
+
+This record is not completion evidence for TASK-0102.
 
 ## Failure Case
 
-Pending. If no failure occurs during the run, record:
-
-`No failure case observed in this run.`
+Not exercised because the real validation run was skipped by user request.
 
 ## Completion Checklist
 

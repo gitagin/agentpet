@@ -45,6 +45,7 @@ function createHarness() {
       return assistantReplyRef.current;
     }),
     setReplyPagesFromText: vi.fn(),
+    showBubble: vi.fn(),
     scheduleStreamWatchdog: vi.fn(),
     failStream: vi.fn(),
     startReplyPaging: vi.fn(),
@@ -105,6 +106,17 @@ describe("applyStreamEvent assistant reply visibility", () => {
     applyStreamEvent("assistant-1", event("token", { token: " again" }), harness.context);
 
     expect(harness.context.onVisibleAssistantReply).toHaveBeenCalledTimes(1);
+  });
+
+  it("records continuity proposals without replacing the pending answer bubble", () => {
+    const harness = createHarness();
+
+    applyStreamEvent("assistant-1", event("continuity_proposal", { summary: "continue later" }), harness.context);
+
+    expect(harness.context.appendChatEvent).toHaveBeenCalled();
+    expect(harness.petChat.showBubble).not.toHaveBeenCalled();
+    expect(harness.petChat.scheduleStreamWatchdog).not.toHaveBeenCalled();
+    expect(harness.petChat.replyStartedRef.current).toBe(false);
   });
 
   it("filters single-star action text across streamed token chunks", () => {

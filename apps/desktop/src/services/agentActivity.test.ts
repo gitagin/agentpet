@@ -68,7 +68,7 @@ describe("agentActivity", () => {
     expect(formatAgentActionType("custom.action")).toBe("custom / action");
     expect(formatAgentActionRiskTier("high")).toBe("高风险");
     expect(formatAgentActionDecision("ask")).toBe("需确认");
-    expect(formatAgentActionStatus("reverted")).toBe("已撤销");
+    expect(formatAgentActionStatus("reverted")).toBe("已撤回");
   });
 
   it("humanizes skipped automation reasons for the primary UI", () => {

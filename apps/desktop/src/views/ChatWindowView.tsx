@@ -9,6 +9,7 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
+import { useEffect, useRef } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { Panel } from "../components/layout";
 import { ChatMessageList } from "../features/chat/ChatMessageList";
@@ -70,6 +71,21 @@ const chatTrialPrompts: Array<{ label: string; mode: PetInputMode; text: string 
   },
 ];
 
+function scheduleFrame(callback: FrameRequestCallback): number {
+  if (typeof window.requestAnimationFrame === "function") {
+    return window.requestAnimationFrame(callback);
+  }
+  return window.setTimeout(() => callback(Date.now()), 0);
+}
+
+function cancelScheduledFrame(frame: number) {
+  if (typeof window.cancelAnimationFrame === "function") {
+    window.cancelAnimationFrame(frame);
+    return;
+  }
+  window.clearTimeout(frame);
+}
+
 export default function ChatWindowView({
   input,
   messages,
@@ -113,6 +129,9 @@ export default function ChatWindowView({
   const activeMode = modes.find((option) => option.id === mode) ?? defaultPetInputModes[0];
   const primaryModes = modes.filter((option) => primaryModeIds.has(option.id));
   const secondaryModes = modes.filter((option) => !primaryModeIds.has(option.id));
+  const messageListRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const latestMessage = visibleMessages[visibleMessages.length - 1];
   const canSend = connected && !streaming && (input.trim().length > 0 || activeMode.id === "review");
   const shouldDeferOnboarding = Boolean(onboardingPanel) && (hasVaultInitialized || visibleMessages.length > 0);
   const deferredOnboarding = shouldDeferOnboarding ? (
@@ -121,9 +140,32 @@ export default function ChatWindowView({
       {onboardingPanel}
     </details>
   ) : null;
+
+  useEffect(() => {
+    const messageList = messageListRef.current;
+    if (!messageList) {
+      return undefined;
+    }
+
+    const scrollToLatest = () => {
+      messageList.scrollTop = messageList.scrollHeight;
+    };
+
+    scrollToLatest();
+    const frame = scheduleFrame(scrollToLatest);
+    return () => cancelScheduledFrame(frame);
+  }, [latestMessage?.content, latestMessage?.id, latestMessage?.status, streaming, visibleMessages.length]);
+
+  useEffect(() => {
+    if (!streaming) {
+      inputRef.current?.focus({ preventScroll: true });
+    }
+  }, [streaming]);
+
   function fillTrialPrompt(mode: PetInputMode, text: string) {
     onModeChange(mode);
     onInputChange(text);
+    scheduleFrame(() => inputRef.current?.focus({ preventScroll: true }));
   }
 
   return (
@@ -186,12 +228,24 @@ export default function ChatWindowView({
             </button>
           ))}
         </div>
+        <ChatMessageList
+          messages={visibleMessages}
+          revertingActionIds={revertingActionIds}
+          onRevertAgentAction={onRevertAgentAction}
+          onOpenTask={onOpenTask}
+          onOpenMemory={onOpenMemory}
+          onOpenWiki={onOpenWiki}
+          onOpenReport={onOpenReport}
+          listRef={messageListRef}
+        />
         <form className="chat-form" onSubmit={onSend}>
           <input
+            ref={inputRef}
             value={input}
             onChange={(event) => onInputChange(event.target.value)}
             placeholder={connected ? activeMode.placeholder : "正在等待本地助手连接..."}
             disabled={streaming}
+            autoFocus
             aria-label={`${activeMode.label}输入`}
           />
           {streaming ? (
@@ -211,15 +265,6 @@ export default function ChatWindowView({
             <Loader2 className="spin" size={14} /> 正在整理回答...
           </p>
         ) : null}
-        <ChatMessageList
-          messages={visibleMessages}
-          revertingActionIds={revertingActionIds}
-          onRevertAgentAction={onRevertAgentAction}
-          onOpenTask={onOpenTask}
-          onOpenMemory={onOpenMemory}
-          onOpenWiki={onOpenWiki}
-          onOpenReport={onOpenReport}
-        />
         {deferredOnboarding}
       </Panel>
     </FeatureWindowShell>

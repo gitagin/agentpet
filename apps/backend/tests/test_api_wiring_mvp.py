@@ -144,6 +144,8 @@ def test_automation_settings_api_roundtrip(client: TestClient) -> None:
         "auto_structured_memory": False,
         "auto_long_term_memory": False,
         "auto_wiki_organize": False,
+        "local_privacy_mode": False,
+        "proactive_trigger_frequency": "low",
         "use_negotiation": False,
         "max_rounds": 5,
         "high_risk_confirmation_required": True,
@@ -158,6 +160,8 @@ def test_automation_settings_api_roundtrip(client: TestClient) -> None:
             "auto_structured_memory": True,
             "auto_long_term_memory": False,
             "auto_wiki_organize": False,
+            "local_privacy_mode": True,
+            "proactive_trigger_frequency": "high",
             "use_negotiation": False,
             "max_rounds": 2,
         },
@@ -168,6 +172,8 @@ def test_automation_settings_api_roundtrip(client: TestClient) -> None:
     assert payload["auto_structured_memory"] is True
     assert payload["auto_long_term_memory"] is False
     assert payload["auto_wiki_organize"] is False
+    assert payload["local_privacy_mode"] is True
+    assert payload["proactive_trigger_frequency"] == "high"
     assert payload["use_negotiation"] is False
     assert payload["max_rounds"] == 2
     assert payload["high_risk_confirmation_required"] is True
@@ -181,6 +187,8 @@ def test_automation_settings_api_roundtrip(client: TestClient) -> None:
     assert patched.status_code == 200
     assert patched.json()["automation"]["use_negotiation"] is True
     assert patched.json()["automation"]["max_rounds"] == 10
+    assert patched.json()["automation"]["local_privacy_mode"] is True
+    assert patched.json()["automation"]["proactive_trigger_frequency"] == "high"
 
     invalid = client.patch(
         "/api/settings",
@@ -982,6 +990,167 @@ def test_local_asset_stats_api_is_local_read_only_and_no_data_safe(
     assert after_actions == before_actions
 
 
+def test_growth_snapshot_api_uses_memory_data_and_action_history(
+    client: TestClient,
+    tmp_path: Path,
+) -> None:
+    denied = client.get("/api/growth/snapshot")
+    assert denied.status_code == 401
+
+    empty = client.get("/api/growth/snapshot", headers=auth())
+    assert empty.status_code == 200
+    empty_payload = empty.json()
+    assert [dimension["key"] for dimension in empty_payload["dimensions"]] == [
+        "memory_depth",
+        "response_affinity",
+        "trust_boundary",
+        "knowledge_links",
+    ]
+    assert all(dimension["current_value"] == 0 for dimension in empty_payload["dimensions"])
+    assert empty_payload["events"] == []
+
+    vault = tmp_path / "GrowthVault"
+    init = client.post(
+        "/api/vaults/init",
+        headers=auth(),
+        json={"path": str(vault), "create_if_missing": True, "confirmed": True},
+    )
+    assert init.status_code == 200
+    vault_id = init.json()["vault_id"]
+    wiki = vault / "Wiki"
+    wiki.mkdir(parents=True, exist_ok=True)
+    (wiki / "Companion Growth.md").write_text("# Companion Growth\n", encoding="utf-8")
+
+    db_path = client.app.state.database.path
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO daily_chat_memory_entries(
+                id, conversation_id, user_message_id, assistant_message_id,
+                agent_run_id, entry_hash, memory_date, memory_time, timezone,
+                markdown_path, created_at, updated_at
+            )
+            VALUES
+                ('growth-daily-1', 'conv-growth', 'user-1', 'assistant-1', 'run-1', 'growth-hash-1',
+                 '2026-06-03', '09:00:00', 'Asia/Shanghai', 'Memories/Daily/2026-06-03.md',
+                 '2026-06-03T01:00:00Z', '2026-06-03T01:00:00Z'),
+                ('growth-daily-2', 'conv-growth', 'user-2', 'assistant-2', 'run-2', 'growth-hash-2',
+                 '2026-06-04', '10:00:00', 'Asia/Shanghai', 'Memories/Daily/2026-06-04.md',
+                 '2026-06-04T02:00:00Z', '2026-06-04T02:00:00Z')
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO memory_graph_facts (
+                id, fact_key, conflict_key, category, subject, predicate, object,
+                status, confidence, source_text, source_type, support_count,
+                created_at, updated_at, memory_type, entity_type, occurred_at,
+                expires_at, metadata_json, importance
+            )
+            VALUES
+                ('growth-fact-style', 'growth-style', 'growth-style', 'preference', 'reply_style',
+                 'prefers', 'brief check-ins', 'active', 0.91, 'User likes brief check-ins.',
+                 'user_message', 2, '2026-06-03T03:00:00Z', '2026-06-03T03:00:00Z',
+                 'preference', 'preference', NULL, NULL, '{}', 0.8),
+                ('growth-fact-boundary', 'growth-boundary', 'growth-boundary', 'boundary', 'privacy',
+                 'prefers', 'confirm before sensitive memory', 'candidate', 0.74, 'Ask first for sensitive memory.',
+                 'user_message', 1, '2026-06-04T03:00:00Z', '2026-06-04T03:00:00Z',
+                 'boundary', 'preference', NULL, NULL, '{}', 0.7),
+                ('growth-fact-old', 'growth-old', 'growth-old', 'fact', 'old',
+                 'is', 'ignored', 'rejected', 0.5, 'Rejected memory.',
+                 'assistant_message', 1, '2026-06-04T04:00:00Z', '2026-06-04T04:00:00Z',
+                 'fact', 'project', NULL, NULL, '{}', 0.2)
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO diary_memory_objects (
+                id, vault_id, type, summary, topic, emotion, people_json, keywords_json,
+                importance, confidence, occurred_at, timezone, status, object_hash,
+                extraction_model, created_at, updated_at
+            )
+            VALUES (
+                'growth-diary-object-1', ?, 'preference', 'Prefers a low-pressure tone.',
+                'tone', NULL, '[]', '["tone"]', 0.7, 0.88,
+                '2026-06-04T05:00:00Z', 'Asia/Shanghai', 'active', 'growth-diary-hash-1',
+                'fake-model', '2026-06-04T05:00:00Z', '2026-06-04T05:00:00Z'
+            )
+            """,
+            (vault_id,),
+        )
+        conn.execute(
+            """
+            INSERT INTO agent_actions (
+                id, action_type, risk_tier, decision, status, title, summary,
+                target_paths_json, before_snapshot_json, after_snapshot_json,
+                metadata_json, reversible, reverted_by, reverts_action_id,
+                created_at, updated_at, completed_at
+            )
+            VALUES
+                ('growth-action-diary', 'chat.daily_archive', 'low', 'auto', 'completed',
+                 '已归档聊天日记', '写入 Memories/Daily/2026-06-03.md',
+                 '["Memories/Daily/2026-06-03.md"]', '{}', '{}', '{}', 0, NULL, NULL,
+                 '2026-06-03T01:00:00Z', '2026-06-03T01:00:00Z', '2026-06-03T01:00:00Z'),
+                ('growth-action-memory', 'memory.long_term.write', 'low', 'auto', 'completed',
+                 '已更新长期记忆', 'brief check-ins',
+                 '[]', '{}', '{}', '{"graph_fact_id":"growth-fact-style"}', 0, NULL, NULL,
+                 '2026-06-03T03:00:00Z', '2026-06-03T03:00:00Z', '2026-06-03T03:00:00Z'),
+                ('growth-action-wiki', 'wiki.answer_summary.write', 'low', 'auto', 'completed',
+                 '已沉淀回答摘要', '写入 Wiki/Companion Growth.md',
+                 '["Wiki/Companion Growth.md"]', '{}', '{}', '{}', 1, NULL, NULL,
+                 '2026-06-04T06:00:00Z', '2026-06-04T06:00:00Z', '2026-06-04T06:00:00Z'),
+                ('growth-action-skip', 'memory.long_term.skip', 'high', 'ask', 'skipped',
+                 '已跳过长期记忆', '敏感内容未写入',
+                 '[]', '{}', '{}', '{"skipped_reason":"sensitive_life_domain"}', 0, NULL, NULL,
+                 '2026-06-04T07:00:00Z', '2026-06-04T07:00:00Z', NULL),
+                ('growth-action-revert', 'agent_action.revert', 'low', 'auto', 'completed',
+                 '已撤销：已沉淀回答摘要', '恢复 1 个 Markdown 目标。',
+                 '["Wiki/Companion Growth.md"]', '{}', '{}', '{}', 0, NULL, 'growth-action-wiki',
+                 '2026-06-04T08:00:00Z', '2026-06-04T08:00:00Z', '2026-06-04T08:00:00Z')
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO memory_feedback_events (
+                id, candidate_id, fact_id, feedback_type, feedback_text,
+                requested_status, replacement_candidate_id, metadata_json, created_at
+            )
+            VALUES (
+                'growth-feedback-1', NULL, 'growth-fact-style', 'keep',
+                'Keep this style preference.', 'active', NULL, '{}', '2026-06-04T09:00:00Z'
+            )
+            """
+        )
+        before_actions = conn.execute("SELECT COUNT(*) FROM agent_actions").fetchone()[0]
+        conn.commit()
+
+    response = client.get("/api/growth/snapshot", headers=auth())
+    assert response.status_code == 200
+    payload = response.json()
+    dimensions = {dimension["key"]: dimension for dimension in payload["dimensions"]}
+    assert dimensions["memory_depth"]["current_value"] == 4
+    assert dimensions["memory_depth"]["level"] >= 2
+    assert dimensions["response_affinity"]["current_value"] == 3
+    assert dimensions["response_affinity"]["level"] >= 2
+    assert dimensions["trust_boundary"]["current_value"] == 4
+    assert dimensions["trust_boundary"]["level"] >= 3
+    assert dimensions["knowledge_links"]["current_value"] == 1
+    assert dimensions["knowledge_links"]["level"] == 1
+    assert payload["stats"]["vault_id"] == vault_id
+    assert payload["stats"]["chat_diary_entries"] == 2
+    assert payload["stats"]["long_term_memory_count"] == 2
+
+    events = payload["events"]
+    assert events[0]["event_id"] == "growth-action-revert"
+    assert events[0]["dimension_key"] == "trust_boundary"
+    assert any(event["dimension_key"] == "knowledge_links" for event in events)
+    assert any(event["dimension_key"] == "response_affinity" for event in events)
+
+    with sqlite3.connect(db_path) as conn:
+        after_actions = conn.execute("SELECT COUNT(*) FROM agent_actions").fetchone()[0]
+    assert after_actions == before_actions
+
+
 def test_structured_diary_memory_api_search_detail_and_source_scope_are_wired(
     client: TestClient,
     tmp_path: Path,
@@ -1308,6 +1477,15 @@ def test_chat_stream_auto_archives_daily_memory_and_records_action(
     actions = listed.json()["actions"]
     assert [action["action_type"] for action in actions] == ["chat.daily_archive"]
     assert (vault / actions[0]["target_paths"][0]).exists()
+
+    growth = client.get("/api/growth/snapshot", headers=auth())
+    assert growth.status_code == 200
+    growth_payload = growth.json()
+    dimensions = {dimension["key"]: dimension for dimension in growth_payload["dimensions"]}
+    assert dimensions["memory_depth"]["current_value"] >= 1
+    assert dimensions["memory_depth"]["level"] >= 1
+    assert growth_payload["stats"]["chat_diary_entries"] >= 1
+    assert any(event["source_action_type"] == "chat.daily_archive" for event in growth_payload["events"])
 
 
 def test_chat_stream_auto_summarizes_useful_answer_to_wiki(

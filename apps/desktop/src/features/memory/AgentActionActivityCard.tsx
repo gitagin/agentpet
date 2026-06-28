@@ -70,10 +70,10 @@ export function AgentActionActivityCard({ entry, reverting, onRevert, onRevealTa
       ) : null}
 
       {action.error ? <p className="field-note error">{action.error}</p> : null}
-      {action.reverted_by ? <p className="field-note">已由 {action.reverted_by} 撤销。</p> : null}
-      {action.reverts_action_id ? <p className="field-note">这是撤销记录，来源活动：{action.reverts_action_id}。</p> : null}
+      {action.reverted_by ? <p className="field-note success">已撤回，并生成新的活动记录：{action.reverted_by}。</p> : null}
+      {action.reverts_action_id ? <p className="field-note success">这是撤回记录，来源活动：{action.reverts_action_id}。</p> : null}
       {!canRevert && action.reversible && action.status !== "reverted" ? (
-        <p className="field-note">当前状态不可自动撤销。</p>
+        <p className="field-note">当前状态不可自动撤回。</p>
       ) : null}
       {action.decision === "ask" && action.status === "pending" ? (
         <p className="field-note error">该活动需要人工确认；请处理下方对应的高风险确认项。</p>
@@ -110,18 +110,21 @@ export function AgentActionActivityCard({ entry, reverting, onRevert, onRevealTa
       ) : null}
 
       {canRevert ? (
+        <>
+          <p className="field-note">撤回前会再次确认；确认后会按本机快照恢复关联文件，并留下新的活动记录。</p>
         <div className="button-row compact-actions">
           <button
             type="button"
             className="secondary"
             onClick={() => onRevert(action)}
             disabled={reverting}
-            title={`撤销 ${display.actionName}`}
+            title={`撤回 ${display.actionName}`}
           >
             {reverting ? <Loader2 className="spin" size={16} /> : <RotateCcw size={16} />}
-            撤销
+            撤回
           </button>
         </div>
+        </>
       ) : null}
     </article>
   );

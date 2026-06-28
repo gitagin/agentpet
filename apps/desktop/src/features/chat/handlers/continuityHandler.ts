@@ -1,5 +1,13 @@
 import type { StreamHandlerInput } from "../streamDispatcher";
 
+function formatContinueTopicKind(kind: string) {
+  return kind === "open_thread" ? "下次接着聊" : "陪伴状态";
+}
+
+function formatContinueTopicSummary(kind: string, summary: string) {
+  return kind === "open_thread" ? `要让我下次记得继续这个话题吗：${summary}` : summary;
+}
+
 export function continuitySignalHandler({ messageId, payload, context }: StreamHandlerInput) {
   const {
     petChat,
@@ -15,20 +23,18 @@ export function continuitySignalHandler({ messageId, payload, context }: StreamH
     upsertChatContinuitySignal(messageId, signal);
   }
   appendChatEvent(messageId, {
-    label: "连续性在场",
-    detail: signal ? `${signal.title}：${signal.summary}` : "已收到运行时连续性提示。",
+    label: "下次接着聊",
+    detail: signal ? `${formatContinueTopicKind(signal.kind)}：${signal.summary}` : "已收到可继续的话题提示。",
     tone: "success",
   });
 }
 
 export function continuityProposalHandler({ messageId, payload, context }: StreamHandlerInput) {
   const {
-    petChat,
     appendChatEvent,
     normalizeContinuityProposal,
     upsertChatContinuityProposal,
     upsertContinuityProposal,
-    formatContinuityKind,
   } = context;
   const proposal = normalizeContinuityProposal(payload);
   if (proposal) {
@@ -36,23 +42,10 @@ export function continuityProposalHandler({ messageId, payload, context }: Strea
     upsertChatContinuityProposal(messageId, proposal);
   }
   appendChatEvent(messageId, {
-    label: "连续性确认项",
+    label: "下次接着聊",
     detail: proposal
-      ? `${formatContinuityKind(proposal.kind)}：${proposal.summary}`
-      : "收到一条待确认的连续性整理。",
+      ? formatContinueTopicSummary(proposal.kind, proposal.summary)
+      : "有个话题可以保存为下次继续聊。",
     tone: "info",
   });
-  if (!petChat.replyStartedRef.current) {
-    petChat.showBubble({
-      title: "收到连续性确认项",
-      message: proposal ? `${formatContinuityKind(proposal.kind)}：${proposal.summary}` : "有新的连续性整理需要确认。",
-      tone: "tool",
-    });
-    petChat.scheduleStreamWatchdog(
-      "还在想",
-      "连续性确认项已展示，这次需要多等一会儿。",
-      14000,
-      () => petChat.failStream(messageId, "没有等到回复", "连续性确认项已展示，但这次没有等到可显示的回复。"),
-    );
-  }
 }

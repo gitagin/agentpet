@@ -4,6 +4,7 @@ import {
   BookOpen,
   CalendarCheck,
   FolderKanban,
+  HeartPulse,
   MessageSquareText,
   Settings,
   type LucideIcon,
@@ -18,7 +19,7 @@ import { VisibleContinuityPanel } from "../features/continuity";
 import { productCopy } from "../productCopy";
 import { BottomNav } from "./BottomNav";
 
-type StageRoute = "agent" | "chat" | "memory" | "settings" | "world";
+type StageRoute = "agent" | "chat" | "growth" | "memory" | "settings" | "world";
 
 type StageAction = {
   label: string;
@@ -48,24 +49,24 @@ type StageViewProps = {
   api?: DesktopApi;
 };
 
-const profile = { name: productCopy.displayName, mood: "在这里" };
+const profile = { name: productCopy.displayName, mood: "本地待命" };
 
 const stageActions: StageAction[] = [
   {
     label: "陪我聊聊",
-    detail: "把今天的想法和感受告诉我",
+    detail: "把现在的想法、状态或没说完的话交给我",
     route: "chat",
     icon: MessageSquareText,
   },
   {
     label: "看看记忆",
-    detail: "查看我记住的事，也能撤回",
+    detail: "查看来源、理由和可撤回记录",
     route: "memory",
     icon: CalendarCheck,
   },
   {
     label: "设置边界",
-    detail: "调整保存、隐私和连接",
+    detail: "管理保存规则、模型连接和本地资料",
     route: "settings",
     icon: Settings,
   },
@@ -73,14 +74,20 @@ const stageActions: StageAction[] = [
 
 const advancedStageActions: StageAction[] = [
   {
+    label: "成长记录",
+    detail: "看长期陪伴状态和互动变化",
+    route: "growth",
+    icon: HeartPulse,
+  },
+  {
     label: "提醒和待办",
-    detail: "安排提醒，查看要跟进的事",
+    detail: "安排提醒，整理要继续跟进的事",
     route: "agent",
     icon: FolderKanban,
   },
   {
     label: "整理资料",
-    detail: "把有用片段归到本机知识页",
+    detail: "把有用片段沉淀到本地知识页",
     route: "world",
     icon: BookOpen,
   },
@@ -131,15 +138,19 @@ export default function StageView({
 
   return (
     <main className="stage-command-shell" style={S.shell} aria-label="桌宠主舞台">
-      <header style={S.topBar}>
-        <div style={S.topLeft}>
-          <span style={S.heartIcon}>*</span>
+      <header className="stage-topbar" style={S.topBar}>
+        <div className="stage-brand-line" style={S.topLeft}>
+          <span style={S.heartIcon} aria-hidden="true" />
           <strong>{profile.name}</strong>
           <span style={S.pill}>{profile.mood}</span>
           <span style={S.dot} />
-          <span style={S.statusLabel}>{connected ? "在线" : "离线"}</span>
+          <span className="stage-status-label" style={S.statusLabel}>
+            {connected ? "在线" : "离线"}
+          </span>
         </div>
-        <time style={S.time}>{now}</time>
+        <time className="stage-local-time" style={S.time}>
+          {now}
+        </time>
       </header>
 
       <section className={`stage-main-view stage-command-layout${api ? " has-outcome" : ""}`} style={S.mainStage} aria-label="主舞台">
@@ -156,6 +167,7 @@ export default function StageView({
 
         <section className="stage-command-panel" aria-label="陪伴入口">
           <div className="stage-command-heading">
+            <span className="stage-command-kicker">今日入口</span>
             <p>{productCopy.promise}</p>
             <h1>今天想从哪里继续？</h1>
           </div>
@@ -239,9 +251,10 @@ export default function StageView({
         </section>
       </section>
 
-      <footer style={S.footer}>
-        <form style={S.chatForm} onSubmit={handleSubmit} aria-label="舞台聊天表单">
+      <footer className="stage-footer" style={S.footer}>
+        <form className="stage-chat-form" style={S.chatForm} onSubmit={handleSubmit} aria-label="舞台聊天表单">
           <input
+            className="stage-chat-input"
             style={S.chatInput}
             value={chatInput}
             onChange={(event) => setChatInput(event.target.value)}
@@ -250,17 +263,17 @@ export default function StageView({
             aria-label="聊天输入"
           />
           {streaming ? (
-            <button type="button" style={S.stopBtn} onClick={onStopStreaming}>
+            <button className="stage-stop-button" type="button" style={S.stopBtn} onClick={onStopStreaming}>
               停止
             </button>
           ) : (
-            <button type="submit" style={S.sendBtn} disabled={!chatInput.trim() || !connected}>
+            <button className="stage-send-button" type="submit" style={S.sendBtn} disabled={!chatInput.trim() || !connected}>
               发送
             </button>
           )}
         </form>
 
-        <BottomNav activeTab="今日" />
+        <BottomNav activeTab="今日" visible={active} />
       </footer>
     </main>
   );
@@ -269,47 +282,57 @@ export default function StageView({
 const S: Record<string, CSSProperties> = {
   shell: {
     position: "relative",
-    height: "100vh",
+    minHeight: "100dvh",
     display: "grid",
-    gridTemplateRows: "44px minmax(0, 1fr) auto",
-    background: "url(/images/home.png) center/cover no-repeat",
-    color: "var(--color-text, #2b2931)",
-    fontFamily: "Inter, 'Segoe UI', system-ui, sans-serif",
+    gridTemplateRows: "52px minmax(0, 1fr) auto",
+    background: "url(/images/home.png) center/cover no-repeat, transparent",
+    color: "var(--text, #20292f)",
+    fontFamily: "var(--font-sans, 'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif)",
     boxSizing: "border-box",
     overflow: "hidden",
   },
   topBar: {
-    height: 44,
+    minHeight: 52,
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    padding: "0 20px",
-    background: "rgba(255,255,255,0.42)",
-    backdropFilter: "blur(14px)",
-    WebkitBackdropFilter: "blur(14px)",
-    borderBottom: "1px solid rgba(255,255,255,0.48)",
+    gap: 12,
+    padding: "0 22px",
+    background: "rgba(255,255,255,0.58)",
+    backdropFilter: "blur(12px)",
+    WebkitBackdropFilter: "blur(12px)",
+    borderBottom: "1px solid rgba(55,73,82,0.12)",
     zIndex: 20,
     flexShrink: 0,
   },
   topLeft: {
     display: "flex",
     alignItems: "center",
-    gap: 10,
+    gap: 9,
+    minWidth: 0,
     fontWeight: 700,
-    fontSize: 15,
-    color: "#332333",
+    fontSize: 14,
+    color: "var(--text, #20292f)",
   },
-  heartIcon: { color: "var(--brand, #c05f87)", fontSize: 16, lineHeight: 1 },
+  heartIcon: {
+    width: 10,
+    height: 10,
+    borderRadius: 999,
+    background: "var(--brand, #8f4266)",
+    boxShadow: "0 0 0 4px rgba(143,66,102,0.12)",
+    flexShrink: 0,
+  },
   pill: {
     display: "inline-flex",
     alignItems: "center",
-    padding: "2px 10px",
+    padding: "3px 9px",
     borderRadius: 999,
-    background: "rgba(255,255,255,0.64)",
-    border: "1px solid rgba(255,255,255,0.55)",
+    background: "rgba(248,251,250,0.88)",
+    border: "1px solid rgba(55,73,82,0.12)",
     fontSize: 11,
-    fontWeight: 600,
+    fontWeight: 700,
     color: "var(--muted, #7a6670)",
+    whiteSpace: "nowrap",
   },
   dot: {
     width: 8,
@@ -322,12 +345,13 @@ const S: Record<string, CSSProperties> = {
   statusLabel: { fontSize: 12, fontWeight: 600, color: "var(--muted, #7a6670)" },
   time: {
     fontSize: 12,
-    fontWeight: 600,
+    fontWeight: 700,
     color: "var(--muted, #7a6670)",
-    padding: "2px 10px",
+    padding: "3px 10px",
     borderRadius: 999,
-    background: "rgba(255,255,255,0.55)",
-    border: "1px solid rgba(255,255,255,0.45)",
+    background: "rgba(248,251,250,0.88)",
+    border: "1px solid rgba(55,73,82,0.12)",
+    whiteSpace: "nowrap",
   },
   mainStage: {
     position: "relative",
@@ -338,66 +362,69 @@ const S: Record<string, CSSProperties> = {
   valueList: {
     display: "flex",
     flexWrap: "wrap",
-    gap: 6,
-    marginTop: -4,
+    gap: 8,
+    marginTop: 0,
   },
   valueItem: {
     borderRadius: 999,
-    border: "1px solid rgba(192, 95, 135, 0.18)",
-    background: "rgba(255,255,255,0.62)",
-    color: "var(--brand-strong, #8d4f86)",
+    border: "1px solid rgba(143,66,102,0.16)",
+    background: "rgba(255,255,255,0.72)",
+    color: "var(--brand-strong, #663353)",
     fontSize: 11,
-    fontWeight: 700,
-    padding: "3px 8px",
+    fontWeight: 800,
+    lineHeight: 1.2,
+    padding: "5px 9px",
   },
   footer: {
     display: "grid",
     justifyItems: "center",
-    gap: 0,
-    padding: "10px 16px 4px",
+    gap: 6,
+    padding: "8px 16px 0",
     zIndex: 20,
     flexShrink: 0,
   },
   chatForm: {
     display: "flex",
-    gap: 8,
-    width: "min(420px, calc(100vw - 44px))",
-    padding: "8px 14px",
-    borderRadius: 22,
-    background: "rgba(255,255,255,0.64)",
-    backdropFilter: "blur(14px)",
-    WebkitBackdropFilter: "blur(14px)",
-    border: "1px solid rgba(255,255,255,0.54)",
-    boxShadow: "0 8px 24px rgba(119,77,104,0.08)",
+    gap: 10,
+    width: "min(560px, calc(100vw - 44px))",
+    padding: "9px 10px 9px 14px",
+    borderRadius: 28,
+    background: "rgba(255,255,255,0.74)",
+    backdropFilter: "blur(12px)",
+    WebkitBackdropFilter: "blur(12px)",
+    border: "1px solid rgba(55,73,82,0.14)",
+    boxShadow: "0 16px 36px rgba(38,58,67,0.12)",
   },
   chatInput: {
     flex: 1,
     border: "none",
     borderRadius: 999,
-    padding: "0 16px",
-    minHeight: 40,
-    color: "var(--color-text, #2b2931)",
-    background: "rgba(255,255,255,0.72)",
+    padding: "0 14px",
+    minHeight: 42,
+    color: "var(--text, #20292f)",
+    background: "rgba(248,251,250,0.76)",
     fontFamily: "inherit",
-    fontSize: 13.5,
+    fontSize: 14,
     outline: "none",
   },
   sendBtn: {
     border: "none",
     borderRadius: 999,
-    padding: "0 20px",
+    minHeight: 42,
+    padding: "0 18px",
     color: "#fff",
-    background: "linear-gradient(135deg, #e680a7, var(--brand-strong, #8d4f86))",
-    boxShadow: "0 8px 18px rgba(157,80,128,0.18)",
+    background: "var(--brand, #8f4266)",
+    boxShadow: "0 10px 20px rgba(86,54,70,0.14)",
     cursor: "pointer",
-    fontWeight: 700,
+    fontWeight: 800,
     fontSize: 13,
     whiteSpace: "nowrap",
   },
   stopBtn: {
     border: "none",
     borderRadius: 999,
-    padding: "0 18px",
+    minHeight: 42,
+    padding: "0 16px",
     color: "#fff",
     background: "var(--danger, #b54c5f)",
     cursor: "pointer",

@@ -208,16 +208,26 @@ def _grounded_response_from_search(search_response: MemorySearchResponse) -> str
 
 
 def _grounded_response_from_citations(results) -> str:
-    snippets = [
-        result.snippet.strip()
+    eligible_results = [
+        result
         for result in results[:3]
         if _can_use_result_as_answer_context(result)
     ]
-    if not snippets:
+    if not eligible_results:
         return _local_knowledge_not_found_response()
-    summary = "；".join(snippets)
-    source_label = _source_scope_label(getattr(results[0], "source_scope", "all"))
-    return f"我翻到了相关{source_label}：{summary}。如果你愿意，我可以继续帮你整理成更短的结论。"
+    source_scope = getattr(eligible_results[0], "source_scope", "all")
+    source_label = _source_scope_label(source_scope)
+    count_label = "一条" if len(eligible_results) == 1 else f"{len(eligible_results)} 条"
+    caution = (
+        "这些还只是聊天日记里的弱线索，"
+        if source_scope == "daily_chat"
+        else ""
+    )
+    return (
+        f"我翻到{source_label}里有{count_label}相关线索。"
+        f"{caution}我会把它当作背景来回答，不直接复述原始记录；"
+        "如果你愿意，我可以继续帮你整理成一句更短的结论。"
+    )
 
 
 def _local_knowledge_not_found_response() -> str:
@@ -244,6 +254,8 @@ def _message_with_citation_context(state: AgentState, *, sections: MemoryPromptS
         f"回答风格：{answer_style}\n"
         f"已检索到的上下文片段：\n{prompt_sections}\n\n"
         "请以本地长期记忆陪伴体的口吻给出简短自然回答。不要逐条展开引用路径或原始 snippet；"
+        "只在记忆能直接帮助当前问题时自然带入，不要为了证明检索到了而提及路径、状态、分数或原文；"
+        "需要使用记忆时，请改写成温和的一句话背景判断，避免逐字复述；"
         "不要把候选、待确认、被拒绝、隔离、封存、标错或已撤回内容说成已确认记忆；"
         f"{source_instruction}"
     )

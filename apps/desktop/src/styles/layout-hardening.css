@@ -1,0 +1,288 @@
+/* Final layout hardening: keep product cards readable across CJK text, paths, and long model names. */
+:where(
+  .panel,
+  .stage-command-panel,
+  .stage-outcome-panel,
+  .stage-action-card,
+  .visible-continuity-section,
+  .visible-continuity-receipt,
+  .visible-continuity-project,
+  .workflow-card,
+  .message,
+  .result-item,
+  .proposal,
+  .task-card,
+  .wiki-page-card,
+  .memory-graph-fact,
+  .local-asset-card,
+  .live2d-runtime-card
+) {
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+:where(
+  .panel,
+  .stage-command-panel,
+  .stage-outcome-panel,
+  .stage-action-card,
+  .visible-continuity-section,
+  .workflow-card,
+  .message,
+  .result-item,
+  .proposal,
+  .wiki-page-card,
+  .memory-graph-fact
+) :where(h1, h2, h3, h4, p, span, strong, small, li, dt, dd, label, button, a) {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+}
+
+.stage-topbar,
+.stage-brand-line,
+.stage-chat-form {
+  min-width: 0;
+}
+
+.stage-brand-line strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stage-local-time,
+.stage-status-label,
+.stage-send-button,
+.stage-stop-button {
+  flex: 0 0 auto;
+}
+
+.stage-command-layout {
+  --stage-side-card-height: min(640px, calc(100dvh - 182px));
+  grid-template-columns: minmax(300px, 390px) minmax(360px, 1fr) minmax(300px, 390px);
+  align-items: center;
+  gap: clamp(20px, 3.2vw, 44px);
+  padding: clamp(20px, 3vh, 34px) clamp(26px, 4vw, 66px) clamp(14px, 2vh, 24px);
+}
+
+.stage-command-panel,
+.stage-outcome-panel {
+  max-height: var(--stage-side-card-height);
+}
+
+.stage-command-panel {
+  max-width: 390px;
+  gap: 18px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.stage-command-panel > *,
+.stage-action-card > span,
+.stage-advanced-routes,
+.stage-advanced-routes summary {
+  min-width: 0;
+}
+
+.stage-command-layout.has-outcome .stage-command-panel {
+  max-width: 390px;
+}
+
+.stage-outcome-panel {
+  max-width: 390px;
+  min-width: 0;
+}
+
+.stage-continuity-panel {
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.stage-action-card {
+  box-sizing: border-box;
+  min-height: 72px;
+  align-items: start;
+  white-space: normal;
+}
+
+.stage-action-card strong,
+.stage-action-card small,
+.chat-action-button strong,
+.chat-action-button small {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.chat-action-button {
+  align-items: flex-start;
+  white-space: normal;
+}
+
+.chat-action-board {
+  grid-template-columns: repeat(auto-fit, minmax(156px, 1fr));
+}
+
+.button-row button,
+.visible-continuity-playback-button,
+.workflow-card button,
+.wiki-archive-history-item button {
+  max-width: 100%;
+}
+
+@media (max-width: 980px) {
+  .stage-command-layout {
+    --stage-side-card-height: min(600px, calc(100dvh - 176px));
+    grid-template-columns: minmax(280px, 360px) minmax(320px, 1fr);
+    grid-template-rows: auto auto;
+    gap: 16px 24px;
+    align-items: center;
+    padding-inline: clamp(18px, 3vw, 34px);
+  }
+
+  .stage-command-layout:not(.has-outcome) .stage-command-panel {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+    align-self: center;
+  }
+
+  .stage-command-layout.has-outcome .stage-command-panel {
+    grid-column: 1;
+    grid-row: 2;
+    max-width: none;
+  }
+
+  .stage-outcome-panel {
+    grid-column: 1;
+    grid-row: 1;
+    max-width: none;
+  }
+
+  .stage-live2d-zone {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    min-height: min(500px, calc(100dvh - 174px));
+  }
+
+  .stage-command-heading h1 {
+    font-size: 27px;
+  }
+}
+
+@media (max-width: 760px) {
+  .stage-command-shell {
+    overflow: auto !important;
+  }
+
+  .stage-topbar {
+    padding-inline: 14px !important;
+  }
+
+  .stage-command-layout,
+  .stage-command-layout.has-outcome {
+    min-height: auto;
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto;
+    align-content: start;
+    place-items: stretch;
+    gap: 12px;
+    padding: 12px 14px 10px;
+    overflow: visible;
+  }
+
+  .stage-outcome-panel {
+    grid-area: 1 / 1;
+    width: 100%;
+    max-height: none;
+  }
+
+  .stage-live2d-zone {
+    grid-area: 2 / 1;
+    height: auto;
+    min-height: clamp(260px, 42vh, 380px);
+  }
+
+  .stage-command-panel,
+  .stage-command-layout.has-outcome .stage-command-panel {
+    grid-area: 3 / 1;
+    width: 100%;
+    max-width: none;
+    max-height: none;
+    gap: 12px;
+    padding: 14px;
+  }
+
+  .stage-command-panel .stage-command-heading p,
+  .stage-command-panel .stage-action-card small {
+    display: block !important;
+  }
+
+  .stage-command-panel .stage-value-list {
+    display: flex !important;
+  }
+
+  .stage-command-heading h1 {
+    font-size: 22px;
+    line-height: 1.16;
+  }
+
+  .stage-action-grid,
+  .stage-advanced-routes .stage-action-grid.compact {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .stage-action-card,
+  .stage-advanced-routes .stage-action-card {
+    min-height: 62px;
+    grid-template-columns: 34px minmax(0, 1fr);
+    justify-items: stretch;
+    align-content: start;
+    gap: 10px;
+    padding: 10px;
+    text-align: left;
+  }
+
+  .stage-action-card svg,
+  .stage-advanced-routes .stage-action-card svg {
+    width: 34px;
+    height: 34px;
+    padding: 7px;
+  }
+
+  .stage-action-card strong,
+  .stage-advanced-routes .stage-action-card strong {
+    font-size: 13px;
+  }
+
+  .stage-action-card small,
+  .stage-advanced-routes .stage-action-card small {
+    display: block !important;
+    font-size: 11.5px;
+    line-height: 1.38;
+  }
+
+  .stage-chat-form {
+    width: min(100%, calc(100vw - 28px)) !important;
+    gap: 8px !important;
+    padding: 8px !important;
+  }
+
+  .stage-chat-input {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 460px) {
+  .stage-local-time {
+    display: none !important;
+  }
+
+  .stage-chat-form {
+    grid-template-columns: 1fr auto;
+  }
+}
+

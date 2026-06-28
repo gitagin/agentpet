@@ -1,3 +1,4 @@
+import type { Ref } from "react";
 import type { AgentAction, ChatMessage, ChatNegotiationAction, TaskItem } from "../../types";
 import { EmptyState } from "../../components/layout";
 import { ChatAgentActionSummary } from "./ChatAgentActionSummary";
@@ -13,6 +14,7 @@ type ChatMessageListProps = {
   onOpenMemory?: () => void;
   onOpenWiki?: (path?: string) => void;
   onOpenReport?: (path?: string) => void;
+  listRef?: Ref<HTMLDivElement>;
 };
 
 const NEGOTIATION_ACTION_LABELS: Record<ChatNegotiationAction, string> = {
@@ -44,11 +46,16 @@ export function ChatMessageList({
   onOpenMemory,
   onOpenWiki,
   onOpenReport,
+  listRef,
 }: ChatMessageListProps) {
   const visibleMessages = messages.filter((message) => message.role !== "system");
 
   return (
-    <div className="message-list" aria-label="助手对话记录">
+    <div
+      ref={listRef}
+      className={`message-list ${visibleMessages.length > 0 ? "has-messages" : "is-empty"}`}
+      aria-label="助手对话记录"
+    >
       {visibleMessages.length > 0 ? (
         visibleMessages.map((message) => {
           const showMeta = message.status === "failed" || message.status === "cancelled";
@@ -57,7 +64,9 @@ export function ChatMessageList({
           const hasContent = displayContent.trim().length > 0;
           const isPending = message.status === "partial" && !hasContent;
           return (
-            <article key={message.id} className={`message ${message.role}`}>
+            <article key={message.id} className={`message-row ${message.role}`}>
+              {message.role === "assistant" ? <span className="message-avatar" aria-hidden="true">AI</span> : null}
+              <div className={`message message-bubble ${message.role}`}>
               {showMeta ? (
                 <div className="message-meta">
                   <strong>{formatMessageRole(message.role)}</strong>
@@ -82,6 +91,8 @@ export function ChatMessageList({
                   {renderAssistantTrace(message)}
                 </>
               ) : null}
+              </div>
+              {message.role === "user" ? <span className="message-avatar" aria-hidden="true">ME</span> : null}
             </article>
           );
         })

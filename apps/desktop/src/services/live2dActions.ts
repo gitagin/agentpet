@@ -129,8 +129,8 @@ const defaultActionDirectives: Record<string, Required<Pick<Live2DActionDirectiv
   },
   continuity_remember: {
     expression: "2mic",
-    petHint: "我还记着未完话题，双击继续。",
-    controlSummary: "连续性轻提醒状态。",
+    petHint: "这个话题下次还能接着聊。",
+    controlSummary: "下次接着聊状态。",
   },
   emotion_comfort: {
     expression: "6i gi a ri",

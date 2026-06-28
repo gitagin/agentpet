@@ -47,6 +47,13 @@ function createElectronMock() {
     window.hide = vi.fn(() => {
       window.hidden = true;
     });
+    window.destroy = vi.fn(() => {
+      if (window.destroyed) {
+        return;
+      }
+      window.destroyed = true;
+      window.emit("closed");
+    });
     windows.push(window);
     return window;
   });
@@ -109,7 +116,7 @@ describe("createWindowManager stage window lifecycle", () => {
     Module._load = originalModuleLoad;
   });
 
-  it("hides and reuses the stage window when the user closes it", () => {
+  it("destroys and recreates the stage window when the user closes it", () => {
     const electron = createElectronMock();
     const { createWindowManager } = loadWindowsWithMocks({ electron });
     const state = { isQuitting: false };
@@ -120,12 +127,13 @@ describe("createWindowManager stage window lifecycle", () => {
     stageWindow.emit("close", closeEvent);
 
     expect(closeEvent.preventDefault).toHaveBeenCalledOnce();
-    expect(stageWindow.hide).toHaveBeenCalledOnce();
+    expect(stageWindow.hide).not.toHaveBeenCalled();
+    expect(stageWindow.destroy).toHaveBeenCalledOnce();
 
     const reopenedWindow = manager.createStageWindow();
 
-    expect(reopenedWindow).toBe(stageWindow);
-    expect(electron.BrowserWindow).toHaveBeenCalledOnce();
+    expect(reopenedWindow).not.toBe(stageWindow);
+    expect(electron.BrowserWindow).toHaveBeenCalledTimes(2);
   });
 
   it("lets the stage window close during app shutdown", () => {
@@ -140,6 +148,7 @@ describe("createWindowManager stage window lifecycle", () => {
 
     expect(closeEvent.preventDefault).not.toHaveBeenCalled();
     expect(stageWindow.hide).not.toHaveBeenCalled();
+    expect(stageWindow.destroy).not.toHaveBeenCalled();
 
     stageWindow.emit("closed");
     const recreatedWindow = manager.createStageWindow();
@@ -163,6 +172,61 @@ describe("createWindowManager stage window lifecycle", () => {
     expect(electron.BrowserWindow).toHaveBeenCalledOnce();
   });
 
+  it("destroys the pet window before showing the stage window", () => {
+    const electron = createElectronMock();
+    const { createWindowManager } = loadWindowsWithMocks({ electron });
+    const state = { isQuitting: false };
+    const manager = createManager(createWindowManager, state);
+
+    const petWindow = manager.createPetWindow();
+
+    manager.showStageWindow();
+
+    const stageWindow = manager.getStageWindow();
+    expect(stageWindow).toBeTruthy();
+    expect(manager.getPetWindow()).toBeNull();
+    expect(petWindow.destroy).toHaveBeenCalledOnce();
+    expect(electron.BrowserWindow).toHaveBeenCalledTimes(2);
+  });
+
+  it("destroys the stage window before showing the pet window", () => {
+    const electron = createElectronMock();
+    const { createWindowManager } = loadWindowsWithMocks({ electron });
+    const state = { isQuitting: false };
+    const manager = createManager(createWindowManager, state);
+
+    const stageWindow = manager.createStageWindow();
+
+    const petWindow = manager.createPetWindow();
+
+    expect(petWindow).toBeTruthy();
+    expect(manager.getStageWindow()).toBeNull();
+    expect(stageWindow.destroy).toHaveBeenCalledOnce();
+    expect(electron.BrowserWindow).toHaveBeenCalledTimes(2);
+  });
+
+  it("restores the pet window when a stage window that replaced it is closed", () => {
+    const electron = createElectronMock();
+    const { createWindowManager } = loadWindowsWithMocks({ electron });
+    const state = { isQuitting: false };
+    const manager = createManager(createWindowManager, state);
+
+    const originalPetWindow = manager.createPetWindow();
+    manager.showStageWindow();
+    const stageWindow = manager.getStageWindow();
+
+    expect(manager.getPetWindow()).toBeNull();
+    expect(originalPetWindow.destroy).toHaveBeenCalledOnce();
+
+    stageWindow.emit("close", { preventDefault: vi.fn() });
+
+    const restoredPetWindow = manager.getPetWindow();
+    expect(manager.getStageWindow()).toBeNull();
+    expect(restoredPetWindow).toBeTruthy();
+    expect(restoredPetWindow).not.toBe(originalPetWindow);
+    expect(electron.BrowserWindow).toHaveBeenCalledTimes(3);
+  });
+
   it("reuses the stage window for pet context menu shortcuts", () => {
     const electron = createElectronMock();
     const { createWindowManager } = loadWindowsWithMocks({ electron });
@@ -180,6 +244,7 @@ describe("createWindowManager stage window lifecycle", () => {
 
     openShortcut("打开聊天窗口");
     openShortcut("打开任务工作台");
+    openShortcut("打开成长记录");
     openShortcut("打开设置");
 
     const stageWindow = manager.getStageWindow();
@@ -189,7 +254,21 @@ describe("createWindowManager stage window lifecycle", () => {
     expect(electron.BrowserWindow).toHaveBeenCalledTimes(2);
     expect(stageWindow.webContents.send).toHaveBeenCalledWith("agent-pet:show-stage-route", "chat");
     expect(stageWindow.webContents.send).toHaveBeenCalledWith("agent-pet:show-stage-route", "agent");
+    expect(stageWindow.webContents.send).toHaveBeenCalledWith("agent-pet:show-stage-route", "growth");
     expect(stageWindow.webContents.send).toHaveBeenCalledWith("agent-pet:show-stage-route", "settings");
+  });
+
+  it("keeps the transparent pet window renderer active while dragging", () => {
+    const electron = createElectronMock();
+    const { createWindowManager } = loadWindowsWithMocks({ electron });
+    const state = { isQuitting: false };
+    const manager = createManager(createWindowManager, state);
+
+    const petWindow = manager.createPetWindow();
+
+    expect(petWindow.options.transparent).toBe(true);
+    expect(petWindow.options.backgroundColor).toBe("#00000000");
+    expect(petWindow.options.webPreferences.backgroundThrottling).toBe(false);
   });
 
   it("backs off pet mouse hit testing after the startup capture grace period", async () => {

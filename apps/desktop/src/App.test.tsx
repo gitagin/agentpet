@@ -156,7 +156,7 @@ const sidecarStatus: DesktopSidecarStatus = {
   managed: true,
   pid: 1234,
   updatedAt: "2026-05-24T00:00:00.000Z",
-  health: { status: "ok", version: "0.2.0", database: "ok" },
+  health: { status: "ok", version: "0.0.1-alpha", database: "ok" },
   error: null,
 };
 
@@ -182,7 +182,10 @@ const api = {
   listAgentActions: vi.fn().mockResolvedValue({ actions: [] }),
   getContinuityState: vi.fn().mockResolvedValue({ items: [] }),
   listContinuityProposals: vi.fn().mockResolvedValue({ proposals: [] }),
+  confirmContinuityProposal: vi.fn().mockResolvedValue({ proposal_id: "continuity-1", status: "confirmed" }),
+  rejectContinuityProposal: vi.fn().mockResolvedValue({ proposal_id: "continuity-1", status: "rejected" }),
   getVisibleContinuitySnapshot: vi.fn(),
+  triggerHabitLoop: vi.fn().mockResolvedValue({ should_trigger: false, candidate: null }),
   revertAgentAction: vi.fn(),
   exportDiagnostics: vi.fn(),
   resetLocalState: vi.fn(),
@@ -219,24 +222,89 @@ vi.mock("./features/settings/useSettings", () => ({
     agentModelTestResults: {},
     applyDiagnosticsStatus: vi.fn(),
     applySettingsStatus: vi.fn(),
+    automationSettingsDraft: {
+      auto_chat_diary: false,
+      auto_structured_memory: false,
+      auto_long_term_memory: false,
+      auto_wiki_organize: false,
+      local_privacy_mode: false,
+      proactive_trigger_frequency: "low",
+      use_negotiation: true,
+      max_rounds: 5,
+      high_risk_confirmation_required: true,
+      updated_at: null,
+    },
+    automationSettingsSaveStatus: "idle",
     bindVault: vi.fn(),
+    clearTtsCache: vi.fn(),
+    globalModelDraft: {
+      provider: "openai-compatible",
+      base_url: "",
+      model: "",
+      api_key: "",
+      saved_provider: "openai-compatible",
+      saved_base_url: "",
+      saved_model: "",
+      configured: false,
+    },
+    globalModelSaveStatus: "idle",
+    globalModelTestResult: undefined,
+    globalModelTestStatus: "idle",
     indexingVault: false,
     lastIndexRun: null,
     loadingSettingsStatus: false,
     loadSettingsStatus: vi.fn().mockResolvedValue(null),
     loadVaultStatus: vi.fn().mockResolvedValue(null),
+    negotiationSettingsDraft: {
+      use_negotiation: true,
+      max_rounds: 5,
+    },
+    negotiationSettingsSaveStatus: "idle",
     rebuildIndex: vi.fn(),
     resetSettingsState: vi.fn(),
     saveAgentModel: vi.fn(),
+    saveAutomationSettings: vi.fn(),
+    saveGlobalModel: vi.fn(),
+    saveNegotiationSettings: vi.fn(),
+    saveTtsSettings: vi.fn(),
     savingAgentModelIds: new Set(),
     selectVaultDirectory: vi.fn(),
     setLastIndexRun: vi.fn(),
     setVaultPath: vi.fn(),
+    settingsStatus: null,
     testAgentModelConnection: vi.fn(),
+    testGlobalModelConnection: vi.fn(),
     testingAgentModelIds: new Set(),
+    ttsSettingsDraft: {
+      enabled: false,
+      auto_play_assistant_reply: false,
+      auto_play_reminders: false,
+      provider: "system",
+      base_url: null,
+      model: null,
+      voice: null,
+      speed: 1,
+      volume: 1,
+      response_format: "mp3",
+      requires_api_key: false,
+      api_style: "generic",
+      auth_header_name: null,
+      request_template: null,
+      audio_json_path: null,
+      audio_encoding: "base64",
+      mime_type: null,
+      cache_enabled: false,
+      night_quiet_mode: true,
+    },
+    ttsSettingsSaveStatus: "idle",
     updateAgentModelDraft: vi.fn(),
+    updateAutomationSettingsDraft: vi.fn(),
+    updateGlobalModelDraft: vi.fn(),
+    updateNegotiationSettingsDraft: vi.fn(),
+    updateTtsSettingsDraft: vi.fn(),
     vaultId: null,
     vaultPath: "",
+    vaultStatus: null,
   }),
 }));
 
@@ -464,22 +532,86 @@ describe("App", () => {
     expect(screen.queryByText("高级管理与诊断")).not.toBeInTheDocument();
   });
 
-  it("keeps the legacy control dashboard reachable from #control", async () => {
+  it("keeps the control dashboard companion-first while preserving support tools", async () => {
     window.location.hash = "#control";
 
     render(<App />);
 
-    expect(await screen.findByRole("heading", { name: "我帮你整理好最近的事" })).toBeInTheDocument();
-    expect(screen.getByLabelText("mock visible continuity panel")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "先和我说一句话" })).toBeInTheDocument();
+    expect(screen.getByLabelText("桌宠陪伴区")).toBeInTheDocument();
     expect(screen.getByText("今天要跟进的事")).toBeInTheDocument();
-    expect(screen.getByText("直接告诉我接下来要做什么")).toBeInTheDocument();
-    expect(document.getElementById("visible-continuity-panel")?.compareDocumentPosition(document.getElementById("agent-workspace-panel")!)).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING,
-    );
+    expect(screen.getByText("直接告诉我现在发生了什么")).toBeInTheDocument();
+    expect(screen.getByLabelText("聊天和最近整理")).toBeInTheDocument();
+    expect(screen.getByLabelText("最近自动整理活动")).toBeInTheDocument();
+    expect(screen.queryByLabelText("mock visible continuity panel")).not.toBeInTheDocument();
+    expect(screen.getByText("今天要跟进的事")).toBeInTheDocument();
     expect(screen.getByLabelText("mock panel stage")).toBeInTheDocument();
+    expect(screen.queryByLabelText("mock task panel")).not.toBeInTheDocument();
+    const supportNavigation = document.querySelector(".control-support-nav");
+    expect(supportNavigation).toBeInTheDocument();
+    expect(supportNavigation).not.toHaveAttribute("open");
+
+    fireEvent.click(supportNavigation!.querySelector("summary")!);
+    expect(await screen.findByLabelText("mock task panel")).toBeInTheDocument();
+    expect(await screen.findByLabelText("mock visible continuity panel")).toBeInTheDocument();
+
     expect(screen.getByText("高级管理与诊断")).toBeInTheDocument();
-    const secondaryNavigation = screen.getByLabelText("mock connection panel").closest("details");
+    const secondaryNavigation = document.querySelector(".control-secondary-nav");
+    expect(secondaryNavigation).toBeInTheDocument();
     expect(secondaryNavigation).not.toHaveAttribute("open");
+    expect(screen.queryByLabelText("mock connection panel")).not.toBeInTheDocument();
+
+    fireEvent.click(secondaryNavigation!.querySelector("summary")!);
+    expect(await screen.findByLabelText("mock connection panel")).toBeInTheDocument();
+  });
+
+  it("presents open-thread continuity as a clear next-time chat decision", async () => {
+    window.location.hash = "#control";
+    api.getContinuityState.mockResolvedValueOnce({
+      items: [
+        {
+          state_key: "unresolved_threads",
+          value: "继续聊水果偏好",
+          confidence: 0.8,
+          updated_at: "2026-05-24T00:00:00.000Z",
+        },
+      ],
+      unresolved_threads: "继续聊水果偏好",
+    });
+    api.listContinuityProposals.mockResolvedValueOnce({
+      proposals: [
+        {
+          proposal_id: "continuity-1",
+          kind: "open_thread",
+          summary: "之前聊到苹果但还没确认喜好。",
+          evidence: "用户提到喜欢水果，后续没有收尾。",
+          confidence: 0.72,
+          source_conversation_id: "conversation-1",
+          source_message_id: "message-1",
+          agent_run_id: "run-1",
+          status: "pending",
+          rejected_reason: null,
+          created_at: "2026-05-24T00:00:00.000Z",
+          updated_at: "2026-05-24T00:00:00.000Z",
+        },
+      ],
+    });
+
+    render(<App />);
+
+    expect((await screen.findAllByText("下次接着聊")).length).toBeGreaterThan(0);
+    expect(screen.getByText("要让我下次记得继续这个话题吗？之前聊到苹果但还没确认喜好。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /记住下次聊/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /不用记/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /去确认/ })).toBeInTheDocument();
+    expect(screen.getByText("下次可接着聊")).toBeInTheDocument();
+    expect(screen.getByText("继续聊水果偏好")).toBeInTheDocument();
+    expect(screen.queryByText(/连续性确认/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /记住下次聊/ }));
+
+    await waitFor(() => expect(api.confirmContinuityProposal).toHaveBeenCalledWith("continuity-1"));
+    expect(await screen.findByText(/已记住，下次可以自然接着聊/)).toBeInTheDocument();
   });
 
   it("starts the first-use onboarding as a normal chat and persists completion", async () => {
@@ -657,8 +789,8 @@ describe("App", () => {
     expect(shortcutBar).toHaveAttribute("aria-hidden", "true");
     expect(shortcutBar).toHaveAttribute("data-shortcut-motion", "idle");
     expect(shortcutBar).not.toHaveClass("is-visible");
-    expect(await screen.findByLabelText("桌宠入口提示")).toHaveTextContent("右键我打开功能");
-    expect(screen.getByLabelText("打开首页")).toHaveAttribute("tabindex", "-1");
+    expect(await screen.findByLabelText("桌宠入口提示")).toHaveTextContent("右键我快速行动");
+    expect(screen.getByLabelText("继续聊")).toHaveAttribute("tabindex", "-1");
 
     const finishShortcutAnimation = (animationName: string) => {
       const event = new Event("animationend", { bubbles: true });
@@ -672,7 +804,7 @@ describe("App", () => {
     expect(shortcutBar).toHaveAttribute("data-shortcut-motion", "opening");
     expect(shortcutBar).toHaveClass("is-visible");
     expect(screen.queryByLabelText("桌宠入口提示")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("打开首页")).toHaveAttribute("tabindex", "0");
+    expect(screen.getByLabelText("继续聊")).toHaveAttribute("tabindex", "0");
     expect(window.agentDesktop.setPetShortcutBarVisible).toHaveBeenLastCalledWith(true);
     expect(window.agentDesktop.setUiState).toHaveBeenCalledWith("agent-pet.pet-entry-hint", "completed:v1");
 
@@ -685,34 +817,55 @@ describe("App", () => {
     expect(shortcutBar).toHaveAttribute("data-shortcut-motion", "closing");
     expect(shortcutBar).not.toHaveClass("is-visible");
     expect(screen.queryByLabelText("桌宠入口提示")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("打开首页")).toHaveAttribute("tabindex", "-1");
+    expect(screen.getByLabelText("继续聊")).toHaveAttribute("tabindex", "-1");
     expect(window.agentDesktop.setPetShortcutBarVisible).toHaveBeenLastCalledWith(false);
 
     finishShortcutAnimation("pet-shortcut-roll-in");
     expect(shortcutBar).toHaveAttribute("data-shortcut-motion", "idle");
 
     fireEvent.contextMenu(petStage);
-    fireEvent.click(screen.getByLabelText("打开首页"));
+    fireEvent.click(screen.getByLabelText("继续聊"));
     fireEvent.contextMenu(petStage);
-    fireEvent.click(screen.getByLabelText("打开任务工作台"));
+    fireEvent.click(screen.getByLabelText("记一条"));
     fireEvent.contextMenu(petStage);
-    fireEvent.click(screen.getByLabelText("打开知识库窗口"));
+    fireEvent.click(screen.getByLabelText("建提醒"));
     fireEvent.contextMenu(petStage);
-    fireEvent.click(screen.getByLabelText("打开设置窗口"));
+    fireEvent.click(screen.getByLabelText("打开记忆"));
     fireEvent.contextMenu(petStage);
-    fireEvent.click(screen.getByLabelText("退出应用"));
+    fireEvent.click(screen.getByLabelText("打开设置"));
 
-    expect(window.agentDesktop.openStage).toHaveBeenNthCalledWith(1, "stage");
-    expect(window.agentDesktop.openStage).toHaveBeenNthCalledWith(2, "agent");
-    expect(window.agentDesktop.openStage).toHaveBeenNthCalledWith(3, "world");
-    expect(window.agentDesktop.openStage).toHaveBeenNthCalledWith(4, "settings");
+    expect(window.agentDesktop.openStage).toHaveBeenNthCalledWith(1, "memory");
+    expect(window.agentDesktop.openStage).toHaveBeenNthCalledWith(2, "settings");
     expect(window.agentDesktop.openAgent).not.toHaveBeenCalled();
     expect(window.agentDesktop.openFeatureWindow).not.toHaveBeenCalled();
-    expect(window.agentDesktop.quitApp).toHaveBeenCalledTimes(1);
+    expect(window.agentDesktop.quitApp).not.toHaveBeenCalled();
 
-    expect(mockPetShowInput).not.toHaveBeenCalled();
+    expect(mockPetShowInput).toHaveBeenCalledTimes(3);
     expect(shortcutBar).toHaveAttribute("aria-hidden", "true");
     expect(shortcutBar).not.toHaveClass("is-visible");
+  });
+
+  it("offers pause speech from the pet shortcut menu while TTS is active", async () => {
+    mockTtsQueueStatus.current = "playing";
+    window.location.hash = "#pet";
+    window.agentDesktop = {
+      platform: "win32",
+      versions: {},
+      openStage: vi.fn().mockResolvedValue(undefined),
+      getUiState: vi.fn().mockReturnValue("completed:v1"),
+      setUiState: vi.fn(),
+      setPetShortcutBarVisible: vi.fn().mockResolvedValue({ enabled: false, reason: "test", changed: false }),
+      onPetDragCancelled: vi.fn().mockReturnValue(() => undefined),
+    };
+
+    render(<App />);
+
+    fireEvent.contextMenu(await screen.findByLabelText("mock pet stage"));
+    fireEvent.click(screen.getByLabelText("暂停朗读"));
+
+    expect(mockTtsStop).toHaveBeenCalledWith("pet_shortcut_stop_tts");
+    expect(screen.getByLabelText("桌宠快捷操作")).toHaveAttribute("aria-hidden", "true");
+    expect(window.agentDesktop.openStage).not.toHaveBeenCalled();
   });
 
   it("opens the stage window instead of the inline input when double-clicking the pet", async () => {
@@ -796,17 +949,7 @@ describe("App", () => {
       } as unknown as PointerEvent<HTMLElement>);
     });
     expect(window.agentDesktop.beginPetWindowDrag).toHaveBeenCalledTimes(1);
-    expect(petShell).not.toHaveClass("pet-dragging");
-
-    act(() => {
-      petInteractions?.onPointerMove?.({
-        pointerId: 7,
-        screenX: 109,
-        screenY: 100,
-      } as unknown as PointerEvent<HTMLElement>);
-    });
-
-    expect(window.agentDesktop.activatePetWindowDrag).toHaveBeenCalledTimes(1);
+    expect(window.agentDesktop.activatePetWindowDrag).not.toHaveBeenCalled();
     expect(petShell).toHaveClass("pet-dragging");
     expect(petShell).toHaveClass("pet-drag-snapshot-ready");
     const snapshot = document.querySelector(".pet-drag-frame-cache");
@@ -819,6 +962,18 @@ describe("App", () => {
     });
 
     act(() => {
+      petInteractions?.onPointerMove?.({
+        pointerId: 7,
+        screenX: 109,
+        screenY: 100,
+      } as unknown as PointerEvent<HTMLElement>);
+    });
+
+    expect(window.agentDesktop.activatePetWindowDrag).toHaveBeenCalledTimes(1);
+    expect(petShell).toHaveClass("pet-dragging");
+    expect(petShell).toHaveClass("pet-drag-snapshot-ready");
+
+    act(() => {
       petInteractions?.onPointerUp?.({
         pointerId: 7,
         currentTarget: pointerTarget,
@@ -827,6 +982,7 @@ describe("App", () => {
 
     expect(window.agentDesktop.endPetWindowDrag).toHaveBeenCalled();
     expect(petShell).not.toHaveClass("pet-dragging");
+    expect(document.querySelector(".pet-drag-frame-cache")).not.toBeInTheDocument();
   });
 
   it("uses the desktop bridge window mode when available", async () => {

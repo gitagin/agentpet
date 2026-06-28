@@ -60,6 +60,8 @@ function createProxyManager({ baseUrl, sessionToken }) {
       { methods: ["GET"], pattern: /^\/api\/chat\/runs\/[^/]+\/events$/ },
       { methods: ["GET"], pattern: /^\/api\/agent\/actions$/ },
       { methods: ["POST"], pattern: /^\/api\/agent\/actions\/[^/]+\/revert$/ },
+      { methods: ["GET"], pattern: /^\/api\/growth\/snapshot$/ },
+      { methods: ["POST"], pattern: /^\/api\/habit-loop\/trigger$/ },
       { methods: ["POST"], pattern: /^\/api\/memory\/search$/ },
       { methods: ["GET"], pattern: /^\/api\/memory\/local-assets$/ },
       { methods: ["GET", "POST"], pattern: /^\/api\/memory\/proposals$/ },

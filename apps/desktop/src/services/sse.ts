@@ -27,7 +27,6 @@ export async function fetchSseStream(
     method: "GET",
     headers: {
       Accept: "text/event-stream",
-      Authorization: "Bearer dev-token",
     },
     signal,
   });

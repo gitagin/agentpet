@@ -4,6 +4,9 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 pytest-of-*/
+.coverage
+.coverage.*
+*.egg-info/
 .venv/
 venv/
 
@@ -17,6 +20,9 @@ release/
 *.db
 *.sqlite
 *.sqlite3
+*.dpapi
+*.credentials/
+**/*.credentials/
 logs/
 
 # 临时文件和测试产物

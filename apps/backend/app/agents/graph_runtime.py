@@ -58,6 +58,11 @@ class LangGraphAgentRuntime:
         self.graph = self._build_graph()
 
     async def run(self, state: AgentState):
+        if state.local_privacy_mode and state.local_privacy_sensitive_reason:
+            async for event in self._run_local_privacy_mode(state):
+                yield event
+            return
+
         streaming_graph_state = await self._prepare_streaming_chat_fast_path(state)
         if streaming_graph_state is not None:
             async for event in self._run_streaming_chat_fast_path(streaming_graph_state):
@@ -76,6 +81,45 @@ class LangGraphAgentRuntime:
                 for event in events[yielded:]:
                     yield event
                 yielded = len(events)
+
+    async def _run_local_privacy_mode(self, state: AgentState) -> AsyncIterator[Any]:
+        state.status = AgentRunStatus.RUNNING
+        state.route = AgentRoute(
+            intent=AgentIntent.CHAT,
+            confidence=1.0,
+            reason="local_privacy_mode_sensitive_input",
+        )
+        yield AgentStatusEvent(
+            agent_run_id=state.agent_run_id,
+            status=state.status,
+            intent=AgentIntent.CHAT,
+            message="已启用本地隐私模式；这条敏感内容只做本机关键词检索，不发送到模型 API。",
+            stage="local_privacy_guard",
+        )
+
+        match_count = 0
+        if self.services.retrieval is not None:
+            try:
+                search_response = await self.services.retrieval.search(
+                    query=state.user_message,
+                    top_k=5,
+                    mode="fts",
+                    source_scope="all",
+                )
+            except Exception:
+                match_count = 0
+            else:
+                match_count = len(search_response.results)
+
+        response = _local_privacy_response(match_count, state.local_privacy_sensitive_reason)
+        state.response_text = response
+        state.status = AgentRunStatus.SUCCESS
+        yield AgentTokenEvent(agent_run_id=state.agent_run_id, text=response)
+        yield AgentDoneEvent(
+            agent_run_id=state.agent_run_id,
+            intent=AgentIntent.CHAT,
+            text=response,
+        )
 
     async def _prepare_streaming_chat_fast_path(self, state: AgentState) -> dict[str, Any] | None:
         try:
@@ -676,4 +720,35 @@ def _has_empty_search_result(results: list[AgentToolResult]) -> bool:
         and not result.value.results
         for result in results
     )
+
+
+def _local_privacy_response(match_count: int, reason: str | None) -> str:
+    reason_text = _local_privacy_reason_label(reason)
+    if match_count > 0:
+        return (
+            f"本地隐私模式已接管这条消息（命中：{reason_text}）。"
+            f"我没有把原文发送到模型 API，只在本机记忆里做了关键词检索，找到 {match_count} 条可能相关的记录。"
+            "为了避免复述敏感细节，我先不展开内容；你可以到记忆页查看、撤回或继续用更概括的说法和我聊。"
+        )
+    return (
+        f"本地隐私模式已接管这条消息（命中：{reason_text}）。"
+        "我没有把原文发送到模型 API，只在本机记忆里做了关键词检索，暂时没有找到可引用的本机记录。"
+        "你可以改用不含敏感细节的概括说法继续聊。"
+    )
+
+
+def _local_privacy_reason_label(reason: str | None) -> str:
+    labels = {
+        "api_key": "疑似 API Key",
+        "bearer_token": "疑似 Bearer token",
+        "password_assignment": "疑似密码或密钥字段",
+        "private_key": "疑似私钥",
+        "credential": "疑似凭据",
+        "identity": "身份信息",
+        "contact": "联系信息",
+        "health": "健康信息",
+        "financial": "财务信息",
+        "crisis": "危机内容",
+    }
+    return labels.get(reason or "", "敏感内容")
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -12,6 +12,18 @@ from app.config import (
 )
 
 from .enums import AgentId
+
+
+ProactiveTriggerFrequency = Literal["off", "low", "normal", "high"]
+PROACTIVE_TRIGGER_FREQUENCY_VALUES = {"off", "low", "normal", "high"}
+DEFAULT_PROACTIVE_TRIGGER_FREQUENCY: ProactiveTriggerFrequency = "low"
+
+
+def normalize_proactive_trigger_frequency(value: object) -> ProactiveTriggerFrequency:
+    normalized = str(value or "").strip().lower()
+    if normalized in PROACTIVE_TRIGGER_FREQUENCY_VALUES:
+        return normalized  # type: ignore[return-value]
+    return DEFAULT_PROACTIVE_TRIGGER_FREQUENCY
 
 
 class ModelKeyRequest(BaseModel):
@@ -141,6 +153,8 @@ class AutomationSettingsRequest(BaseModel):
     auto_structured_memory: bool = False
     auto_long_term_memory: bool = False
     auto_wiki_organize: bool = False
+    local_privacy_mode: bool = False
+    proactive_trigger_frequency: ProactiveTriggerFrequency = DEFAULT_PROACTIVE_TRIGGER_FREQUENCY
     use_negotiation: bool = False
     max_rounds: int = Field(default=5, ge=2, le=10)
 

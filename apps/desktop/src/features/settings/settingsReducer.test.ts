@@ -37,6 +37,8 @@ function settingsStatus(overrides: Partial<SettingsStatusResponse> = {}): Settin
       auto_structured_memory: false,
       auto_long_term_memory: false,
       auto_wiki_organize: false,
+      local_privacy_mode: false,
+      proactive_trigger_frequency: "low",
       use_negotiation: true,
       max_rounds: 5,
       high_risk_confirmation_required: true,

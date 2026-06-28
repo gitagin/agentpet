@@ -1,6 +1,6 @@
 [project]
 name = "agent-pet-backend"
-version = "0.2.0"
+version = "0.0.1a0"
 description = "FastAPI sidecar for Agent Pet"
 requires-python = ">=3.10"
 dependencies = [

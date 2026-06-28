@@ -39,9 +39,10 @@ Agent Pet 是本地优先的 Windows 桌面 AI 伴随应用，使用 Obsidian/Ma
 4. `docs/mvp-acceptance-coverage.md` — 高（人工） — 记录 `Covered` / `Partial` / `Gap` 边界；与测试结果冲突时以测试为准
 5. `docs/runbook.md`、`docs/v0.1-validation.md` — 中高 — 记录 Windows 试运行命令、环境变量和受限环境坑
 6. `progress.md` — 中 — coordinator 进度日志可能落后于代码，使用前要核对当前实现与校验输出
-7. `Development_Documentation.md` — 中低 — 原始工程规格存在中文 mojibake 和历史阶段内容
-8. `README.md` — 中低 — 只给出项目定位和模块摘要
-9. 当任何文档与当前代码冲突时，以代码为准
+7. `docs/current-specification.md` — 中高 — 当前唯一生效的产品与工程规格入口
+8. `docs/archive/Development_Documentation.md` — 低 — 原始工程规格已归档，存在历史阶段内容，仅作背景参考
+9. `README.md` — 中低 — 只给出项目定位和模块摘要
+10. 当任何文档与当前代码冲突时，以代码为准
 
 ## 工作环境
 
@@ -63,7 +64,7 @@ Agent Pet 是本地优先的 Windows 桌面 AI 伴随应用，使用 Obsidian/Ma
 
 - 当前 checkout 的 Git 可用性以当前工作区检查结果为准 （原因：状态判断要依赖文件检查、测试、进度日志，不能只依赖 Git 历史）
 - PowerShell 可能出现 `[Console]::OutputEncoding` / ConstrainedLanguage 警告 （原因：该运行环境限制控制台编码设置，命令退出码和实际输出才是判断依据）
-- `Development_Documentation.md` 存在中文 mojibake （原因：补丁要锚定 ASCII 或当前可读片段，避免破坏周边内容）
+- `docs/archive/Development_Documentation.md` 是归档旧规格 （原因：不要再把它当作当前实现依据；如需补丁，锚定 ASCII 或当前可读片段，避免破坏周边内容）
 - `npm run build` 在 Codex sandbox 里可能报 Vite/esbuild `spawn EPERM` （原因：受限环境阻止子进程生成，不等同于源码错误，普通 Windows PowerShell 复跑确认）
 - `progress.md` 可能滞后于代码 （原因：实现文件和测试会先变化，进度日志只由 coordinator 追加）
 

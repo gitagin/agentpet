@@ -172,7 +172,7 @@ describe("VisibleContinuityPanel", () => {
 
     expect(screen.getByText("Continue from the latest local context")).toBeInTheDocument();
     expect(screen.getByText("已保存周摘要")).toBeInTheDocument();
-    expect(screen.getByText("可在这里撤销。")).toBeInTheDocument();
+    expect(screen.getByText("可在这里撤回。")).toBeInTheDocument();
     expect(screen.getByText("Wiki/Companion/Summaries/week.md")).toBeInTheDocument();
     expect(screen.getByText("已跳过敏感记忆")).toBeInTheDocument();
     expect(screen.getByText("仅支持手动确认路径。")).toBeInTheDocument();
@@ -253,13 +253,13 @@ describe("VisibleContinuityPanel", () => {
 
     render(<VisibleContinuityPanel api={api} />);
 
-    await waitFor(() => expect(screen.getByRole("button", { name: "撤销" })).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: "撤销" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "撤回" })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "撤回" }));
 
     await waitFor(() => expect(api.revertAgentAction).toHaveBeenCalledWith("action-1"));
-    await waitFor(() => expect(screen.getByText("已撤销记录：已保存周摘要。")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("已撤回记录：已保存周摘要。")).toBeInTheDocument());
     expect(api.getVisibleContinuitySnapshot).toHaveBeenCalledTimes(2);
-    expect(screen.getByText("已撤销。")).toBeInTheDocument();
+    expect(screen.getByText("已撤回。")).toBeInTheDocument();
   });
 
   it("keeps high-risk pending receipts on the confirmation path instead of offering undo", () => {
@@ -274,7 +274,7 @@ describe("VisibleContinuityPanel", () => {
 
     render(<VisibleContinuityPanel snapshot={snapshot} />);
 
-    expect(screen.queryByRole("button", { name: "撤销" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "撤回" })).not.toBeInTheDocument();
     expect(screen.getByText("仅支持手动确认路径。")).toBeInTheDocument();
     expect(screen.getByText("这条高风险整理项仍需要在记忆活动队列中确认。")).toBeInTheDocument();
   });

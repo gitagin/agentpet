@@ -186,10 +186,10 @@ function ArtifactResultCard({
             className="secondary"
             onClick={() => onRevertAgentAction(artifact.action!)}
             disabled={reverting}
-            title={`撤销 ${artifact.title}`}
+            title={`撤回 ${artifact.title}`}
           >
             {reverting ? <Loader2 className="spin" size={16} /> : <RotateCcw size={16} />}
-            撤销
+            撤回
           </button>
         ) : null}
       </div>

@@ -1,0 +1,300 @@
+.visible-continuity-panel {
+  border-color: rgba(70, 135, 134, 0.18);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(246, 252, 250, 0.68)),
+    rgba(255, 255, 255, 0.48);
+}
+
+.visible-continuity-shell,
+.visible-continuity-content,
+.visible-continuity-section,
+.visible-continuity-receipt-list,
+.visible-continuity-project-list {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.visible-continuity-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.visible-continuity-header strong,
+.visible-continuity-section-head h3,
+.visible-continuity-item-head strong,
+.visible-continuity-section p,
+.visible-continuity-list span,
+.visible-continuity-path,
+.visible-continuity-next-step span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.visible-continuity-kicker,
+.visible-continuity-eyebrow {
+  margin: 0;
+  color: #5f7272;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.visible-continuity-header strong {
+  display: block;
+  margin-top: 2px;
+  color: #263238;
+  font-size: 15px;
+}
+
+.visible-continuity-refresh {
+  flex: 0 0 auto;
+}
+
+.visible-continuity-section {
+  border: 1px solid rgba(112, 132, 143, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.58);
+  padding: 12px;
+}
+
+.visible-continuity-today {
+  border-color: rgba(70, 135, 134, 0.22);
+  background: rgba(247, 253, 250, 0.78);
+}
+
+.visible-continuity-section-head {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.visible-continuity-section-head.compact {
+  margin-bottom: 2px;
+}
+
+.visible-continuity-section-head svg {
+  width: 30px;
+  height: 30px;
+  padding: 6px;
+  border-radius: 8px;
+  background: rgba(70, 135, 134, 0.12);
+  color: #2f7675;
+  box-sizing: border-box;
+}
+
+.visible-continuity-section-head h3 {
+  margin: 0;
+  color: #203035;
+  font-size: 15px;
+}
+
+.visible-continuity-section-head p,
+.visible-continuity-section > p,
+.visible-continuity-receipt p,
+.visible-continuity-project p {
+  margin: 3px 0 0;
+  color: #53666b;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.visible-continuity-today-grid,
+.visible-continuity-playback-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.visible-continuity-list,
+.visible-continuity-playback-column ul,
+.visible-continuity-blockers {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.visible-continuity-list li {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 6px;
+  align-items: start;
+  color: #324a50;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.visible-continuity-list svg {
+  margin-top: 1px;
+  color: var(--success);
+}
+
+.visible-continuity-prompt-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  margin-top: 10px;
+  min-width: 0;
+}
+
+.visible-continuity-prompt-button {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: start;
+  justify-content: start;
+  width: 100%;
+  max-width: none;
+  gap: 6px;
+  min-height: 0;
+  border-radius: 8px;
+  padding: 9px 10px;
+  text-align: left;
+  line-height: 1.45;
+  white-space: normal;
+}
+
+.visible-continuity-prompt-button svg {
+  margin-top: 2px;
+  flex: 0 0 auto;
+}
+
+.visible-continuity-prompt-button span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.visible-continuity-muted {
+  margin: 8px 0 0;
+  color: #66777b;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.visible-continuity-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+  color: #66777b;
+  font-size: 11px;
+}
+
+.visible-continuity-meta span,
+.visible-continuity-meta time,
+.visible-continuity-badges span,
+.visible-continuity-item-head span {
+  border-radius: 999px;
+  background: rgba(70, 135, 134, 0.1);
+  padding: 4px 7px;
+  line-height: 1.2;
+}
+
+.visible-continuity-receipt,
+.visible-continuity-project {
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(112, 132, 143, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.64);
+  padding: 10px;
+}
+
+.visible-continuity-item-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: start;
+}
+
+.visible-continuity-item-head strong {
+  color: #24373c;
+  font-size: 13px;
+}
+
+.visible-continuity-item-head span {
+  color: #356f6c;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.visible-continuity-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.visible-continuity-badges span {
+  color: #4d6467;
+  font-size: 11px;
+}
+
+.visible-continuity-path,
+.visible-continuity-next-step {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 6px;
+  align-items: start;
+  color: #4d6467;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.visible-continuity-path svg,
+.visible-continuity-next-step svg {
+  margin-top: 1px;
+  color: #2f7675;
+}
+
+.visible-continuity-blockers li,
+.visible-continuity-playback-column li {
+  color: #4d6467;
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.visible-continuity-playback-column {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  border-radius: 8px;
+  background: rgba(246, 252, 250, 0.72);
+  padding: 9px;
+}
+
+.visible-continuity-playback-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.visible-continuity-playback-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 6px 10px;
+}
+
+.visible-continuity-playback-detail {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.visible-continuity-playback-window {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid rgba(112, 132, 143, 0.14);
+  padding-top: 10px;
+}
+

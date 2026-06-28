@@ -1,0 +1,372 @@
+.feature-shell {
+  min-height: 100dvh;
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  background:
+    linear-gradient(135deg, rgba(248, 251, 250, 0.98) 0%, rgba(238, 246, 244, 0.96) 52%, rgba(248, 243, 247, 0.98) 100%),
+    linear-gradient(180deg, #f9fbfa 0%, #eef4f3 100%);
+  padding: 20px 20px 0;
+  color: var(--text);
+}
+
+.feature-window-header {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 1180px);
+  margin: 0 auto 12px;
+}
+
+.feature-window-header h1 {
+  margin: 4px 0 6px;
+  color: var(--text);
+  font-size: 26px;
+  line-height: 1.05;
+  text-wrap: balance;
+}
+
+.feature-window-header p:last-child {
+  max-width: 720px;
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.feature-window-content {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 1180px);
+  min-height: 0;
+  margin: 0 auto;
+  display: grid;
+  gap: 12px;
+  overflow: auto;
+  padding: 0 4px 78px;
+}
+
+.feature-page-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.wiki-page-stack {
+  grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.85fr);
+  align-items: start;
+}
+
+.feature-window-content > .panel,
+.feature-page-stack > .panel {
+  grid-column: auto;
+  min-height: auto;
+}
+
+.feature-window-content > #wiki-workflow-panel,
+.feature-page-stack > #settings-panel {
+  grid-column: auto;
+}
+
+.feature-page-stack > #settings-panel {
+  order: -1;
+}
+
+.growth-page-stack {
+  align-content: start;
+}
+
+.growth-summary-panel,
+.growth-dimensions-panel,
+.growth-history-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.growth-summary-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+}
+
+.growth-summary-row > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.growth-summary-row strong,
+.growth-summary-row span {
+  overflow-wrap: anywhere;
+}
+
+.growth-summary-row strong {
+  color: #253238;
+  font-size: 18px;
+}
+
+.growth-summary-row span {
+  color: #5e6870;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.growth-refresh-button {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid rgba(66, 101, 108, 0.22);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.74);
+  color: #253238;
+  font-weight: 800;
+  padding: 0 12px;
+}
+
+.growth-refresh-button:disabled {
+  cursor: wait;
+  opacity: 0.76;
+}
+
+.growth-dimension-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.growth-dimension-card {
+  min-width: 0;
+  display: grid;
+  gap: 11px;
+  border: 1px solid rgba(56, 78, 86, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.7);
+  padding: 14px;
+}
+
+.growth-dimension-head {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 9px;
+  align-items: center;
+}
+
+.growth-dimension-head svg {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: #edf6f3;
+  color: #2e7462;
+  padding: 7px;
+}
+
+.growth-dimension-head div,
+.growth-dimension-card p,
+.growth-dimension-card small,
+.growth-metrics dd {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.growth-dimension-head strong,
+.growth-dimension-head span {
+  display: block;
+}
+
+.growth-dimension-head strong {
+  color: #1f2f36;
+  font-size: 14px;
+}
+
+.growth-dimension-head span,
+.growth-dimension-card p,
+.growth-dimension-card small,
+.growth-metrics dt {
+  color: #5e6870;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.growth-dimension-card p {
+  margin: 0;
+}
+
+.growth-progress {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(50, 69, 79, 0.12);
+}
+
+.growth-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #2e7462;
+}
+
+.growth-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.growth-metrics div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.growth-metrics dt,
+.growth-metrics dd {
+  margin: 0;
+}
+
+.growth-metrics dd {
+  color: #253238;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.growth-history-list {
+  display: grid;
+  gap: 10px;
+  max-height: 360px;
+  overflow: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.growth-history-item {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  border: 1px solid rgba(56, 78, 86, 0.12);
+  border-radius: 8px;
+  background: rgba(248, 251, 248, 0.82);
+  padding: 11px 12px;
+}
+
+.growth-history-item time {
+  color: #6f6570;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.growth-history-item div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.growth-history-item strong,
+.growth-history-item span,
+.growth-history-item small {
+  overflow-wrap: anywhere;
+}
+
+.growth-history-item strong {
+  color: #253238;
+  font-size: 13px;
+}
+
+.growth-history-item span,
+.growth-history-item small {
+  color: #5e6870;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.wiki-page-stack > #wiki-workflow-panel,
+.wiki-page-stack > #wiki-browser-panel {
+  grid-column: auto;
+}
+
+.wiki-page-stack #wiki-workflow-panel .wiki-daily-flow {
+  grid-template-columns: 1fr;
+}
+
+.wiki-page-stack #wiki-workflow-panel .wiki-daily-primary textarea {
+  min-height: 118px;
+}
+
+.feature-window-panel {
+  width: 100%;
+}
+
+.feature-route-loading {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  gap: 10px;
+  background:
+    linear-gradient(135deg, rgba(248, 251, 250, 0.98) 0%, rgba(238, 246, 244, 0.96) 52%, rgba(248, 243, 247, 0.98) 100%),
+    #f7f7f2;
+  color: #52656f;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.feature-route-loading-dot {
+  width: 28px;
+  height: 28px;
+  border: 3px solid rgba(82, 101, 111, 0.16);
+  border-top-color: rgba(143, 66, 102, 0.72);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.task-workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.12fr) minmax(320px, 0.88fr);
+  gap: 12px;
+  align-items: stretch;
+}
+
+.task-workspace-grid > .panel {
+  grid-column: auto;
+  height: auto;
+  min-height: 0;
+}
+
+.feature-window-panel.memory-workbench-panel,
+.feature-window-panel.memory-management-panel {
+  height: auto;
+}
+
+.review-coach-panel {
+  order: 1;
+}
+
+.memory-source-details-panel {
+  order: 2;
+}
+
+.local-asset-dashboard {
+  order: 3;
+}
+
+.memory-review-queue-panel {
+  order: 4;
+}
+
+.memory-advanced-tools {
+  order: 5;
+}
+
+.memory-workbench-panel,
+.memory-management-panel,
+.memory-activity-panel {
+  order: 8;
+}
+
+.memory-advanced-tools-stack > .memory-workbench-panel,
+.memory-advanced-tools-stack > .memory-management-panel,
+.memory-advanced-tools-stack > .memory-review-queue-panel,
+.memory-advanced-tools-stack > .memory-activity-panel {
+  order: initial;
+}

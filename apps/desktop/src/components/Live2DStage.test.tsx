@@ -54,6 +54,8 @@ const mountLive2DRendererBoundaryMock = vi.mocked(mountLive2DRendererBoundary);
 function createMountedRuntimeHandle(overrides: Partial<Live2DRuntimeHandle> = {}): Live2DRuntimeHandle {
   return {
     start: vi.fn(),
+    setActive: vi.fn(),
+    setFocused: vi.fn(),
     resize: vi.fn(),
     dispose: vi.fn(),
     setExpression: vi.fn(),
@@ -64,7 +66,7 @@ function createMountedRuntimeHandle(overrides: Partial<Live2DRuntimeHandle> = {}
       idleMotionEnabled: true,
       eyeBlinkEnabled: true,
       breathEnabled: true,
-      physicsEnabled: true,
+      physicsEnabled: false,
       motionCount: asset.motionCount,
       expressionCount: asset.expressionCount,
       textureCount: asset.textureCount,
@@ -100,6 +102,7 @@ function renderStage(
   speaking = false,
   actionKeyOverride?: string | null,
   actionTriggerKey?: string | null,
+  active = true,
 ) {
   return render(
     <Live2DStage
@@ -112,6 +115,7 @@ function renderStage(
       speaking={speaking}
       actionKeyOverride={actionKeyOverride}
       actionTriggerKey={actionTriggerKey}
+      active={active}
     />,
   );
 }
@@ -309,7 +313,7 @@ describe("Live2DStage", () => {
     expect(startMotion).toHaveBeenCalledWith("Continuity", 1);
   });
 
-  it("supersamples the pet runtime canvas without changing the stage canvas scale", async () => {
+  it("keeps the pet runtime canvas at device pixel ratio to reduce always-on GPU work", async () => {
     const mountedRuntime: Live2DRuntimeBoundary = {
       ...runtime,
       canMountRenderer: true,
@@ -335,7 +339,7 @@ describe("Live2DStage", () => {
     );
 
     await waitFor(() => expect(petResize).toHaveBeenCalled());
-    expect(petResize).toHaveBeenLastCalledWith({ width: 480, height: 720, pixelRatio: 1.5 });
+    expect(petResize).toHaveBeenLastCalledWith({ width: 320, height: 480, pixelRatio: 1 });
     petResult.unmount();
 
     const stageResize = vi.fn();
@@ -361,6 +365,102 @@ describe("Live2DStage", () => {
     await waitFor(() => expect(stageResize).toHaveBeenCalled());
     expect(stageResize).toHaveBeenLastCalledWith({ width: 320, height: 480, pixelRatio: 1 });
     stageResult.unmount();
+  });
+
+  it("preloads the stage renderer while inactive and keeps it mounted across route visibility changes", async () => {
+    const hasFocusSpy = vi.spyOn(document, "hasFocus").mockReturnValue(true);
+    const mountedRuntime: Live2DRuntimeBoundary = {
+      ...runtime,
+      canMountRenderer: true,
+    };
+    const setActive = vi.fn();
+    const setFocused = vi.fn();
+    const dispose = vi.fn();
+    const handle = createMountedRuntimeHandle({ setActive, setFocused, dispose });
+    mountLive2DRendererBoundaryMock.mockResolvedValueOnce({
+      status: "mounted",
+      renderMode: "official",
+      message: "mounted",
+      diagnostics: handle.getDiagnostics(),
+      handle,
+    });
+    const canvasRef = createRef<HTMLCanvasElement>();
+
+    const { rerender, unmount } = render(
+      <Live2DStage
+        stage={stage}
+        asset={asset}
+        runtime={mountedRuntime}
+        canvasRef={canvasRef}
+        variant="stage"
+        active={false}
+      />,
+    );
+
+    await waitFor(() => expect(mountLive2DRendererBoundaryMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(setActive).toHaveBeenLastCalledWith(false));
+    await waitFor(() => expect(setFocused).toHaveBeenLastCalledWith(false));
+    expect(dispose).not.toHaveBeenCalled();
+
+    rerender(
+      <Live2DStage
+        stage={stage}
+        asset={asset}
+        runtime={mountedRuntime}
+        canvasRef={canvasRef}
+        variant="stage"
+        active
+      />,
+    );
+
+    await waitFor(() => expect(setActive).toHaveBeenLastCalledWith(true));
+    await waitFor(() => expect(setFocused).toHaveBeenLastCalledWith(true));
+    expect(mountLive2DRendererBoundaryMock).toHaveBeenCalledTimes(1);
+    expect(dispose).not.toHaveBeenCalled();
+
+    unmount();
+    expect(dispose).toHaveBeenCalledTimes(1);
+    hasFocusSpy.mockRestore();
+  });
+
+  it("lowers renderer focus while the model window is not focused", async () => {
+    const hasFocusSpy = vi.spyOn(document, "hasFocus").mockReturnValue(true);
+    const mountedRuntime: Live2DRuntimeBoundary = {
+      ...runtime,
+      canMountRenderer: true,
+    };
+    const setFocused = vi.fn();
+    const handle = createMountedRuntimeHandle({ setFocused });
+    mountLive2DRendererBoundaryMock.mockResolvedValueOnce({
+      status: "mounted",
+      renderMode: "official",
+      message: "mounted",
+      diagnostics: handle.getDiagnostics(),
+      handle,
+    });
+
+    render(
+      <Live2DStage
+        stage={stage}
+        asset={asset}
+        runtime={mountedRuntime}
+        canvasRef={createRef<HTMLCanvasElement>()}
+        variant="stage"
+        active
+      />,
+    );
+
+    await waitFor(() => expect(setFocused).toHaveBeenLastCalledWith(true));
+
+    hasFocusSpy.mockReturnValue(false);
+    fireEvent.blur(window);
+    await waitFor(() => expect(setFocused).toHaveBeenLastCalledWith(false));
+
+    hasFocusSpy.mockReturnValue(true);
+    fireEvent.focus(window);
+    await waitFor(() => expect(setFocused).toHaveBeenLastCalledWith(true));
+    expect(mountLive2DRendererBoundaryMock).toHaveBeenCalledTimes(1);
+    hasFocusSpy.mockRestore();
   });
 
   it("suppresses canvas layout warnings while a pet drag snapshot is active", async () => {

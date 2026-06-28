@@ -1,0 +1,531 @@
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+
+  .pet-shortcut-button,
+  .bottom-nav-icon,
+  .bottom-nav-indicator,
+  .stage-action-card,
+  button {
+    transform: none !important;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .panel,
+  .notice,
+  .status-strip,
+  .bottom-nav-track,
+  .stage-command-panel,
+  .message,
+  .result-item,
+  .proposal {
+    background: #ffffff;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
+@media (max-width: 1100px) {
+  .dashboard-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .wiki-page-stack {
+    grid-template-columns: 1fr;
+  }
+
+  .stage-command-layout {
+    --stage-side-card-height: clamp(340px, 55vh, 480px);
+    grid-template-columns: minmax(220px, 0.8fr) minmax(280px, 1.2fr) minmax(220px, 0.8fr);
+    gap: 14px;
+    padding-inline: 18px;
+  }
+
+  .stage-command-panel {
+    max-width: 300px;
+    padding: 14px;
+  }
+
+  .stage-outcome-panel {
+    max-width: 360px;
+  }
+
+  .stage-command-layout.has-outcome .stage-command-panel {
+    max-width: 286px;
+  }
+
+  .stage-command-heading h1 {
+    font-size: 23px;
+  }
+
+  .stage-action-card {
+    min-height: 58px;
+  }
+
+  .stage-live2d-zone {
+    min-height: 360px;
+  }
+
+  .stage-pet-anchor .stage-agent-bubble.pet-agent-bubble {
+    left: calc(50% + 30px);
+    max-width: min(282px, calc(100% - 58px));
+  }
+
+  .panel,
+  .panel.chat-panel,
+  .panel.live2d-panel,
+  .panel.test-guide-panel,
+  #settings-panel,
+  #wiki-workflow-panel,
+  #agent-workspace-panel {
+    grid-column: 1 / -1;
+  }
+
+  #live2d-panel,
+  #connection-panel,
+  #continuity-panel {
+    grid-column: span 2;
+  }
+
+  .trial-guide-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .workflow-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .memory-priority-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .app-shell {
+    padding: 16px;
+  }
+
+  .stage-command-layout {
+    --stage-side-card-height: auto;
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    place-items: center;
+    gap: 8px;
+    overflow: visible;
+    padding: 10px 14px 8px;
+  }
+
+  .stage-command-layout.has-outcome {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    align-items: center;
+    overflow: visible;
+  }
+
+  .stage-outcome-panel {
+    grid-area: 1 / 1;
+    justify-self: stretch;
+    align-self: start;
+    width: 100%;
+    max-width: none;
+    height: auto;
+  }
+
+  .stage-continuity-panel {
+    height: auto;
+    padding: 11px 12px;
+  }
+
+  .stage-continuity-panel .panel-title,
+  .stage-continuity-panel .visible-continuity-section-head svg,
+  .stage-continuity-panel .visible-continuity-section-head p {
+    display: none;
+  }
+
+  .stage-continuity-panel .visible-continuity-shell {
+    gap: 7px;
+  }
+
+  .stage-continuity-panel .visible-continuity-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+  }
+
+  .stage-continuity-panel .visible-continuity-header strong {
+    font-size: 14px;
+    line-height: 1.25;
+  }
+
+  .stage-continuity-panel .visible-continuity-refresh {
+    min-height: 32px;
+    padding: 0 10px;
+  }
+
+  .stage-continuity-panel .visible-continuity-section {
+    padding: 8px 10px;
+  }
+
+  .stage-continuity-panel .visible-continuity-section-head {
+    grid-template-columns: 1fr;
+  }
+
+  .stage-continuity-panel .visible-continuity-section-head h3 {
+    font-size: 13px;
+  }
+
+  .stage-command-layout.has-outcome .stage-command-panel {
+    grid-area: 3 / 1;
+    justify-self: stretch;
+    align-self: end;
+    width: 100%;
+    max-width: none;
+  }
+
+  .stage-command-panel {
+    grid-area: 3 / 1;
+    justify-self: stretch;
+    align-self: end;
+    width: 100%;
+    max-width: none;
+    height: auto;
+    align-content: start;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .stage-command-panel .stage-value-list,
+  .stage-command-panel .stage-command-heading p,
+  .stage-command-panel .stage-action-card small {
+    display: none !important;
+  }
+
+  .stage-command-heading h1 {
+    font-size: 18px;
+  }
+
+  .stage-action-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .stage-action-card {
+    min-height: 56px;
+    grid-template-columns: 1fr;
+    align-content: center;
+    justify-items: center;
+    gap: 5px;
+    padding: 6px;
+    text-align: center;
+  }
+
+  .stage-action-card svg {
+    width: 28px;
+    height: 28px;
+    padding: 6px;
+  }
+
+  .stage-action-card strong {
+    font-size: 12px;
+  }
+
+  .stage-action-card small {
+    font-size: 11px;
+  }
+
+  .stage-advanced-routes {
+    margin-top: 0;
+    padding-top: 6px;
+  }
+
+  .stage-advanced-routes summary {
+    font-size: 11px;
+  }
+
+  .stage-advanced-routes .stage-action-grid.compact {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin-top: 6px;
+  }
+
+  .stage-advanced-routes .stage-action-card {
+    min-height: 42px;
+    grid-template-columns: 28px minmax(0, 1fr);
+    justify-items: stretch;
+    gap: 7px;
+    padding: 6px 8px;
+    text-align: left;
+  }
+
+  .stage-advanced-routes .stage-action-card svg {
+    width: 28px;
+    height: 28px;
+    padding: 6px;
+  }
+
+  .stage-advanced-routes .stage-action-card small {
+    display: none !important;
+  }
+
+  .stage-live2d-zone {
+    grid-area: 1 / 1 / 4 / 2;
+    min-height: 0;
+    height: 100%;
+  }
+
+  .stage-pet-anchor {
+    width: 100%;
+  }
+
+  .stage-pet-anchor .stage-agent-bubble.pet-agent-bubble {
+    top: 28px;
+    left: 50%;
+    right: auto;
+    width: fit-content;
+    min-width: min(176px, calc(100% - 28px));
+    max-width: min(292px, calc(100% - 28px));
+    max-height: 84px;
+    transform: translateX(-50%);
+  }
+
+  .stage-pet-anchor .stage-agent-bubble.pet-agent-bubble::after {
+    top: auto;
+    bottom: -7px;
+    left: 50%;
+    border-right: 1px solid rgba(255, 255, 255, 0.72);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.72);
+    border-left: 0;
+    transform: translateX(-50%) rotate(45deg);
+  }
+
+  .feature-shell {
+    padding: 18px 14px 0;
+  }
+
+  .feature-window-header h1 {
+    font-size: 26px;
+  }
+
+  .growth-summary-row,
+  .growth-history-item {
+    grid-template-columns: 1fr;
+  }
+
+  .growth-dimension-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .growth-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .task-workspace-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .task-create-time-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .task-management-card {
+    grid-template-columns: 1fr;
+  }
+
+  .task-management-actions {
+    justify-content: flex-start;
+    max-width: none;
+  }
+
+  .memory-workbench-panel,
+  .memory-workbench-search-form,
+  .memory-add-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .memory-priority-list {
+    max-height: none;
+  }
+
+  .review-coach-grid,
+  .review-coverage-list {
+    grid-template-columns: 1fr;
+  }
+
+  .memory-workbench-search-form button,
+  .memory-add-form button {
+    width: fit-content;
+  }
+
+  .task-current-header,
+  .task-button-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .task-status-badge {
+    width: max-content;
+  }
+
+  .task-step-row {
+    grid-template-columns: 30px minmax(0, 1fr) 28px;
+  }
+
+  .task-step-duration {
+    grid-column: 2 / -1;
+  }
+
+  .task-log-line {
+    grid-template-columns: 1fr;
+    gap: 3px;
+  }
+
+  .bottom-nav {
+    padding-inline: 8px;
+  }
+
+  .bottom-nav-track {
+    margin: 0;
+  }
+
+  .topbar,
+  .button-row,
+  .path-picker,
+  .split {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .memory-graph-fact {
+    grid-template-columns: 1fr;
+  }
+
+  .memory-graph-fact-actions {
+    justify-content: flex-start;
+    max-width: none;
+  }
+
+  .topbar {
+    gap: 14px;
+  }
+
+  .topbar h1 {
+    font-size: 28px;
+    line-height: 1.14;
+  }
+
+  .status-strip {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .panel,
+  .panel.chat-panel,
+  .panel.live2d-panel,
+  #live2d-panel,
+  #connection-panel,
+  #continuity-panel {
+    grid-column: 1 / -1;
+  }
+
+  .agent-model-list,
+  .agent-model-row,
+  .agent-model-status {
+    grid-template-columns: 1fr;
+  }
+
+  .guide-summary {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .trial-guide-list {
+    grid-template-columns: 1fr;
+  }
+
+  .workflow-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .visible-continuity-item-head {
+    grid-template-columns: 1fr;
+  }
+
+  .visible-continuity-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .visible-continuity-refresh {
+    width: fit-content;
+  }
+
+  .visible-continuity-today-grid,
+  .visible-continuity-playback-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .wiki-archive-history-item {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .wiki-daily-flow,
+  .wiki-daily-grid,
+  .wiki-flow-steps,
+  .wiki-target-type-picker,
+  .wiki-recent-page-grid,
+  .wiki-page-card-meta {
+    grid-template-columns: 1fr;
+  }
+
+  .wiki-archive-history-item button {
+    width: fit-content;
+  }
+
+  .live2d-resource-list {
+    grid-template-columns: 1fr;
+  }
+
+  .live2d-diagnostic-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .live2d-runtime-card {
+    grid-template-columns: 1fr;
+  }
+
+  .live2d-status-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .message-list {
+    height: 380px;
+    padding: 10px;
+  }
+
+  .chat-action-board {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .message.user,
+  .message.assistant {
+    margin-left: 0;
+    margin-right: 0;
+  }
+
+  .panel {
+    border-radius: 8px;
+    padding: 15px;
+  }
+}
+

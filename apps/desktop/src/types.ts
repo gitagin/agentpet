@@ -81,7 +81,7 @@ export type DesktopVaultRevealResult = {
   reason?: string;
 };
 
-export type DesktopFeatureWindowMode = "chat" | "memory" | "world" | "settings";
+export type DesktopFeatureWindowMode = "chat" | "memory" | "growth" | "world" | "settings";
 export type DesktopPetInputMode = "chat" | "note" | "task" | "wiki" | "review";
 
 declare global {
@@ -382,6 +382,66 @@ export type LocalAssetStatsResponse = {
   completed_task_count: number;
   latest_organization_at?: string | null;
   reversible_operation_count: number;
+};
+
+export type GrowthDimension = {
+  key: string;
+  label: string;
+  level: number;
+  level_label: string;
+  current_value: number;
+  next_threshold?: number | null;
+  progress: number;
+  description: string;
+  data_sources: string[];
+  last_changed_at?: string | null;
+};
+
+export type GrowthEvent = {
+  event_id: string;
+  occurred_at: string;
+  dimension_key: string;
+  title: string;
+  summary: string;
+  source_action_id: string;
+  source_action_type: string;
+  target_paths: string[];
+};
+
+export type GrowthSnapshotResponse = {
+  generated_at: string;
+  dimensions: GrowthDimension[];
+  events: GrowthEvent[];
+  stats: LocalAssetStatsResponse;
+};
+
+export type ProactiveTriggerFrequency = "off" | "low" | "normal" | "high";
+
+export type HabitLoopCandidate = {
+  trigger_id: string;
+  content_type: string;
+  title: string;
+  message: string;
+  suggested_prompt: string;
+  source_count: number;
+  sources: string[];
+};
+
+export type HabitLoopTriggerRequest = {
+  timezone: string;
+};
+
+export type HabitLoopTriggerResponse = {
+  should_trigger: boolean;
+  reason: string;
+  frequency: ProactiveTriggerFrequency;
+  daily_limit: number;
+  daily_count: number;
+  cooldown_minutes: number;
+  next_eligible_at?: string | null;
+  quiet_hours: string;
+  candidate?: HabitLoopCandidate | null;
+  action_id?: string | null;
 };
 
 export type WikiIngestOperation = "create" | "append" | "replace_section";
@@ -949,6 +1009,8 @@ export type AutomationSettings = {
   auto_structured_memory: boolean;
   auto_long_term_memory: boolean;
   auto_wiki_organize: boolean;
+  local_privacy_mode: boolean;
+  proactive_trigger_frequency: ProactiveTriggerFrequency;
   use_negotiation: boolean;
   max_rounds: number;
   high_risk_confirmation_required: boolean;
@@ -961,6 +1023,8 @@ export type AutomationSettingsUpdateRequest = Pick<
   | "auto_structured_memory"
   | "auto_long_term_memory"
   | "auto_wiki_organize"
+  | "local_privacy_mode"
+  | "proactive_trigger_frequency"
   | "use_negotiation"
   | "max_rounds"
 >;

@@ -47,7 +47,7 @@ def test_health_response_contract_excludes_sensitive_runtime_state() -> None:
     response = HealthResponse.model_validate(
         {
             "status": "ok",
-            "version": "0.2.0",
+            "version": "0.0.1-alpha",
             "database": "ok",
             "active_vault_id": "must-not-leak",
             "root_path": "%USERPROFILE%/PetMemoryVault",
@@ -56,7 +56,7 @@ def test_health_response_contract_excludes_sensitive_runtime_state() -> None:
     )
 
     dumped = response.model_dump()
-    assert dumped == {"status": "ok", "version": "0.2.0", "database": "ok", "components": {}}
+    assert dumped == {"status": "ok", "version": "0.0.1-alpha", "database": "ok", "components": {}}
     assert set(dumped).isdisjoint(forbidden_fields)
 
 

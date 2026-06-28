@@ -7,9 +7,13 @@ from pathlib import Path
 from typing import Literal
 
 from app.models.api import AgentActionResponse, AutomationSettingsRequest, AutomationSettingsResponse
+from app.models.config import normalize_proactive_trigger_frequency
 from app.models.common import new_id
 from app.services.memory import SafeMarkdownWriter, content_hash_text
 from app.utils.time import utc_now_iso
+
+LOCAL_PRIVACY_MODE_STATE_KEY = "local_privacy_mode"
+PROACTIVE_TRIGGER_FREQUENCY_STATE_KEY = "proactive_trigger_frequency"
 
 
 RiskTier = Literal["low", "medium", "high"]
@@ -81,6 +85,7 @@ class AutomationPolicy:
     NOTIFY_TYPES = {
         "agent.notice",
         "agent_action.notice",
+        "habit.proactive_trigger",
     }
 
     def decide(
@@ -243,13 +248,20 @@ class AgentActionStore:
 
     def get_automation_settings(self) -> AutomationSettingsResponse:
         row = self.conn.execute("SELECT * FROM automation_settings WHERE id = 1").fetchone()
+        local_privacy_mode = self._get_bool_state(LOCAL_PRIVACY_MODE_STATE_KEY)
+        proactive_trigger_frequency = self._get_proactive_trigger_frequency()
         if row is None:
-            return AutomationSettingsResponse()
+            return AutomationSettingsResponse(
+                local_privacy_mode=local_privacy_mode,
+                proactive_trigger_frequency=proactive_trigger_frequency,
+            )
         return AutomationSettingsResponse(
             auto_chat_diary=bool(row["auto_chat_diary"]),
             auto_structured_memory=bool(row["auto_structured_memory"]),
             auto_long_term_memory=bool(row["auto_long_term_memory"]),
             auto_wiki_organize=bool(row["auto_wiki_organize"]),
+            local_privacy_mode=local_privacy_mode,
+            proactive_trigger_frequency=proactive_trigger_frequency,
             use_negotiation=bool(row["use_negotiation"]),
             max_rounds=int(row["max_rounds"]),
             high_risk_confirmation_required=bool(row["high_risk_confirmation_required"]),
@@ -288,7 +300,64 @@ class AgentActionStore:
                     now,
                 ),
             )
+            self.conn.execute(
+                """
+                INSERT INTO app_state(key, value, updated_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(key) DO UPDATE SET
+                    value = excluded.value,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    LOCAL_PRIVACY_MODE_STATE_KEY,
+                    json.dumps(bool(settings.local_privacy_mode)),
+                    now,
+                ),
+            )
+            self.conn.execute(
+                """
+                INSERT INTO app_state(key, value, updated_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(key) DO UPDATE SET
+                    value = excluded.value,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    PROACTIVE_TRIGGER_FREQUENCY_STATE_KEY,
+                    json.dumps(normalize_proactive_trigger_frequency(settings.proactive_trigger_frequency)),
+                    now,
+                ),
+            )
         return self.get_automation_settings()
+
+    def _get_proactive_trigger_frequency(self):
+        row = self.conn.execute(
+            "SELECT value FROM app_state WHERE key = ?",
+            (PROACTIVE_TRIGGER_FREQUENCY_STATE_KEY,),
+        ).fetchone()
+        if row is None:
+            return normalize_proactive_trigger_frequency(None)
+        try:
+            value = json.loads(str(row["value"]))
+        except (TypeError, ValueError):
+            value = str(row["value"])
+        return normalize_proactive_trigger_frequency(value)
+
+    def _get_bool_state(self, key: str, default: bool = False) -> bool:
+        row = self.conn.execute("SELECT value FROM app_state WHERE key = ?", (key,)).fetchone()
+        if row is None:
+            return default
+        try:
+            value = json.loads(str(row["value"]))
+        except (TypeError, ValueError):
+            value = str(row["value"]).strip().lower()
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return bool(value)
+        if isinstance(value, str):
+            return value in {"1", "true", "yes", "on", "enabled"}
+        return default
 
     def _map(self, row: sqlite3.Row) -> AgentActionResponse:
         metadata = _json_load(row["metadata_json"], {})

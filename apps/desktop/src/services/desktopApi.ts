@@ -16,6 +16,9 @@ import type {
   CompanionConsolidationRunResponse,
   CompanionRetrievalReportListResponse,
   DiagnosticsExportResponse,
+  GrowthSnapshotResponse,
+  HabitLoopTriggerRequest,
+  HabitLoopTriggerResponse,
   LocalAssetStatsResponse,
   LocalStateResetResponse,
   MemoryProposalActionResponse,
@@ -118,6 +121,17 @@ export class DesktopApi {
 
   getLocalAssetStats(signal?: AbortSignal): Promise<LocalAssetStatsResponse> {
     return this.client.get<LocalAssetStatsResponse>("/api/memory/local-assets", signal);
+  }
+
+  getGrowthSnapshot(signal?: AbortSignal): Promise<GrowthSnapshotResponse> {
+    return this.client.get<GrowthSnapshotResponse>("/api/growth/snapshot", signal);
+  }
+
+  triggerHabitLoop(
+    request: HabitLoopTriggerRequest,
+    signal?: AbortSignal,
+  ): Promise<HabitLoopTriggerResponse> {
+    return this.client.post<HabitLoopTriggerResponse>("/api/habit-loop/trigger", request, signal);
   }
 
   createMemoryProposal(

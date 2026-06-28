@@ -80,7 +80,7 @@ contextBridge.exposeInMainWorld("agentDesktop", {
     };
   },
   onStageRouteRequested: (callback) => {
-    const allowedModes = new Set(["stage", "agent", "chat", "memory", "world", "settings"]);
+    const allowedModes = new Set(["stage", "agent", "chat", "memory", "growth", "world", "settings"]);
     const listener = (_event, mode) => {
       callback(typeof mode === "string" && allowedModes.has(mode) ? mode : "stage");
     };

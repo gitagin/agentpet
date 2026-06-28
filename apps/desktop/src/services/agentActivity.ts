@@ -144,13 +144,13 @@ export function formatAgentActionType(actionType: string): string {
     return "已跳过知识页摘要";
   }
   const labels: Record<string, string> = {
-    "agent_action.revert": "撤销自动整理",
+    "agent_action.revert": "撤回自动整理",
     "chat.daily_archive": "已归档聊天日记",
-    "continuity.identity": "连续性身份整理",
-    "continuity.relationship": "连续性关系整理",
-    "continuity.mood": "连续性情绪整理",
-    "continuity.energy": "连续性能量整理",
-    "continuity.open_thread": "连续性话题整理",
+    "continuity.identity": "身份线索整理",
+    "continuity.relationship": "关系理解整理",
+    "continuity.mood": "情绪状态整理",
+    "continuity.energy": "能量状态整理",
+    "continuity.open_thread": "下次接着聊",
     "diary.structured_memory": "已提取结构化日记",
     "markdown.bulk_rewrite": "批量改写本机文本",
     "markdown.delete": "删除本机文本",
@@ -201,7 +201,7 @@ export function formatAgentActionStatus(status: string): string {
     failed: "失败",
     pending: "待处理",
     rejected: "已拒绝",
-    reverted: "已撤销",
+    reverted: "已撤回",
     running: "处理中",
   };
   return labels[status] || status;
@@ -426,7 +426,7 @@ export function getAgentActionDisplayFields(action: AgentAction): AgentActionDis
     statusLabel: formatAgentActionStatus(action.status),
     targetPathLabel: formatAgentActionTargetPaths(action),
     summary: skipped ? formatAgentActionSkippedReason(action) : action.summary || "无摘要",
-    reversibleLabel: canRevertAgentAction(action) ? "可撤销" : action.reversible ? "撤销不可用" : "不可撤销",
+    reversibleLabel: canRevertAgentAction(action) ? "可撤回" : action.reversible ? "撤回不可用" : "不可撤回",
     createdTimeLabel: formatAgentActivityTimestamp(action.created_at),
     updatedTimeLabel: formatAgentActivityTimestamp(action.updated_at || action.created_at),
     sourceLabel: formatAgentActionSource(action),

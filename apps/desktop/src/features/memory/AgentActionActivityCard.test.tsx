@@ -95,4 +95,41 @@ describe("AgentActionActivityCard", () => {
     expect(screen.queryByText(/Skipped because/)).not.toBeInTheDocument();
     expect(screen.queryByText(/automation_disabled/)).not.toBeInTheDocument();
   });
+
+  it("explains reversible activity rollback before calling the revert handler", () => {
+    const onRevert = vi.fn();
+    const reversible = action({
+      action_type: "memory.long_term.write",
+      title: "已更新长期记忆",
+      summary: "记住发布清单。",
+      target_paths: ["Memories/Profile.md"],
+      reversible: true,
+    });
+
+    render(
+      <AgentActionActivityCard
+        entry={entry(reversible)}
+        reverting={false}
+        onRevert={onRevert}
+      />,
+    );
+
+    expect(screen.getByText(/撤回前会再次确认/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "撤回" }));
+
+    expect(onRevert).toHaveBeenCalledWith(reversible);
+  });
+
+  it("shows a clear state after an activity has been reverted", () => {
+    render(
+      <AgentActionActivityCard
+        entry={entry(action({ status: "reverted", reverted_by: "action-revert-1", reversible: true }))}
+        reverting={false}
+        onRevert={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/已撤回，并生成新的活动记录/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "撤回" })).not.toBeInTheDocument();
+  });
 });

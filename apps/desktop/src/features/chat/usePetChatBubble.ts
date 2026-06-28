@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { ChatContinuitySignal, ChatMessage, TtsPlaybackItem, TtsPlaybackState, TtsProviderId, TtsVoice } from "../../types";
-import { getPetBubblePageDelay, paginatePetBubbleReply } from "../../services/petBubblePagination";
+import { getPetBubblePageDelay, paginatePetBubbleReply, segmentPetBubbleText } from "../../services/petBubblePagination";
 import type { PetBubblePhase, PetBubbleState, PetBubbleTone } from "./chatTypes";
 import { petStreamFinalTimeoutMs, petStreamFinalWatchdogDelayMs } from "./chatTypes";
 import {
@@ -38,6 +38,46 @@ export type PetChatBubbleController = ReturnType<typeof usePetChatBubble>;
 type RenderPageResult = "visible" | "pending" | false;
 
 const ttsNextPagePlaybackDelayMs = 300;
+const ambientBubbleMaxGraphemes = 28;
+
+function normalizeAmbientBubbleText(text: string) {
+  return text
+    .replace(/[|｜]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function truncatePetBubbleGraphemes(text: string, maxGraphemes = ambientBubbleMaxGraphemes) {
+  const graphemes = segmentPetBubbleText(text);
+  if (graphemes.length <= maxGraphemes) {
+    return text;
+  }
+  return `${graphemes.slice(0, maxGraphemes).join("").trimEnd()}…`;
+}
+
+function compactAmbientBubbleMessage(text: string, maxGraphemes = ambientBubbleMaxGraphemes) {
+  const normalized = normalizeAmbientBubbleText(text);
+  if (!normalized) {
+    return "";
+  }
+  const firstPage = paginatePetBubbleReply(normalized)[0] || normalized;
+  return truncatePetBubbleGraphemes(firstPage.replace(/[，,、；;：:\s]+$/u, ""), maxGraphemes);
+}
+
+function continuityPresenceMessage(signal: ChatContinuitySignal) {
+  const summary = compactAmbientBubbleMessage(signal.summary, 24);
+  if (summary) {
+    return `下次可以接着聊：${summary}`;
+  }
+  return compactAmbientBubbleMessage(signal.display_hint, 28) || "刚才那个话题，下次也能接上。";
+}
+
+function continuityPresenceTitle(signal: ChatContinuitySignal) {
+  if (signal.kind === "open_thread") {
+    return "下次接着聊";
+  }
+  return signal.title || "陪伴状态已更新";
+}
 
 export function usePetChatBubble({
   messages,
@@ -162,7 +202,8 @@ export function usePetChatBubble({
   function showBubble(next: Omit<PetBubbleState, "visible" | "phase"> & { phase?: PetBubblePhase }) {
     clearHideTimer();
     const phase = next.phase || (next.tone === "reply" ? "speaking" : "thinking");
-    setPetBubble({ ...next, phase, visible: true });
+    const message = next.tone === "reply" ? next.message : compactAmbientBubbleMessage(next.message);
+    setPetBubble({ ...next, message, phase, visible: true });
   }
 
   function showReaction(message: string, tone: Exclude<PetBubbleTone, "reply"> = "thinking", title = "") {
@@ -254,7 +295,6 @@ export function usePetChatBubble({
 
   function markStreamEventReceived() {
     streamReceivedEventRef.current = true;
-    clearStreamWatchdogTimer();
   }
 
   function latestContinuitySignalForMessage(messageId: string): ChatContinuitySignal | null {
@@ -282,8 +322,8 @@ export function usePetChatBubble({
       return;
     }
     showBubble({
-      title: signal.title || "连续性在场",
-      message: signal.display_hint ? `${signal.summary} ${signal.display_hint}` : signal.summary,
+      title: continuityPresenceTitle(signal),
+      message: continuityPresenceMessage(signal),
       tone: "tool",
       phase: "complete",
     });

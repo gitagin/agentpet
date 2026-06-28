@@ -1,0 +1,361 @@
+import { useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
+import type { AnimationEvent, CSSProperties, PointerEvent, RefObject } from "react";
+import type { PetChatBubbleController } from "../chat/usePetChatBubble";
+import { normalizePetInputMode, type PetInputMode } from "../chat/petInputModes";
+import type { DesktopStageRouteMode, DesktopWindowMode } from "../desktop/desktopWindowModes";
+import { readRendererUiState, writeRendererUiState } from "../../services/rendererUiState";
+
+type PetShortcutMotion = "idle" | "opening" | "closing";
+type PetEntryHintStatus = "unknown" | "pending" | "completed";
+
+type PetDragSnapshot = {
+  url: string;
+  style: CSSProperties;
+} | null;
+
+type PetDragState = {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  dragging: boolean;
+  target: HTMLElement | null;
+};
+
+type UsePetWindowControllerOptions = {
+  windowMode: DesktopWindowMode;
+  petChat: PetChatBubbleController;
+  live2dPetCanvasRef: RefObject<HTMLCanvasElement>;
+  onPetInputModeChange: (mode: PetInputMode) => void;
+  onStopTts: () => void;
+};
+
+export const petEntryHintStorageKey = "agent-pet.pet-entry-hint";
+const petEntryHintCompletedValue = "completed:v1";
+
+export function usePetWindowController({
+  windowMode,
+  petChat,
+  live2dPetCanvasRef,
+  onPetInputModeChange,
+  onStopTts,
+}: UsePetWindowControllerOptions) {
+  const [petShortcutsVisible, setPetShortcutsVisible] = useState(false);
+  const [petShortcutMotion, setPetShortcutMotion] = useState<PetShortcutMotion>("idle");
+  const [petDragging, setPetDragging] = useState(false);
+  const [petDragSnapshot, setPetDragSnapshot] = useState<PetDragSnapshot>(null);
+  const [petEntryHintStatus, setPetEntryHintStatus] = useState<PetEntryHintStatus>("unknown");
+  const petShellRef = useRef<HTMLElement | null>(null);
+  const petDragSnapshotClearTimerRef = useRef<number | null>(null);
+  const petShortcutMotionTimerRef = useRef<number | null>(null);
+  const petDragRef = useRef<PetDragState | null>(null);
+  const openPetInputModeRef = useRef<(mode: PetInputMode) => void>(() => undefined);
+
+  function clearPetShortcutMotionTimer() {
+    if (petShortcutMotionTimerRef.current !== null) {
+      window.clearTimeout(petShortcutMotionTimerRef.current);
+      petShortcutMotionTimerRef.current = null;
+    }
+  }
+
+  function settlePetShortcutMotion() {
+    clearPetShortcutMotionTimer();
+    setPetShortcutMotion("idle");
+  }
+
+  function setPetShortcutMotionWithFallback(nextMotion: PetShortcutMotion) {
+    clearPetShortcutMotionTimer();
+    setPetShortcutMotion(nextMotion);
+    if (nextMotion === "idle") {
+      return;
+    }
+    petShortcutMotionTimerRef.current = window.setTimeout(() => {
+      petShortcutMotionTimerRef.current = null;
+      setPetShortcutMotion("idle");
+    }, nextMotion === "opening" ? 420 : 380);
+  }
+
+  function clearPetDragSnapshot(delayMs = 120) {
+    if (petDragSnapshotClearTimerRef.current !== null) {
+      window.clearTimeout(petDragSnapshotClearTimerRef.current);
+      petDragSnapshotClearTimerRef.current = null;
+    }
+
+    if (delayMs <= 0) {
+      setPetDragSnapshot(null);
+      return;
+    }
+
+    petDragSnapshotClearTimerRef.current = window.setTimeout(() => {
+      petDragSnapshotClearTimerRef.current = null;
+      setPetDragSnapshot(null);
+    }, delayMs);
+  }
+
+  function capturePetDragSnapshot() {
+    if (petDragSnapshotClearTimerRef.current !== null) {
+      window.clearTimeout(petDragSnapshotClearTimerRef.current);
+      petDragSnapshotClearTimerRef.current = null;
+    }
+
+    const canvas = live2dPetCanvasRef.current;
+    const shell = petShellRef.current;
+    if (!canvas || !shell || canvas.width <= 1 || canvas.height <= 1) {
+      setPetDragSnapshot(null);
+      return false;
+    }
+
+    const canvasBounds = canvas.getBoundingClientRect();
+    const shellBounds = shell.getBoundingClientRect();
+    if (canvasBounds.width <= 1 || canvasBounds.height <= 1 || shellBounds.width <= 1 || shellBounds.height <= 1) {
+      setPetDragSnapshot(null);
+      return false;
+    }
+
+    try {
+      const url = canvas.toDataURL("image/png");
+      if (!url || url === "data:,") {
+        setPetDragSnapshot(null);
+        return false;
+      }
+      setPetDragSnapshot({
+        url,
+        style: {
+          left: `${canvasBounds.left - shellBounds.left}px`,
+          top: `${canvasBounds.top - shellBounds.top}px`,
+          width: `${canvasBounds.width}px`,
+          height: `${canvasBounds.height}px`,
+        },
+      });
+      return true;
+    } catch {
+      setPetDragSnapshot(null);
+      return false;
+    }
+  }
+
+  function finishPetDragVisualState() {
+    setPetDragging(false);
+    clearPetDragSnapshot(0);
+  }
+
+  function completePetEntryHint() {
+    if (petEntryHintStatus === "completed") {
+      return;
+    }
+    void writeRendererUiState(petEntryHintStorageKey, petEntryHintCompletedValue);
+    setPetEntryHintStatus("completed");
+  }
+
+  function beginPetDrag(event: PointerEvent<HTMLElement>) {
+    if (windowMode !== "pet" || event.button !== 0) {
+      return;
+    }
+    if (!window.agentDesktop?.beginPetWindowDrag || !window.agentDesktop.activatePetWindowDrag) {
+      return;
+    }
+    event.preventDefault();
+    petDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.screenX,
+      startY: event.screenY,
+      dragging: false,
+      target: event.currentTarget,
+    };
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      petDragRef.current = null;
+      finishPetDragVisualState();
+      window.agentDesktop?.endPetWindowDrag?.();
+      return;
+    }
+    flushSync(() => {
+      capturePetDragSnapshot();
+      setPetDragging(true);
+    });
+    window.agentDesktop.beginPetWindowDrag();
+  }
+
+  function movePetDrag(event: PointerEvent<HTMLElement>) {
+    const dragState = petDragRef.current;
+    if (windowMode !== "pet" || !dragState || dragState.pointerId !== event.pointerId) {
+      return;
+    }
+
+    const movedX = event.screenX - dragState.startX;
+    const movedY = event.screenY - dragState.startY;
+    if (!dragState.dragging && Math.hypot(movedX, movedY) < 6) {
+      return;
+    }
+
+    if (!dragState.dragging) {
+      dragState.dragging = true;
+      window.agentDesktop?.activatePetWindowDrag?.();
+    }
+  }
+
+  function endPetDrag(event?: PointerEvent<HTMLElement>) {
+    try {
+      if (event && petDragRef.current?.pointerId === event.pointerId && event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+      window.agentDesktop?.endPetWindowDrag?.();
+    } catch {
+      // 即使释放 pointer capture 或 IPC 失败，也不能让拖动状态残留。
+    } finally {
+      petDragRef.current = null;
+      finishPetDragVisualState();
+    }
+  }
+
+  function openPetInputMode(mode: PetInputMode) {
+    completePetEntryHint();
+    onPetInputModeChange(mode);
+    setPetShortcutsVisible(false);
+    settlePetShortcutMotion();
+    petChat.showInput();
+  }
+  openPetInputModeRef.current = openPetInputMode;
+
+  function closePetShortcutMenu() {
+    completePetEntryHint();
+    setPetShortcutsVisible(false);
+    settlePetShortcutMotion();
+    petChat.setInputVisible(false);
+  }
+
+  function stopTtsFromPetShortcut() {
+    closePetShortcutMenu();
+    onStopTts();
+  }
+
+  function openPetShortcutStage(mode: DesktopStageRouteMode) {
+    closePetShortcutMenu();
+    const openStage = window.agentDesktop?.openStage?.(mode);
+    if (openStage) {
+      void openStage.catch(() => undefined);
+    }
+  }
+
+  function togglePetShortcuts() {
+    completePetEntryHint();
+    setPetShortcutsVisible((visible) => {
+      if (!visible) {
+        petChat.setInputVisible(false);
+      }
+      setPetShortcutMotionWithFallback(visible ? "closing" : "opening");
+      return !visible;
+    });
+  }
+
+  function finishPetShortcutMotion(event: AnimationEvent<HTMLElement>) {
+    if (event.animationName === "pet-shortcut-roll-out" || event.animationName === "pet-shortcut-roll-in") {
+      settlePetShortcutMotion();
+    }
+  }
+
+  useEffect(() => () => clearPetShortcutMotionTimer(), []);
+
+  useEffect(() => {
+    const saved = readRendererUiState(petEntryHintStorageKey);
+    setPetEntryHintStatus(saved === petEntryHintCompletedValue ? "completed" : "pending");
+  }, []);
+
+  useEffect(() => {
+    if (
+      windowMode !== "pet" ||
+      petEntryHintStatus !== "pending" ||
+      petShortcutsVisible ||
+      petChat.inputVisible ||
+      petChat.bubble.visible
+    ) {
+      return;
+    }
+    void writeRendererUiState(petEntryHintStorageKey, petEntryHintCompletedValue);
+  }, [petChat.bubble.visible, petChat.inputVisible, petEntryHintStatus, petShortcutsVisible, windowMode]);
+
+  useEffect(() => {
+    const visible = windowMode === "pet" && petShortcutsVisible;
+    window.agentDesktop?.setPetShortcutBarVisible?.(visible);
+    return () => {
+      window.agentDesktop?.setPetShortcutBarVisible?.(false);
+    };
+  }, [petShortcutsVisible, windowMode]);
+
+  useEffect(() => {
+    const visible = windowMode === "pet" && petChat.inputVisible;
+    window.agentDesktop?.setPetInputVisible?.(visible);
+    return () => {
+      window.agentDesktop?.setPetInputVisible?.(false);
+    };
+  }, [petChat.inputVisible, windowMode]);
+
+  useEffect(() => {
+    if (windowMode !== "pet") {
+      return;
+    }
+    const unsubscribe = window.agentDesktop?.onPetInputModeRequested?.((requestedMode) => {
+      const normalizedMode = normalizePetInputMode(requestedMode);
+      if (!normalizedMode) {
+        return;
+      }
+      openPetInputModeRef.current(normalizedMode);
+    });
+    return unsubscribe;
+  }, [windowMode]);
+
+  useEffect(() => {
+    const cancelPetDrag = () => {
+      const dragState = petDragRef.current;
+      try {
+        window.agentDesktop?.endPetWindowDrag?.();
+        if (dragState?.target?.hasPointerCapture(dragState.pointerId)) {
+          dragState.target.releasePointerCapture(dragState.pointerId);
+        }
+      } catch {
+        // 透明桌宠窗口在失焦或系统拖动中可能丢失 pointer capture；本地状态必须照常清理。
+      } finally {
+        petDragRef.current = null;
+        finishPetDragVisualState();
+      }
+    };
+    const unsubscribe = window.agentDesktop?.onPetDragCancelled?.(cancelPetDrag);
+    window.addEventListener("blur", cancelPetDrag);
+    window.addEventListener("pointercancel", cancelPetDrag);
+    window.addEventListener("pointerup", cancelPetDrag);
+    return () => {
+      unsubscribe?.();
+      window.removeEventListener("blur", cancelPetDrag);
+      window.removeEventListener("pointercancel", cancelPetDrag);
+      window.removeEventListener("pointerup", cancelPetDrag);
+      if (petDragSnapshotClearTimerRef.current !== null) {
+        window.clearTimeout(petDragSnapshotClearTimerRef.current);
+        petDragSnapshotClearTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  return {
+    shellRef: petShellRef,
+    petShortcutsVisible,
+    petShortcutMotion,
+    petDragging,
+    petDragSnapshot,
+    showPetEntryHint:
+      windowMode === "pet" &&
+      petEntryHintStatus === "pending" &&
+      !petShortcutsVisible &&
+      !petChat.inputVisible &&
+      !petChat.bubble.visible,
+    completePetEntryHint,
+    beginPetDrag,
+    movePetDrag,
+    endPetDrag,
+    togglePetShortcuts,
+    openPetInputMode,
+    openPetShortcutStage,
+    stopTtsFromPetShortcut,
+    finishPetShortcutMotion,
+  };
+}

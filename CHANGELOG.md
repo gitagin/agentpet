@@ -1,14 +1,24 @@
 # Changelog
 
-## Unreleased
+## 0.0.1-alpha - 2026-06-20
 
-- Added desktop key-path coverage for `Live2DStage`, `App`, and Electron sidecar failure handling with shared Vitest setup, and wired the new tests into the existing desktop CI test step.
-- Centralized backend test helpers in shared pytest fixtures, split agent runtime coverage by feature area, and gated live model acceptance tests behind `--run-live-model`.
-- Added backend Protocol boundaries for reminder scheduling, tool-capable chat models, continuity signals, and wiki workflow planning while enabling strict mypy configuration.
-- Added locking around backend write-frequency policy state and TTL cleanup for pending chat runs to prevent unbounded global mutable state growth.
-- Split backend API dependency wiring into service factory, runtime adapter, and error mapper modules, replacing wildcard wiring exports with explicit imports.
-- Removed the dead legacy `AgentToolRuntimeBase` runtime so backend agent execution only uses the LangGraph runtime path; shared service wiring and helper functions now live outside the deleted legacy module.
-- Centralized backend SQLite schema management in migrations, removing runtime business-code table/column creation from services and direct chat/wiki flows.
-- Standardized backend agent, MCP, diary extraction, and continuity service interfaces on async callbacks and removed the `_maybe_await` compatibility helpers.
-- Replaced background FastAPI request shims with a shared lightweight `AppContext`, so delayed index refresh and chat memory archival no longer retain raw request objects.
-- Split the Electron main process into focused window, tray, sidecar, proxy, and IPC modules while keeping `main.cjs` as the orchestration entrypoint.
+### 新增功能
+
+- 桌宠主舞台、聊天入口和记忆入口已收敛到“本地长期记忆陪伴体”的主体验。
+- 记忆页展示来源、原因、风险、可信度和状态，并支持可逆写入的撤回反馈。
+- 新增“本地隐私模式”开关：敏感输入只做本机关键词检索，不发送到模型 API，并在设置页说明隐私和智能程度取舍。
+- 后端保留聊天、长期记忆、结构化日记、Wiki 支撑整理、任务提醒、诊断导出和受保护 API。
+- 桌面端保留 Electron sidecar、contextBridge IPC、Live2D/气泡分页和本地权限边界。
+
+### 修复
+
+- 将过早的 `0.2.0` 产品版本标记降级为 alpha：桌面端和运行时显示 `0.0.1-alpha`，Python 包元数据使用 `0.0.1a0`。
+- 更新后端健康检查、诊断导出和桌面测试中的版本断言，避免测试继续固化错误发布语义。
+- 整理历史 v0.2 验证文档的当前状态说明，防止它继续暗示当前 checkout 已达到正式 `0.2.0`。
+
+### 已知限制
+
+- 阶段 1 的真实 Vault 聊天、记忆、回滚和部分 Electron 人工验收仍未补齐；跳过记录不是完成证据。
+- 当前版本不是可对外承诺的 `v0.2.0`，只能按 alpha/dev 阶段理解和试用。
+- 真实知识库绑定、破坏性 Vault/Markdown 操作、schema 变更和高风险记忆处理仍必须先取得用户确认。
+- 签名安装包、自动更新、完整 Live2D 口型同步、复杂动作编排和多角色支持仍不在当前 alpha 范围内。

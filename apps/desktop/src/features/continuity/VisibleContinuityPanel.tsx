@@ -52,11 +52,11 @@ export function VisibleContinuityPanel({
     try {
       await api.revertAgentAction(receipt.action_id);
       await loader.refresh();
-      setReceiptNotice({ tone: "success", message: `已撤销记录：${formatReceiptTitle(receipt)}。` });
+      setReceiptNotice({ tone: "success", message: `已撤回记录：${formatReceiptTitle(receipt)}。` });
     } catch (cause) {
       setReceiptNotice({
         tone: "error",
-        message: describeError(cause, "记录撤销失败"),
+        message: describeError(cause, "记录撤回失败"),
       });
     } finally {
       setRevertingReceiptIds((current) => {

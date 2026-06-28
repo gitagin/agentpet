@@ -1,7 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Dispatch, SetStateAction } from "react";
-import type { ChatMessage, TtsPlaybackItem } from "../../types";
+import type { ChatContinuitySignal, ChatMessage, TtsPlaybackItem } from "../../types";
 import { getPetBubblePageDelay } from "../../services/petBubblePagination";
 import { usePetChatBubble } from "./usePetChatBubble";
 import type { TtsPlaybackQueueController } from "../tts";
@@ -154,6 +154,22 @@ describe("usePetChatBubble", () => {
     expect(result.current.bubble.message).not.toBe(firstPage);
   });
 
+  it("keeps waiting for visible reply text after a non-reply stream event arrives", () => {
+    const { result } = renderPetChatBubbleHook();
+    const onFinalTimeout = vi.fn();
+
+    act(() => {
+      result.current.resetStreamState("assistant-status-only");
+      result.current.scheduleStreamWatchdog("Still checking", "Waiting for the actual reply.", 1000, onFinalTimeout);
+      result.current.markStreamEventReceived();
+      vi.advanceTimersByTime(1000);
+    });
+
+    expect(result.current.bubble.title).toBe("Still checking");
+    expect(result.current.bubble.message).toMatch(/^Waiting for the actual reply/);
+    expect(onFinalTimeout).not.toHaveBeenCalled();
+  });
+
   it("keeps short replies on a single page and hides them after the read delay", () => {
     const { result } = renderPetChatBubbleHook();
 
@@ -172,6 +188,58 @@ describe("usePetChatBubble", () => {
 
     expect(result.current.bubble.visible).toBe(false);
     expect(result.current.bubble.phase).toBe("fading");
+  });
+
+  it("keeps long titled presence bubbles compact without visible paging state", () => {
+    const { result } = renderPetChatBubbleHook();
+    const longPresence =
+      "There is an unfinished topic about favorite fruit and a memory clue that still needs confirmation. " +
+      "The companion should keep the note readable instead of hiding the end of the sentence inside the bubble.";
+
+    act(() => {
+      result.current.showBubble({
+        title: "下次接着聊",
+        message: longPresence,
+        tone: "tool",
+        phase: "complete",
+      });
+    });
+
+    const firstPage = result.current.bubble.message;
+    expect(result.current.bubble.tone).toBe("tool");
+    expect(result.current.bubble.message.length).toBeLessThan(longPresence.length);
+    expect(result.current.bubble.message).toMatch(/…$/);
+    expect(result.current.bubble.continueHint).toBeUndefined();
+    expect(result.current.bubble.canPageBackward).toBeUndefined();
+    expect(result.current.bubble.canPageForward).toBeUndefined();
+    expect(result.current.replyText).toBe("");
+
+    act(() => {
+      result.current.advancePageManually();
+    });
+
+    expect(result.current.bubble.message).toBe(firstPage);
+  });
+
+  it("summarizes continuity presence cues instead of printing the full display hint", () => {
+    const { result } = renderPetChatBubbleHook();
+    const signal: ChatContinuitySignal = {
+      kind: "open_thread",
+      title: "有个话题还没收好",
+      summary: "之前聊到苹果但未确认现在的喜好，后续还可以继续问用户喜欢的水果。",
+      intensity: "medium",
+      display_hint: "只作为本机陪伴提示；不会写入本地文件。",
+      source_state_keys: ["open_thread"],
+    };
+
+    act(() => {
+      result.current.showContinuityPresenceBubble(signal);
+    });
+
+    expect(result.current.bubble.title).toBe("下次接着聊");
+    expect(result.current.bubble.message).toMatch(/^下次可以接着聊：之前聊到苹果/);
+    expect(result.current.bubble.message).not.toContain("只作为本机陪伴提示");
+    expect(result.current.bubble.continueHint).toBeUndefined();
   });
 
   it("starts stable streamed reply pages through TTS and shows text on playback start", () => {

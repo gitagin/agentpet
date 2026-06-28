@@ -119,8 +119,8 @@ if (!exists(ssePath)) {
   if (!/text\/event-stream/.test(sseText)) {
     fail("SSE client does not request text/event-stream.");
   }
-  if (!/Authorization/.test(sseText)) {
-    fail("SSE client does not send Authorization.");
+  if (/\b(Authorization|Bearer|AGENT_PET_SESSION_TOKEN)\b/.test(sseText)) {
+    fail("SSE client references bearer-token material instead of relying on the Electron proxy.");
   }
 }
 
@@ -218,6 +218,10 @@ if (!exists(electronMainPath)) {
 
   if (!hasAny(electronRuntimeText, [/\bkill\s*\(/, /\bAbortController\b/, /\bdispose\b/])) {
     fail("Electron runtime does not include sidecar shutdown/cleanup handling.");
+  }
+
+  if (!/startSseStream/.test(electronRuntimeText) || !/text\/event-stream/.test(electronRuntimeText) || !/Authorization/.test(electronRuntimeText)) {
+    fail("Electron runtime does not broker authorized SSE streams.");
   }
 
   if (!hasAny(electronRuntimeText, [/setPermissionRequestHandler/, /session\.defaultSession\.setPermissionRequestHandler/])) {

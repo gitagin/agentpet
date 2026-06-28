@@ -402,6 +402,9 @@ def test_langgraph_splits_recalled_memory_by_permissions_and_records_usage() -> 
     assert "Use a softer, low-pressure tone" in prompt
     assert "Ada has been under pressure recently." not in prompt
     assert "Answer context (may be used as answer evidence):" in prompt
+    assert "只在记忆能直接帮助当前问题时自然带入" in prompt
+    assert "不要为了证明检索到了而提及路径、状态、分数或原文" in prompt
+    assert "避免逐字复述" in prompt
     assert "Ada prefers concise status updates." in prompt
     assert "Ada is working on project Atlas." not in prompt
 

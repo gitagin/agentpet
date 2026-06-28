@@ -21,6 +21,7 @@ function renderOverlay({
   inputVisible = true,
   connected = true,
   streaming = false,
+  onPreviousPage = vi.fn(),
   onAdvancePage = vi.fn(),
 }: {
   bubble?: PetBubbleState;
@@ -29,6 +30,7 @@ function renderOverlay({
   inputVisible?: boolean;
   connected?: boolean;
   streaming?: boolean;
+  onPreviousPage?: () => void;
   onAdvancePage?: () => void;
 } = {}) {
   const onModeChange = vi.fn();
@@ -44,7 +46,7 @@ function renderOverlay({
       modes={petInputModes}
       connected={connected}
       streaming={streaming}
-      onPreviousPage={vi.fn()}
+      onPreviousPage={onPreviousPage}
       onAdvancePage={onAdvancePage}
       onPausePaging={vi.fn()}
       onResumePaging={vi.fn()}
@@ -59,7 +61,7 @@ function renderOverlay({
     />,
   );
 
-  return { ...view, onModeChange, onSubmit, onAdvancePage };
+  return { ...view, onModeChange, onSubmit, onPreviousPage, onAdvancePage };
 }
 
 describe("PetChatOverlay", () => {

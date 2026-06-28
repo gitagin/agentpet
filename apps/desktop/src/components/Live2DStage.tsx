@@ -47,14 +47,23 @@ const live2DStageActionKeys: Record<Live2DStageState, string> = {
 
 type Live2DRenderLifecycleStatus = "loading" | "mounted" | "preview" | "failed";
 
-const petCanvasSupersampleRatio = 1.5;
-const maxCanvasPixelRatio = 4;
+const petCanvasSupersampleRatio = 1;
+const maxCanvasPixelRatio = 2;
+const live2dRenderInspectIntervalMs = 5000;
+const live2dLayoutInspectIntervalMs = 5000;
 
 function getLive2DCanvasPixelRatio(variant: "panel" | "pet" | "stage" | undefined): number {
   const devicePixelRatio = window.devicePixelRatio || 1;
   return variant === "pet"
     ? Math.min(devicePixelRatio * petCanvasSupersampleRatio, maxCanvasPixelRatio)
     : devicePixelRatio;
+}
+
+function isLive2DWindowFocused(): boolean {
+  if (document.visibilityState === "hidden") {
+    return false;
+  }
+  return typeof document.hasFocus === "function" ? document.hasFocus() : true;
 }
 
 function getLive2DRenderLifecycleText(status: Live2DRenderLifecycleStatus): string {
@@ -330,7 +339,35 @@ export function Live2DStage({
     getLive2DRuntimeDirective({ state: stage.state, asset, speaking, actionKeyOverride }),
   );
   const [runtimeDiagnostics, setRuntimeDiagnostics] = useState<Live2DRendererDiagnostics | null>(null);
+  const [windowFocused, setWindowFocused] = useState(isLive2DWindowFocused);
+  const rendererFocused = active && windowFocused;
   const live2dRuntimeHandleRef = useRef<Live2DRuntimeHandle | null>(null);
+  const activeRef = useRef(active);
+  const rendererFocusedRef = useRef(rendererFocused);
+
+  useEffect(() => {
+    activeRef.current = active;
+    rendererFocusedRef.current = rendererFocused;
+    live2dRuntimeHandleRef.current?.setActive?.(active);
+    live2dRuntimeHandleRef.current?.setFocused?.(rendererFocused);
+    if (!rendererFocused) {
+      setLayoutWarning(null);
+    }
+  }, [active, rendererFocused]);
+
+  useEffect(() => {
+    const updateWindowFocus = () => setWindowFocused(isLive2DWindowFocused());
+    window.addEventListener("focus", updateWindowFocus);
+    window.addEventListener("blur", updateWindowFocus);
+    document.addEventListener("visibilitychange", updateWindowFocus);
+    updateWindowFocus();
+
+    return () => {
+      window.removeEventListener("focus", updateWindowFocus);
+      window.removeEventListener("blur", updateWindowFocus);
+      document.removeEventListener("visibilitychange", updateWindowFocus);
+    };
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -404,6 +441,8 @@ export function Live2DStage({
 
         activeHandle = mountResult.handle || null;
         live2dRuntimeHandleRef.current = activeHandle;
+        activeHandle?.setActive?.(activeRef.current);
+        activeHandle?.setFocused?.(rendererFocusedRef.current);
         resizeRuntime();
         setRuntimeDiagnostics(mountResult.diagnostics || activeHandle?.getDiagnostics?.() || null);
         setRenderLifecycle({
@@ -440,7 +479,7 @@ export function Live2DStage({
     };
 
     const inspectRenderMode = () => {
-      if (!activeHandle) {
+      if (!rendererFocusedRef.current || !activeHandle) {
         return;
       }
       const renderMode = activeHandle.getRenderMode?.();
@@ -472,7 +511,7 @@ export function Live2DStage({
 
     canvasElement.addEventListener("webglcontextlost", handleContextLost);
     canvasElement.addEventListener("webglcontextrestored", handleContextRestored);
-    const renderInspectTimer = window.setInterval(inspectRenderMode, 2000);
+    const renderInspectTimer = window.setInterval(inspectRenderMode, live2dRenderInspectIntervalMs);
 
     mountRenderer();
 
@@ -532,7 +571,7 @@ export function Live2DStage({
   }, [actionKeyOverride, actionTriggerKey, asset, renderLifecycle.status, speaking, stage.state]);
 
   useEffect(() => {
-    if (!active || renderLifecycle.status !== "mounted" || suppressCanvasLayoutWarning) {
+    if (!rendererFocused || renderLifecycle.status !== "mounted" || suppressCanvasLayoutWarning) {
       setLayoutWarning(null);
       return;
     }
@@ -574,7 +613,7 @@ export function Live2DStage({
     };
 
     const frame = window.requestAnimationFrame(inspectCanvasLayout);
-    const layoutInspectTimer = window.setInterval(inspectCanvasLayout, 1000);
+    const layoutInspectTimer = window.setInterval(inspectCanvasLayout, live2dLayoutInspectIntervalMs);
     const resizeObserver = new ResizeObserver(inspectCanvasLayout);
     resizeObserver.observe(canvas);
     window.addEventListener("resize", inspectCanvasLayout);
@@ -585,7 +624,7 @@ export function Live2DStage({
       resizeObserver.disconnect();
       window.removeEventListener("resize", inspectCanvasLayout);
     };
-  }, [active, canvasRef, renderLifecycle.status, suppressCanvasLayoutWarning]);
+  }, [canvasRef, renderLifecycle.status, rendererFocused, suppressCanvasLayoutWarning]);
 
   const lifecycleText = getLive2DRenderLifecycleText(renderLifecycle.status);
   const renderModeText = getLive2DRenderModeText(renderLifecycle.renderMode || "failed");

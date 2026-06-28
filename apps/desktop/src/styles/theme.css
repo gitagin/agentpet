@@ -1,29 +1,29 @@
 :root {
-  /* 背景 */
-  --bg-stage: linear-gradient(135deg, #fdf6f0 0%, #fce8e8 50%, #f0e8fd 100%);
-  --bg-agent: #f8f5ff;
+  /* Background */
+  --bg-stage: linear-gradient(135deg, #f8fbfa 0%, #edf5f2 52%, #f8f3f7 100%);
+  --bg-agent: #f6faf8;
 
-  /* 卡片 */
-  --card-bg: rgba(255, 255, 255, 0.65);
-  --card-blur: blur(16px);
+  /* Surfaces */
+  --card-bg: rgba(255, 255, 255, 0.82);
+  --card-blur: blur(12px);
   --card-radius: 8px;
-  --card-border: 1px solid rgba(255, 255, 255, 0.8);
-  --card-shadow: 0 8px 32px rgba(180, 140, 160, 0.12);
+  --card-border: 1px solid rgba(55, 73, 82, 0.12);
+  --card-shadow: 0 14px 34px rgba(38, 58, 67, 0.1);
 
-  /* 主色 */
-  --color-primary: #f4a0b5;      /* 粉色：陪伴 */
-  --color-success: #7ec8a0;      /* 绿色：运行/通过 */
-  --color-active: #f4a96a;       /* 橙色：活力/进行中 */
-  --color-text: #3d2c35;
-  --color-text-soft: #8a7080;
+  /* Color */
+  --color-primary: #8f4266;
+  --color-success: #2f7f5c;
+  --color-active: #a9642e;
+  --color-text: #20292f;
+  --color-text-soft: #5d6b73;
 
-  /* 间距 */
+  /* Spacing */
   --space-xs: 4px;
   --space-sm: 8px;
   --space-md: 16px;
   --space-lg: 24px;
   --space-xl: 40px;
 
-  /* 字体 */
-  --font-sans: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", system-ui, sans-serif;
+  /* Type */
+  --font-sans: "Segoe UI", "Microsoft YaHei", "Noto Sans CJK SC", system-ui, sans-serif;
 }

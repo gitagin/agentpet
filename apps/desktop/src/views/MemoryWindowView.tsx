@@ -1,4 +1,4 @@
-import { Archive, BarChart3, BookOpen, CalendarRange, Check, CheckCircle2, Copy, Database, ExternalLink, FileText, FolderSearch, History, Loader2, NotebookTabs, PlusCircle, RefreshCw, RotateCcw, Search, ShieldAlert, XCircle } from "lucide-react";
+import { Archive, BarChart3, BookOpen, CalendarRange, Check, CheckCircle2, Copy, Database, Download, ExternalLink, FileText, FolderSearch, History, Loader2, NotebookTabs, PlusCircle, RefreshCw, RotateCcw, Search, ShieldAlert, XCircle } from "lucide-react";
 import type { FormEvent, ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { EmptyState } from "../components/layout";
@@ -37,6 +37,7 @@ import { FeatureWindowShell } from "./FeatureWindowShell";
 
 type MemoryActivityFilter = "all" | "auto" | "pending" | "reverted" | "failed";
 type MemoryGraphStatusFilter = "all" | "active" | "candidate" | "quarantined" | "archived" | "rejected" | "wrong" | "sensitive_blocked";
+type MemoryExportFormat = "json" | "markdown";
 type RetrospectiveReportTarget = number | RetrospectiveReportPeriod;
 type ReviewCoachKind = "today" | "seven_day" | "monthly";
 
@@ -85,7 +86,7 @@ const activityFilters: Array<{ key: MemoryActivityFilter; label: string }> = [
   { key: "all", label: "全部" },
   { key: "auto", label: "自动写入" },
   { key: "pending", label: "待确认" },
-  { key: "reverted", label: "已撤销" },
+  { key: "reverted", label: "已撤回" },
   { key: "failed", label: "失败" },
 ];
 
@@ -265,6 +266,47 @@ function memoryFactSentence(fact: MemoryGraphFact): string {
   return `${fact.subject} ${fact.predicate} ${fact.object}`;
 }
 
+function formatMemoryFactRisk(fact: MemoryGraphFact): string {
+  if (fact.status === "sensitive_blocked") {
+    return "敏感封存";
+  }
+  if (fact.status === "quarantined" || fact.status === "wrong" || fact.status === "rejected") {
+    return "需复核";
+  }
+  if (fact.conflicts_with || fact.confidence < 0.75) {
+    return "低置信";
+  }
+  return "普通";
+}
+
+function formatMemoryFactReason(fact: MemoryGraphFact): string {
+  const support = fact.support_count > 0 ? `${fact.support_count} 条支持` : "暂无支持计数";
+  const importance = typeof fact.importance === "number" ? `，重要度 ${Math.round(fact.importance * 100)}%` : "";
+  return `来自 ${fact.source_type || "未知来源"}，${support}${importance}`;
+}
+
+function memoryExportText(response: MemoryGraphExportPreviewResponse, format: MemoryExportFormat): string {
+  return format === "json" ? response.json_preview : response.markdown_preview;
+}
+
+function memoryExportFileName(format: MemoryExportFormat): string {
+  const day = new Date().toISOString().slice(0, 10);
+  return `agent-pet-memory-${day}.${format === "json" ? "json" : "md"}`;
+}
+
+function downloadTextFile(fileName: string, text: string, mimeType: string) {
+  const blob = new Blob([text], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  link.rel = "noopener";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 function formatReviewCategory(category: MemoryReviewItem["category"]): string {
   const labels: Record<MemoryReviewItem["category"], string> = {
     kept: "已保留",
@@ -365,7 +407,7 @@ function LocalAssetDashboard({
     { label: "知识页", value: String(stats?.wiki_page_count ?? 0), meta: "不含核心维护页", icon: BookOpen },
     { label: "任务完成", value: taskValue, meta: "完成 / 总数", icon: CheckCircle2 },
     { label: "最近整理", value: latest, meta: "本机记录", icon: History },
-    { label: "可撤销操作", value: String(stats?.reversible_operation_count ?? 0), meta: "尚未撤销", icon: RotateCcw },
+    { label: "可撤回操作", value: String(stats?.reversible_operation_count ?? 0), meta: "尚未撤回", icon: RotateCcw },
   ];
   return (
     <section className="panel feature-window-panel local-asset-dashboard" aria-label="本机积累">
@@ -851,14 +893,36 @@ function MemoryFactCard({
         <div className="memory-graph-fact-meta">
           <span>{formatMemoryFactStatus(fact.status)}</span>
           <span>{fact.category}</span>
+          <span>风险 {formatMemoryFactRisk(fact)}</span>
           <span>置信度 {Math.round(fact.confidence * 100)}%</span>
           <span>支持 {fact.support_count}</span>
         </div>
-        <p>
-          {fact.source_type}
-          {fact.memory_type ? ` / ${fact.memory_type}` : ""}
-          {fact.updated_at ? ` / ${formatDate(fact.updated_at)}` : ""}
-        </p>
+        <dl className="memory-graph-fact-details" aria-label="记忆来源和判断">
+          <div>
+            <dt>来源</dt>
+            <dd>
+              {fact.source_type}
+              {fact.memory_type ? ` / ${fact.memory_type}` : ""}
+            </dd>
+          </div>
+          <div>
+            <dt>记住原因</dt>
+            <dd>{formatMemoryFactReason(fact)}</dd>
+          </div>
+          <div>
+            <dt>状态</dt>
+            <dd>
+              {formatMemoryFactStatus(fact.status)}
+              {fact.updated_at ? ` / 更新于 ${formatDate(fact.updated_at)}` : ""}
+            </dd>
+          </div>
+          {fact.conflicts_with ? (
+            <div>
+              <dt>冲突</dt>
+              <dd>{fact.conflicts_with}</dd>
+            </div>
+          ) : null}
+        </dl>
       </div>
       <div className="memory-graph-fact-actions">
         {fact.status !== "active" ? (
@@ -1466,7 +1530,7 @@ export default function MemoryWindowView({
       const status = memoryFactStatus === "all" ? null : memoryFactStatus;
       const response = await api.getMemoryGraphExportPreview("markdown", status, memoryFactQuery, 100);
       setExportPreview(response);
-      const text = response.markdown_preview || response.json_preview;
+      const text = memoryExportText(response, "markdown");
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(text);
         setExportMessage(`已复制 ${response.item_count} 条长期记忆预览。`);
@@ -1475,6 +1539,28 @@ export default function MemoryWindowView({
       }
     } catch (requestError) {
       setExportMessage(describeError(requestError, "导出预览失败"));
+    } finally {
+      setExportLoading(false);
+    }
+  }
+
+  async function downloadMemoryExport(format: MemoryExportFormat) {
+    setExportLoading(true);
+    setExportMessage("");
+    try {
+      const status = memoryFactStatus === "all" ? null : memoryFactStatus;
+      const response = await api.getMemoryGraphExportPreview(format, status, memoryFactQuery, 100);
+      setExportPreview(response);
+      const text = memoryExportText(response, format);
+      const fileName = memoryExportFileName(format);
+      downloadTextFile(
+        fileName,
+        text,
+        format === "json" ? "application/json;charset=utf-8" : "text/markdown;charset=utf-8",
+      );
+      setExportMessage(`已导出 ${response.item_count} 条长期记忆为 ${format === "json" ? "JSON" : "Markdown"}。`);
+    } catch (requestError) {
+      setExportMessage(describeError(requestError, "记忆导出失败"));
     } finally {
       setExportLoading(false);
     }
@@ -1644,6 +1730,14 @@ export default function MemoryWindowView({
             {exportLoading ? <Loader2 className="spin" size={16} /> : <Copy size={16} />}
             复制导出预览
           </button>
+          <button type="button" className="secondary" onClick={() => void downloadMemoryExport("markdown")} disabled={exportLoading}>
+            {exportLoading ? <Loader2 className="spin" size={16} /> : <Download size={16} />}
+            下载 Markdown
+          </button>
+          <button type="button" className="secondary" onClick={() => void downloadMemoryExport("json")} disabled={exportLoading}>
+            {exportLoading ? <Loader2 className="spin" size={16} /> : <Download size={16} />}
+            下载 JSON
+          </button>
         </div>
         {memoryFactsError ? <p className="field-note error">{memoryFactsError}</p> : null}
         {exportMessage ? <p className={`field-note ${exportMessage.includes("失败") ? "error" : ""}`}>{exportMessage}</p> : null}
@@ -1693,7 +1787,7 @@ export default function MemoryWindowView({
               <strong>导出预览</strong>
               <span>{exportPreview.redaction_note}</span>
             </div>
-            <textarea readOnly value={exportPreview.markdown_preview} />
+            <textarea readOnly value={memoryExportText(exportPreview, exportPreview.format)} />
           </div>
         ) : null}
       </section>
@@ -1768,7 +1862,7 @@ export default function MemoryWindowView({
           <div className="memory-trust-workspace" aria-label="AI 记住了什么">
             <div className="section-heading compact">
               <strong>AI 记住了什么</strong>
-              <span>按写入类型、跳过原因和可撤销状态归类；敏感跳过项只显示安全摘要。</span>
+              <span>按写入类型、跳过原因和可撤回状态归类；敏感跳过项只显示安全摘要。</span>
             </div>
             <div className="memory-trust-group-grid">
               {memoryGroups.map((group) => (

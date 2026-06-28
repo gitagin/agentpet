@@ -26,6 +26,49 @@ function action(overrides: Partial<AgentAction>): AgentAction {
 }
 
 describe("ChatMessageList", () => {
+  it("marks the list state so short chats can sit at the bottom", () => {
+    const { container, rerender } = render(<ChatMessageList messages={[]} />);
+
+    expect(container.querySelector(".message-list")).toHaveClass("is-empty");
+
+    rerender(
+      <ChatMessageList
+        messages={[
+          {
+            id: "user-1",
+            role: "user",
+            content: "hello",
+            status: "completed",
+          },
+        ]}
+      />,
+    );
+
+    expect(container.querySelector(".message-list")).toHaveClass("has-messages");
+  });
+
+  it("renders messages as chat rows with left and right bubbles", () => {
+    const messages: ChatMessage[] = [
+      {
+        id: "user-1",
+        role: "user",
+        content: "今天有点累。",
+        status: "completed",
+      },
+      {
+        id: "assistant-1",
+        role: "assistant",
+        content: "先缓一下，我在。",
+        status: "completed",
+      },
+    ];
+
+    const { container } = render(<ChatMessageList messages={messages} />);
+
+    expect(container.querySelector(".message-row.user .message-bubble.user")).toHaveTextContent("今天有点累。");
+    expect(container.querySelector(".message-row.assistant .message-bubble.assistant")).toHaveTextContent("先缓一下，我在。");
+  });
+
   it("hides system messages and keeps assistant trace details collapsed", () => {
     const messages: ChatMessage[] = [
       {

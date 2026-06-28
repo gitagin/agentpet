@@ -6,9 +6,10 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.agents.events import AgentErrorEvent, AgentStatusEvent, AgentTokenEvent
-from app.agents.nodes.chat import _chat_node
+from app.agents.nodes.chat import _chat_node, _grounded_response_from_citations, _message_with_citation_context
 from app.agents.services import AgentRuntimeServices
 from app.agents.state import AgentState, SemanticAnalysisResult
+from app.models.api import MemoryRecallPermissions, MemorySearchResult
 
 
 @dataclass
@@ -35,6 +36,24 @@ def _graph_state(message: str = "你好") -> dict:
 
 def _has_empty_search_result(_tool_results) -> bool:
     return False
+
+
+def _memory_result(
+    *,
+    snippet: str = "Ada prefers concise status updates.",
+    source_scope: str = "personal_memory",
+) -> MemorySearchResult:
+    return MemorySearchResult(
+        note_id="note-1",
+        chunk_id="chunk-1",
+        relative_path="People/Ada.md",
+        title="Ada",
+        heading="Preferences",
+        snippet=snippet,
+        score=0.9,
+        source_scope=source_scope,
+        recall_permissions=MemoryRecallPermissions(can_answer_context=True),
+    )
 
 
 @pytest.mark.asyncio
@@ -93,3 +112,35 @@ async def test_chat_node_uses_local_fallback_when_primary_fails_without_model() 
 
     assert "暂时没有找到" in result["agent_state"].response_text
     assert any(isinstance(event, AgentTokenEvent) for event in result["events"])
+
+
+def test_grounded_fallback_does_not_echo_raw_memory_snippets() -> None:
+    response = _grounded_response_from_citations(
+        [
+            _memory_result(
+                snippet="Ada prefers concise status updates. conversation_id=conversation-1"
+            )
+        ]
+    )
+
+    assert "相关线索" in response
+    assert "原始记录" in response
+    assert "Ada prefers concise status updates." not in response
+    assert "conversation_id" not in response
+
+
+def test_message_with_citation_context_instructs_natural_recall_not_raw_echo() -> None:
+    state = AgentState(
+        conversation_id="conversation-1",
+        message_id="message-1",
+        agent_run_id="run-1",
+        user_message="What do you remember about Ada?",
+        citations=[_memory_result()],
+    )
+
+    prompt = _message_with_citation_context(state)
+
+    assert "只在记忆能直接帮助当前问题时自然带入" in prompt
+    assert "不要为了证明检索到了而提及路径、状态、分数或原文" in prompt
+    assert "避免逐字复述" in prompt
+    assert "Ada prefers concise status updates." in prompt

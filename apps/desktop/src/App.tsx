@@ -1,22 +1,5 @@
-﻿import {
-  BookOpen,
-  Check,
-  CircleAlert,
-  FolderKanban,
-  HeartPulse,
-  House,
-  Loader2,
-  MessageSquareText,
-  Power,
-  RefreshCw,
-  Send,
-  Settings,
-  ShieldCheck,
-  X,
-} from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { flushSync } from "react-dom";
-import type { AnimationEvent, CSSProperties, FormEvent, PointerEvent } from "react";
+﻿import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import type { FormEvent } from "react";
 import type {
   AgentAction,
   ChatMessage,
@@ -25,121 +8,83 @@ import type {
   ChatContinuitySignal,
   Citation,
   ContinuityProposal,
-  ContinuityProposalKind,
-  ContinuityProposalStatus,
   ContinuityStateResponse,
   DiagnosticsExportResponse,
-  DesktopFeatureWindowMode,
   DesktopVaultRevealMode,
   SettingsStatusResponse,
-  TtsPlaybackItem,
-  TtsPlaybackError,
-  TtsVoiceGender,
 } from "./types";
 import { describeError } from "./services/apiErrorMessages";
-import { ConnectionPanel } from "./features/connection/ConnectionPanel";
-import { ConnectionStatusStrip } from "./features/connection/HealthStatus";
 import { useConnection } from "./features/connection/useConnection";
-import { TaskPanel } from "./features/tasks/TaskPanel";
-import { formatTaskStatus } from "./features/tasks/taskReducer";
 import { useTasks } from "./features/tasks/useTasks";
-import { SettingsPanel } from "./features/settings/SettingsPanel";
-import { formatModelTestResult } from "./features/settings/settingsFormatters";
 import { isTtsSettingsSavedMessage, settingsSyncChannelName } from "./features/settings/settingsSync";
 import type { LastIndexRun } from "./features/settings/settingsTypes";
 import { useSettings } from "./features/settings/useSettings";
-import { AgentActionActivityCard } from "./features/memory/AgentActionActivityCard";
-import { MemoryProposalActivityCard } from "./features/memory/MemoryProposalActivityCard";
 import { normalizeMemoryProposalPayload } from "./features/memory/memoryUtils";
 import { useMemory } from "./features/memory/useMemory";
-import { ChatWikiProposalCard } from "./features/wiki/ChatWikiProposalCard";
-import { WikiBrowserPanel } from "./features/wiki/WikiBrowserPanel";
-import { WikiWorkflowPanel } from "./features/wiki/WikiWorkflowPanel";
 import { wikiArchiveCandidateStorageKey } from "./features/wiki/wikiConstants";
 import { useWiki } from "./features/wiki/useWiki";
-import { Live2DStage } from "./components/Live2DStage";
 import StageView from "./views/StageView";
-import AgentWorkspaceView from "./views/AgentWorkspaceView";
-import ChatWindowView from "./views/ChatWindowView";
-import MemoryWindowView from "./views/MemoryWindowView";
-import SettingsWindowView from "./views/SettingsWindowView";
-import WorldWindowView from "./views/WorldWindowView";
-import { EmptyState, Panel } from "./components/layout";
-import { ChatMessageList } from "./features/chat/ChatMessageList";
-import { PetChatOverlay } from "./features/chat/PetChatOverlay";
 import {
   buildPetInputIntentMessage,
   getPetInputModeOption,
-  normalizePetInputMode,
   petInputModes,
   type PetInputMode,
 } from "./features/chat/petInputModes";
 import { applyStreamEvent } from "./features/chat/streamDispatcher";
 import { usePetChatBubble } from "./features/chat/usePetChatBubble";
-import { pickPayloadString } from "./features/chat/chatStreamUtils";
+import { useProactiveHabitLoop } from "./features/habitLoop/useProactiveHabitLoop";
 import {
-  createBackendTtsProvider,
-  createMockTtsProvider,
-  createSystemTtsProvider,
-  type TtsProviderPlaybackStatus,
-  useTtsPlaybackQueue,
-  useTtsWaitingCue,
-} from "./features/tts";
-import { Live2DModelPanel } from "./features/live2d/Live2DModelPanel";
+  firstUseOnboardingStorageKey,
+  useFirstUseOnboarding,
+} from "./features/onboarding/useFirstUseOnboarding";
+import { useTtsOrchestrator } from "./features/tts/useTtsOrchestrator";
 import { live2dModelSelectionStorageKey } from "./features/live2d/live2dConstants";
 import { resolveLive2DReplyActionKey } from "./features/live2d/live2dReplyActions";
 import { useLive2D } from "./features/live2d/useLive2D";
-import { VisibleContinuityPanel } from "./features/continuity";
+import {
+  formatContinuityKind,
+  normalizeContinuityProposal,
+  normalizeContinuitySignal,
+} from "./features/continuity/continuityFormatters";
 import { fetchSseStream } from "./services/sse";
-import { agentLabel } from "./services/agentModelDrafts";
 import {
   agentActivitySortKey,
   buildAgentActivityEntries,
   isAttentionAgentAction,
   type AgentActivityLogEntry,
 } from "./services/agentActivity";
-import { readRendererUiState, writeRendererUiState } from "./services/rendererUiState";
-import petHitboxConfig from "../pet-hitbox.json";
+import { writeRendererUiState } from "./services/rendererUiState";
+import { petHitboxStyle, petShortcutButtonStyles } from "./features/pet/petHitboxStyles";
+import { PetWindow } from "./features/pet/PetWindow";
+import {
+  petEntryHintStorageKey,
+  usePetWindowController,
+} from "./features/pet/usePetWindowController";
+import { ControlDashboard } from "./features/desktop/ControlDashboard";
+import { AgentActivityEntryRenderer } from "./features/desktop/AgentActivityEntryRenderer";
+import { DesktopFeatureRoutes } from "./features/desktop/DesktopFeatureRoutes";
+import { buildControlWorkflowItems } from "./features/desktop/controlWorkflowItems";
+import { useDesktopWindowRouting } from "./features/desktop/useDesktopWindowRouting";
+
+const ConnectionManagementPanel = lazy(() =>
+  import("./features/desktop/ConnectionManagementPanel").then((module) => ({ default: module.ConnectionManagementPanel })),
+);
+const SettingsPanel = lazy(() =>
+  import("./features/settings/SettingsPanel").then((module) => ({ default: module.SettingsPanel })),
+);
+const WikiManagementPanels = lazy(() =>
+  import("./features/desktop/WikiManagementPanels").then((module) => ({ default: module.WikiManagementPanels })),
+);
 
 type Notice = {
   tone: "info" | "error" | "success";
   message: string;
 };
 
-type DesktopWindowMode = "pet" | "control" | "stage" | "agent" | DesktopFeatureWindowMode;
 type AsyncStatus = "idle" | "loading" | "success" | "empty" | "error";
-type PetShortcutMotion = "idle" | "opening" | "closing";
-type PetDragSnapshot = {
-  url: string;
-  style: CSSProperties;
-} | null;
-type FirstUseOnboardingStatus = "unknown" | "pending" | "completed";
-type PetEntryHintStatus = "unknown" | "pending" | "completed";
 type SendChatTextOptions = {
   displayText?: string;
 };
-
-type CoreWorkflowItem = {
-  label: string;
-  status: "done" | "active" | "blocked";
-  detail: string;
-  targetId?: string;
-};
-
-function hasExplicitWindowRoute(): boolean {
-  const hash = window.location.hash.replace("#/", "").replace("#", "").trim();
-  return Boolean(hash);
-}
-
-const petShortcutButtonSize = 34;
-const petShortcutButtonGap = 7;
-const petShortcutButtonCount = 5;
-const petShortcutColumnCount = 1;
-const petShortcutButtonStyles = buildPetShortcutButtonStyles();
-const firstUseOnboardingStorageKey = "agent-pet.first-use-onboarding";
-const firstUseOnboardingCompletedValue = "completed:v1";
-const petEntryHintStorageKey = "agent-pet.pet-entry-hint";
-const petEntryHintCompletedValue = "completed:v1";
 
 function displayTextForInputMode(mode: PetInputMode, rawText: string): string {
   const text = rawText.trim();
@@ -148,217 +93,6 @@ function displayTextForInputMode(mode: PetInputMode, rawText: string): string {
   }
   const label = getPetInputModeOption(mode).label;
   return text ? `${label}：${text}` : label;
-}
-
-function detectDesktopWindowMode(): DesktopWindowMode {
-  const mode = window.location.hash.replace("#/", "").replace("#", "") || "stage";
-  if (
-    mode === "pet" ||
-    mode === "stage" ||
-    mode === "agent" ||
-    mode === "chat" ||
-    mode === "memory" ||
-    mode === "world" ||
-    mode === "settings"
-  ) {
-    return mode;
-  }
-  return "control";
-}
-
-function isDesktopWindowMode(mode: unknown): mode is DesktopWindowMode {
-  return (
-    mode === "pet" ||
-    mode === "control" ||
-    mode === "stage" ||
-    mode === "agent" ||
-    mode === "chat" ||
-    mode === "memory" ||
-    mode === "world" ||
-    mode === "settings"
-  );
-}
-
-const petHitboxStyle = {
-  "--pet-model-hit-width": `${petHitboxConfig.hitboxes.model.width}px`,
-  "--pet-model-hit-height": `${petHitboxConfig.hitboxes.model.height}px`,
-  "--pet-model-hit-bottom": `${petHitboxConfig.hitboxes.model.bottom}px`,
-  "--pet-input-dock-hit-width": `${petHitboxConfig.hitboxes.inputDock.width}px`,
-  "--pet-input-dock-hit-height": `${petHitboxConfig.hitboxes.inputDock.height}px`,
-  "--pet-input-dock-hit-bottom": `${petHitboxConfig.hitboxes.inputDock.bottom}px`,
-  "--pet-chat-bubble-hit-width": `${petHitboxConfig.hitboxes.chatBubble.width}px`,
-  "--pet-chat-bubble-hit-height": `${petHitboxConfig.hitboxes.chatBubble.height}px`,
-  "--pet-chat-bubble-hit-bottom": `${petHitboxConfig.hitboxes.chatBubble.bottom}px`,
-  "--pet-shortcut-bar-width": `${petHitboxConfig.hitboxes.shortcutBar.width}px`,
-  "--pet-shortcut-bar-height": `${petHitboxConfig.hitboxes.shortcutBar.height}px`,
-  "--pet-shortcut-bar-right": `${petHitboxConfig.hitboxes.shortcutBar.right}px`,
-  "--pet-shortcut-bar-bottom": `${petHitboxConfig.hitboxes.shortcutBar.bottom}px`,
-} as CSSProperties;
-
-function buildPetShortcutButtonStyles(): CSSProperties[] {
-  const modelCenter = {
-    x: petHitboxConfig.window.width / 2,
-    y:
-      petHitboxConfig.window.height -
-      petHitboxConfig.hitboxes.model.bottom -
-      petHitboxConfig.hitboxes.model.height / 2,
-  };
-  const shortcutBarLeft =
-    petHitboxConfig.window.width -
-    petHitboxConfig.hitboxes.shortcutBar.right -
-    petHitboxConfig.hitboxes.shortcutBar.width;
-  const shortcutBarTop =
-    petHitboxConfig.window.height -
-    petHitboxConfig.hitboxes.shortcutBar.bottom -
-    petHitboxConfig.hitboxes.shortcutBar.height;
-  const rowCount = Math.ceil(petShortcutButtonCount / petShortcutColumnCount);
-  const stackWidth =
-    petShortcutColumnCount * petShortcutButtonSize +
-    (petShortcutColumnCount - 1) * petShortcutButtonGap;
-  const stackHeight =
-    rowCount * petShortcutButtonSize +
-    (rowCount - 1) * petShortcutButtonGap;
-  const stackLeft = shortcutBarLeft + (petHitboxConfig.hitboxes.shortcutBar.width - stackWidth) / 2;
-  const stackTop = shortcutBarTop + (petHitboxConfig.hitboxes.shortcutBar.height - stackHeight) / 2;
-
-  return Array.from({ length: petShortcutButtonCount }, (_, index) => {
-    const column = index % petShortcutColumnCount;
-    const row = Math.floor(index / petShortcutColumnCount);
-    const buttonCenter = {
-      x: stackLeft + petShortcutButtonSize / 2 + column * (petShortcutButtonSize + petShortcutButtonGap),
-      y: stackTop + petShortcutButtonSize / 2 + row * (petShortcutButtonSize + petShortcutButtonGap),
-    };
-    return {
-      "--pet-shortcut-origin-x": `${Math.round(modelCenter.x - buttonCenter.x)}px`,
-      "--pet-shortcut-origin-y": `${Math.round(modelCenter.y - buttonCenter.y)}px`,
-    } as CSSProperties;
-  });
-}
-
-type FirstUseOnboardingDraft = {
-  currentFocus: string;
-  preferredName: string;
-  longTermContext: string;
-  savePreference: string;
-};
-
-function buildFirstUseOnboardingMessage(draft: FirstUseOnboardingDraft): string | null {
-  const currentFocus = draft.currentFocus.trim();
-  const preferredName = draft.preferredName.trim();
-  const longTermContext = draft.longTermContext.trim();
-  const savePreference = draft.savePreference.trim();
-  if (!currentFocus) {
-    return null;
-  }
-  return [
-    "这是我的首次使用引导回答。请先自然回应用户，接住用户今天想继续的事，不要先要求配置系统。",
-    "记忆边界：只沉淀高价值、非敏感、可复用的长期记忆；低置信、敏感或关系身份类内容必须等待用户确认或跳过；不要编造或确认用户没有明确表达的内容。",
-    "",
-    `今天想让我从哪里陪你继续：${currentFocus}`,
-    `希望我怎么称呼你：${preferredName || "未填写"}`,
-    `以后希望我多留意什么：${longTermContext || "未填写"}`,
-    `记忆保存偏好：${savePreference || "未填写"}`,
-  ].join("\n");
-}
-
-function FirstUseOnboardingCard({
-  currentFocus,
-  preferredName,
-  longTermContext,
-  savePreference,
-  connected,
-  streaming,
-  submitting,
-  onCurrentFocusChange,
-  onPreferredNameChange,
-  onLongTermContextChange,
-  onSavePreferenceChange,
-  onSubmit,
-  onSkip,
-}: {
-  currentFocus: string;
-  preferredName: string;
-  longTermContext: string;
-  savePreference: string;
-  connected: boolean;
-  streaming: boolean;
-  submitting: boolean;
-  onCurrentFocusChange: (value: string) => void;
-  onPreferredNameChange: (value: string) => void;
-  onLongTermContextChange: (value: string) => void;
-  onSavePreferenceChange: (value: string) => void;
-  onSubmit: (event: FormEvent) => void;
-  onSkip: () => void;
-}) {
-  const hasRequiredAnswer = Boolean(currentFocus.trim());
-  return (
-    <section className="first-use-onboarding" aria-label="首次使用引导">
-      <div className="section-heading">
-        <strong>今天想让我从哪里陪你继续？</strong>
-        <span>
-          先告诉我一句现在最想接上的事；称呼、长期留意内容和记忆偏好都可以之后再补。
-        </span>
-      </div>
-      <form className="first-use-onboarding-form" onSubmit={onSubmit}>
-        <label>
-          <span>今天想让我从哪里陪你继续？</span>
-          <textarea
-            rows={2}
-            value={currentFocus}
-            onChange={(event) => onCurrentFocusChange(event.target.value)}
-            placeholder="例如：我今天有点累，想把昨天没说完的事接上"
-            required
-            disabled={submitting || streaming}
-          />
-        </label>
-        <details className="first-use-onboarding-extra">
-          <summary>可选补充</summary>
-          <label>
-            <span>怎么称呼你（可选）</span>
-            <textarea
-              rows={1}
-              value={preferredName}
-              onChange={(event) => onPreferredNameChange(event.target.value)}
-              placeholder="例如：叫我小林"
-              disabled={submitting || streaming}
-            />
-          </label>
-          <label>
-            <span>以后希望我多留意什么（可选）</span>
-            <textarea
-              rows={2}
-              value={longTermContext}
-              onChange={(event) => onLongTermContextChange(event.target.value)}
-              placeholder="例如：重要承诺、长期目标、容易忘的偏好"
-              disabled={submitting || streaming}
-            />
-          </label>
-          <label>
-            <span>记忆保存偏好（可选）</span>
-            <textarea
-              rows={2}
-              value={savePreference}
-              onChange={(event) => onSavePreferenceChange(event.target.value)}
-              placeholder="例如：先留在本机，以后需要时再调整"
-              disabled={submitting || streaming}
-            />
-          </label>
-        </details>
-        <div className="button-row">
-          <button type="submit" disabled={!connected || streaming || submitting || !hasRequiredAnswer}>
-            {submitting ? <Loader2 className="spin" size={16} /> : <Send size={16} />}
-            {submitting ? "正在开始" : "开始第一次聊天"}
-          </button>
-          <button type="button" className="secondary" onClick={onSkip} disabled={submitting || streaming}>
-            跳过
-          </button>
-        </div>
-        <p className="field-note">
-          记下的内容之后可以在记忆里查看和撤回；敏感、不确定或关系身份类内容会先确认或跳过。
-        </p>
-      </form>
-    </section>
-  );
 }
 
 function App() {
@@ -379,43 +113,22 @@ function App() {
   const [loadingContinuity, setLoadingContinuity] = useState(false);
   const [continuityActionIds, setContinuityActionIds] = useState<Set<string>>(() => new Set());
   const [resettingLocalState, setResettingLocalState] = useState(false);
-  const [windowMode, setWindowMode] = useState<DesktopWindowMode>(() => detectDesktopWindowMode());
-  const [desktopHostMode, setDesktopHostMode] = useState<DesktopWindowMode>(() => detectDesktopWindowMode());
-  const [petShortcutsVisible, setPetShortcutsVisible] = useState(false);
-  const [petShortcutMotion, setPetShortcutMotion] = useState<PetShortcutMotion>("idle");
-  const [petDragging, setPetDragging] = useState(false);
-  const [petDragSnapshot, setPetDragSnapshot] = useState<PetDragSnapshot>(null);
-  const [petInputMode, setPetInputMode] = useState<PetInputMode>("chat");
-  const [firstUseOnboardingStatus, setFirstUseOnboardingStatus] =
-    useState<FirstUseOnboardingStatus>("unknown");
-  const [petEntryHintStatus, setPetEntryHintStatus] = useState<PetEntryHintStatus>("unknown");
-  const [firstUseOnboardingDraft, setFirstUseOnboardingDraft] = useState({
-    currentFocus: "",
-    preferredName: "",
-    longTermContext: "",
-    savePreference: "",
+  const { desktopHostMode, setWindowMode, windowMode } = useDesktopWindowRouting({
+    onControlTargetRequested: scrollToWorkflowTarget,
   });
-  const [submittingFirstUseOnboarding, setSubmittingFirstUseOnboarding] = useState(false);
+  const [petInputMode, setPetInputMode] = useState<PetInputMode>("chat");
   const streamAbort = useRef<AbortController | null>(null);
   const activeChatRequestIdRef = useRef<string | null>(null);
   const streamingRef = useRef(false);
   const conversationIdRef = useRef<string | null>(conversationId);
   const live2dTaskStageRef = useRef<() => void>(() => undefined);
-  const petShellRef = useRef<HTMLElement | null>(null);
-  const petDragSnapshotClearTimerRef = useRef<number | null>(null);
-  const petShortcutMotionTimerRef = useRef<number | null>(null);
-  const petDragRef = useRef<{
-    pointerId: number;
-    startX: number;
-    startY: number;
-    dragging: boolean;
-    target: HTMLElement | null;
-  } | null>(null);
+  const live2dStageCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const live2dPetCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const live2dPanelCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const isElectronRuntime = Boolean(window.agentDesktop);
   const canSelectVaultDirectory = Boolean(window.agentDesktop?.selectKnowledgeBaseFolder);
 
   const pendingSettingsStatusRef = useRef<SettingsStatusResponse | null>(null);
-  const openPetInputModeRef = useRef<(mode: PetInputMode) => void>(() => undefined);
   const applySettingsStatusRef = useRef<(response: SettingsStatusResponse) => void>((response) => {
     pendingSettingsStatusRef.current = response;
   });
@@ -605,82 +318,11 @@ function App() {
     onNotice: setNotice,
   });
 
-  const ttsProviders = useMemo(
-    () => ({
-      "custom-http": createBackendTtsProvider({ api }),
-      "xiaomi-mimo": createBackendTtsProvider({ api, providerId: "xiaomi-mimo" }),
-      mock: createMockTtsProvider(),
-      system: createSystemTtsProvider(),
-    }),
-    [api],
-  );
-  const ttsSettings = settingsStatus?.tts_settings;
-  const ttsFallbackProvider = ttsSettings?.provider && ttsSettings.provider !== "system" ? "system" : null;
-  const ttsProviderResetKey = [
-    ttsSettings?.provider || "",
-    ttsSettings?.updated_at || "",
-    ttsSettings?.key_masked || "",
-  ].join(":");
-  const petTtsPlaybackStartRef = useRef<(item: TtsPlaybackItem) => void>(() => undefined);
-  const petTtsPlaybackEndRef = useRef<(item: TtsPlaybackItem, status: TtsProviderPlaybackStatus) => void>(() => undefined);
-  const previousTtsWindowModeRef = useRef<DesktopWindowMode | null>(null);
-  const lastTtsErrorNoticeRef = useRef<string | null>(null);
-  const lastTtsFallbackNoticeRef = useRef<string | null>(null);
-  const ttsQueue = useTtsPlaybackQueue({
-    providers: ttsProviders,
-    fallbackProvider: ttsFallbackProvider,
-    onPlaybackStart: (item) => petTtsPlaybackStartRef.current(item),
-    onPlaybackEnd: (item, status) => petTtsPlaybackEndRef.current(item, status),
-    onProviderFallback: ({ error, fallbackProvider, provider }) => {
-      const noticeKey = `${provider}:${fallbackProvider}:${error.code}`;
-      if (lastTtsFallbackNoticeRef.current === noticeKey) {
-        return;
-      }
-      lastTtsFallbackNoticeRef.current = noticeKey;
-      setNotice({
-        tone: "error",
-        message: formatTtsProviderFallbackNotice(provider, fallbackProvider, error),
-      });
-    },
-    providerResetKey: ttsProviderResetKey,
-  });
-  const ttsActive = ttsQueue.state.status === "synthesizing" || ttsQueue.state.status === "playing";
-  const ttsSpeaking = ttsQueue.state.status === "playing";
-  const ttsEnabled = Boolean(
-    ttsSettings?.enabled &&
-      ttsSettings.auto_play_assistant_reply &&
-      ttsSettings.configured &&
-      ttsSettings.status === "ready",
-  );
-  const ttsVoice = useMemo(() => {
-    const voice = ttsSettings?.voice;
-    return voice
-      ? {
-          id: voice.id,
-          provider: voice.provider,
-          label: voice.label,
-          locale: voice.locale || undefined,
-          gender: normalizeTtsVoiceGender(voice.gender),
-          description: voice.description || undefined,
-        }
-      : null;
-  }, [
-    ttsSettings?.voice?.description,
-    ttsSettings?.voice?.gender,
-    ttsSettings?.voice?.id,
-    ttsSettings?.voice?.label,
-    ttsSettings?.voice?.locale,
-    ttsSettings?.voice?.provider,
-  ]);
-  const ttsWaitingCue = useTtsWaitingCue({
-    enabled: ttsEnabled,
-    providers: ttsProviders,
-    provider: ttsSettings?.provider || "system",
-    fallbackProvider: ttsFallbackProvider,
-    voice: ttsVoice,
-    speed: ttsSettings?.speed ?? 1,
-    cueSpeed: 0.82,
-    volume: ttsSettings?.volume ?? 1,
+  const tts = useTtsOrchestrator({
+    api,
+    settings: settingsStatus?.tts_settings,
+    windowMode,
+    onNotice: setNotice,
   });
 
   const petChat = usePetChatBubble({
@@ -690,218 +332,30 @@ function App() {
     setNotice,
     abortStream: () => streamAbort.current?.abort(),
     tts: {
-      enabled: ttsEnabled,
-      queue: ttsQueue,
-      provider: ttsSettings?.provider || "system",
-      voice: ttsVoice,
-      speed: ttsSettings?.speed ?? 1,
-      volume: ttsSettings?.volume ?? 1,
-      cacheEnabled: Boolean(ttsSettings?.cache_enabled),
-      playbackState: ttsQueue.state,
+      enabled: tts.enabled,
+      queue: tts.queue,
+      provider: tts.provider,
+      voice: tts.voice,
+      speed: tts.speed,
+      volume: tts.volume,
+      cacheEnabled: tts.cacheEnabled,
+      playbackState: tts.queue.state,
     },
   });
-  petTtsPlaybackStartRef.current = (item) => {
-    ttsWaitingCue.stop("assistant_tts_started");
-    petChat.handleTtsPlaybackStart?.(item);
-  };
-  petTtsPlaybackEndRef.current = petChat.handleTtsPlaybackEnd || (() => undefined);
-
-  useEffect(() => {
-    const error = ttsQueue.state.error;
-    if (!error) {
-      lastTtsErrorNoticeRef.current = null;
-      return;
-    }
-    const noticeKey = `${error.provider || "unknown"}:${error.itemId || "unknown"}:${error.code}:${error.message}`;
-    if (lastTtsErrorNoticeRef.current === noticeKey) {
-      return;
-    }
-    lastTtsErrorNoticeRef.current = noticeKey;
-    setNotice({
-      tone: "error",
-      message: formatTtsPlaybackErrorNotice(error),
-    });
-  }, [
-    ttsQueue.state.error?.code,
-    ttsQueue.state.error?.itemId,
-    ttsQueue.state.error?.message,
-    ttsQueue.state.error?.provider,
-  ]);
-
-  useEffect(() => {
-    const previousMode = previousTtsWindowModeRef.current;
-    if (previousMode && previousMode !== windowMode && ttsActive) {
-      ttsQueue.stop("window_mode_changed");
-    }
-    previousTtsWindowModeRef.current = windowMode;
-  }, [ttsActive, ttsQueue.stop, windowMode]);
-
-  useEffect(() => {
-    const stopIfActive = (reason: string) => {
-      if (ttsQueue.state.status === "synthesizing" || ttsQueue.state.status === "playing") {
-        ttsQueue.stop(reason);
-      }
-    };
-    const handlePageHide = () => stopIfActive("window_hidden");
-    const handleBeforeUnload = () => stopIfActive("window_unload");
-
-    window.addEventListener("pagehide", handlePageHide);
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => {
-      window.removeEventListener("pagehide", handlePageHide);
-      window.removeEventListener("beforeunload", handleBeforeUnload);
-    };
-  }, [ttsQueue.state.status, ttsQueue.stop]);
-
-  useEffect(() => {
-    document.body.dataset.windowMode = windowMode;
-    return () => {
-      delete document.body.dataset.windowMode;
-    };
-  }, [windowMode]);
-
-  useEffect(() => () => clearPetShortcutMotionTimer(), []);
-
-  useEffect(() => {
-    const visible = windowMode === "pet" && petShortcutsVisible;
-    window.agentDesktop?.setPetShortcutBarVisible?.(visible);
-    return () => {
-      window.agentDesktop?.setPetShortcutBarVisible?.(false);
-    };
-  }, [petShortcutsVisible, windowMode]);
-
-  useEffect(() => {
-    const visible = windowMode === "pet" && petChat.inputVisible;
-    window.agentDesktop?.setPetInputVisible?.(visible);
-    return () => {
-      window.agentDesktop?.setPetInputVisible?.(false);
-    };
-  }, [petChat.inputVisible, windowMode]);
-
-  useEffect(() => {
-    let cancelled = false;
-    void window.agentDesktop?.getWindowMode?.().then((mode) => {
-      if (!cancelled && isDesktopWindowMode(mode)) {
-        setDesktopHostMode(mode);
-      }
-      const detectedMode = detectDesktopWindowMode();
-      if (!cancelled && !hasExplicitWindowRoute() && (mode === "pet" || mode === "control")) {
-        setWindowMode(mode);
-        return;
-      }
-      if (!cancelled && detectedMode !== "control") {
-        setWindowMode(detectedMode);
-        return;
-      }
-      if (!cancelled && (mode === "pet" || mode === "control")) {
-        setWindowMode(mode);
-      }
-    });
-    if (!window.agentDesktop?.getWindowMode) {
-      setDesktopHostMode(detectDesktopWindowMode());
-    }
-
-    const updateFromHash = () => setWindowMode(detectDesktopWindowMode());
-    window.addEventListener("hashchange", updateFromHash);
-    return () => {
-      cancelled = true;
-      window.removeEventListener("hashchange", updateFromHash);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (windowMode !== "control") {
-      return;
-    }
-    const unsubscribe = window.agentDesktop?.onControlTargetRequested?.((targetId) => {
-      window.requestAnimationFrame(() => scrollToWorkflowTarget(targetId));
-    });
-    return unsubscribe;
-  }, [windowMode]);
-
-  useEffect(() => {
-    if (desktopHostMode !== "stage") {
-      return;
-    }
-    const unsubscribe = window.agentDesktop?.onStageRouteRequested?.((mode) => {
-      const nextMode = isDesktopWindowMode(mode) ? mode : "stage";
-      const nextHash = `#${nextMode}`;
-      if (window.location.hash !== nextHash) {
-        window.location.hash = nextMode;
-        return;
-      }
-      setWindowMode(nextMode);
-    });
-    return unsubscribe;
-  }, [desktopHostMode]);
-
-  useEffect(() => {
-    if (windowMode !== "pet") {
-      return;
-    }
-    const unsubscribe = window.agentDesktop?.onPetInputModeRequested?.((requestedMode) => {
-      const normalizedMode = normalizePetInputMode(requestedMode);
-      if (!normalizedMode) {
-        return;
-      }
-      openPetInputModeRef.current(normalizedMode);
-    });
-    return unsubscribe;
-  }, [windowMode]);
-
-  useEffect(() => {
-    const saved = readRendererUiState(firstUseOnboardingStorageKey);
-    setFirstUseOnboardingStatus(saved === firstUseOnboardingCompletedValue ? "completed" : "pending");
-  }, []);
-
-  useEffect(() => {
-    const saved = readRendererUiState(petEntryHintStorageKey);
-    setPetEntryHintStatus(saved === petEntryHintCompletedValue ? "completed" : "pending");
-  }, []);
-
-  useEffect(() => {
-    if (
-      windowMode !== "pet" ||
-      petEntryHintStatus !== "pending" ||
-      petShortcutsVisible ||
-      petChat.inputVisible ||
-      petChat.bubble.visible
-    ) {
-      return;
-    }
-    void writeRendererUiState(petEntryHintStorageKey, petEntryHintCompletedValue);
-  }, [petChat.bubble.visible, petChat.inputVisible, petEntryHintStatus, petShortcutsVisible, windowMode]);
-
-  useEffect(() => {
-    const cancelPetDrag = () => {
-      const dragState = petDragRef.current;
-      try {
-        window.agentDesktop?.endPetWindowDrag?.();
-        if (dragState?.target?.hasPointerCapture(dragState.pointerId)) {
-          dragState.target.releasePointerCapture(dragState.pointerId);
-        }
-      } catch {
-        // 透明桌宠窗口在失焦或系统拖动中可能丢失 pointer capture；本地状态必须照常清理。
-      } finally {
-        petDragRef.current = null;
-        finishPetDragVisualState();
-      }
-    };
-    const unsubscribe = window.agentDesktop?.onPetDragCancelled?.(cancelPetDrag);
-    window.addEventListener("blur", cancelPetDrag);
-    window.addEventListener("pointercancel", cancelPetDrag);
-    window.addEventListener("pointerup", cancelPetDrag);
-    return () => {
-      unsubscribe?.();
-      window.removeEventListener("blur", cancelPetDrag);
-      window.removeEventListener("pointercancel", cancelPetDrag);
-      window.removeEventListener("pointerup", cancelPetDrag);
-      if (petDragSnapshotClearTimerRef.current !== null) {
-        window.clearTimeout(petDragSnapshotClearTimerRef.current);
-        petDragSnapshotClearTimerRef.current = null;
-      }
-    };
-  }, []);
+  tts.bindPetPlaybackHandlers({
+    onStart: (item) => {
+      tts.waitingCue.stop("assistant_tts_started");
+      petChat.handleTtsPlaybackStart?.(item);
+    },
+    onEnd: petChat.handleTtsPlaybackEnd,
+  });
+  const petWindow = usePetWindowController({
+    windowMode,
+    petChat,
+    live2dPetCanvasRef,
+    onPetInputModeChange: setPetInputMode,
+    onStopTts: () => tts.queue.stop("pet_shortcut_stop_tts"),
+  });
 
   useEffect(() => {
     const pending = pendingSettingsStatusRef.current;
@@ -967,7 +421,7 @@ function App() {
     if (!text || streamingRef.current) {
       return false;
     }
-    ttsWaitingCue.stop("new_request");
+    tts.waitingCue.stop("new_request");
     streamAbort.current?.abort();
     const requestId = crypto.randomUUID();
     activeChatRequestIdRef.current = requestId;
@@ -998,7 +452,7 @@ function App() {
     setStreaming(true);
     setNotice(null);
     petChat.resetStreamState(assistantId);
-    const waitingCueMessage = ttsWaitingCue.start();
+    const waitingCueMessage = tts.waitingCue.start();
     petChat.showBubble({
       title: "",
       message: waitingCueMessage,
@@ -1094,7 +548,7 @@ function App() {
               upsertChatWikiProposal,
               addTaskFromChat,
               triggerLive2DTaskStage,
-              onVisibleAssistantReply: () => ttsWaitingCue.stop("assistant_visible_reply"),
+              onVisibleAssistantReply: () => tts.waitingCue.stop("assistant_visible_reply"),
             });
             if (sseEvent.event === "reply_ready") {
               streamingRef.current = false;
@@ -1137,7 +591,7 @@ function App() {
         return false;
       }
       petChat.clearStreamWatchdogTimer();
-      ttsWaitingCue.stop("send_failed");
+      tts.waitingCue.stop("send_failed");
       petChat.streamFailedRef.current = true;
       const message = describeError(error, "消息发送失败");
       setMessages((current) =>
@@ -1174,94 +628,6 @@ function App() {
     await sendChatText(buildPetInputIntentMessage(petInputMode, petChat.input), () => petChat.setInput(""), {
       displayText: displayTextForInputMode(petInputMode, petChat.input),
     });
-  }
-
-  async function submitFirstUseOnboarding(event: FormEvent) {
-    event.preventDefault();
-    if (submittingFirstUseOnboarding || streaming || !hasConnection) {
-      return;
-    }
-    const message = buildFirstUseOnboardingMessage(firstUseOnboardingDraft);
-    if (!message) {
-      setNotice({ tone: "error", message: "请先告诉我今天想从哪里陪你继续。" });
-      return;
-    }
-    setSubmittingFirstUseOnboarding(true);
-    const completed = await sendChatText(message, () => undefined, { displayText: firstUseOnboardingDraft.currentFocus });
-    setSubmittingFirstUseOnboarding(false);
-    if (!completed) {
-      return;
-    }
-    await writeRendererUiState(firstUseOnboardingStorageKey, firstUseOnboardingCompletedValue);
-    setFirstUseOnboardingStatus("completed");
-    setNotice({
-      tone: "success",
-      message: "已经开始陪你接上这件事；之后可以在记忆里查看和撤回我记下的内容。",
-    });
-  }
-
-  function skipFirstUseOnboarding() {
-    void writeRendererUiState(firstUseOnboardingStorageKey, firstUseOnboardingCompletedValue);
-    setFirstUseOnboardingStatus("completed");
-    setNotice({ tone: "info", message: "已跳过首次引导，可以直接开始聊天。" });
-  }
-
-  function completePetEntryHint() {
-    if (petEntryHintStatus === "completed") {
-      return;
-    }
-    void writeRendererUiState(petEntryHintStorageKey, petEntryHintCompletedValue);
-    setPetEntryHintStatus("completed");
-  }
-
-  function clearPetShortcutMotionTimer() {
-    if (petShortcutMotionTimerRef.current !== null) {
-      window.clearTimeout(petShortcutMotionTimerRef.current);
-      petShortcutMotionTimerRef.current = null;
-    }
-  }
-
-  function settlePetShortcutMotion() {
-    clearPetShortcutMotionTimer();
-    setPetShortcutMotion("idle");
-  }
-
-  function setPetShortcutMotionWithFallback(nextMotion: PetShortcutMotion) {
-    clearPetShortcutMotionTimer();
-    setPetShortcutMotion(nextMotion);
-    if (nextMotion === "idle") {
-      return;
-    }
-    petShortcutMotionTimerRef.current = window.setTimeout(() => {
-      petShortcutMotionTimerRef.current = null;
-      setPetShortcutMotion("idle");
-    }, nextMotion === "opening" ? 420 : 380);
-  }
-
-  function openPetInputMode(mode: PetInputMode) {
-    completePetEntryHint();
-    setPetInputMode(mode);
-    setPetShortcutsVisible(false);
-    settlePetShortcutMotion();
-    petChat.showInput();
-  }
-  openPetInputModeRef.current = openPetInputMode;
-
-  function closePetShortcutMenu() {
-    completePetEntryHint();
-    setPetShortcutsVisible(false);
-    settlePetShortcutMotion();
-    petChat.setInputVisible(false);
-  }
-
-  function openPetShortcutStage(mode: "stage" | "agent" | DesktopFeatureWindowMode) {
-    closePetShortcutMenu();
-    void window.agentDesktop?.openStage?.(mode);
-  }
-
-  function quitFromPetShortcut() {
-    closePetShortcutMenu();
-    void window.agentDesktop?.quitApp?.();
   }
 
   function appendChatEvent(
@@ -1327,8 +693,9 @@ function App() {
   }
 
   async function revertAgentAction(action: AgentAction) {
+    const targets = action.target_paths.length > 0 ? `\n\n影响文件：${action.target_paths.join("、")}` : "";
     const confirmed = window.confirm(
-      `撤销“${action.title}”会通过本机服务恢复该活动记录的文件快照。确定继续吗？`,
+      `确认撤回“${action.title}”吗？\n\n撤回会通过本机服务恢复这次整理前的文件快照，并留下新的活动记录。${targets}`,
     );
     if (!confirmed) {
       return;
@@ -1368,10 +735,13 @@ function App() {
           };
         }),
       );
-      setNotice({ tone: "success", message: `已撤销自动整理活动：${response.action.title}。` });
+      setNotice({
+        tone: "success",
+        message: `已撤回：${response.action.title}。记忆页会显示新的撤回记录，关联文件已按本机快照同步。`,
+      });
       void loadAgentActions({ silent: true });
     } catch (error) {
-      setNotice({ tone: "error", message: describeError(error, "撤销自动整理活动失败") });
+      setNotice({ tone: "error", message: describeError(error, "撤回自动整理活动失败") });
     } finally {
       setRevertingAgentActionIds((current) => {
         const next = new Set(current);
@@ -1462,90 +832,29 @@ function App() {
   }
 
   function renderAgentActivityEntry(entry: AgentActivityLogEntry) {
-    if (entry.kind === "agent_action") {
-      return (
-        <AgentActionActivityCard
-          key={entry.id}
-          entry={entry}
-          reverting={revertingAgentActionIds.has(entry.action.action_id)}
-          onRevert={(action) => void revertAgentAction(action)}
-          onRevealTarget={(relativePath, mode) => void revealAgentActionTarget(relativePath, mode)}
-        />
-      );
-    }
-    if (entry.kind === "memory_proposal") {
-      return (
-        <MemoryProposalActivityCard
-          key={entry.id}
-          entry={entry}
-          busy={proposalActionIds.has(entry.proposal.proposal_id)}
-          onAct={(proposalId, action) => void actOnProposal(proposalId, action)}
-        />
-      );
-    }
-    if (entry.kind === "continuity_proposal") {
-      return renderContinuityProposalActivity(entry);
-    }
     return (
-      <ChatWikiProposalCard
+      <AgentActivityEntryRenderer
         key={entry.id}
-        message={entry.message}
-        proposal={entry.proposal}
+        entry={entry}
+        revertingAgentActionIds={revertingAgentActionIds}
+        memoryProposalActionIds={proposalActionIds}
+        continuityActionIds={continuityActionIds}
         formatIssueSeverity={formatIssueSeverity}
-        onConfirm={confirmChatWikiProposal}
-        onReject={rejectChatWikiProposal}
-        onToggleTarget={toggleChatWikiProposalTarget}
-        onApply={(messageId, proposalId) => void applyChatWikiProposal(messageId, proposalId)}
+        onRevertAgentAction={(action) => void revertAgentAction(action)}
+        onRevealAgentActionTarget={(relativePath, mode) => void revealAgentActionTarget(relativePath, mode)}
+        onActOnMemoryProposal={(proposalId, action) => void actOnProposal(proposalId, action)}
+        onActOnContinuityProposal={(proposalId, action) => void actOnContinuityProposal(proposalId, action)}
+        onConfirmChatWikiProposal={confirmChatWikiProposal}
+        onRejectChatWikiProposal={rejectChatWikiProposal}
+        onToggleChatWikiProposalTarget={toggleChatWikiProposalTarget}
+        onApplyChatWikiProposal={(messageId, proposalId) => void applyChatWikiProposal(messageId, proposalId)}
       />
-    );
-  }
-
-  function renderContinuityProposalActivity(entry: Extract<AgentActivityLogEntry, { kind: "continuity_proposal" }>) {
-    const proposal = entry.proposal;
-    const busy = continuityActionIds.has(proposal.proposal_id);
-    return (
-      <article
-        key={entry.id}
-        id={`continuity-proposal-${proposal.proposal_id}`}
-        className={`proposal continuity-proposal ${proposal.status}`}
-      >
-        <div className="continuity-proposal-head">
-          <div>
-            <strong>连续性确认 · {formatContinuityKind(proposal.kind)}</strong>
-            <small>高风险确认 / {formatContinuityStatus(proposal.status)} / 置信度 {formatConfidence(proposal.confidence)}</small>
-          </div>
-          <span>{proposal.proposal_id}</span>
-        </div>
-        <p>{proposal.summary}</p>
-        <small>证据：{proposal.evidence}</small>
-        <small>来源：{proposal.source_message_id || "未知"} / {proposal.agent_run_id || "无运行 ID"}</small>
-        <div className="button-row">
-          <button
-            type="button"
-            className="secondary"
-            disabled={busy || proposal.status !== "pending"}
-            onClick={() => void actOnContinuityProposal(proposal.proposal_id, "confirm")}
-          >
-            {busy ? <Loader2 className="spin" size={16} /> : <Check size={16} />}
-            确认
-          </button>
-          <button
-            type="button"
-            className="secondary"
-            disabled={busy || proposal.status !== "pending"}
-            onClick={() => void actOnContinuityProposal(proposal.proposal_id, "reject")}
-          >
-            <X size={16} />
-            拒绝
-          </button>
-        </div>
-      </article>
     );
   }
 
   function stopStreaming() {
     petChat.clearStreamWatchdogTimer();
-    ttsWaitingCue.stop("stream_stopped");
+    tts.waitingCue.stop("stream_stopped");
     petChat.streamFailedRef.current = true;
     streamAbort.current?.abort();
     setStreaming(false);
@@ -1575,7 +884,7 @@ function App() {
       if (!options.silent) {
         setNotice({
           tone: "success",
-          message: `连续性状态已刷新：${state.items.length} 个已确认状态，${proposalsResponse.proposals.length} 条待确认整理项。`,
+          message: `陪伴状态已刷新：${state.items.length} 个已确认状态，${proposalsResponse.proposals.length} 个待确认话题。`,
         });
       }
     } catch (error) {
@@ -1583,7 +892,7 @@ function App() {
         return;
       }
       if (!options.silent) {
-        setNotice({ tone: "error", message: describeError(error, "连续性状态加载失败") });
+        setNotice({ tone: "error", message: describeError(error, "陪伴状态加载失败") });
       }
     } finally {
       setLoadingContinuity(false);
@@ -1611,11 +920,11 @@ function App() {
         tone: "success",
         message:
           action === "confirm"
-            ? "连续性整理项已确认，已进入本机陪伴状态；未写入本地文件。"
-            : "连续性整理项已拒绝，不会进入陪伴提示或角色状态。",
+            ? "已记住，下次可以自然接着聊；只进入本机陪伴状态，未写入本地文件。"
+            : "已跳过，这个话题不会进入陪伴提示或角色状态。",
       });
     } catch (error) {
-      setNotice({ tone: "error", message: describeError(error, "连续性整理项操作失败") });
+      setNotice({ tone: "error", message: describeError(error, "下次接着聊操作失败") });
     } finally {
       setContinuityActionIds((current) => {
         const next = new Set(current);
@@ -1627,7 +936,7 @@ function App() {
 
   async function resetLocalState() {
     const confirmed = window.confirm(
-      "这会清空本机桌宠的聊天记录、长期记忆、连续性状态、任务、保存位置绑定、索引缓存、模型配置和本地密钥。不会删除你选择的本地文件。确定要重置为初始化状态吗？",
+      "这会清空本机桌宠的聊天记录、长期记忆、陪伴状态、任务、保存位置绑定、索引缓存、模型配置和本地密钥。不会删除你选择的本地文件。确定要重置为初始化状态吗？",
     );
     if (!confirmed) {
       return;
@@ -1667,148 +976,6 @@ function App() {
     }
   }
 
-  function clearPetDragSnapshot(delayMs = 120) {
-    if (petDragSnapshotClearTimerRef.current !== null) {
-      window.clearTimeout(petDragSnapshotClearTimerRef.current);
-      petDragSnapshotClearTimerRef.current = null;
-    }
-
-    if (delayMs <= 0) {
-      setPetDragSnapshot(null);
-      return;
-    }
-
-    petDragSnapshotClearTimerRef.current = window.setTimeout(() => {
-      petDragSnapshotClearTimerRef.current = null;
-      setPetDragSnapshot(null);
-    }, delayMs);
-  }
-
-  function capturePetDragSnapshot() {
-    if (petDragSnapshotClearTimerRef.current !== null) {
-      window.clearTimeout(petDragSnapshotClearTimerRef.current);
-      petDragSnapshotClearTimerRef.current = null;
-    }
-
-    const canvas = live2dPetCanvasRef.current;
-    const shell = petShellRef.current;
-    if (!canvas || !shell || canvas.width <= 1 || canvas.height <= 1) {
-      setPetDragSnapshot(null);
-      return false;
-    }
-
-    const canvasBounds = canvas.getBoundingClientRect();
-    const shellBounds = shell.getBoundingClientRect();
-    if (canvasBounds.width <= 1 || canvasBounds.height <= 1 || shellBounds.width <= 1 || shellBounds.height <= 1) {
-      setPetDragSnapshot(null);
-      return false;
-    }
-
-    try {
-      const url = canvas.toDataURL("image/png");
-      if (!url || url === "data:,") {
-        setPetDragSnapshot(null);
-        return false;
-      }
-      setPetDragSnapshot({
-        url,
-        style: {
-          left: `${canvasBounds.left - shellBounds.left}px`,
-          top: `${canvasBounds.top - shellBounds.top}px`,
-          width: `${canvasBounds.width}px`,
-          height: `${canvasBounds.height}px`,
-        },
-      });
-      return true;
-    } catch {
-      setPetDragSnapshot(null);
-      return false;
-    }
-  }
-
-  function finishPetDragVisualState() {
-    setPetDragging(false);
-    clearPetDragSnapshot();
-  }
-
-  function beginPetDrag(event: PointerEvent<HTMLElement>) {
-    if (windowMode !== "pet" || event.button !== 0) {
-      return;
-    }
-    if (!window.agentDesktop?.beginPetWindowDrag || !window.agentDesktop.activatePetWindowDrag) {
-      return;
-    }
-    event.preventDefault();
-    petDragRef.current = {
-      pointerId: event.pointerId,
-      startX: event.screenX,
-      startY: event.screenY,
-      dragging: false,
-      target: event.currentTarget,
-    };
-    try {
-      event.currentTarget.setPointerCapture(event.pointerId);
-    } catch {
-      petDragRef.current = null;
-      window.agentDesktop?.endPetWindowDrag?.();
-      return;
-    }
-    window.agentDesktop.beginPetWindowDrag();
-  }
-
-  function movePetDrag(event: PointerEvent<HTMLElement>) {
-    const dragState = petDragRef.current;
-    if (windowMode !== "pet" || !dragState || dragState.pointerId !== event.pointerId) {
-      return;
-    }
-
-    const movedX = event.screenX - dragState.startX;
-    const movedY = event.screenY - dragState.startY;
-    if (!dragState.dragging && Math.hypot(movedX, movedY) < 6) {
-      return;
-    }
-
-    if (!dragState.dragging) {
-      dragState.dragging = true;
-      flushSync(() => {
-        capturePetDragSnapshot();
-        setPetDragging(true);
-      });
-      window.agentDesktop?.activatePetWindowDrag?.();
-    }
-  }
-
-  function endPetDrag(event?: PointerEvent<HTMLElement>) {
-    try {
-      if (event && petDragRef.current?.pointerId === event.pointerId && event.currentTarget.hasPointerCapture(event.pointerId)) {
-        event.currentTarget.releasePointerCapture(event.pointerId);
-      }
-      window.agentDesktop?.endPetWindowDrag?.();
-    } catch {
-      // 即使释放 pointer capture 或 IPC 失败，也不能让拖动状态残留。
-    } finally {
-      petDragRef.current = null;
-      finishPetDragVisualState();
-    }
-  }
-
-  function togglePetShortcuts() {
-    completePetEntryHint();
-    setPetShortcutsVisible((visible) => {
-      if (!visible) {
-        petChat.setInputVisible(false);
-      }
-      setPetShortcutMotionWithFallback(visible ? "closing" : "opening");
-      return !visible;
-    });
-  }
-
-  function finishPetShortcutMotion(event: AnimationEvent<HTMLElement>) {
-    if (event.animationName === "pet-shortcut-roll-out" || event.animationName === "pet-shortcut-roll-in") {
-      settlePetShortcutMotion();
-    }
-  }
-
   function scrollToWorkflowTarget(targetId?: string) {
     if (!targetId) {
       return;
@@ -1817,6 +984,31 @@ function App() {
   }
 
   const hasConnection = sidecarStatus?.state === "ready" || health?.status === "ok";
+  const proactiveHabitLoopBlocked =
+    streaming ||
+    petChat.inputVisible ||
+    petChat.bubble.visible ||
+    petWindow.petShortcutsVisible ||
+    tts.active;
+  useProactiveHabitLoop({
+    api,
+    enabled: windowMode === "pet" && hasConnection,
+    frequency: automationSettingsDraft.proactive_trigger_frequency,
+    blocked: proactiveHabitLoopBlocked,
+    onTrigger: (response) => {
+      const candidate = response.candidate;
+      if (!candidate) {
+        return;
+      }
+      petChat.showBubble({
+        title: candidate.title,
+        message: candidate.message,
+        tone: "tool",
+        phase: "complete",
+      });
+      petChat.scheduleHide(11000);
+    },
+  });
   const hasVaultInitialized = Boolean(vaultId || diagnostics?.vault.configured);
   const hasIndexSignal = Boolean(
     lastIndexRun ||
@@ -1844,67 +1036,25 @@ function App() {
     (entry) => entry.kind === "agent_action" && !isAttentionAgentAction(entry.action),
   ).length;
   const hasAgentActivity = agentActivityEntries.length > 0;
-  const agentWorkflowItems: CoreWorkflowItem[] = agentModelDrafts.map((draft) => {
-    const testResult = agentModelTestResults[draft.agent_id];
-    const tested = testResult?.status === "ok";
-    return {
-      label: agentLabel(draft.agent_id),
-      status: tested ? "done" : draft.configured ? "active" : "blocked",
-      detail: tested && testResult
-        ? formatModelTestResult(testResult)
-        : draft.configured
-          ? `${draft.model} 已保存，${draft.masked || "密钥已配置"}，等待试连。`
-          : "等待保存提供方、接口地址、模型和密钥。",
-    };
+  const coreWorkflowItems = buildControlWorkflowItems({
+    agentModelDrafts,
+    agentModelTestResults,
+    hasVaultInitialized,
+    hasIndexSignal,
+    lastIndexRun,
+    hasAgentEventSignal,
+    streaming,
+    latestChatEvent,
+    latestCitation,
+    latestCitationTargetId,
+    pendingManualActivityCount,
+    hasAgentActivity,
+    hasMemoryConfirmed,
+    automaticActivityCount,
+    hasContinuityState,
+    pendingContinuityCount,
+    continuityStateItemCount: continuityState?.items.length ?? 0,
   });
-  const coreWorkflowItems: CoreWorkflowItem[] = [
-    ...agentWorkflowItems,
-    {
-      label: "保存与导出",
-      status: hasVaultInitialized && hasIndexSignal ? "done" : hasVaultInitialized ? "active" : "blocked",
-      detail: lastIndexRun
-        ? `最近索引 ${formatTaskStatus(lastIndexRun.status)}，文件 ${lastIndexRun.filesIndexed ?? 0}/${lastIndexRun.filesSeen ?? 0}`
-        : hasVaultInitialized
-          ? "保存位置已设置，下一步刷新本地索引。"
-          : "可选：设置本地导出文件夹，方便之后备份和复盘。",
-    },
-    {
-      label: "助手运行事件",
-      status: hasAgentEventSignal ? "done" : streaming ? "active" : "blocked",
-      detail: latestChatEvent
-        ? `${latestChatEvent.label}：${latestChatEvent.detail}`
-        : latestCitation
-          ? `引用：${latestCitation.relative_path}`
-          : streaming
-            ? "正在等待 SSE 工具事件。"
-            : "向桌宠提问后显示检索、记忆、任务或引用事件。",
-      targetId: latestCitationTargetId,
-    },
-    {
-      label: "自动整理活动",
-      status: pendingManualActivityCount > 0 ? "active" : hasAgentActivity || hasMemoryConfirmed ? "done" : "blocked",
-      detail:
-        pendingManualActivityCount > 0
-          ? `${pendingManualActivityCount} 个高风险项待确认；普通自动整理只作为活动记录展示。`
-          : automaticActivityCount > 0
-            ? `${automaticActivityCount} 条普通自动整理已记录，可在活动流中查看或撤销可逆项。`
-            : hasMemoryConfirmed
-              ? "已有确认写入的记忆整理记录。"
-              : "桌宠自动整理会进入最近活动，高风险写入仍需确认。",
-      targetId: "agent-activity-log",
-    },
-    {
-      label: "连续性状态",
-      status: hasContinuityState ? "done" : pendingContinuityCount > 0 ? "active" : "blocked",
-      detail:
-        pendingContinuityCount > 0
-          ? `${pendingContinuityCount} 条连续性整理需要确认；确认后只进入运行时 SQLite 状态。`
-          : hasContinuityState
-            ? `已确认 ${continuityState?.items.length ?? 0} 个连续性状态。`
-            : "低风险情绪与话题会自动整理；身份、关系或低置信内容才需要确认。",
-      targetId: pendingContinuityCount > 0 ? "agent-activity-log" : "continuity-panel",
-    },
-  ];
   const {
     asset: live2dAsset,
     models: live2dModels,
@@ -1932,9 +1082,6 @@ function App() {
           (latestAssistantMessage.live2d_action_hints || []).join("|"),
         ].join(":")
       : null;
-  const live2dStageCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const live2dPetCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const live2dPanelCanvasRef = useRef<HTMLCanvasElement | null>(null);
   live2dTaskStageRef.current = triggerLive2DTaskStage;
 
   const refreshActivity = () => {
@@ -1942,27 +1089,16 @@ function App() {
     void loadPendingProposals({ silent: true });
     void loadContinuity({ silent: true });
   };
-  const showFirstUseOnboarding = firstUseOnboardingStatus === "pending" && (windowMode === "control" || windowMode === "chat");
-  const firstUseOnboardingPanel = showFirstUseOnboarding ? (
-    <FirstUseOnboardingCard
-      currentFocus={firstUseOnboardingDraft.currentFocus}
-      preferredName={firstUseOnboardingDraft.preferredName}
-      longTermContext={firstUseOnboardingDraft.longTermContext}
-      savePreference={firstUseOnboardingDraft.savePreference}
-      connected={hasConnection}
-      streaming={streaming}
-      submitting={submittingFirstUseOnboarding}
-      onCurrentFocusChange={(value) => setFirstUseOnboardingDraft((current) => ({ ...current, currentFocus: value }))}
-      onPreferredNameChange={(value) => setFirstUseOnboardingDraft((current) => ({ ...current, preferredName: value }))}
-      onLongTermContextChange={(value) => setFirstUseOnboardingDraft((current) => ({ ...current, longTermContext: value }))}
-      onSavePreferenceChange={(value) => setFirstUseOnboardingDraft((current) => ({ ...current, savePreference: value }))}
-      onSubmit={submitFirstUseOnboarding}
-      onSkip={skipFirstUseOnboarding}
-    />
-  ) : null;
+  const firstUseOnboardingPanel = useFirstUseOnboarding({
+    connected: hasConnection,
+    streaming,
+    windowMode,
+    onNotice: setNotice,
+    onSendMessage: (message, options) => sendChatText(message, () => undefined, options),
+  });
   const connectionPanel = (
-    <Panel id="connection-panel" icon={<Settings size={18} />} title="模型连接">
-      <ConnectionPanel
+    <Suspense fallback={null}>
+      <ConnectionManagementPanel
         settings={settings}
         onSettingsChange={setSettings}
         onSaveSettings={persistSettings}
@@ -1972,150 +1108,136 @@ function App() {
         health={health}
         businessAuthStatus={businessAuthStatus}
         businessAuthMessage={businessAuthMessage}
+        resettingLocalState={resettingLocalState}
+        onResetLocalState={() => void resetLocalState()}
       />
-      <section className="danger-zone" aria-label="本机状态重置">
-        <div className="section-heading">
-          <strong>重置桌宠初始化状态</strong>
-          <span>清空本机聊天、记忆、任务、保存位置、索引缓存和模型配置，让应用回到首次启动状态。</span>
-        </div>
-        <div className="button-row">
-          <button
-            type="button"
-            className="danger"
-            onClick={() => void resetLocalState()}
-            disabled={resettingLocalState}
-          >
-            {resettingLocalState ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />}
-            {resettingLocalState ? "正在重置" : "重置桌宠"}
-          </button>
-        </div>
-        <p className="field-note error">
-          仅清理本机应用状态和本地凭据引用，不删除已选择的本地文件夹。打包发版前可用它确认客户首次启动不会带开发测试记录。
-        </p>
-      </section>
-    </Panel>
-  );
-  const wikiBrowserPanel = (
-    <WikiBrowserPanel
-      vaultConfigured={hasVaultInitialized}
-      indexRequired={hasVaultInitialized && !hasIndexSignal && !wikiIndexStatus}
-      schemaStatus={wikiSchemaStatus}
-      indexStatus={wikiIndexStatus}
-      logStatus={wikiLogStatus}
-      lintResult={wikiLintResult}
-      diagnosticsQueue={wikiDiagnosticsQueue}
-      archiveHistory={wikiArchiveHistory}
-      archiveHistoryStatus={wikiArchiveHistoryStatus}
-      archiveHistoryError={wikiArchiveHistoryError}
-      archiveHistoryLoading={wikiArchiveHistoryLoading}
-      coreStatus={wikiCoreStatus}
-      coreError={wikiCoreError}
-      workflowAction={wikiWorkflowAction}
-      openingArchiveId={wikiOpeningArchiveId}
-      formatIssueSeverity={formatIssueSeverity}
-      onLoadCoreStatus={() => void loadWikiCoreStatus()}
-      onLoadArchiveHistory={() => void loadWikiArchiveHistory()}
-      onLoadDiagnosticsQueue={() => void loadWikiDiagnosticsQueue()}
-      onOpenArchive={(archiveId) => void openWikiQueryArchive(archiveId)}
-      onTryKnowledgeSnippet={fillKnowledgeSnippetTrial}
-    />
+    </Suspense>
   );
   const wikiWorkflowPanel = (
-    <WikiWorkflowPanel
-      draft={wikiDraft}
-      tagInput={wikiTagInput}
-      linkInput={wikiLinkInput}
-      approvedTargetsInput={wikiApprovedTargetsInput}
-      reviewForceRefresh={wikiReviewForceRefresh}
-      preview={wikiPreview}
-      reviewResult={wikiReviewResult}
-      applyResult={wikiApplyResult}
-      lintResult={wikiLintResult}
-      diagnosticsQueue={wikiDiagnosticsQueue}
-      schemaStatus={wikiSchemaStatus}
-      indexStatus={wikiIndexStatus}
-      logStatus={wikiLogStatus}
-      coreStatus={wikiCoreStatus}
-      coreError={wikiCoreError}
-      archiveHistory={wikiArchiveHistory}
-      archiveHistoryStatus={wikiArchiveHistoryStatus}
-      archiveHistoryError={wikiArchiveHistoryError}
-      openedArchive={wikiOpenedArchive}
-      openingArchiveId={wikiOpeningArchiveId}
-      companionContextReports={companionContextReports}
-      companionContextReportStatus={companionContextReportStatus}
-      companionContextReportError={companionContextReportError}
-      lastWikiArchiveId={lastWikiArchiveId}
-      workflowAction={wikiWorkflowAction}
-      latestArchiveMessage={latestArchiveMessage}
-      latestKnowledgeCitationCount={latestKnowledgeCitationCount}
-      archiveHistorySummary={wikiArchiveHistorySummary}
-      archiveHistoryLoading={wikiArchiveHistoryLoading}
-      lintIssueCount={wikiLintIssueCount}
-      formatIssueSeverity={formatIssueSeverity}
-      onDraftChange={onWikiDraftChange}
-      onTagInputChange={setWikiTagInput}
-      onLinkInputChange={setWikiLinkInput}
-      onApprovedTargetsInputChange={setWikiApprovedTargetsInput}
-      onReviewForceRefreshChange={setWikiReviewForceRefresh}
-      onPreview={(event) => void previewWikiIngest(event)}
-      onReview={() => void reviewWikiIngest()}
-      onApply={() => void applyWikiIngest()}
-      onArchiveLatestQuery={() => void archiveLatestWikiQuery()}
-      onSynthesize={() => void synthesizeWiki()}
-      onRunLint={() => void runWikiLint()}
-      onLoadDiagnosticsQueue={() => void loadWikiDiagnosticsQueue()}
-      onLoadArchiveHistory={() => void loadWikiArchiveHistory()}
-      onLoadCoreStatus={() => void loadWikiCoreStatus()}
-      onUseReviewRecommendedTargets={useWikiReviewRecommendedTargets}
-      onOpenArchive={(archiveId) => void openWikiQueryArchive(archiveId)}
-    />
+    <Suspense fallback={null}>
+      <WikiManagementPanels
+        workflow={{
+          draft: wikiDraft,
+          tagInput: wikiTagInput,
+          linkInput: wikiLinkInput,
+          approvedTargetsInput: wikiApprovedTargetsInput,
+          reviewForceRefresh: wikiReviewForceRefresh,
+          preview: wikiPreview,
+          reviewResult: wikiReviewResult,
+          applyResult: wikiApplyResult,
+          lintResult: wikiLintResult,
+          diagnosticsQueue: wikiDiagnosticsQueue,
+          schemaStatus: wikiSchemaStatus,
+          indexStatus: wikiIndexStatus,
+          logStatus: wikiLogStatus,
+          coreStatus: wikiCoreStatus,
+          coreError: wikiCoreError,
+          archiveHistory: wikiArchiveHistory,
+          archiveHistoryStatus: wikiArchiveHistoryStatus,
+          archiveHistoryError: wikiArchiveHistoryError,
+          openedArchive: wikiOpenedArchive,
+          openingArchiveId: wikiOpeningArchiveId,
+          companionContextReports,
+          companionContextReportStatus,
+          companionContextReportError,
+          lastWikiArchiveId,
+          workflowAction: wikiWorkflowAction,
+          latestArchiveMessage,
+          latestKnowledgeCitationCount,
+          archiveHistorySummary: wikiArchiveHistorySummary,
+          archiveHistoryLoading: wikiArchiveHistoryLoading,
+          lintIssueCount: wikiLintIssueCount,
+          formatIssueSeverity,
+          onDraftChange: onWikiDraftChange,
+          onTagInputChange: setWikiTagInput,
+          onLinkInputChange: setWikiLinkInput,
+          onApprovedTargetsInputChange: setWikiApprovedTargetsInput,
+          onReviewForceRefreshChange: setWikiReviewForceRefresh,
+          onPreview: (event) => void previewWikiIngest(event),
+          onReview: () => void reviewWikiIngest(),
+          onApply: () => void applyWikiIngest(),
+          onArchiveLatestQuery: () => void archiveLatestWikiQuery(),
+          onSynthesize: () => void synthesizeWiki(),
+          onRunLint: () => void runWikiLint(),
+          onLoadDiagnosticsQueue: () => void loadWikiDiagnosticsQueue(),
+          onLoadArchiveHistory: () => void loadWikiArchiveHistory(),
+          onLoadCoreStatus: () => void loadWikiCoreStatus(),
+          onUseReviewRecommendedTargets: useWikiReviewRecommendedTargets,
+          onOpenArchive: (archiveId) => void openWikiQueryArchive(archiveId),
+        }}
+        browser={{
+          vaultConfigured: hasVaultInitialized,
+          indexRequired: hasVaultInitialized && !hasIndexSignal && !wikiIndexStatus,
+          schemaStatus: wikiSchemaStatus,
+          indexStatus: wikiIndexStatus,
+          logStatus: wikiLogStatus,
+          lintResult: wikiLintResult,
+          diagnosticsQueue: wikiDiagnosticsQueue,
+          archiveHistory: wikiArchiveHistory,
+          archiveHistoryStatus: wikiArchiveHistoryStatus,
+          archiveHistoryError: wikiArchiveHistoryError,
+          archiveHistoryLoading: wikiArchiveHistoryLoading,
+          coreStatus: wikiCoreStatus,
+          coreError: wikiCoreError,
+          workflowAction: wikiWorkflowAction,
+          openingArchiveId: wikiOpeningArchiveId,
+          formatIssueSeverity,
+          onLoadCoreStatus: () => void loadWikiCoreStatus(),
+          onLoadArchiveHistory: () => void loadWikiArchiveHistory(),
+          onLoadDiagnosticsQueue: () => void loadWikiDiagnosticsQueue(),
+          onOpenArchive: (archiveId) => void openWikiQueryArchive(archiveId),
+          onTryKnowledgeSnippet: fillKnowledgeSnippetTrial,
+        }}
+      />
+    </Suspense>
   );
   const settingsPanel = (
-    <SettingsPanel
-      api={api}
-      agentModelDrafts={agentModelDrafts}
-      agentModelTestResults={agentModelTestResults}
-      globalModelDraft={globalModelDraft}
-      globalModelSaveStatus={globalModelSaveStatus}
-      globalModelTestResult={globalModelTestResult}
-      globalModelTestStatus={globalModelTestStatus}
-      automationSettingsDraft={automationSettingsDraft}
-      automationSettingsSaveStatus={automationSettingsSaveStatus}
-      ttsSettingsDraft={ttsSettingsDraft}
-      ttsSettingsSaveStatus={ttsSettingsSaveStatus}
-      ttsSettingsStatus={settingsStatus?.tts_settings}
-      negotiationSettingsDraft={negotiationSettingsDraft}
-      negotiationSettingsSaveStatus={negotiationSettingsSaveStatus}
-      savingAgentModelIds={savingAgentModelIds}
-      testingAgentModelIds={testingAgentModelIds}
-      loadingSettingsStatus={loadingSettingsStatus}
-      vaultId={vaultId}
-      vaultPath={vaultPath}
-      vaultStatus={vaultStatus}
-      lastIndexRun={lastIndexRun}
-      indexingVault={indexingVault}
-      canSelectVaultDirectory={canSelectVaultDirectory}
-      onRefreshSettings={() => void loadSettingsStatus()}
-      onUpdateGlobalModelDraft={updateGlobalModelDraft}
-      onSaveGlobalModel={() => void saveGlobalModel()}
-      onTestGlobalModel={() => void testGlobalModelConnection()}
-      onUpdateAutomationSettingsDraft={updateAutomationSettingsDraft}
-      onSaveAutomationSettings={() => void saveAutomationSettings()}
-      onUpdateTtsSettingsDraft={updateTtsSettingsDraft}
-      onSaveTtsSettings={(apiKey) => void saveTtsSettings(apiKey)}
-      onClearTtsCache={() => void clearTtsCache()}
-      onUpdateNegotiationSettingsDraft={updateNegotiationSettingsDraft}
-      onSaveNegotiationSettings={() => void saveNegotiationSettings()}
-      onUpdateAgentModelDraft={updateAgentModelDraft}
-      onSaveAgentModel={(agentId) => void saveAgentModel(agentId)}
-      onTestAgentModel={(agentId) => void testAgentModelConnection(agentId)}
-      onVaultPathChange={setVaultPath}
-      onSelectVaultDirectory={() => void selectVaultDirectory()}
-      onBindVault={bindVault}
-      onLoadVaultStatus={() => void loadVaultStatus()}
-      onRebuildIndex={() => void rebuildIndex()}
-    />
+    <Suspense fallback={null}>
+      <SettingsPanel
+        api={api}
+        agentModelDrafts={agentModelDrafts}
+        agentModelTestResults={agentModelTestResults}
+        globalModelDraft={globalModelDraft}
+        globalModelSaveStatus={globalModelSaveStatus}
+        globalModelTestResult={globalModelTestResult}
+        globalModelTestStatus={globalModelTestStatus}
+        automationSettingsDraft={automationSettingsDraft}
+        automationSettingsSaveStatus={automationSettingsSaveStatus}
+        ttsSettingsDraft={ttsSettingsDraft}
+        ttsSettingsSaveStatus={ttsSettingsSaveStatus}
+        ttsSettingsStatus={settingsStatus?.tts_settings}
+        negotiationSettingsDraft={negotiationSettingsDraft}
+        negotiationSettingsSaveStatus={negotiationSettingsSaveStatus}
+        savingAgentModelIds={savingAgentModelIds}
+        testingAgentModelIds={testingAgentModelIds}
+        loadingSettingsStatus={loadingSettingsStatus}
+        vaultId={vaultId}
+        vaultPath={vaultPath}
+        vaultStatus={vaultStatus}
+        lastIndexRun={lastIndexRun}
+        indexingVault={indexingVault}
+        canSelectVaultDirectory={canSelectVaultDirectory}
+        onRefreshSettings={() => void loadSettingsStatus()}
+        onUpdateGlobalModelDraft={updateGlobalModelDraft}
+        onSaveGlobalModel={() => void saveGlobalModel()}
+        onTestGlobalModel={() => void testGlobalModelConnection()}
+        onUpdateAutomationSettingsDraft={updateAutomationSettingsDraft}
+        onSaveAutomationSettings={() => void saveAutomationSettings()}
+        onUpdateTtsSettingsDraft={updateTtsSettingsDraft}
+        onSaveTtsSettings={(apiKey) => void saveTtsSettings(apiKey)}
+        onClearTtsCache={() => void clearTtsCache()}
+        onUpdateNegotiationSettingsDraft={updateNegotiationSettingsDraft}
+        onSaveNegotiationSettings={() => void saveNegotiationSettings()}
+        onUpdateAgentModelDraft={updateAgentModelDraft}
+        onSaveAgentModel={(agentId) => void saveAgentModel(agentId)}
+        onTestAgentModel={(agentId) => void testAgentModelConnection(agentId)}
+        onVaultPathChange={setVaultPath}
+        onSelectVaultDirectory={() => void selectVaultDirectory()}
+        onBindVault={bindVault}
+        onLoadVaultStatus={() => void loadVaultStatus()}
+        onRebuildIndex={() => void rebuildIndex()}
+      />
+    </Suspense>
   );
 
   const petHitboxDebug =
@@ -2136,7 +1258,7 @@ function App() {
       onAdvancePage={petChat.advancePageManually}
       onPausePaging={petChat.pausePaging}
       onResumePaging={petChat.resumePaging}
-      ttsSpeaking={ttsSpeaking}
+      ttsSpeaking={tts.speaking}
       live2dActionKeyOverride={live2dReplyActionKey}
       live2dActionTriggerKey={live2dReplyActionTriggerKey}
       active={!isStageHostWindow || windowMode === "stage"}
@@ -2144,499 +1266,175 @@ function App() {
     />
   );
 
-  if (isStageHostWindow && windowMode !== "pet" && windowMode !== "control") {
-    const activeRoute =
-      windowMode === "agent" ? (
-        <AgentWorkspaceView api={api} />
-      ) : windowMode === "chat" ? (
-        <ChatWindowView
-          input={controlInput}
-          messages={messages}
-          connected={hasConnection}
-          streaming={streaming}
-          mode={petInputMode}
-          modes={petInputModes}
-          onInputChange={setControlInput}
-          onModeChange={setPetInputMode}
-          onSend={(event) => {
+  if (windowMode !== "pet" && windowMode !== "control") {
+    return (
+      <DesktopFeatureRoutes
+        windowMode={windowMode}
+        isStageHostWindow={isStageHostWindow}
+        stageView={stageView}
+        agentWorkspaceProps={{ api }}
+        chatWindowProps={{
+          input: controlInput,
+          messages,
+          connected: hasConnection,
+          streaming,
+          mode: petInputMode,
+          modes: petInputModes,
+          onInputChange: setControlInput,
+          onModeChange: setPetInputMode,
+          onSend: (event) => {
             event.preventDefault();
             void sendChatText(buildPetInputIntentMessage(petInputMode, controlInput), () => setControlInput(""), {
               displayText: displayTextForInputMode(petInputMode, controlInput),
             });
-          }}
-          onStopStreaming={stopStreaming}
-          revertingActionIds={revertingAgentActionIds}
-          onRevertAgentAction={(action) => void revertAgentAction(action)}
-          onOpenTask={() => setWindowMode("agent")}
-          onOpenMemory={() => setWindowMode("memory")}
-          onOpenWiki={(path) => openArtifactTarget("world", path)}
-          onOpenReport={(path) => openArtifactTarget("memory", path)}
-          onboardingPanel={firstUseOnboardingPanel}
-          hasVaultInitialized={hasVaultInitialized}
-        />
-      ) : windowMode === "memory" ? (
-        <MemoryWindowView
-          api={api}
-          loading={agentActionsStatus === "loading" || loadingProposals || loadingContinuity}
-          error={agentActionsError}
-          entries={agentActivityEntries}
-          memorySearchQuery={searchQuery}
-          memorySearchStatus={searchStatus}
-          memorySearchResults={searchResults}
-          memoryLastSearchQuery={lastSearchQuery}
-          onMemorySearchQueryChange={setSearchQuery}
-          onRunMemorySearch={(event) => void runMemorySearch(event)}
-          memoryProposalDraft={proposalDraft}
-          memoryProposals={proposals}
-          memoryProposalActionIds={proposalActionIds}
-          loadingMemoryProposals={loadingProposals}
-          onMemoryProposalDraftChange={updateProposalDraft}
-          onCreateMemoryProposal={(event) => void createProposal(event)}
-          onActOnMemoryProposal={(proposalId, action) => void actOnProposal(proposalId, action)}
-          onLoadMemoryProposals={() => void loadPendingProposals()}
-          onRefresh={refreshActivity}
-          renderEntry={renderAgentActivityEntry}
-        />
-      ) : windowMode === "world" ? (
-        <WorldWindowView>
-          <div className="feature-page-stack">
-            {wikiWorkflowPanel}
-            {wikiBrowserPanel}
-          </div>
-        </WorldWindowView>
-      ) : windowMode === "settings" ? (
-        <SettingsWindowView>
-          <div className="feature-page-stack">
-            {connectionPanel}
-            {settingsPanel}
-          </div>
-        </SettingsWindowView>
-      ) : null;
-
-    return (
-      <div className="stage-host-routes" data-active-route={windowMode}>
-        <div
-          className={`stage-host-route${windowMode === "stage" ? " is-active" : ""}`}
-          aria-label="首页常驻路由"
-          aria-hidden={windowMode !== "stage"}
-        >
-          {stageView}
-        </div>
-        {windowMode !== "stage" ? (
-          <div className="stage-host-route is-active" aria-label="当前活动路由">
-            {activeRoute}
-          </div>
-        ) : null}
-      </div>
-    );
-  }
-
-  if (windowMode === "stage") {
-    return stageView;
-  }
-
-  if (windowMode === "agent") {
-    return <AgentWorkspaceView api={api} />;
-  }
-
-  if (windowMode === "chat") {
-    return (
-      <ChatWindowView
-        input={controlInput}
-        messages={messages}
-        connected={hasConnection}
-        streaming={streaming}
-        mode={petInputMode}
-        modes={petInputModes}
-        onInputChange={setControlInput}
-        onModeChange={setPetInputMode}
-        onSend={(event) => {
-          event.preventDefault();
-          void sendChatText(buildPetInputIntentMessage(petInputMode, controlInput), () => setControlInput(""), {
-            displayText: displayTextForInputMode(petInputMode, controlInput),
-          });
+          },
+          onStopStreaming: stopStreaming,
+          revertingActionIds: revertingAgentActionIds,
+          onRevertAgentAction: (action) => void revertAgentAction(action),
+          onOpenTask: () => setWindowMode("agent"),
+          onOpenMemory: () => setWindowMode("memory"),
+          onOpenWiki: (path) => openArtifactTarget("world", path),
+          onOpenReport: (path) => openArtifactTarget("memory", path),
+          onboardingPanel: firstUseOnboardingPanel,
+          hasVaultInitialized,
         }}
-        onStopStreaming={stopStreaming}
-        revertingActionIds={revertingAgentActionIds}
-        onRevertAgentAction={(action) => void revertAgentAction(action)}
-        onOpenTask={() => setWindowMode("agent")}
-        onOpenMemory={() => setWindowMode("memory")}
-        onOpenWiki={(path) => openArtifactTarget("world", path)}
-        onOpenReport={(path) => openArtifactTarget("memory", path)}
-        onboardingPanel={firstUseOnboardingPanel}
-        hasVaultInitialized={hasVaultInitialized}
+        memoryWindowProps={{
+          api,
+          loading: agentActionsStatus === "loading" || loadingProposals || loadingContinuity,
+          error: agentActionsError,
+          entries: agentActivityEntries,
+          memorySearchQuery: searchQuery,
+          memorySearchStatus: searchStatus,
+          memorySearchResults: searchResults,
+          memoryLastSearchQuery: lastSearchQuery,
+          onMemorySearchQueryChange: setSearchQuery,
+          onRunMemorySearch: (event) => void runMemorySearch(event),
+          memoryProposalDraft: proposalDraft,
+          memoryProposals: proposals,
+          memoryProposalActionIds: proposalActionIds,
+          loadingMemoryProposals: loadingProposals,
+          onMemoryProposalDraftChange: updateProposalDraft,
+          onCreateMemoryProposal: (event) => void createProposal(event),
+          onActOnMemoryProposal: (proposalId, action) => void actOnProposal(proposalId, action),
+          onLoadMemoryProposals: () => void loadPendingProposals(),
+          onRefresh: refreshActivity,
+          renderEntry: renderAgentActivityEntry,
+        }}
+        growthWindowProps={{ api }}
+        connectionPanel={connectionPanel}
+        wikiWorkflowPanel={wikiWorkflowPanel}
+        settingsPanel={settingsPanel}
       />
-    );
-  }
-
-  if (windowMode === "memory") {
-    return (
-      <MemoryWindowView
-        api={api}
-        loading={agentActionsStatus === "loading" || loadingProposals || loadingContinuity}
-        error={agentActionsError}
-        entries={agentActivityEntries}
-        memorySearchQuery={searchQuery}
-        memorySearchStatus={searchStatus}
-        memorySearchResults={searchResults}
-        memoryLastSearchQuery={lastSearchQuery}
-        onMemorySearchQueryChange={setSearchQuery}
-        onRunMemorySearch={(event) => void runMemorySearch(event)}
-        memoryProposalDraft={proposalDraft}
-        memoryProposals={proposals}
-        memoryProposalActionIds={proposalActionIds}
-        loadingMemoryProposals={loadingProposals}
-        onMemoryProposalDraftChange={updateProposalDraft}
-        onCreateMemoryProposal={(event) => void createProposal(event)}
-        onActOnMemoryProposal={(proposalId, action) => void actOnProposal(proposalId, action)}
-        onLoadMemoryProposals={() => void loadPendingProposals()}
-        onRefresh={refreshActivity}
-        renderEntry={renderAgentActivityEntry}
-      />
-    );
-  }
-
-  if (windowMode === "world") {
-    return (
-      <WorldWindowView>
-        <div className="feature-page-stack wiki-page-stack">
-          {wikiWorkflowPanel}
-          {wikiBrowserPanel}
-        </div>
-      </WorldWindowView>
-    );
-  }
-
-  if (windowMode === "settings") {
-    return (
-      <SettingsWindowView>
-        <div className="feature-page-stack">
-          {connectionPanel}
-          {settingsPanel}
-        </div>
-      </SettingsWindowView>
     );
   }
 
   if (windowMode === "pet") {
-    const showPetEntryHint =
-      petEntryHintStatus === "pending" && !petShortcutsVisible && !petChat.inputVisible && !petChat.bubble.visible;
-
     return (
-      <main
-        className={[
-          "pet-shell",
-          petHitboxDebug ? "pet-debug-hitbox" : "",
-          petChat.bubble.visible ? "pet-bubble-visible" : "",
-          petDragging ? "pet-dragging" : "",
-          petDragSnapshot ? "pet-drag-snapshot-ready" : "",
-        ].filter(Boolean).join(" ")}
-        ref={petShellRef}
-        style={petHitboxStyle}
-        aria-label="桌面记忆助手桌宠"
-        onDragStart={(event) => event.preventDefault()}
-        onDragOver={(event) => event.preventDefault()}
-        onDrop={(event) => event.preventDefault()}
-      >
-        <Live2DStage
-          key={`pet-${live2dAsset.modelId}`}
-          stage={live2dStage}
-          asset={live2dAsset}
-          runtime={live2dRuntime}
-          canvasRef={live2dPetCanvasRef}
-          variant="pet"
-          speaking={ttsSpeaking}
-          actionKeyOverride={live2dReplyActionKey}
-          actionTriggerKey={live2dReplyActionTriggerKey}
-          suppressCanvasLayoutWarning={petDragging && Boolean(petDragSnapshot)}
-          petInteractions={{
-            onPointerDown: beginPetDrag,
-            onPointerMove: movePetDrag,
-            onPointerUp: endPetDrag,
-            onPointerCancel: endPetDrag,
-            onLostPointerCapture: endPetDrag,
-            onContextMenu: (event) => {
-              event.preventDefault();
-              endPetDrag();
-              togglePetShortcuts();
-            },
-            onBubbleContextMenu: (event) => {
-              event.preventDefault();
-              endPetDrag();
-            },
-            onDoubleClick: () => {
-              completePetEntryHint();
-              endPetDrag();
-              void window.agentDesktop?.openStage?.();
-            },
-          }}
-        />
-        {petDragSnapshot ? (
-          <img
-            className="pet-drag-frame-cache"
-            src={petDragSnapshot.url}
-            style={petDragSnapshot.style}
-            alt=""
-            aria-hidden="true"
-            draggable={false}
-          />
-        ) : null}
-        {showPetEntryHint ? (
-          <div className="pet-entry-hint" aria-label="桌宠入口提示">
-            右键我打开功能
-          </div>
-        ) : null}
-        <PetChatOverlay
-          bubble={petChat.bubble}
-          input={petChat.input}
-          inputVisible={petChat.inputVisible}
-          inputRef={petChat.inputRef}
-          mode={petInputMode}
-          modes={petInputModes}
-          connected={hasConnection}
-          streaming={streaming}
-          onPreviousPage={petChat.retreatPageManually}
-          onAdvancePage={petChat.advancePageManually}
-          onPausePaging={petChat.pausePaging}
-          onResumePaging={petChat.resumePaging}
-          onInputChange={petChat.setInput}
-          onModeChange={openPetInputMode}
-          onInputClose={() => petChat.setInputVisible(false)}
-          onSubmit={sendPetMessage}
-          onStopStreaming={stopStreaming}
-        />
-        <nav
-          className={`pet-shortcut-bar${petShortcutsVisible ? " is-visible" : ""}`}
-          data-shortcut-motion={petShortcutMotion}
-          aria-label="桌宠快捷操作"
-          aria-hidden={!petShortcutsVisible}
-          onContextMenu={(event) => event.preventDefault()}
-          onAnimationEnd={finishPetShortcutMotion}
-        >
-          <button type="button" className="pet-shortcut-button" style={petShortcutButtonStyles[0]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="打开首页" title="打开首页" onClick={() => openPetShortcutStage("stage")}>
-            <House className="pet-shortcut-icon" size={17} strokeWidth={2.3} aria-hidden="true" />
-          </button>
-          <button type="button" className="pet-shortcut-button" style={petShortcutButtonStyles[1]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="打开任务工作台" title="打开任务工作台" onClick={() => openPetShortcutStage("agent")}>
-            <FolderKanban className="pet-shortcut-icon" size={17} strokeWidth={2.3} aria-hidden="true" />
-          </button>
-          <button type="button" className="pet-shortcut-button" style={petShortcutButtonStyles[2]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="打开知识库窗口" title="打开知识库窗口" onClick={() => openPetShortcutStage("world")}>
-            <BookOpen className="pet-shortcut-icon" size={17} strokeWidth={2.3} aria-hidden="true" />
-          </button>
-          <button type="button" className="pet-shortcut-button" style={petShortcutButtonStyles[3]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="打开设置窗口" title="打开设置窗口" onClick={() => openPetShortcutStage("settings")}>
-            <Settings className="pet-shortcut-icon" size={17} strokeWidth={2.3} aria-hidden="true" />
-          </button>
-          <button type="button" className="pet-shortcut-button danger" style={petShortcutButtonStyles[4]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="退出应用" title="退出应用" onClick={quitFromPetShortcut}>
-            <Power className="pet-shortcut-icon" size={17} strokeWidth={2.5} aria-hidden="true" />
-          </button>
-        </nav>
-      </main>
+      <PetWindow
+        shellRef={petWindow.shellRef}
+        hitboxStyle={petHitboxStyle}
+        shortcutButtonStyles={petShortcutButtonStyles}
+        hitboxDebug={petHitboxDebug}
+        petChat={petChat}
+        petDragging={petWindow.petDragging}
+        petDragSnapshot={petWindow.petDragSnapshot}
+        showPetEntryHint={petWindow.showPetEntryHint}
+        live2dStage={live2dStage}
+        live2dAsset={live2dAsset}
+        live2dRuntime={live2dRuntime}
+        live2dCanvasRef={live2dPetCanvasRef}
+        ttsSpeaking={tts.speaking}
+        ttsActive={tts.active}
+        live2dActionKeyOverride={live2dReplyActionKey}
+        live2dActionTriggerKey={live2dReplyActionTriggerKey}
+        petInputMode={petInputMode}
+        petInputModes={petInputModes}
+        connected={hasConnection}
+        streaming={streaming}
+        petShortcutsVisible={petWindow.petShortcutsVisible}
+        petShortcutMotion={petWindow.petShortcutMotion}
+        onBeginPetDrag={petWindow.beginPetDrag}
+        onMovePetDrag={petWindow.movePetDrag}
+        onEndPetDrag={petWindow.endPetDrag}
+        onTogglePetShortcuts={petWindow.togglePetShortcuts}
+        onCompletePetEntryHint={petWindow.completePetEntryHint}
+        onOpenStage={() => {
+          const openStage = window.agentDesktop?.openStage?.();
+          if (openStage) {
+            void openStage.catch(() => undefined);
+          }
+        }}
+        onOpenPetInputMode={petWindow.openPetInputMode}
+        onOpenPetShortcutStage={petWindow.openPetShortcutStage}
+        onSendPetMessage={sendPetMessage}
+        onStopStreaming={stopStreaming}
+        onStopTtsFromPetShortcut={petWindow.stopTtsFromPetShortcut}
+        onFinishPetShortcutMotion={petWindow.finishPetShortcutMotion}
+      />
     );
   }
 
   return (
-    <main className="app-shell">
-      <header className="topbar">
-        <div>
-          <p className="eyebrow">今天从这里继续</p>
-          <h1>我帮你整理好最近的事</h1>
-        </div>
-        <ConnectionStatusStrip sidecarStatus={sidecarStatus} health={health} />
-      </header>
-
-      {notice ? (
-        <div className={`notice ${notice.tone}`} role="status">
-          {notice.tone === "error" ? <CircleAlert size={18} /> : <ShieldCheck size={18} />}
-          <span>{notice.message}</span>
-        </div>
-      ) : null}
-
-      <section className="dashboard-grid">
-        <Live2DStage
-          key={`panel-${live2dAsset.modelId}`}
-          stage={live2dStage}
-          asset={live2dAsset}
-          runtime={live2dRuntime}
-          canvasRef={live2dPanelCanvasRef}
-          speaking={ttsActive}
-          actionKeyOverride={live2dReplyActionKey}
-          actionTriggerKey={live2dReplyActionTriggerKey}
-        />
-
-        <VisibleContinuityPanel api={api} className="control-continuity-panel" />
-
-        <Panel id="agent-workspace-panel" icon={<MessageSquareText size={18} />} title="今天要跟进的事" className="chat-panel">
-          <section className="stack" aria-label="聊天和整理工作流">
-            {firstUseOnboardingPanel}
-            <div className="section-heading">
-              <strong>直接告诉我接下来要做什么</strong>
-              <span>我会把对话、任务、复盘和需要留意的线索串起来；本地保存和高风险确认规则在设置里可查。</span>
-            </div>
-            <form
-              className="chat-form"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void sendChatText(controlInput, () => setControlInput(""));
-              }}
-            >
-              <input
-                value={controlInput}
-                onChange={(event) => setControlInput(event.target.value)}
-                placeholder={hasConnection ? "说一句要跟进的事、要记住的偏好，或让我安排一个提醒..." : "正在等待本地助手连接..."}
-                disabled={streaming}
-              />
-              {streaming ? (
-                <button type="button" className="danger" onClick={stopStreaming}>
-                  <X size={16} />
-                  停止
-                </button>
-              ) : (
-                <button type="submit" disabled={!controlInput.trim() || !hasConnection}>
-                  <Send size={16} />
-                  发送
-                </button>
-              )}
-            </form>
-            <section id="agent-activity-log" className="stack" aria-label="最近自动整理活动">
-              <div className="section-heading">
-                <strong>最近自动整理活动</strong>
-                <span>
-                  {pendingManualActivityCount > 0
-                    ? `${pendingManualActivityCount} 个高风险项需要确认；普通自动整理只保留为活动记录。`
-                    : agentActionsStatus === "loading"
-                      ? "正在刷新活动记录。"
-                      : hasAgentActivity
-                        ? `最近 ${recentAgentActivityEntries.length} 条活动；可逆动作会提供撤销入口。`
-                        : "还没有自动整理活动。"}
-                </span>
-              </div>
-              <div className="button-row">
-                <button
-                  type="button"
-                  className="secondary"
-                  onClick={refreshActivity}
-                  disabled={agentActionsStatus === "loading" || loadingProposals || loadingContinuity}
-                >
-                  {agentActionsStatus === "loading" || loadingProposals || loadingContinuity ? (
-                    <Loader2 className="spin" size={16} />
-                  ) : (
-                    <RefreshCw size={16} />
-                  )}
-                  刷新活动
-                </button>
-              </div>
-              {agentActionsError ? <p className="field-note error">{agentActionsError}</p> : null}
-              <div className="proposal-list agent-activity-log-list">
-                {recentAgentActivityEntries.length > 0 ? (
-                  recentAgentActivityEntries.map((entry) => renderAgentActivityEntry(entry))
-                ) : agentActionsStatus === "loading" || loadingProposals || loadingContinuity ? (
-                  <EmptyState text="正在加载最近自动整理活动。" />
-                ) : (
-                  <EmptyState text="普通自动整理完成后会出现在这里；高风险写入会在这里显示确认入口。" />
-                )}
-              </div>
-            </section>
-            <ChatMessageList
-              messages={recentControlMessages}
-              revertingActionIds={revertingAgentActionIds}
-              onRevertAgentAction={(action) => void revertAgentAction(action)}
-              onOpenTask={() => setWindowMode("agent")}
-              onOpenMemory={() => setWindowMode("memory")}
-              onOpenWiki={(path) => openArtifactTarget("world", path)}
-              onOpenReport={(path) => openArtifactTarget("memory", path)}
-            />
-            <div className="workflow-grid" aria-label="助手整理状态">
-              {coreWorkflowItems.map((item) => (
-                <article key={item.label} className={`workflow-card ${item.status}`}>
-                  <span className="workflow-state">{formatWorkflowStatus(item.status)}</span>
-                  <strong>{item.label}</strong>
-                  <p>{item.detail}</p>
-                  {item.targetId ? (
-                    <button type="button" className="secondary" onClick={() => scrollToWorkflowTarget(item.targetId)}>
-                      定位
-                    </button>
-                  ) : null}
-                </article>
-              ))}
-              <TaskPanel
-                tasks={tasks}
-                lastReminderNotification={lastReminderNotification}
-                onLocateTask={scrollToWorkflowTarget}
-              />
-            </div>
-          </section>
-        </Panel>
-
-        <Panel id="continuity-panel" icon={<HeartPulse size={18} />} title="陪伴状态">
-          <section className="stack" aria-label="连续性状态">
-            <div className="section-heading">
-              <strong>关系与状态连续性</strong>
-              <span>确认后只进入本机陪伴状态；不会写入本地文件。</span>
-            </div>
-            <div className="button-row">
-              <button type="button" className="secondary" onClick={() => void loadContinuity()} disabled={loadingContinuity}>
-                {loadingContinuity ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />}
-                刷新
-              </button>
-            </div>
-            <dl className="details continuity-state-grid">
-              <div>
-                <dt>身份特质</dt>
-                <dd>{continuityState?.identity_traits || "未确认"}</dd>
-              </div>
-              <div>
-                <dt>关系摘要</dt>
-                <dd>{continuityState?.relationship_summary || "未确认"}</dd>
-              </div>
-              <div>
-                <dt>当前情绪</dt>
-                <dd>{continuityState?.current_mood || "未确认"}</dd>
-              </div>
-              <div>
-                <dt>情绪惯性</dt>
-                <dd>{continuityState?.mood_momentum || "未确认"}</dd>
-              </div>
-              <div>
-                <dt>能量水平</dt>
-                <dd>{continuityState?.energy_level || "未确认"}</dd>
-              </div>
-              <div>
-                <dt>未完话题</dt>
-                <dd>{continuityState?.unresolved_threads || "无"}</dd>
-              </div>
-            </dl>
-            {pendingContinuityCount > 0 ? (
-              <p className="field-note">
-                有 {pendingContinuityCount} 条连续性确认项，已合并到“最近自动整理活动”中处理。
-              </p>
-            ) : (
-              <p className="field-note">当前没有待确认的连续性整理项。</p>
-            )}
-          </section>
-        </Panel>
-
-        <details className="control-secondary-nav">
-          <summary>
-            <strong>高级管理与诊断</strong>
-            <span>模型、连接、知识整理、设置和角色资源仍可在这里展开，也可用底部导航进入独立窗口。</span>
-          </summary>
-          <div className="control-secondary-grid">
-            <Live2DModelPanel
-              models={live2dModels}
-              selectedModelId={selectedLive2dModelId}
-              asset={live2dAsset}
-              onSelectModel={selectLive2DModel}
-            />
-
-            {connectionPanel}
-
-            {wikiWorkflowPanel}
-
-            {settingsPanel}
-          </div>
-        </details>
-
-      </section>
-    </main>
+    <ControlDashboard
+      sidecarStatus={sidecarStatus}
+      health={health}
+      notice={notice}
+      live2dStage={live2dStage}
+      live2dAsset={live2dAsset}
+      live2dRuntime={live2dRuntime}
+      live2dCanvasRef={live2dPanelCanvasRef}
+      ttsActive={tts.active}
+      live2dActionKeyOverride={live2dReplyActionKey}
+      live2dActionTriggerKey={live2dReplyActionTriggerKey}
+      api={api}
+      firstUseOnboardingPanel={firstUseOnboardingPanel}
+      controlInput={controlInput}
+      hasConnection={hasConnection}
+      streaming={streaming}
+      onControlInputChange={setControlInput}
+      onSubmitControlChat={(event) => {
+        event.preventDefault();
+        void sendChatText(controlInput, () => setControlInput(""));
+      }}
+      onStopStreaming={stopStreaming}
+      pendingManualActivityCount={pendingManualActivityCount}
+      agentActionsStatus={agentActionsStatus}
+      hasAgentActivity={hasAgentActivity}
+      recentAgentActivityCount={recentAgentActivityEntries.length}
+      loadingProposals={loadingProposals}
+      loadingContinuity={loadingContinuity}
+      agentActionsError={agentActionsError}
+      activityItems={recentAgentActivityEntries.map((entry) => renderAgentActivityEntry(entry))}
+      onRefreshActivity={refreshActivity}
+      chatMessageListProps={{
+        messages: recentControlMessages,
+        revertingActionIds: revertingAgentActionIds,
+        onRevertAgentAction: (action) => void revertAgentAction(action),
+        onOpenTask: () => setWindowMode("agent"),
+        onOpenMemory: () => setWindowMode("memory"),
+        onOpenWiki: (path) => openArtifactTarget("world", path),
+        onOpenReport: (path) => openArtifactTarget("memory", path),
+      }}
+      workflowItems={coreWorkflowItems}
+      taskPanelProps={{
+        tasks,
+        lastReminderNotification,
+        onLocateTask: scrollToWorkflowTarget,
+      }}
+      continuityState={continuityState}
+      pendingContinuityCount={pendingContinuityCount}
+      onLoadContinuity={() => void loadContinuity()}
+      onLocateWorkflowTarget={scrollToWorkflowTarget}
+      advancedTools={{
+        models: live2dModels,
+        selectedModelId: selectedLive2dModelId,
+        asset: live2dAsset,
+        onSelectModel: selectLive2DModel,
+        connectionPanel,
+        wikiWorkflowPanel,
+        settingsPanel,
+      }}
+    />
   );
 }
 
@@ -2654,100 +1452,6 @@ function clearRendererResettableState(): void {
   }
 }
 
-function normalizeContinuityProposal(payload: Record<string, unknown> | null): ContinuityProposal | null {
-  if (!payload) {
-    return null;
-  }
-  const proposalId = pickPayloadString(payload, ["proposal_id", "id"]);
-  const kind = pickPayloadString(payload, ["kind"]);
-  const summary = pickPayloadString(payload, ["summary"]);
-  const evidence = pickPayloadString(payload, ["evidence"]) || "";
-  if (!proposalId || !isContinuityKind(kind) || !summary) {
-    return null;
-  }
-  const confidence =
-    typeof payload.confidence === "number"
-      ? payload.confidence
-      : Number.parseFloat(String(payload.confidence ?? "0"));
-  const now = new Date().toISOString();
-  return {
-    proposal_id: proposalId,
-    kind,
-    summary,
-    evidence,
-    confidence: Number.isFinite(confidence) ? confidence : 0,
-    source_conversation_id: pickPayloadString(payload, ["source_conversation_id"]),
-    source_message_id: pickPayloadString(payload, ["source_message_id"]),
-    agent_run_id: pickPayloadString(payload, ["agent_run_id"]),
-    status: (pickPayloadString(payload, ["status"]) as ContinuityProposalStatus | null) || "pending",
-    rejected_reason: pickPayloadString(payload, ["rejected_reason"]),
-    created_at: pickPayloadString(payload, ["created_at"]) || now,
-    updated_at: pickPayloadString(payload, ["updated_at"]) || now,
-  };
-}
-
-function normalizeContinuitySignal(payload: Record<string, unknown> | null): ChatContinuitySignal | null {
-  if (!payload) {
-    return null;
-  }
-  const kind = pickPayloadString(payload, ["kind"]) || "relationship";
-  const title = pickPayloadString(payload, ["title"]) || "连续性在场";
-  const summary = pickPayloadString(payload, ["summary"]);
-  if (!summary) {
-    return null;
-  }
-  const intensity = pickPayloadString(payload, ["intensity"]) || "medium";
-  const displayHint = pickPayloadString(payload, ["display_hint"]) || "只作为本机陪伴提示；不会写入本地文件。";
-  const keys = Array.isArray(payload.source_state_keys)
-    ? payload.source_state_keys.filter((value): value is string => typeof value === "string")
-    : [];
-  return {
-    kind,
-    title,
-    summary,
-    intensity,
-    display_hint: displayHint,
-    source_state_keys: keys,
-  };
-}
-
-function isContinuityKind(value: unknown): value is ContinuityProposalKind {
-  return (
-    value === "identity" ||
-    value === "relationship" ||
-    value === "mood" ||
-    value === "energy" ||
-    value === "open_thread"
-  );
-}
-
-function formatContinuityKind(kind: ContinuityProposalKind | string): string {
-  const labels: Record<ContinuityProposalKind, string> = {
-    identity: "身份连续性",
-    relationship: "关系连续性",
-    mood: "情绪状态",
-    energy: "能量水平",
-    open_thread: "未完话题",
-  };
-  return isContinuityKind(kind) ? labels[kind] : kind;
-}
-
-function formatContinuityStatus(status: ContinuityProposalStatus): string {
-  const labels: Record<string, string> = {
-    pending: "待确认",
-    confirmed: "已确认",
-    rejected: "已拒绝",
-  };
-  return labels[status] || status;
-}
-
-function formatConfidence(confidence: number): string {
-  if (!Number.isFinite(confidence)) {
-    return "未知";
-  }
-  return `${Math.round(confidence * 100)}%`;
-}
-
 function findCitationTargetId(citation: Citation, results: MemorySearchResult[]): string | undefined {
   const matched = results.find((result) =>
     citation.chunk_id
@@ -2757,15 +1461,6 @@ function findCitationTargetId(citation: Citation, results: MemorySearchResult[])
   return matched ? `search-result-${matched.chunk_id}` : undefined;
 }
 
-function formatWorkflowStatus(status: CoreWorkflowItem["status"]): string {
-  const labels: Record<CoreWorkflowItem["status"], string> = {
-    done: "已就绪",
-    active: "进行中",
-    blocked: "待处理",
-  };
-  return labels[status];
-}
-
 function formatIssueSeverity(severity: string): string {
   const labels: Record<string, string> = {
     error: "错误",
@@ -2773,43 +1468,6 @@ function formatIssueSeverity(severity: string): string {
     info: "提示",
   };
   return labels[severity] || severity;
-}
-
-function normalizeTtsVoiceGender(gender: string | null | undefined): TtsVoiceGender | undefined {
-  if (gender === "female" || gender === "male" || gender === "neutral" || gender === "unknown") {
-    return gender;
-  }
-  return gender ? "unknown" : undefined;
-}
-
-function formatTtsPlaybackErrorNotice(error: TtsPlaybackError): string {
-  if (error.code === "authentication_failed") {
-    const providerLabel = error.provider === "xiaomi-mimo" ? "小米 MiMo" : error.provider || "当前 TTS 服务";
-    return `语音播放失败：${providerLabel} API Key 无效，请在设置里重新保存语音服务密钥，或临时切换到系统语音。${error.message ? `（${error.message}）` : ""}`;
-  }
-  if (error.code === "credential_missing") {
-    return "语音播放失败：尚未保存语音服务密钥，请在设置里填写并保存后再试。";
-  }
-  if (error.code === "provider_not_configured") {
-    return "语音播放失败：语音来源尚未配置完成，请在设置里检查服务地址、声音来源和密钥。";
-  }
-  return `语音播放失败：${error.message}`;
-}
-
-function formatTtsProviderFallbackNotice(
-  provider: string | undefined,
-  fallbackProvider: string | undefined,
-  error: TtsPlaybackError,
-): string {
-  const providerLabel = provider === "xiaomi-mimo" ? "小米 MiMo" : provider || "当前 TTS 服务";
-  const fallbackLabel = fallbackProvider === "system" ? "系统语音" : fallbackProvider || "备用语音";
-  if (error.code === "authentication_failed") {
-    return `${providerLabel} API Key 无效，已临时改用${fallbackLabel}。请在设置里重新保存语音服务密钥。`;
-  }
-  if (error.code === "credential_missing") {
-    return `${providerLabel} 尚未保存密钥，已临时改用${fallbackLabel}。`;
-  }
-  return `${providerLabel} 暂不可用，已临时改用${fallbackLabel}。`;
 }
 
 function getSearchEmptyNotice(

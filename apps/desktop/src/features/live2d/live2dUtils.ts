@@ -58,18 +58,18 @@ export function getLive2DStageView({
     return {
       state: "thinking",
       label: "思考中",
-      mood: "正在生成",
-      message: "桌宠正在根据你的输入组织回复。",
-      hint: "流式回复进行中",
+      mood: "正在想",
+      message: "我在想，马上回你。",
+      hint: "可以随时打断",
     };
   }
   if (pendingProposalCount > 0) {
     return {
       state: "confirming",
       label: "等待确认",
-      mood: "等待用户确认",
-      message: `有 ${pendingProposalCount} 条记忆整理需要确认；确认后才进入长期记忆。`,
-      hint: "查看最近自动整理活动",
+      mood: "等你看看",
+      message: `有 ${pendingProposalCount} 条内容等你确认。`,
+      hint: "打开记忆看看",
     };
   }
   if (diagnosticsReady) {
@@ -102,27 +102,27 @@ export function getLive2DStageView({
   if (continuitySignal?.kind === "open_thread") {
     return {
       state: "presence",
-      label: "轻提醒",
-      mood: "记着未完话题",
+      label: "下次接着聊",
+      mood: "话题已记住",
       message: continuitySignal.summary,
-      hint: continuitySignal.display_hint || "运行时轻提醒，不会创建系统通知。",
+      hint: continuitySignal.display_hint || "只在本机提示，不会创建系统通知。",
     };
   }
   if (continuitySignal) {
     return {
       state: "presence",
-      label: "连续在场",
-      mood: continuitySignal.title || "连续性在场",
+      label: "陪伴状态",
+      mood: continuitySignal.title || "陪伴状态已更新",
       message: continuitySignal.summary,
-      hint: continuitySignal.display_hint || "已确认连续性正在影响陪伴表现。",
+      hint: continuitySignal.display_hint || "已确认的状态会影响之后的陪伴表现。",
     };
   }
   if (continuityState?.unresolved_threads) {
     return {
       state: "presence",
-      label: "轻提醒",
-      mood: "记着未完话题",
-      message: `我还记着：${continuityState.unresolved_threads}`,
+      label: "下次接着聊",
+      mood: "话题已记住",
+      message: `下次可以接着聊：${continuityState.unresolved_threads}`,
       hint: "只在运行时显示，不发系统通知。",
     };
   }
@@ -133,15 +133,15 @@ export function getLive2DStageView({
       state: "reflective",
       label: "连续待机",
       mood,
-      message: `桌宠沿用已确认的情绪连续性${energy}。`,
-      hint: continuityState.mood_momentum || "已确认连续性状态",
+      message: `桌宠沿用已确认的情绪状态${energy}。`,
+      hint: continuityState.mood_momentum || "已确认陪伴状态",
     };
   }
   return {
     state: "idle",
     label: "待机",
     mood: "在线陪伴",
-    message: "桌宠正在待机，准备接收聊天、记忆和任务操作。",
-    hint: "可以开始对话",
+    message: "我在，右键可以快速行动。",
+    hint: "继续聊、记一条或建提醒",
   };
 }

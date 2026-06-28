@@ -49,6 +49,11 @@ from .diagnostics import (
     LocalStateResetResponse,
     NegotiationStatsResponse,
 )
+from .habit_loop import (
+    HabitLoopCandidateResponse,
+    HabitLoopTriggerRequest,
+    HabitLoopTriggerResponse,
+)
 from .memory import (
     AgentActionListResponse,
     AgentActionResponse,
@@ -67,6 +72,9 @@ from .memory import (
     DiaryMemorySearchRequest,
     DiaryMemorySearchResponse,
     DiaryMemorySourceResponse,
+    GrowthDimensionResponse,
+    GrowthEventResponse,
+    GrowthSnapshotResponse,
     LocalAssetStatsResponse,
     MemoryGraphFactActionResponse,
     MemoryGraphExportItem,

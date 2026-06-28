@@ -1,5 +1,6 @@
-import { Loader2, RefreshCw, ShieldCheck } from "lucide-react";
+import { BellRing, Loader2, RefreshCw, ShieldCheck } from "lucide-react";
 import type { AsyncStatus, AutomationSettingsDraft } from "./settingsTypes";
+import type { ProactiveTriggerFrequency } from "../../types";
 
 type AutomationSettingsCardProps = {
   draft: AutomationSettingsDraft;
@@ -15,6 +16,7 @@ type AutomationToggleKey =
   | "auto_structured_memory"
   | "auto_long_term_memory"
   | "auto_wiki_organize"
+  | "local_privacy_mode"
   | "use_negotiation";
 
 type AutomationToggle = {
@@ -45,9 +47,41 @@ const automationToggles: AutomationToggle[] = [
     description: "允许低风险资料库总结、补充和报告自动执行，并记录活动账本。",
   },
   {
+    key: "local_privacy_mode",
+    title: "本地隐私模式",
+    description: "敏感输入只做本机关键词检索，不发送到模型 API；回复会更保守，智能程度会下降。",
+  },
+  {
     key: "use_negotiation",
     title: "多轮结果复核",
     description: "让复杂请求经过多轮检查和合成，再输出最终答案。",
+  },
+];
+
+const proactiveFrequencyOptions: Array<{
+  value: ProactiveTriggerFrequency;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: "off",
+    label: "关闭",
+    description: "不主动开口。",
+  },
+  {
+    value: "low",
+    label: "低频",
+    description: "低频每天最多 1 次，间隔至少 8 小时。",
+  },
+  {
+    value: "normal",
+    label: "中频",
+    description: "中频每天最多 2 次，间隔至少 4 小时。",
+  },
+  {
+    value: "high",
+    label: "高频",
+    description: "高频每天最多 3 次，间隔至少 2 小时。",
   },
 ];
 
@@ -79,7 +113,7 @@ export function AutomationSettingsCard({
     <section className="agent-model-section settings-card automation-settings-card" aria-label="自动整理策略">
       <div className="section-heading">
         <strong>自动整理策略</strong>
-        <span>控制低风险整理是否自动执行；删除、移动、批量改写和保存位置变更仍必须确认。</span>
+        <span>控制低风险整理和低打扰主动开口；删除、移动、批量改写和保存位置变更仍必须确认。</span>
       </div>
 
       <div className="automation-toggle-grid">
@@ -96,6 +130,30 @@ export function AutomationSettingsCard({
             </span>
           </label>
         ))}
+      </div>
+
+      <div className="automation-frequency-field" role="group" aria-label="日常主动开口">
+        <div>
+          <span>
+            <BellRing size={16} />
+            日常主动开口
+          </span>
+          <small>只在有待办、记忆、日记或资料线索时触发，并避开夜间与刚聊完的时段。</small>
+        </div>
+        <div className="automation-frequency-options">
+          {proactiveFrequencyOptions.map((option) => (
+            <label key={option.value} className="automation-frequency-option">
+              <input
+                type="radio"
+                name="proactive_trigger_frequency"
+                checked={draft.proactive_trigger_frequency === option.value}
+                onChange={() => onUpdateDraft({ proactive_trigger_frequency: option.value })}
+              />
+              <span>{option.label}</span>
+            </label>
+          ))}
+        </div>
+        <small>{proactiveFrequencyOptions.find((option) => option.value === draft.proactive_trigger_frequency)?.description}</small>
       </div>
 
       <label className="automation-number-field">

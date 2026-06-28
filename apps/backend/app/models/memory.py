@@ -54,6 +54,37 @@ class LocalAssetStatsResponse(BaseModel):
     reversible_operation_count: int = 0
 
 
+class GrowthDimensionResponse(BaseModel):
+    key: str
+    label: str
+    level: int = Field(ge=0)
+    level_label: str
+    current_value: int = Field(ge=0)
+    next_threshold: int | None = None
+    progress: int = Field(ge=0, le=100)
+    description: str
+    data_sources: list[str] = Field(default_factory=list)
+    last_changed_at: str | None = None
+
+
+class GrowthEventResponse(BaseModel):
+    event_id: str
+    occurred_at: str
+    dimension_key: str
+    title: str
+    summary: str = ""
+    source_action_id: str
+    source_action_type: str
+    target_paths: list[str] = Field(default_factory=list)
+
+
+class GrowthSnapshotResponse(BaseModel):
+    generated_at: str
+    dimensions: list[GrowthDimensionResponse] = Field(default_factory=list)
+    events: list[GrowthEventResponse] = Field(default_factory=list)
+    stats: LocalAssetStatsResponse
+
+
 class MemoryProposalCreateRequest(BaseModel):
     type: MemoryProposalType; content: str = Field(min_length=1); target_path: str; source_message_id: str | None = None
 

@@ -46,13 +46,14 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
   let petShortcutBarVisible = false;
   let petInputDockVisible = false;
   let pendingControlTargetId = null;
+  let restorePetAfterStageClosed = false;
 
   function isDevelopment() {
     return !app.isPackaged;
   }
 
   function normalizeFeatureWindowMode(mode) {
-    return ["chat", "memory", "world", "settings"].includes(mode) ? mode : "chat";
+    return ["chat", "memory", "growth", "world", "settings"].includes(mode) ? mode : "chat";
   }
 
   function normalizePetInputMode(mode) {
@@ -61,6 +62,34 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
 
   function isLiveWindow(window) {
     return Boolean(window && !window.isDestroyed?.());
+  }
+
+  function destroyStageWindowForCompanionSwitch() {
+    const windowToDestroy = stageWindow;
+    if (!isLiveWindow(windowToDestroy)) {
+      return;
+    }
+
+    restorePetAfterStageClosed = false;
+    windowToDestroy.destroy();
+  }
+
+  function destroyPetWindowForCompanionSwitch() {
+    const windowToDestroy = petWindow;
+    if (!isLiveWindow(windowToDestroy)) {
+      return;
+    }
+
+    clearPetWindowDrag();
+    restorePetAfterStageClosed = true;
+    persistPetWindowBounds();
+    stopPetMouseHitTest();
+    clearPetEntryCapture();
+    petMousePassthrough = false;
+    petShortcutBarVisible = false;
+    petInputDockVisible = false;
+    windowToDestroy.webContents.send("agent-pet:cancel-pet-drag");
+    windowToDestroy.destroy();
   }
 
   function getSenderWindowRole(sender) {
@@ -86,6 +115,7 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     return {
       chat: "聊天",
       memory: "整理",
+      growth: "成长",
       world: "知识库",
       settings: "配置",
     }[normalizeFeatureWindowMode(mode)];
@@ -447,7 +477,9 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
   }
 
   function createPetWindow() {
-    if (petWindow) {
+    destroyStageWindowForCompanionSwitch();
+
+    if (petWindow && !petWindow.isDestroyed()) {
       petWindow.show();
       petWindow.focus();
       return petWindow;
@@ -482,6 +514,7 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
         nodeIntegration: false,
         sandbox: true,
         webSecurity: true,
+        backgroundThrottling: false,
       },
     });
 
@@ -506,6 +539,7 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
       updatePetMousePassthroughFromCursor();
     });
     petWindow.on("close", persistPetWindowBounds);
+    const currentPetWindow = petWindow;
     petWindow.on("closed", () => {
       clearPetWindowDrag();
       stopPetMouseHitTest();
@@ -513,7 +547,9 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
       petMousePassthrough = false;
       petShortcutBarVisible = false;
       petInputDockVisible = false;
-      petWindow = null;
+      if (petWindow === currentPetWindow) {
+        petWindow = null;
+      }
     });
     petWindow.webContents.on("context-menu", (event) => {
       event.preventDefault();
@@ -601,6 +637,8 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
   }
 
   function createStageWindow() {
+    destroyPetWindowForCompanionSwitch();
+
     if (stageWindow && !stageWindow.isDestroyed()) {
       return stageWindow;
     }
@@ -622,14 +660,26 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     });
 
     configureCommonWindow(stageWindow);
+    const currentStageWindow = stageWindow;
     stageWindow.on("close", (event) => {
       if (!state.isQuitting) {
+        const shouldRestorePet = restorePetAfterStageClosed;
+        restorePetAfterStageClosed = false;
         event.preventDefault();
-        stageWindow?.hide();
+        if (shouldRestorePet) {
+          currentStageWindow.once("closed", () => {
+            if (!state.isQuitting) {
+              createPetWindow();
+            }
+          });
+        }
+        currentStageWindow.destroy();
       }
     });
     stageWindow.on("closed", () => {
-      stageWindow = null;
+      if (stageWindow === currentStageWindow) {
+        stageWindow = null;
+      }
     });
     loadAppWindow(stageWindow, "/stage");
     return stageWindow;
@@ -691,8 +741,9 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
       { label: "打开主舞台", click: () => showStageRouteWindow("stage") },
       { label: "打开聊天窗口", click: () => showStageRouteWindow("chat") },
       { label: "打开任务工作台", click: () => showStageRouteWindow("agent") },
-      { label: "打开记忆整理", click: () => showStageRouteWindow("memory") },
-      { label: "打开知识库", click: () => showStageRouteWindow("world") },
+        { label: "打开记忆整理", click: () => showStageRouteWindow("memory") },
+        { label: "打开成长记录", click: () => showStageRouteWindow("growth") },
+        { label: "打开知识库", click: () => showStageRouteWindow("world") },
       { label: "打开设置", click: () => showStageRouteWindow("settings") },
       { type: "separator" },
       {
@@ -797,7 +848,7 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     if (window.isMinimized()) {
       window.restore();
     }
-    const routeMode = ["stage", "agent", "chat", "memory", "world", "settings"].includes(mode) ? mode : "stage";
+    const routeMode = ["stage", "agent", "chat", "memory", "growth", "world", "settings"].includes(mode) ? mode : "stage";
     const showRoute = () => {
       window.webContents.send("agent-pet:show-stage-route", routeMode);
     };

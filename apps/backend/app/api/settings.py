@@ -194,6 +194,8 @@ async def update_settings(
                 auto_structured_memory=current_automation.auto_structured_memory,
                 auto_long_term_memory=current_automation.auto_long_term_memory,
                 auto_wiki_organize=current_automation.auto_wiki_organize,
+                local_privacy_mode=current_automation.local_privacy_mode,
+                proactive_trigger_frequency=current_automation.proactive_trigger_frequency,
                 use_negotiation=current_automation.use_negotiation if request.use_negotiation is None else request.use_negotiation,
                 max_rounds=current_automation.max_rounds if request.max_rounds is None else request.max_rounds,
             )

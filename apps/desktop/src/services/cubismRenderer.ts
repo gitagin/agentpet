@@ -51,6 +51,8 @@ export type CubismRendererDiagnostics = {
 
 export type CubismRendererHandle = {
   start(): void;
+  setActive(active: boolean): void;
+  setFocused(focused: boolean): void;
   resize(size?: CubismRendererResizeSize): void;
   dispose(): void;
   setExpression(name: string): void;
@@ -67,22 +69,27 @@ const shaderReadyTimeoutMs = 5000;
 const firstFrameNoVisiblePixelMessage = "Live2D 首帧已渲染，但像素采样未命中不透明区域。";
 const visiblePixelColorThreshold = 18;
 const visiblePixelAlphaThreshold = 8;
-const visiblePixelSampleIntervalMs = 2000;
-const initialVisiblePixelSamples = 2;
+const visiblePixelSampleIntervalMs = 10000;
+const initialVisiblePixelSamples = 1;
 const visibleHitTestAlphaPadding = 8;
 const enableIdleMotion = true;
-const enablePhysics = true;
+const enablePhysics = false;
 const enableBasicMeshFallback = false;
 const renderTimingProfiles = {
   pet: {
-    foregroundFrameIntervalMs: 1000 / 24,
-    hiddenFrameIntervalMs: 1000,
+    focusedFrameIntervalMs: 1000 / 24,
+    unfocusedFrameIntervalMs: 1000 / 4,
+    hiddenFrameIntervalMs: 5000,
   },
   stage: {
-    foregroundFrameIntervalMs: 1000 / 30,
-    hiddenFrameIntervalMs: 1000,
+    focusedFrameIntervalMs: 1000 / 30,
+    unfocusedFrameIntervalMs: 1000 / 4,
+    hiddenFrameIntervalMs: 5000,
   },
-} satisfies Record<CubismRendererVariant, { foregroundFrameIntervalMs: number; hiddenFrameIntervalMs: number }>;
+} satisfies Record<
+  CubismRendererVariant,
+  { focusedFrameIntervalMs: number; unfocusedFrameIntervalMs: number; hiddenFrameIntervalMs: number }
+>;
 const persistentParameterAddsByModelFile: Record<string, Array<{ id: string; value: number }>> = {
   "girlfriend.model3.json": [
     { id: "ParamBodyAngleZ3", value: 10 },
@@ -144,6 +151,8 @@ export async function createCubismRenderer(options: CubismRendererOptions): Prom
   let frameId: number | null = null;
   let frameTimerId: number | null = null;
   let lastRenderedAt = 0;
+  let renderActive = true;
+  let renderFocused = true;
   let disposed = false;
   let firstFrameSettled = false;
   let resolveFirstFrame: (() => void) | null = null;
@@ -205,16 +214,19 @@ export async function createCubismRenderer(options: CubismRendererOptions): Prom
     if (disposed) {
       return;
     }
-    if (document.visibilityState === "hidden" || options.canvas.width <= 0 || options.canvas.height <= 0) {
+    if (!renderActive || document.visibilityState === "hidden" || options.canvas.width <= 0 || options.canvas.height <= 0) {
       scheduleNextFrame(timingProfile.hiddenFrameIntervalMs);
       return;
     }
 
+    const frameIntervalMs = renderFocused
+      ? timingProfile.focusedFrameIntervalMs
+      : timingProfile.unfocusedFrameIntervalMs;
     const now = performance.now();
     if (lastRenderedAt > 0) {
       const elapsedMs = now - lastRenderedAt;
-      if (elapsedMs < timingProfile.foregroundFrameIntervalMs) {
-        scheduleNextFrame(timingProfile.foregroundFrameIntervalMs - elapsedMs);
+      if (elapsedMs < frameIntervalMs) {
+        scheduleNextFrame(frameIntervalMs - elapsedMs);
         return;
       }
     }
@@ -229,7 +241,7 @@ export async function createCubismRenderer(options: CubismRendererOptions): Prom
       handle.dispose();
       return;
     }
-    scheduleNextFrame(timingProfile.foregroundFrameIntervalMs);
+    scheduleNextFrame(frameIntervalMs);
   };
 
   const handle: CubismRendererHandle = {
@@ -238,6 +250,22 @@ export async function createCubismRenderer(options: CubismRendererOptions): Prom
         return;
       }
       scheduleNextFrame();
+    },
+    setActive(active) {
+      if (disposed || renderActive === active) {
+        return;
+      }
+      renderActive = active;
+      clearScheduledFrame();
+      scheduleNextFrame(active ? 0 : timingProfile.hiddenFrameIntervalMs);
+    },
+    setFocused(focused) {
+      if (disposed || renderFocused === focused) {
+        return;
+      }
+      renderFocused = focused;
+      clearScheduledFrame();
+      scheduleNextFrame(focused ? 0 : timingProfile.unfocusedFrameIntervalMs);
     },
     resize(size) {
       resizeCanvas(options.canvas, size);

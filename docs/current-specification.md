@@ -1,0 +1,144 @@
+# 当前生效规格
+
+发布日期：2026-06-20
+
+状态：当前唯一生效的产品与工程规格入口。
+
+当前版本边界：桌面端和后端运行时标记为 `0.0.1-alpha`；后端 Python 包
+元数据使用 PEP 440 兼容的 `0.0.1a0`。历史 `v0.2.0` 发布标记已被
+TASK-0402 取代，在阶段 1 人工验证补齐前不得作为当前完成度表述。
+
+本文档以当前代码、迁移、自动化测试和最新人工验证记录为事实来源。旧版
+`Development_Documentation.md` 已归档到 `docs/archive/Development_Documentation.md`，
+只保留历史参考价值，不再作为当前规格。
+
+## 事实来源顺序
+
+1. `apps/backend`、`apps/desktop` 当前代码和测试。
+2. `apps/backend/migrations` 与 `schema_migrations` 运行结果。
+3. `docs/verification-policy.md`、`docs/mvp-acceptance-coverage.md`、`docs/v0.2-validation.md`。
+4. `progress.md` 与 `task.md` 的任务状态索引。
+5. `docs/archive/Development_Documentation.md`，仅作为历史输入。
+
+当文档与当前代码或验证输出冲突时，以当前代码和验证输出为准。
+
+## 产品定位
+
+Agent Pet 当前定位为以桌宠为入口的本地长期记忆陪伴体。用户可以自然聊天，
+陪伴体会在允许范围内整理重要内容；用户能查看记忆来源、原因、风险、状态和
+可信度，并能撤回可逆写入。
+
+知识整理、提醒、资料归档、复盘报告、模型配置和调试诊断是支撑能力。它们可以
+帮助陪伴闭环，但不得抢占首屏和主叙事。
+
+当前首屏主入口是：
+
+- 陪我聊聊。
+- 看看记忆。
+- 设置边界。
+
+提醒和资料整理等支撑入口应放入默认折叠的“更多能力”或二级入口。
+
+## 当前模块边界
+
+| 模块 | 当前职责 | 当前入口 |
+| --- | --- | --- |
+| Backend sidecar | FastAPI API、SQLite 迁移、FTS 检索、任务提醒、Agent runtime、长期记忆和活动账本。 | `apps/backend/app/main.py` |
+| Backend API | 除 health 外的受保护本地 API，统一 bearer token 边界。 | `apps/backend/app/api/` |
+| Backend storage | SQLite、Vault 路径校验、Markdown 读写、迁移执行。 | `apps/backend/app/storage/` |
+| Desktop main/preload | Electron 窗口、sidecar 管理、IPC、令牌边界、桌宠点击穿透。 | `apps/desktop/electron/` |
+| Desktop renderer | React 主舞台、聊天、记忆、设置、Live2D 和支撑能力界面。 | `apps/desktop/src/` |
+| Documentation | 当前规格、运行手册、验收矩阵、验证政策和任务验证记录。 | `docs/` |
+
+## 运行与数据边界
+
+- 后端只面向本机；Electron 管理的 sidecar 地址为 `127.0.0.1:8765`。
+- `AGENT_PET_SESSION_TOKEN` 属于 Electron main 与后端边界，不得暴露给 renderer。
+- 未显式设置 `AGENT_PET_SQLITE_PATH` 时，后端使用 `AGENT_PET_DATA_DIR\agent_pet.sqlite3`。
+- Electron 管理 sidecar 时，默认把后端状态放入 Electron `userData` 下的
+  `backend-state`。
+- “本地隐私模式”开启后，敏感策略命中的聊天输入只走本机 FTS/关键词检索，
+  不发送到模型 API，也跳过后台模型驱动的记忆归档和连续性提案。
+- SQLite schema 只能通过 `apps/backend/migrations/` 增量迁移变更。
+- Markdown/Vault 写入必须经过路径安全校验；高风险、破坏性或不确定操作必须确认。
+
+## 桌面权限边界
+
+- Renderer 不得直接访问 Node、FS、`child_process`、令牌或 bearer header。
+- 桌面能力通过 preload `contextBridge` IPC 暴露。
+- BrowserWindow 必须保持 `contextIsolation: true`、`sandbox: true`、
+  `webSecurity: true`、`nodeIntegration: false`。
+- Renderer 不得使用 `localStorage` 绕过 Electron main/preload 管理。
+- 桌宠点击穿透遵守 `apps/desktop/pet-hitbox.json`。
+
+## 记忆与自动整理
+
+当前默认产品方向是私人桌宠自动整理：
+
+- 低风险日记归档、结构化日记、长期记忆、低风险 Wiki/知识页整理可以自动执行。
+- 自动整理必须写入 `agent_actions` 活动账本，记录来源、风险、目标、状态和是否可撤回。
+- 可逆 Markdown 写入要保留快照，撤回会生成新的活动记录。
+- 敏感凭据、破坏性写入、重大身份/关系冲突和低置信记忆提升必须确认或拒绝。
+- 记忆页面需要展示来源、原因、风险、可信度、状态和撤回记录。
+
+## Wiki 与资料整理
+
+当前 Wiki/资料整理属于支撑能力：
+
+- 低风险整理可通过自动活动账本记录。
+- 高风险 ingest、批量重写、破坏性归档、lint repair 或 synthesize 必须确认。
+- Wiki 页面只能写入 `Wiki/*.md` 家族，并保留来源、触发原因、更新日志和自检。
+- 面向普通用户的文案优先使用“资料”“知识页”“整理”，不把工程词作为首屏卖点。
+
+## 验证与状态
+
+验证层级由 `docs/verification-policy.md` 定义：
+
+- L1：单元或组件检查。
+- L2：契约或集成检查。
+- L3：真实路径端到端检查。
+- L4：真人可用性检查。
+
+只有 L1 的功能不能标记为 `Completed`。需要人工验证的任务，不能用自动化测试替代。
+如果用户要求跳过必要验收，记录为 `Skipped`，且不作为完成证据。
+
+`progress.md` 的里程碑必须写明验证层级、命令结果和残余风险。
+
+## 当前限制
+
+- TASK-0102 和 TASK-0103 仍未完成，不得把跳过记录写成完成证据。
+- TASK-0202 的手工导出验收已按用户要求跳过，不是完成证据。
+- 完整 Live2D 口型同步、复杂动作、多角色、大型模型管线、签名自动更新仍不在当前完成边界。
+- 真实个人 Vault 试运行必须显式确认，默认使用隔离或已备份路径。
+
+## 旧规格逐条合并结果
+
+| 旧规格章节 | 当前处理 |
+| --- | --- |
+| 0 文档目标 | 合并到本文档“事实来源顺序”和“验证与状态”。 |
+| 1 版本范围 | 以 `docs/v0.2-validation.md`、`progress.md` 和当前限制为准。 |
+| 2 项目背景与定位 | 合并为“产品定位”，当前叙事是本地长期记忆陪伴体。 |
+| 3 目标用户 | 保留为产品背景，当前 UI 任务以普通中文用户可理解为准。 |
+| 4 业务目标 | 合并为陪伴闭环、记忆可控和支撑能力降级规则。 |
+| 5 功能需求 | 以当前模块边界、记忆与自动整理、Wiki 与资料整理为准。 |
+| 6 非功能需求 | 以权限边界、运行与数据边界、验证政策为准。 |
+| 7 用户核心场景 | 以当前首屏、聊天、记忆、设置和验证记录为准。 |
+| 8 总体架构 | 合并到“当前模块边界”。 |
+| 9 技术栈选型 | 以 `apps/backend`、`apps/desktop/package.json` 和当前代码为准。 |
+| 10 工程目录规划 | 以仓库当前目录和 `AGENTS.md` 模块表为准。 |
+| 11 数据设计 | 以 `apps/backend/migrations/` 和当前模型/仓储代码为准。 |
+| 12 Obsidian Vault 设计 | 以当前 Vault 路径安全、Wiki 写入边界和 runbook 为准。 |
+| 13 检索与索引设计 | 以当前 FTS、MemoryRouter 和 retrieval 服务为准。 |
+| 14 API 设计 | 以 `apps/backend/app/api/` 与 API 测试为准。 |
+| 15 Agent 设计 | 以 LangGraph runtime、chat pipeline、memory services 当前代码为准。 |
+| 16 MCP 工具设计 | 当前不是运行时主规格，只保留历史参考。 |
+| 17 安全设计 | 合并到运行、数据、桌面权限和高风险确认边界。 |
+| 18 日志与可观测性 | 以 audit、diagnostics 和 `agent_actions` 当前代码为准。 |
+| 19 开发阶段规划 | 被 `agentpet-task-instructions.md`、`task.md` 和 `progress.md` 取代。 |
+| 20 开发规范 | 以 `AGENTS.md`、`docs/verification-policy.md` 和当前工具链为准。 |
+| 21 测试策略 | 以 L1-L4 验证政策和现有测试命令为准。 |
+| 22 验收标准 | 以 `docs/mvp-acceptance-coverage.md`、`docs/v0.2-validation.md` 和任务验证记录为准。 |
+| 23 风险分析 | 合并为本文档“当前限制”和各验证记录残余风险。 |
+| 24 运维与发布 | 以 `docs/runbook.md`、Electron packaging checks 和 v0.2 验证文档为准。 |
+| 25 后续扩展规划 | 不作为当前承诺；需经过 scope freeze 解冻或新任务确认。 |
+| 26 总结 | 被本文档当前规格入口取代。 |

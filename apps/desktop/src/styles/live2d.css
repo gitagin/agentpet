@@ -1,0 +1,1269 @@
+.live2d-copy h2 {
+  margin: 4px 0 8px;
+  color: #17242a;
+  font-size: 22px;
+}
+
+.live2d-copy p:last-child {
+  margin: 0;
+  color: #52656f;
+  line-height: 1.45;
+}
+
+.live2d-resource-summary {
+  margin-top: 12px;
+  display: grid;
+  gap: 3px;
+  border: 1px solid rgba(32, 75, 87, 0.18);
+  border-radius: 8px;
+  background: #f8fafb;
+  padding: 10px 12px;
+}
+
+.live2d-resource-summary strong {
+  color: #17242a;
+  font-size: 13px;
+}
+
+.live2d-resource-summary span {
+  color: #52656f;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.live2d-resource-recognized {
+  border-color: rgba(47, 143, 98, 0.3);
+  background: #f4fbf7;
+}
+
+.live2d-resource-missing,
+.live2d-resource-error {
+  border-color: rgba(217, 103, 112, 0.34);
+  background: #fff7f7;
+}
+
+.live2d-status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.live2d-status-grid div {
+  min-width: 0;
+  border: 1px solid #dce5ea;
+  border-radius: 6px;
+  background: #ffffff;
+  padding: 8px 10px;
+}
+
+.live2d-status-grid span,
+.live2d-status-grid strong {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.live2d-status-grid span {
+  color: #52656f;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.live2d-status-grid strong {
+  margin-top: 3px;
+  color: #17242a;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.live2d-status-grid .live2d-renderer-pending {
+  border-color: rgba(189, 107, 65, 0.32);
+  background: #fff9f2;
+}
+
+.live2d-stage {
+  position: relative;
+  min-height: 275px;
+  display: grid;
+  place-items: end center;
+  border: 1px solid rgba(255, 255, 255, 0.62);
+  border-radius: 8px;
+  background:
+    radial-gradient(circle at 50% 18%, rgba(255, 255, 255, 0.92), transparent 26%),
+    radial-gradient(ellipse at 50% 82%, rgba(231, 166, 195, 0.34), transparent 38%),
+    linear-gradient(#fff8fb 0 0) top / 100% 58% no-repeat,
+    linear-gradient(#f2e7ff 0 0) bottom / 100% 42% no-repeat;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82), 0 18px 34px rgba(119, 77, 104, 0.1);
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.live2d-panel-pet .live2d-stage {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.live2d-panel-stage .live2d-stage {
+  width: min(100%, 680px);
+  margin: 0 auto;
+  height: 100%;
+  min-height: 520px;
+  place-items: center;
+  border: 0;
+  border-radius: 0;
+  background: none !important;
+  box-shadow: none;
+  filter: none !important;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  overflow: visible;
+  isolation: auto;
+}
+
+.live2d-panel-stage .live2d-runtime-host {
+  inset: 0 2% 0;
+  z-index: 4;
+  background: transparent;
+  filter: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.live2d-panel-stage .live2d-runtime-canvas {
+  opacity: 1;
+  background: transparent !important;
+}
+
+.live2d-panel-stage .live2d-cover {
+  width: min(460px, 86%);
+  margin: 0 0 44px;
+}
+
+.live2d-panel-stage .live2d-cover img {
+  max-height: 520px;
+}
+
+.live2d-panel-stage .live2d-model {
+  transform: scale(1.66);
+  margin-bottom: 72px;
+}
+
+.live2d-panel-stage .live2d-status-card {
+  display: none;
+}
+
+.live2d-panel-stage .live2d-runtime-placeholder {
+  top: 8px;
+  left: 50%;
+  right: auto;
+  width: min(320px, calc(100% - 48px));
+  transform: translateX(-50%);
+  text-align: center;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.live2d-panel-stage .live2d-layout-warning {
+  width: min(520px, 100%);
+  margin: 10px auto 0;
+}
+
+.live2d-panel-stage .live2d-scanline,
+.live2d-panel-stage .live2d-meter,
+.live2d-panel-stage .live2d-stage::before {
+  display: none;
+}
+
+.stage-host-routes {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: #f7f7f2;
+}
+
+.stage-host-route {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 0;
+  transition: opacity 0.18s ease;
+}
+
+.stage-host-route.is-active {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+  z-index: 1;
+}
+
+.live2d-panel-pet .live2d-copy,
+.live2d-panel-pet .live2d-runtime-card,
+.live2d-panel-pet .live2d-resource-list,
+.live2d-panel-pet .live2d-scanline,
+.live2d-panel-pet .live2d-meter {
+  display: none;
+}
+
+.live2d-panel-pet .live2d-runtime-host {
+  left: 50%;
+  right: auto;
+  top: auto;
+  bottom: 58px;
+  width: min(220px, calc(100% - 36px));
+  height: 282px;
+  transform: translateX(-50%);
+  z-index: 4;
+  pointer-events: none;
+}
+
+.pet-shell.pet-bubble-visible .live2d-panel-pet .live2d-runtime-host {
+  bottom: 16px;
+}
+
+.pet-shell.pet-bubble-visible .live2d-panel-pet .live2d-cover,
+.pet-shell.pet-bubble-visible .live2d-panel-pet .live2d-model {
+  bottom: 16px;
+}
+
+.pet-shell.pet-bubble-visible .live2d-panel-pet .pet-hit-model {
+  bottom: 48px;
+}
+
+.live2d-panel-pet .live2d-runtime-canvas {
+  display: block;
+  opacity: 1;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  backface-visibility: hidden;
+  transform: translateZ(0);
+}
+
+.pet-shell.pet-dragging .live2d-panel-pet .live2d-runtime-canvas {
+  filter: drop-shadow(0 0 10px rgba(80, 169, 154, 0.42)) drop-shadow(0 12px 16px rgba(35, 50, 58, 0.16));
+  will-change: transform;
+}
+
+.pet-shell.pet-dragging.pet-drag-snapshot-ready .live2d-panel-pet .live2d-runtime-canvas {
+  opacity: 1;
+}
+
+.pet-drag-frame-cache {
+  position: absolute;
+  z-index: 0;
+  display: block;
+  object-fit: fill;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+  backface-visibility: hidden;
+  transform: translateZ(0);
+  will-change: transform;
+}
+
+.pet-shell.pet-dragging .pet-drag-frame-cache {
+  filter: drop-shadow(0 0 10px rgba(80, 169, 154, 0.42));
+}
+
+.live2d-panel-pet .live2d-pet-composition {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  pointer-events: none;
+}
+
+.live2d-panel-pet .pet-hit-region {
+  position: absolute;
+  z-index: 20;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 0;
+  background: transparent;
+  pointer-events: auto;
+  cursor: default;
+  touch-action: none;
+  -webkit-user-drag: none;
+}
+
+.live2d-panel-pet .pet-hit-region:active {
+  cursor: default;
+}
+
+.live2d-panel-pet .pet-hit-model {
+  bottom: var(--pet-model-hit-bottom);
+  width: min(var(--pet-model-hit-width), calc(100% - 36px));
+  height: var(--pet-model-hit-height);
+}
+
+.live2d-panel-pet .pet-hit-bubble {
+  bottom: var(--pet-chat-bubble-hit-bottom);
+  width: min(var(--pet-chat-bubble-hit-width), calc(100% - 24px));
+  height: var(--pet-chat-bubble-hit-height);
+}
+
+.pet-shell.pet-debug-hitbox .pet-hit-region {
+  background: rgba(33, 120, 160, 0.16);
+  outline: 2px solid rgba(33, 120, 160, 0.85);
+  outline-offset: -2px;
+}
+
+.pet-shell.pet-debug-hitbox .pet-hit-bubble {
+  background: rgba(190, 121, 42, 0.16);
+  outline-color: rgba(190, 121, 42, 0.9);
+}
+
+.live2d-panel-pet .live2d-runtime-placeholder {
+  position: absolute;
+  z-index: 8;
+  top: 10px;
+  left: 50%;
+  right: auto;
+  width: min(228px, calc(100% - 32px));
+  transform: translateX(-50%);
+  border-style: solid;
+  background: rgba(255, 255, 255, 0.86);
+  -webkit-app-region: no-drag;
+  pointer-events: none;
+}
+
+.live2d-panel-pet.live2d-render-mounted .live2d-runtime-placeholder {
+  display: none;
+}
+
+.live2d-panel-pet .live2d-cover {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  bottom: 58px;
+  width: min(210px, calc(100% - 36px));
+  margin: 0;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.live2d-panel-pet .live2d-cover-image {
+  height: 270px;
+  background-repeat: no-repeat;
+  background-position: center bottom;
+  background-size: contain;
+  filter: drop-shadow(0 14px 16px rgba(35, 50, 58, 0.18));
+  animation: none;
+}
+
+.live2d-panel-pet .live2d-cover img {
+  max-height: 270px;
+  -webkit-user-drag: none;
+  user-drag: none;
+  user-select: none;
+  pointer-events: none;
+  animation: live2d-pet-breathe 3.6s ease-in-out infinite;
+}
+
+.live2d-panel-pet .live2d-model {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  bottom: 58px;
+  transform: translateX(-50%);
+  pointer-events: none;
+  animation: none;
+}
+
+.live2d-panel-pet .live2d-status-card {
+  z-index: 7;
+  left: 50%;
+  right: auto;
+  bottom: 10px;
+  width: min(224px, calc(100% - 28px));
+  min-height: 42px;
+  transform: translateX(-50%);
+  background: rgba(255, 255, 255, 0.82);
+  -webkit-app-region: no-drag;
+  pointer-events: none;
+}
+
+.live2d-panel-pet.live2d-render-mounted .live2d-status-card {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: none;
+}
+
+.pet-agent-bubble {
+  position: absolute;
+  z-index: 28;
+  left: 50%;
+  top: auto;
+  bottom: calc(var(--pet-chat-bubble-hit-bottom) - 2px);
+  width: min(var(--pet-chat-bubble-hit-width), calc(100% - 24px));
+  height: var(--pet-chat-bubble-hit-height);
+  box-sizing: border-box;
+  transform: translateX(-50%);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 2px;
+  align-content: stretch;
+  padding: 7px 10px 8px;
+  border: 1px solid rgba(91, 139, 120, 0.2);
+  border-radius: 17px 17px 13px 9px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(247, 252, 250, 0.88)),
+    rgba(255, 255, 255, 0.9);
+  box-shadow: 0 10px 22px rgba(64, 92, 91, 0.14);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+}
+
+.pet-agent-bubble.no-header {
+  grid-template-rows: minmax(0, 1fr);
+  gap: 0;
+  padding: 8px 11px;
+}
+
+.pet-agent-bubble::after {
+  content: "";
+  position: absolute;
+  left: 58%;
+  bottom: -5px;
+  width: 10px;
+  height: 10px;
+  transform: translateX(-50%) rotate(45deg);
+  border-right: 1px solid rgba(91, 139, 120, 0.18);
+  border-bottom: 1px solid rgba(91, 139, 120, 0.18);
+  border-radius: 0 0 3px 0;
+  background: inherit;
+  box-shadow: 4px 4px 8px rgba(64, 92, 91, 0.05);
+}
+
+.stage-agent-bubble.pet-agent-bubble.no-header {
+  padding: 11px 16px 12px;
+}
+
+.stage-agent-bubble.pet-agent-bubble .pet-agent-bubble-header {
+  min-height: 20px;
+}
+
+.stage-agent-bubble.pet-agent-bubble strong {
+  font-size: 12px;
+}
+
+.stage-agent-bubble.pet-agent-bubble .pet-agent-bubble-text {
+  max-height: 86px;
+  color: #31515d;
+  font-size: 14px;
+  line-height: 1.48;
+  text-wrap: pretty;
+}
+
+.pet-agent-bubble-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 20px;
+}
+
+.pet-agent-bubble.no-title .pet-agent-bubble-header {
+  justify-content: flex-end;
+  gap: 5px;
+  min-height: 17px;
+}
+
+.pet-agent-bubble strong {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  flex: 1 1 auto;
+  color: #1f3f48;
+  font-size: 11px;
+  line-height: 1.1;
+}
+
+.pet-agent-bubble-text {
+  min-height: 0;
+  color: #31535c;
+  font-size: 10.5px;
+  line-height: 1.32;
+  overflow: hidden;
+  outline: none;
+  pointer-events: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.pet-agent-bubble-text:focus-visible {
+  box-shadow: inset 0 0 0 1px rgba(49, 83, 92, 0.16);
+  border-radius: 8px;
+}
+
+.pet-agent-bubble.error {
+  border-color: rgba(164, 65, 58, 0.28);
+  background: rgba(255, 246, 244, 0.92);
+}
+
+.pet-agent-bubble.reminder,
+.pet-agent-bubble.tool {
+  border-color: rgba(47, 143, 98, 0.28);
+  background: rgba(244, 251, 247, 0.92);
+}
+
+.pet-input-dock {
+  position: absolute;
+  z-index: 30;
+  left: 50%;
+  bottom: var(--pet-input-dock-hit-bottom);
+  width: min(var(--pet-input-dock-hit-width), calc(100% - 24px));
+  height: var(--pet-input-dock-hit-height);
+  box-sizing: border-box;
+  transform: translateX(-50%);
+  display: grid;
+  grid-template-rows: 13px 22px;
+  gap: 2px;
+  align-items: stretch;
+  padding: 3px 5px;
+  border: 1px solid rgba(202, 113, 151, 0.18);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: 0 14px 28px rgba(119, 77, 104, 0.17);
+  backdrop-filter: blur(12px);
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+}
+
+.pet-input-mode-switch {
+  min-width: 0;
+  height: 13px;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 2px;
+}
+
+.pet-input-row {
+  min-width: 0;
+  min-height: 0;
+  height: 22px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px 28px;
+  gap: 4px;
+  align-items: center;
+}
+
+.pet-input-dock input {
+  width: 100%;
+  min-width: 0;
+  height: 22px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0 9px;
+  background: rgba(247, 251, 248, 0.94);
+  color: #213d45;
+  font-size: 11px;
+  outline: none;
+}
+
+.pet-input-dock input:focus {
+  box-shadow: inset 0 0 0 1px rgba(47, 143, 98, 0.38);
+}
+
+.pet-input-dock button {
+  width: 28px;
+  height: 22px;
+  min-height: 0;
+  box-sizing: border-box;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid rgba(38, 72, 83, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #244d58;
+  padding: 0;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.pet-input-mode-switch button {
+  width: 100%;
+  height: 13px;
+  min-height: 0;
+  border-color: rgba(38, 72, 83, 0.12);
+  background: rgba(247, 251, 248, 0.74);
+  color: rgba(36, 77, 88, 0.74);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.pet-input-mode-switch button.is-active {
+  border-color: rgba(47, 143, 98, 0.45);
+  background: rgba(221, 243, 231, 0.92);
+  color: #1f6a45;
+}
+
+.pet-input-dock button:hover:not(:disabled) {
+  border-color: rgba(47, 143, 98, 0.42);
+  background: rgba(244, 251, 247, 0.96);
+  color: #1f6a45;
+}
+
+.pet-input-dock button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.pet-input-dock button.danger {
+  color: #a0413a;
+}
+
+.pet-shell.pet-debug-hitbox .pet-agent-bubble,
+.pet-shell.pet-debug-hitbox .pet-input-dock,
+.pet-shell.pet-debug-hitbox .pet-shortcut-bar {
+  outline: 2px solid rgba(144, 78, 168, 0.86);
+  outline-offset: -2px;
+}
+
+.live2d-panel-pet .live2d-layout-warning {
+  position: absolute;
+  z-index: 9;
+  left: 50%;
+  right: auto;
+  width: min(228px, calc(100% - 32px));
+  top: 44px;
+  transform: translateX(-50%);
+  -webkit-app-region: no-drag;
+  pointer-events: none;
+}
+
+.live2d-runtime-host {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.live2d-runtime-canvas {
+  width: 100%;
+  height: 100%;
+  min-width: 1px;
+  min-height: 1px;
+  display: block;
+  background: transparent;
+  opacity: 0.22;
+}
+
+.live2d-render-mounted .live2d-runtime-host {
+  z-index: 4;
+  pointer-events: none;
+}
+
+.live2d-render-mounted .live2d-runtime-canvas {
+  opacity: 1;
+}
+
+.live2d-runtime-placeholder {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  right: 72px;
+  display: grid;
+  gap: 3px;
+  border: 1px dashed rgba(32, 75, 87, 0.32);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.78);
+  padding: 8px 10px;
+}
+
+.live2d-render-loading .live2d-runtime-placeholder {
+  border-color: rgba(43, 107, 122, 0.42);
+  background: rgba(241, 248, 250, 0.9);
+}
+
+.live2d-render-preview .live2d-runtime-placeholder {
+  border-color: rgba(31, 138, 138, 0.36);
+  background: rgba(241, 250, 248, 0.92);
+}
+
+.live2d-render-failed .live2d-runtime-placeholder {
+  border-color: rgba(217, 103, 112, 0.46);
+  background: rgba(255, 247, 247, 0.92);
+}
+
+.live2d-render-mounted .live2d-runtime-placeholder,
+.live2d-render-mounted .live2d-cover,
+.live2d-render-mounted .live2d-model,
+.live2d-render-mounted .live2d-scanline,
+.live2d-render-mounted .live2d-meter,
+.live2d-render-mounted .live2d-status-card {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.live2d-render-mounted .live2d-stage::before {
+  opacity: 0;
+}
+
+.live2d-panel-pet.live2d-render-mounted .live2d-status-card {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: none;
+}
+
+.live2d-runtime-placeholder strong {
+  color: #17242a;
+  font-size: 12px;
+}
+
+.live2d-runtime-placeholder span {
+  color: #52656f;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.live2d-stage::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  left: 14%;
+  right: 14%;
+  bottom: 20px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(132, 82, 120, 0.14);
+}
+
+.live2d-scanline {
+  position: absolute;
+  z-index: 2;
+  left: 0;
+  right: 0;
+  top: 40%;
+  height: 1px;
+  background: rgba(43, 107, 122, 0.2);
+  pointer-events: none;
+}
+
+.live2d-meter {
+  position: absolute;
+  z-index: 2;
+  right: 16px;
+  top: 18px;
+  display: flex;
+  align-items: end;
+  gap: 4px;
+  height: 34px;
+  pointer-events: none;
+}
+
+.live2d-meter span {
+  width: 6px;
+  border-radius: 2px;
+  background: rgba(43, 107, 122, 0.32);
+}
+
+.live2d-meter span:nth-child(1) {
+  height: 14px;
+}
+
+.live2d-meter span:nth-child(2) {
+  height: 24px;
+}
+
+.live2d-meter span:nth-child(3) {
+  height: 18px;
+}
+
+.live2d-model {
+  position: relative;
+  width: 150px;
+  height: 218px;
+  transform-origin: 50% 100%;
+  animation: live2d-breathe 3.6s ease-in-out infinite;
+  z-index: 1;
+}
+
+.live2d-cover {
+  position: relative;
+  z-index: 1;
+  width: min(210px, 72%);
+  margin: 0 0 54px;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  animation: live2d-breathe 3.6s ease-in-out infinite;
+}
+
+.live2d-cover img {
+  width: 100%;
+  max-height: 184px;
+  object-fit: contain;
+  filter: drop-shadow(0 14px 16px rgba(35, 50, 58, 0.18));
+}
+
+.live2d-cover figcaption {
+  border: 1px solid rgba(32, 75, 87, 0.16);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.86);
+  color: #40535c;
+  padding: 3px 9px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.live2d-hair.back {
+  position: absolute;
+  left: 23px;
+  top: 12px;
+  width: 104px;
+  height: 122px;
+  border-radius: 48px 48px 52px 52px;
+  background: #33424a;
+}
+
+.live2d-head {
+  position: absolute;
+  left: 31px;
+  top: 24px;
+  width: 88px;
+  height: 92px;
+  border: 2px solid #28363d;
+  border-radius: 44px 44px 40px 40px;
+  background: #ffe1d4;
+  box-shadow: inset 0 -8px 0 rgba(197, 114, 96, 0.1);
+  animation: live2d-nod 4.8s ease-in-out infinite;
+}
+
+.live2d-bangs {
+  position: absolute;
+  inset: -9px 8px auto 8px;
+  height: 36px;
+  display: flex;
+  justify-content: center;
+  gap: 2px;
+}
+
+.live2d-bangs span {
+  width: 28px;
+  height: 38px;
+  border-radius: 0 0 18px 18px;
+  background: #33424a;
+}
+
+.live2d-bangs span:nth-child(2) {
+  height: 46px;
+}
+
+.live2d-eye {
+  position: absolute;
+  top: 46px;
+  width: 13px;
+  height: 17px;
+  border-radius: 50%;
+  background: #17242a;
+  animation: live2d-blink 5.2s infinite;
+}
+
+.live2d-eye.left {
+  left: 25px;
+}
+
+.live2d-eye.right {
+  right: 25px;
+}
+
+.live2d-eye::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #ffffff;
+}
+
+.live2d-blush {
+  position: absolute;
+  top: 64px;
+  width: 16px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(217, 103, 112, 0.28);
+}
+
+.live2d-blush.left {
+  left: 14px;
+}
+
+.live2d-blush.right {
+  right: 14px;
+}
+
+.live2d-mouth {
+  position: absolute;
+  left: 39px;
+  top: 70px;
+  width: 12px;
+  height: 6px;
+  border-bottom: 2px solid #9b4a55;
+  border-radius: 0 0 12px 12px;
+}
+
+.live2d-neck {
+  position: absolute;
+  left: 63px;
+  top: 108px;
+  width: 24px;
+  height: 24px;
+  background: #ffd5c6;
+}
+
+.live2d-body {
+  position: absolute;
+  left: 26px;
+  top: 126px;
+  width: 98px;
+  height: 86px;
+  border: 2px solid #28363d;
+  border-radius: 38px 38px 18px 18px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.live2d-body::before,
+.live2d-body::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  width: 50%;
+  height: 100%;
+  background: #2b6b7a;
+}
+
+.live2d-body::before {
+  left: 0;
+  clip-path: polygon(0 0, 72% 0, 42% 100%, 0 100%);
+}
+
+.live2d-body::after {
+  right: 0;
+  clip-path: polygon(28% 0, 100% 0, 100% 100%, 58% 100%);
+}
+
+.live2d-collar {
+  position: absolute;
+  left: 25px;
+  top: 0;
+  width: 48px;
+  height: 34px;
+  background: #ffffff;
+  clip-path: polygon(0 0, 50% 72%, 100% 0, 100% 34%, 0 34%);
+  z-index: 1;
+}
+
+.live2d-ribbon {
+  position: absolute;
+  left: 38px;
+  top: 28px;
+  width: 22px;
+  height: 18px;
+  border-radius: 5px;
+  background: #d95763;
+  z-index: 2;
+}
+
+.live2d-arm {
+  position: absolute;
+  top: 139px;
+  width: 24px;
+  height: 68px;
+  border: 2px solid #28363d;
+  border-radius: 14px;
+  background: #ffffff;
+  transform-origin: 50% 12px;
+}
+
+.live2d-arm.left {
+  left: 10px;
+  transform: rotate(18deg);
+}
+
+.live2d-arm.right {
+  right: 10px;
+  transform: rotate(-18deg);
+}
+
+.live2d-status-card {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 2;
+  min-height: 48px;
+  display: grid;
+  gap: 2px;
+  border: 1px solid rgba(32, 75, 87, 0.22);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.88);
+  padding: 8px 10px;
+  backdrop-filter: blur(6px);
+}
+
+.live2d-status-card strong {
+  color: #17242a;
+  font-size: 13px;
+}
+
+.live2d-status-card span {
+  color: #52656f;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.live2d-layout-warning {
+  display: grid;
+  gap: 3px;
+  border: 1px solid rgba(217, 103, 112, 0.46);
+  border-radius: 6px;
+  background: #fff7f7;
+  color: #842929;
+  padding: 8px 10px;
+}
+
+.live2d-layout-warning strong,
+.live2d-layout-warning span {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.live2d-layout-warning strong {
+  font-size: 12px;
+}
+
+.live2d-layout-warning span {
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.live2d-runtime-card {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.live2d-runtime-card div {
+  min-width: 0;
+  border: 1px solid #dce5ea;
+  border-radius: 6px;
+  background: #ffffff;
+  padding: 8px 10px;
+}
+
+.live2d-runtime-card span,
+.live2d-runtime-card strong {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.live2d-runtime-card span {
+  color: #52656f;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.live2d-runtime-card strong {
+  margin-top: 3px;
+  color: #17242a;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.live2d-runtime-assets-ready .live2d-runtime-card div:first-child {
+  border-color: rgba(47, 143, 98, 0.3);
+  background: #f4fbf7;
+}
+
+.live2d-runtime-failed .live2d-runtime-card div:first-child,
+.live2d-runtime-not-connected .live2d-runtime-card div:first-child {
+  border-color: rgba(217, 103, 112, 0.34);
+  background: #fff7f7;
+}
+
+.live2d-diagnostic-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 12px 0 0;
+}
+
+.live2d-diagnostic-summary div {
+  min-width: 0;
+  border: 1px solid #dce5ea;
+  border-radius: 6px;
+  background: #f8fafb;
+  padding: 8px 10px;
+}
+
+.live2d-diagnostic-summary dt,
+.live2d-diagnostic-summary dd {
+  margin: 0;
+}
+
+.live2d-diagnostic-summary dt {
+  color: #52656f;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.live2d-diagnostic-summary dd {
+  margin-top: 3px;
+  color: #26363d;
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.live2d-resource-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 12px 0 0;
+}
+
+.live2d-resource-list div {
+  min-width: 0;
+  border: 1px solid #dce5ea;
+  border-radius: 6px;
+  background: #ffffff;
+  padding: 8px 10px;
+}
+
+.live2d-resource-list dt,
+.live2d-resource-list dd {
+  margin: 0;
+}
+
+.live2d-resource-list dd {
+  margin-top: 3px;
+  color: #26363d;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.live2d-disconnected .live2d-stage {
+  filter: saturate(0.72);
+}
+
+.live2d-disconnected .live2d-eye {
+  height: 4px;
+  top: 53px;
+  border-radius: 999px;
+  animation: none;
+}
+
+.live2d-thinking .live2d-model {
+  animation-duration: 2.1s;
+}
+
+.live2d-thinking .live2d-arm.right {
+  animation: live2d-wave 1.4s ease-in-out infinite;
+}
+
+.live2d-presence .live2d-status-card {
+  border-color: rgba(92, 121, 196, 0.48);
+  background: rgba(238, 244, 255, 0.92);
+}
+
+.live2d-presence .live2d-arm.left {
+  animation: live2d-wave 2.2s ease-in-out infinite;
+}
+
+.live2d-presence .live2d-mouth {
+  width: 18px;
+  border-color: #5a6eb1;
+}
+
+.live2d-speaking .live2d-model,
+.live2d-speaking .live2d-cover {
+  animation-duration: 1.9s;
+}
+
+.live2d-speaking .live2d-arm.left {
+  animation: live2d-wave 2.4s ease-in-out infinite;
+}
+
+.live2d-speaking .live2d-mouth {
+  border-color: #5a6eb1;
+  transform-origin: 50% 0;
+  animation: live2d-speaking-mouth 0.46s ease-in-out infinite;
+}
+
+.live2d-speaking .live2d-status-card {
+  border-color: rgba(92, 121, 196, 0.5);
+  background: rgba(238, 244, 255, 0.94);
+}
+
+.live2d-reflective .live2d-model {
+  animation-duration: 4.8s;
+}
+
+.live2d-reflective .live2d-eye {
+  height: 7px;
+  border-radius: 999px;
+}
+
+.live2d-reflective .live2d-status-card {
+  border-color: rgba(94, 139, 118, 0.42);
+  background: rgba(245, 251, 247, 0.94);
+}
+
+.live2d-memory .live2d-scanline {
+  animation: live2d-scan 2.8s ease-in-out infinite;
+}
+
+.live2d-memory .live2d-meter span {
+  animation: live2d-meter 1.4s ease-in-out infinite;
+}
+
+.live2d-memory .live2d-meter span:nth-child(2) {
+  animation-delay: 0.12s;
+}
+
+.live2d-memory .live2d-meter span:nth-child(3) {
+  animation-delay: 0.24s;
+}
+
+.live2d-confirming .live2d-status-card {
+  border-color: rgba(217, 103, 112, 0.45);
+}
+
+.live2d-confirming .live2d-mouth {
+  width: 14px;
+  height: 10px;
+  border: 2px solid #9b4a55;
+  border-top: 0;
+}
+
+.live2d-tasking .live2d-ribbon {
+  background: #d7a33f;
+}
+
+.live2d-diagnosed .live2d-body::before,
+.live2d-diagnosed .live2d-body::after {
+  background: #2f8f62;
+}

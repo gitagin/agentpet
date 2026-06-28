@@ -22,7 +22,7 @@ export function getSidecarActionMessage(sidecarStatus: DesktopSidecarStatus): st
   const fallback = sidecarStatus.error?.message || formatSidecarStatus(sidecarStatus, sidecarStatus.health);
   switch (sidecarStatus.error?.code) {
     case "PORT_IN_USE_EXISTING_BACKEND":
-      return "8765 端口已有后端响应，桌面端已先复用它。若聊天、知识库或任务请求返回 401，请关闭占用 8765 的进程后重启，或用相同 AGENT_PET_SESSION_TOKEN 启动后端。";
+      return "8765 端口已有后端响应，桌面端已先复用它。若聊天、知识库或任务请求返回 401，请关闭占用 8765 的进程后重启，或用与桌面端一致的本地会话令牌启动后端。";
     case "PORT_IN_USE":
       return "8765 端口被其他程序占用且不是可用后端。请关闭占用进程后重启 npm run electron:dev。";
     case "BACKEND_NOT_FOUND":

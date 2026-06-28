@@ -1,4 +1,3 @@
-import { createCubismRenderer } from "./cubismRenderer";
 import type { Live2DActionProfile, Live2DMotionRef } from "./live2dActions";
 import type {
   CubismRendererDiagnostics,
@@ -74,6 +73,8 @@ export type Live2DRendererMountContext = {
 };
 
 export type Live2DRuntimeHandle = CubismRendererHandle & {
+  setActive?: (active: boolean) => void;
+  setFocused?: (focused: boolean) => void;
   cleanup?: () => void;
   destroy?: () => void;
   unmount?: () => void;
@@ -459,6 +460,7 @@ export async function mountLive2DRendererBoundary(
   }
 
   try {
+    const { createCubismRenderer } = await import("./cubismRenderer");
     const handle = await createCubismRenderer({
       canvas: context.canvas,
       modelDirectoryUrl: context.asset.modelDirectoryUrl,

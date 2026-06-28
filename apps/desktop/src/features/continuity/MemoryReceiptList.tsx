@@ -44,7 +44,7 @@ export function MemoryReceiptList({
                   <dd>{formatReceiptSummary(receipt)}</dd>
                 </div>
                 <div>
-                  <dt>撤销</dt>
+                  <dt>撤回</dt>
                   <dd>{formatUndoState(receipt)}</dd>
                 </div>
               </dl>
@@ -71,12 +71,12 @@ export function MemoryReceiptList({
               ) : null}
               {receipt.reverted_by ? (
                 <p className="field-note">
-                  已由活动 {receipt.reverted_by} 撤销。
+                  已由活动 {receipt.reverted_by} 撤回。
                 </p>
               ) : null}
               {receipt.reverts_action_id ? (
                 <p className="field-note">
-                  这条记录是 {receipt.reverts_action_id} 的撤销记录。
+                  这条记录是 {receipt.reverts_action_id} 的撤回记录。
                 </p>
               ) : null}
               {canRevert && onRevertReceipt ? (
@@ -86,16 +86,16 @@ export function MemoryReceiptList({
                     className="secondary"
                     onClick={() => onRevertReceipt(receipt)}
                     disabled={reverting}
-                    title={`撤销 ${formatReceiptTitle(receipt)}`}
+                    title={`撤回 ${formatReceiptTitle(receipt)}`}
                   >
                     {reverting ? <Loader2 className="spin" size={16} /> : <RotateCcw size={16} />}
-                    撤销
+                    撤回
                   </button>
                 </div>
               ) : null}
               {!canRevert && receipt.reversible && !receipt.reverted_by && !receipt.reverts_action_id ? (
                 <p className="field-note">
-                  这条记录有回滚快照，但当前状态不能自动撤销。
+                  这条记录有回滚快照，但当前状态不能自动撤回。
                 </p>
               ) : null}
             </article>
@@ -213,7 +213,7 @@ function formatStatus(value: string): string {
     completed: "已完成",
     failed: "失败",
     pending: "待处理",
-    reverted: "已撤销",
+    reverted: "已撤回",
     skipped: "已跳过",
   };
   return labels[value] || value;
@@ -221,19 +221,19 @@ function formatStatus(value: string): string {
 
 function formatUndoState(receipt: VisibleContinuityReceipt): string {
   if (receipt.reverted_by) {
-    return "已撤销。";
+    return "已撤回。";
   }
   if (receipt.reverts_action_id) {
-    return "撤销记录。";
+    return "撤回记录。";
   }
   if (canRevertReceipt(receipt)) {
-    return "可在这里撤销。";
+    return "可在这里撤回。";
   }
   if (receipt.reversible) {
-    return "已有回滚快照，但当前状态暂时不能撤销。";
+    return "已有回滚快照，但当前状态暂时不能撤回。";
   }
   if (receipt.risk_tier === "high" || receipt.decision === "ask") {
     return "仅支持手动确认路径。";
   }
-  return "不能自动撤销。";
+  return "不能自动撤回。";
 }

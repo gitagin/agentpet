@@ -66,6 +66,8 @@ class AgentState(BaseModel):
     reminder_id: str | None = None
     error_code: str | None = None
     error_message: str | None = None
+    local_privacy_mode: bool = False
+    local_privacy_sensitive_reason: str | None = None
 
     @property
     def intent(self) -> AgentIntent | None:

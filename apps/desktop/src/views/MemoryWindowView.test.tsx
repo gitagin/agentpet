@@ -226,6 +226,15 @@ const weeklyMemoryReview: MemoryReviewResponse = {
 };
 
 function createApi(facts: MemoryGraphFact[], stats: LocalAssetStatsResponse = localAssetStats) {
+  const exportPreview = (format: "json" | "markdown" = "markdown") => ({
+    generated_at: "2026-06-02T00:00:00Z",
+    format,
+    item_count: 1,
+    items: [{ ...facts[0], metadata: {}, source_text: undefined }],
+    json_preview: '[{"fact_id":"fact-1","subject":"fruit"}]',
+    markdown_preview: "# 长期记忆导出预览\n\n## fruit is apple\n",
+    redaction_note: "原始来源证据已从此预览中省略。",
+  });
   return {
     searchMemory: vi.fn().mockResolvedValue({ results: [searchResult()], metadata: { semantic_available: false } }),
     createMemoryProposal: vi.fn().mockResolvedValue({
@@ -257,15 +266,9 @@ function createApi(facts: MemoryGraphFact[], stats: LocalAssetStatsResponse = lo
     archiveMemoryGraphFact: vi.fn(),
     sensitiveBlockMemoryGraphFact: vi.fn(),
     confirmMemoryGraphFact: vi.fn(),
-    getMemoryGraphExportPreview: vi.fn().mockResolvedValue({
-      generated_at: "2026-06-02T00:00:00Z",
-      format: "markdown",
-      item_count: 1,
-      items: [{ ...facts[0], metadata: {}, source_text: undefined }],
-      json_preview: '[{"fact_id":"fact-1","subject":"fruit"}]',
-      markdown_preview: "# 长期记忆导出预览\n\n## fruit is apple\n",
-      redaction_note: "原始来源证据已从此预览中省略。",
-    }),
+    getMemoryGraphExportPreview: vi.fn((format: "json" | "markdown" = "markdown") =>
+      Promise.resolve(exportPreview(format)),
+    ),
   } as unknown as DesktopApi;
 }
 
@@ -340,11 +343,21 @@ function openReviewTools() {
 
 describe("MemoryWindowView", () => {
   beforeEach(() => {
+    vi.restoreAllMocks();
     vi.clearAllMocks();
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: { writeText: vi.fn().mockResolvedValue(undefined) },
     });
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: vi.fn(() => "blob:memory-export"),
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: vi.fn(),
+    });
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
   });
 
   it("renders local asset stats from the local dashboard", async () => {
@@ -360,8 +373,8 @@ describe("MemoryWindowView", () => {
     expect(within(dashboard).getByText("5")).toBeInTheDocument();
     expect(within(dashboard).getByText("任务完成")).toBeInTheDocument();
     expect(within(dashboard).getByText("3/6")).toBeInTheDocument();
-    expect(within(dashboard).getByText("可撤销操作")).toBeInTheDocument();
-    expect(within(dashboard).getByText("尚未撤销")).toBeInTheDocument();
+    expect(within(dashboard).getByText("可撤回操作")).toBeInTheDocument();
+    expect(within(dashboard).getByText("尚未撤回")).toBeInTheDocument();
     expect(api.getLocalAssetStats).toHaveBeenCalled();
   });
 
@@ -400,7 +413,7 @@ describe("MemoryWindowView", () => {
       renderEntry: (entry) => (
         <article key={entry.id}>
           <strong>可撤回记忆记录</strong>
-          <button type="button">撤销</button>
+          <button type="button">撤回</button>
         </article>
       ),
     });
@@ -415,7 +428,7 @@ describe("MemoryWindowView", () => {
     expect(within(control).getByText("fruit is apple")).toBeInTheDocument();
     expect(within(control).getByText("fruit is banana")).toBeInTheDocument();
     expect(within(control).getByText("可撤回记忆记录")).toBeInTheDocument();
-    expect(within(control).getByRole("button", { name: "撤销" })).toBeInTheDocument();
+    expect(within(control).getByRole("button", { name: "撤回" })).toBeInTheDocument();
 
     const reviewTools = screen.getByText("回顾和本机整理").closest("details") as HTMLDetailsElement;
     const advanced = screen.getByText("更多记忆管理").closest("details") as HTMLDetailsElement;
@@ -529,6 +542,9 @@ describe("MemoryWindowView", () => {
     expect(within(archived).getByText("tool is old")).toBeInTheDocument();
     const activeFactCard = within(confirmed).getByText("fruit is apple").closest("article");
     expect(activeFactCard).not.toBeNull();
+    expect(within(activeFactCard as HTMLElement).getByText("风险 普通")).toBeInTheDocument();
+    expect(within(activeFactCard as HTMLElement).getByText("来源")).toBeInTheDocument();
+    expect(within(activeFactCard as HTMLElement).getByText("记住原因")).toBeInTheDocument();
 
     fireEvent.click(within(candidates).getByRole("button", { name: "确认" }));
     await waitFor(() => expect(api.confirmMemoryGraphFact).toHaveBeenCalledWith("fact-candidate"));
@@ -575,6 +591,24 @@ describe("MemoryWindowView", () => {
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith(expect.stringContaining("fruit is apple"));
     expect(screen.getByLabelText("长期记忆导出预览")).toBeInTheDocument();
     expect(screen.queryByText("raw evidence is not rendered")).not.toBeInTheDocument();
+  });
+
+  it("downloads portable memory exports as Markdown and JSON", async () => {
+    const api = createApi([memoryFact()]);
+
+    renderView(api);
+    openAdvancedMemoryTools();
+
+    fireEvent.click(await screen.findByRole("button", { name: "下载 Markdown" }));
+    await waitFor(() => expect(api.getMemoryGraphExportPreview).toHaveBeenCalledWith("markdown", null, "", 100));
+    expect(URL.createObjectURL).toHaveBeenCalledWith(expect.any(Blob));
+    expect(HTMLAnchorElement.prototype.click).toHaveBeenCalled();
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:memory-export");
+    expect(await screen.findByText("已导出 1 条长期记忆为 Markdown。")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "下载 JSON" }));
+    await waitFor(() => expect(api.getMemoryGraphExportPreview).toHaveBeenCalledWith("json", null, "", 100));
+    expect(await screen.findByText("已导出 1 条长期记忆为 JSON。")).toBeInTheDocument();
   });
 
   it("shows review coach cards with source coverage before local assets", async () => {

@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { createRef } from "react";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -6,6 +8,22 @@ import StageView from "./StageView";
 import type { PetBubbleState } from "../features/chat/chatTypes";
 import type { Live2DAssetInfo, Live2DRuntimeBoundary } from "../services/live2dRuntime";
 import type { Live2DStageView } from "../components/Live2DStage";
+
+function readCssWithImports(path: string, visited = new Set<string>()): string {
+  const filePath = resolve(path);
+  if (visited.has(filePath)) {
+    return "";
+  }
+  visited.add(filePath);
+
+  const css = readFileSync(filePath, "utf8");
+  const directory = dirname(filePath);
+  return css.replace(/^@import\s+"([^"]+)";$/gm, (_match, importPath: string) =>
+    readCssWithImports(resolve(directory, importPath), visited),
+  );
+}
+
+const styles = readCssWithImports(resolve(__dirname, "../styles.css"));
 
 vi.mock("../components/Live2DStage", () => ({
   Live2DStage: ({
@@ -139,6 +157,7 @@ describe("StageView", () => {
     const advanced = screen.getByText("更多能力").closest("details");
     expect(advanced).not.toHaveAttribute("open");
     expect(screen.getByRole("button", { name: /提醒和待办/ })).toHaveAttribute("data-stage-route", "agent");
+    expect(screen.getByRole("button", { name: /成长记录/ })).toHaveAttribute("data-stage-route", "growth");
     expect(screen.getByRole("button", { name: /整理资料/ })).toHaveAttribute("data-stage-route", "world");
     expect(screen.getByLabelText("聊天输入")).toBeInTheDocument();
   });
@@ -211,6 +230,9 @@ describe("StageView", () => {
     fireEvent.click(screen.getByRole("button", { name: /看看记忆/ }));
     expect(window.location.hash).toBe("#memory");
 
+    fireEvent.click(screen.getByRole("button", { name: /成长记录/ }));
+    expect(window.location.hash).toBe("#growth");
+
     fireEvent.click(screen.getByRole("button", { name: /整理资料/ }));
     expect(window.location.hash).toBe("#world");
   });
@@ -227,7 +249,7 @@ describe("StageView", () => {
     const commandCenter = screen.getByLabelText("陪伴入口");
     const actionButtons = within(commandCenter).getAllByRole("button");
 
-    expect(actionButtons).toHaveLength(5);
+    expect(actionButtons).toHaveLength(6);
     actionButtons.forEach((button) => {
       expect(button).toHaveAttribute("data-stage-route");
     });
@@ -259,6 +281,13 @@ describe("StageView", () => {
     expect(screen.queryByRole("button", { name: "上一页回复" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "下一页回复" })).not.toBeInTheDocument();
     expect(screen.getByText("分页舞台回复")).toBeInTheDocument();
+  });
+
+  it("keeps the stage bubble layer above side cards with a safe width", () => {
+    expect(styles).toContain("--stage-bubble-safe-max");
+    expect(styles).toMatch(/\.stage-live2d-zone\s*\{[\s\S]*?z-index:\s*32;/);
+    expect(styles).toMatch(/\.stage-command-panel,\s*\.stage-outcome-panel\s*\{[\s\S]*?z-index:\s*10;/);
+    expect(styles).toMatch(/\.stage-pet-anchor \.stage-agent-bubble\.pet-agent-bubble\s*\{[\s\S]*?max-width:\s*max\(212px, var\(--stage-bubble-safe-max\)\);/);
   });
 
   it("does not render a manual TTS stop control in the stage footer", () => {

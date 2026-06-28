@@ -146,7 +146,7 @@ describe("ChatAgentActionSummary", () => {
     expect(teamActivity).not.toHaveAttribute("open");
     expect(screen.getByText("自动整理活动")).toBeInTheDocument();
     expect(screen.getByText("任务")).toBeInTheDocument();
-    expect(screen.getByText("连续性")).toBeInTheDocument();
+    expect(screen.getByText("陪伴状态")).toBeInTheDocument();
     expect(container.textContent).not.toMatch(/9 agents|9 个智能体|9个智能体/);
   });
 
@@ -162,7 +162,7 @@ describe("ChatAgentActionSummary", () => {
 
     render(<ChatAgentActionSummary actions={[reversible]} onRevertAgentAction={onRevert} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "撤销" }));
+    fireEvent.click(screen.getByRole("button", { name: "撤回" }));
 
     expect(onRevert).toHaveBeenCalledWith(reversible);
   });

@@ -20,6 +20,7 @@ from ..agents.state import AgentState
 from ..models.api import ChatAcceptedResponse, ChatRequest
 from ..services.agent_actions import AgentActionCreate, AutomationPolicy
 from ..services.chat_pipeline import agent_action_event, archive_chat_memory, automation_settings
+from ..services.memory_policy import evaluate_memory_content
 from ..models.common import new_id
 from ..models.enums import AgentId, AgentRunStatus, ConversationStatus, MessageRole, MessageStatus
 from ..utils.time import utc_now_iso
@@ -35,10 +36,12 @@ from .wiring import (
     get_chat_run,
     pop_chat_run,
     record_audit,
+    settings_store,
 )
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 logger = logging.getLogger(__name__)
+LOCAL_PRIVACY_REDACTED_USER_MESSAGE = "[local privacy mode redacted sensitive user message]"
 
 
 @router.post("", response_model=ChatAcceptedResponse)
@@ -46,10 +49,40 @@ async def create_chat(chat_request: ChatRequest, request: Request) -> ChatAccept
     conversation_id = chat_request.conversation_id or new_id()
     message_id = new_id()
     agent_run_id = new_id()
-    _create_chat_records(request, conversation_id=conversation_id, message_id=message_id, agent_run_id=agent_run_id, user_message=chat_request.message)
+    local_privacy_reason = _local_privacy_sensitive_reason(request, chat_request.message)
+    stored_user_message = _stored_user_message(chat_request.message, local_privacy_reason)
+    _create_chat_records(request, conversation_id=conversation_id, message_id=message_id, agent_run_id=agent_run_id, user_message=stored_user_message)
     record_audit(request, action="chat.create", result="success", reason=audit_reason(request, agent_run_id=agent_run_id, conversation_id=conversation_id))
-    add_chat_run(request, AgentState(conversation_id=conversation_id, message_id=message_id, agent_run_id=agent_run_id, user_message=chat_request.message))
+    add_chat_run(
+        request,
+        AgentState(
+            conversation_id=conversation_id,
+            message_id=message_id,
+            agent_run_id=agent_run_id,
+            user_message=chat_request.message,
+            local_privacy_mode=local_privacy_reason is not None,
+            local_privacy_sensitive_reason=local_privacy_reason,
+        ),
+    )
     return ChatAcceptedResponse(conversation_id=conversation_id, message_id=message_id, agent_run_id=agent_run_id, stream_url=f"/api/chat/runs/{agent_run_id}/events")
+
+
+def _local_privacy_sensitive_reason(request: Request, user_message: str) -> str | None:
+    store = settings_store(request)
+    try:
+        automation = store.get_automation_settings()
+    finally:
+        store.close()
+    if not automation.local_privacy_mode:
+        return None
+    decision = evaluate_memory_content(user_message)
+    return decision.reason if not decision.allowed else None
+
+
+def _stored_user_message(user_message: str, local_privacy_reason: str | None) -> str:
+    if local_privacy_reason is None:
+        return user_message
+    return f"{LOCAL_PRIVACY_REDACTED_USER_MESSAGE}: {local_privacy_reason}"
 
 
 @router.get("/runs/{agent_run_id}/events")
@@ -123,7 +156,8 @@ async def _persisting_stream(request: Request, state: AgentState) -> AsyncIterat
                         intent=event.intent,
                         text=final_text,
                     )
-                    _schedule_post_reply_work(request, state, assistant_message_id, final_text)
+                    if not _post_reply_work_blocked_by_local_privacy(state):
+                        _schedule_post_reply_work(request, state, assistant_message_id, final_text)
                     final_status = AgentRunStatus.SUCCESS.value
                 elif isinstance(event, AgentErrorEvent):
                     terminal_event_seen = True
@@ -154,6 +188,10 @@ async def _persisting_stream(request: Request, state: AgentState) -> AsyncIterat
         )
     finally:
         pop_chat_run(request, state.agent_run_id)
+
+
+def _post_reply_work_blocked_by_local_privacy(state: AgentState) -> bool:
+    return bool(state.local_privacy_mode and state.local_privacy_sensitive_reason)
 
 
 def _schedule_post_reply_work(request: Request, state: AgentState, assistant_message_id: str, final_text: str) -> None:

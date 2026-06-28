@@ -51,6 +51,8 @@ def test_agent_action_settings_default_to_opt_in_memory(tmp_path: Path) -> None:
             auto_structured_memory=True,
             auto_long_term_memory=False,
             auto_wiki_organize=False,
+            local_privacy_mode=True,
+            proactive_trigger_frequency="normal",
             use_negotiation=False,
             max_rounds=2,
         )
@@ -61,6 +63,8 @@ def test_agent_action_settings_default_to_opt_in_memory(tmp_path: Path) -> None:
     assert defaults.auto_structured_memory is False
     assert defaults.auto_long_term_memory is False
     assert defaults.auto_wiki_organize is False
+    assert defaults.local_privacy_mode is False
+    assert defaults.proactive_trigger_frequency == "low"
     assert defaults.use_negotiation is False
     assert defaults.max_rounds == 5
     assert defaults.high_risk_confirmation_required is True
@@ -68,6 +72,8 @@ def test_agent_action_settings_default_to_opt_in_memory(tmp_path: Path) -> None:
     assert saved.auto_structured_memory is True
     assert saved.auto_long_term_memory is False
     assert saved.auto_wiki_organize is False
+    assert saved.local_privacy_mode is True
+    assert saved.proactive_trigger_frequency == "normal"
     assert saved.use_negotiation is False
     assert saved.max_rounds == 2
     assert saved.high_risk_confirmation_required is True

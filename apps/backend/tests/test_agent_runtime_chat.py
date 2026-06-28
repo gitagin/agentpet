@@ -88,8 +88,36 @@ def test_langgraph_runtime_streams_plain_chat_tokens_when_model_supports_streami
     assert chat_model.complete_calls == []
     assert chat_model.calls
     assert [event.text for event in events if event.event == "token"] == ["你", "好"]
+
+
+def test_langgraph_runtime_local_privacy_mode_uses_fts_without_model_call() -> None:
+    async def run_case():
+        chat_model = StreamingChatModel(["不应调用"])
+        retrieval = FakeRetrieval()
+        state = make_state("api_key=private-value-123456")
+        state.local_privacy_mode = True
+        state.local_privacy_sensitive_reason = "password_assignment"
+        runtime = LangGraphAgentRuntime(
+            AgentRuntimeServices(chat_model=chat_model, retrieval=retrieval)
+        )
+
+        events = [event async for event in runtime.run(state)]
+
+        return chat_model, retrieval, events
+
+    chat_model, retrieval, events = asyncio.run(run_case())
+
+    assert chat_model.calls == []
+    assert chat_model.complete_calls == []
+    assert retrieval.calls == [("api_key=private-value-123456", 5, "fts", "all")]
+    assert events[0].event == "status"
+    assert events[0].stage == "local_privacy_guard"
+    assert [event.event for event in events] == ["status", "token", "done"]
+    token_text = "".join(event.text for event in events if event.event == "token")
+    assert "没有把原文发送到模型 API" in token_text
+    assert "关键词检索" in token_text
     assert events[-1].event == "done"
-    assert events[-1].text == "你好"
+    assert events[-1].text == token_text
 
 
 def test_langgraph_runtime_uses_configured_chat_model_for_plain_chat() -> None:
@@ -388,7 +416,9 @@ def test_langgraph_chat_agent_retrieves_memory_route_before_default_negotiation_
     assert len([event for event in events if event.event == "citation"]) == 4
     assert any(event.event == "token" for event in events)
     token_text = "".join(event.text for event in events if event.event == "token")
-    assert "Ada prefers concise status updates." in token_text
+    assert "相关线索" in token_text
+    assert "原始记录" in token_text
+    assert "Ada prefers concise status updates." not in token_text
 
 
 def test_langgraph_chat_agent_does_not_treat_candidate_memory_as_confirmed() -> None:
@@ -474,7 +504,9 @@ def test_langgraph_chat_agent_executes_text_search_tool_call_instead_of_echoing(
     assert events[-1].event == "done"
     token_text = "".join(event.text for event in events if event.event == "token")
     assert "<tool_call>" not in token_text
-    assert "Ada prefers concise status updates." in token_text
+    assert "相关线索" in token_text
+    assert "原始记录" in token_text
+    assert "Ada prefers concise status updates." not in token_text
 
 
 def test_langgraph_chat_agent_answers_naturally_when_search_is_empty() -> None:
