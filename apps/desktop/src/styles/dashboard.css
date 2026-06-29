@@ -29,13 +29,13 @@
   display: inline-flex;
   align-items: center;
   gap: 9px;
-  border: 1px solid rgba(55, 73, 82, 0.12);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.78);
-  box-shadow: 0 10px 24px rgba(38, 58, 67, 0.08);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  box-shadow: var(--shadow-control);
   padding: 0 16px;
   color: var(--text);
-  backdrop-filter: blur(14px);
+  backdrop-filter: var(--glass-blur-soft);
 }
 
 .status-dot {
@@ -43,12 +43,12 @@
   height: 10px;
   border-radius: 50%;
   background: var(--warning);
-  box-shadow: 0 0 0 5px rgba(189, 107, 65, 0.14);
+  box-shadow: 0 0 0 5px var(--warning-soft);
 }
 
 .status-dot.online {
   background: var(--success);
-  box-shadow: 0 0 0 5px rgba(47, 143, 98, 0.14);
+  box-shadow: 0 0 0 5px var(--success-soft);
 }
 
 .notice {
@@ -61,28 +61,28 @@
   align-items: center;
   gap: 10px;
   border: 1px solid var(--line);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.82);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
   box-shadow: var(--shadow-card);
   padding: 11px 14px;
-  backdrop-filter: blur(12px);
+  backdrop-filter: var(--glass-blur-soft);
 }
 
 .notice.error {
-  border-color: #e4b8b8;
-  background: #fff7f7;
-  color: #842929;
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+  color: var(--danger);
 }
 
 .notice.success {
-  border-color: #b8dec9;
-  background: #f4fbf7;
-  color: #1f6a45;
+  border-color: var(--success-border);
+  background: var(--success-bg);
+  color: var(--success);
 }
 
 .model-health-banner {
-  border: 1px solid rgba(255, 255, 255, 0.54);
-  border-radius: 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-md);
   box-shadow: var(--shadow-card);
   padding: 12px 14px;
   font-size: 13px;
@@ -91,21 +91,21 @@
 }
 
 .model-health-banner.warning {
-  border-color: rgba(208, 138, 77, 0.42);
-  background: rgba(255, 247, 237, 0.86);
-  color: #9a5a1f;
+  border-color: var(--warning-border);
+  background: var(--warning-bg);
+  color: var(--warning);
 }
 
 .model-health-banner.info {
-  border-color: rgba(82, 139, 190, 0.35);
-  background: rgba(239, 247, 255, 0.88);
-  color: #285f8f;
+  border-color: var(--info-border);
+  background: var(--info-bg);
+  color: var(--color-info);
 }
 
 .model-health-banner.success {
-  border-color: rgba(79, 155, 114, 0.36);
-  background: rgba(244, 251, 247, 0.9);
-  color: #1f6a45;
+  border-color: var(--success-border);
+  background: var(--success-bg);
+  color: var(--success);
 }
 
 .model-health-skeleton {
@@ -147,12 +147,12 @@
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(247, 251, 250, 0.72)),
-    var(--surface);
-  box-shadow: 0 12px 30px rgba(38, 58, 67, 0.08);
+    linear-gradient(180deg, var(--surface-strong), var(--surface-subtle)),
+    var(--surface-panel);
+  box-shadow: var(--shadow-panel);
   padding: 16px;
   contain: layout paint;
-  backdrop-filter: blur(14px);
+  backdrop-filter: var(--glass-blur-soft);
 }
 
 .panel.chat-panel {
@@ -161,8 +161,8 @@
   min-height: 0;
   padding: 16px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(247, 251, 250, 0.78)),
-    var(--surface);
+    linear-gradient(180deg, var(--surface-strong), var(--surface-subtle)),
+    var(--surface-panel);
 }
 
 .companion-first-panel {
@@ -177,8 +177,8 @@
   gap: 14px;
   overflow: hidden;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(239, 247, 244, 0.76)),
-    var(--surface);
+    linear-gradient(180deg, var(--surface-panel), var(--surface-stage)),
+    var(--surface-panel);
 }
 
 .panel.live2d-panel-pet {
@@ -218,14 +218,14 @@
   min-height: min(720px, calc(100dvh - 132px));
   display: grid;
   place-items: center;
-  border: 1px solid rgba(255, 255, 255, 0.56);
-  border-radius: 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-md);
   background:
-    radial-gradient(circle at 48% 26%, rgba(255, 255, 255, 0.52), transparent 30%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.32), rgba(238, 246, 244, 0.2));
-  box-shadow: 0 18px 42px rgba(38, 58, 67, 0.1);
+    radial-gradient(circle at 48% 26%, rgba(255, 255, 255, 0.58), transparent 30%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.36), var(--surface-stage));
+  box-shadow: var(--shadow-panel);
   overflow: hidden;
-  backdrop-filter: blur(10px);
+  backdrop-filter: var(--glass-blur-soft);
 }
 
 .control-pet-stage .panel.live2d-panel {
@@ -264,15 +264,15 @@
   align-content: start;
   gap: 12px;
   overflow: visible;
-  border: 1px solid rgba(55, 73, 82, 0.12);
-  border-radius: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(247, 251, 250, 0.78)),
-    rgba(255, 255, 255, 0.78);
-  box-shadow: 0 18px 42px rgba(38, 58, 67, 0.14);
+    linear-gradient(180deg, var(--surface-strong), var(--surface-subtle)),
+    var(--surface-panel);
+  box-shadow: var(--shadow-popover);
   padding: 16px;
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: var(--glass-blur-panel);
+  -webkit-backdrop-filter: var(--glass-blur-panel);
 }
 
 .stage-command-panel:has(.stage-advanced-routes[open]) {
@@ -300,7 +300,7 @@
   min-height: 0;
   height: 100%;
   padding: 13px;
-  box-shadow: 0 16px 36px rgba(38, 58, 67, 0.12);
+  box-shadow: var(--shadow-card);
   contain: none;
 }
 
@@ -325,8 +325,8 @@
 }
 
 .stage-continuity-panel .visible-continuity-section {
-  border-color: rgba(70, 135, 134, 0.18);
-  background: rgba(248, 253, 250, 0.72);
+  border-color: var(--success-border);
+  background: var(--success-bg);
   padding: 10px;
 }
 
@@ -345,7 +345,7 @@
 .stage-command-heading p,
 .stage-action-card small {
   margin: 0;
-  color: #52656f;
+  color: var(--muted);
   font-size: 12px;
   font-weight: 700;
   line-height: 1.35;
@@ -357,7 +357,7 @@
 
 .stage-command-heading h1 {
   margin: 0;
-  color: #1f3038;
+  color: var(--text);
   font-size: 26px;
   line-height: 1.08;
 }
@@ -377,13 +377,13 @@
 
 .stage-advanced-routes {
   margin-top: 4px;
-  border-top: 1px solid rgba(80, 104, 118, 0.12);
+  border-top: 1px solid var(--line-soft);
   padding-top: 8px;
 }
 
 .stage-advanced-routes summary {
   cursor: pointer;
-  color: #5f6b71;
+  color: var(--muted);
   font-size: 12px;
   font-weight: 800;
 }
@@ -422,13 +422,13 @@
   align-items: center;
   justify-content: stretch;
   gap: 10px;
-  border: 1px solid rgba(55, 73, 82, 0.14);
-  border-radius: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(247, 251, 250, 0.8)),
-    rgba(255, 255, 255, 0.82);
+    linear-gradient(180deg, var(--surface-strong), var(--surface-subtle)),
+    var(--surface-panel);
   box-shadow: none;
-  color: #20333a;
+  color: var(--text);
   padding: 9px 11px;
   text-align: left;
 }
@@ -436,16 +436,16 @@
 .stage-action-card:hover {
   border-color: rgba(143, 66, 102, 0.34);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(249, 246, 249, 0.9)),
-    rgba(255, 255, 255, 0.9);
-  box-shadow: 0 10px 24px rgba(38, 58, 67, 0.12);
+    linear-gradient(180deg, var(--surface-strong), rgba(249, 246, 249, 0.9)),
+    var(--surface-panel);
+  box-shadow: var(--shadow-control);
   transform: translateY(-1px);
 }
 
 .stage-action-card svg {
   width: 36px;
   height: 36px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--brand-soft);
   color: var(--brand-strong);
   padding: 8px;
@@ -464,7 +464,7 @@
 }
 
 .stage-action-card strong {
-  color: #17242a;
+  color: var(--text);
   font-size: 14px;
   line-height: 1.2;
 }
@@ -514,12 +514,12 @@
   transform: none;
   align-content: center;
   padding: 11px 16px 12px;
-  border-color: rgba(255, 255, 255, 0.72);
-  border-radius: 24px 24px 24px 10px;
-  background: rgba(255, 252, 249, 0.93);
-  box-shadow: 0 12px 28px rgba(82, 52, 72, 0.14);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  border-color: var(--line-soft);
+  border-radius: var(--radius-bubble) var(--radius-bubble) var(--radius-bubble) var(--radius-md);
+  background: var(--surface-strong);
+  box-shadow: var(--shadow-card);
+  backdrop-filter: var(--glass-blur-soft);
+  -webkit-backdrop-filter: var(--glass-blur-soft);
 }
 
 .stage-pet-anchor .stage-agent-bubble.pet-agent-bubble::after {
@@ -530,9 +530,9 @@
   height: 15px;
   transform: rotate(45deg);
   border-right: 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.72);
-  border-left: 1px solid rgba(255, 255, 255, 0.72);
-  box-shadow: -4px 4px 8px rgba(82, 52, 72, 0.04);
+  border-bottom: 1px solid var(--line-soft);
+  border-left: 1px solid var(--line-soft);
+  box-shadow: -4px 4px 8px rgba(38, 58, 67, 0.04);
 }
 
 .stage-command-layout {
@@ -645,7 +645,7 @@
 
 .stage-action-card small {
   display: block;
-  color: #52656f;
+  color: var(--muted);
   font-size: 12px;
   font-weight: 650;
   line-height: 1.42;
@@ -667,13 +667,13 @@
   align-items: center;
   width: fit-content;
   max-width: 100%;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   padding: 0 10px;
   color: var(--muted);
 }
 
 .stage-advanced-routes summary:hover {
-  background: rgba(55, 73, 82, 0.06);
+  background: var(--surface-subtle);
   color: var(--text);
 }
 
@@ -750,12 +750,12 @@
   display: grid;
   gap: 14px;
   min-width: 0;
-  border: 1px solid rgba(112, 132, 143, 0.16);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.52);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
   padding: 14px;
-  box-shadow: 0 10px 28px rgba(119, 77, 104, 0.06);
-  backdrop-filter: blur(18px);
+  box-shadow: var(--shadow-card);
+  backdrop-filter: var(--glass-blur-soft);
 }
 
 .control-support-nav {
@@ -826,16 +826,16 @@
 #settings-panel > .agent-model-section,
 #settings-panel > .advanced-agent-model-settings,
 #wiki-workflow-panel > details {
-  border: 1px solid rgba(255, 255, 255, 0.54);
-  border-radius: 8px;
-  background: rgba(255, 250, 248, 0.58);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
   padding: 16px;
 }
 
 #settings-panel > .separated {
-  border: 1px solid rgba(255, 255, 255, 0.54);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.54);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
   padding: 16px;
 }
 
@@ -843,9 +843,9 @@
   margin-top: 16px;
   display: grid;
   gap: 12px;
-  border: 1px solid rgba(163, 60, 60, 0.28);
-  border-radius: 8px;
-  background: rgba(255, 247, 247, 0.82);
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-md);
+  background: var(--danger-bg);
   padding: 16px;
 }
 
@@ -861,7 +861,7 @@
 .panel-title svg {
   flex: 0 0 auto;
   padding: 6px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--brand-soft);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
   box-sizing: content-box;

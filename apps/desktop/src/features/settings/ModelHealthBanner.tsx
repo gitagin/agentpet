@@ -28,21 +28,21 @@ export function getModelHealthBannerState(health: ModelHealthResponse): BannerSt
   if (health.global_configured && specialistCount === 0) {
     return {
       tone: "info",
-      message: "5 个核心 Agent 正在继承全局模型；聊天、分类、检索、动作和后台反思都会正常工作。",
+      message: "5 个职责模型正在继承全局模型；聊天、分类、检索、动作和后台整理都会正常工作。",
     };
   }
 
   if (specialistCount >= totalAgents) {
     return {
       tone: "success",
-      message: "5 个核心 Agent 都有独立模型配置；仍会统一按新架构路由运行。",
+      message: "5 个职责模型都有独立模型配置；仍会统一按职责路由运行。",
     };
   }
 
   if (health.global_configured && specialistCount > 0) {
     return {
       tone: "info",
-      message: `${specialistCount}/${totalAgents} 个核心 Agent 有独立模型，其余继续继承全局模型。`,
+      message: `${specialistCount}/${totalAgents} 个职责模型有独立模型，其余继续继承全局模型。`,
     };
   }
 

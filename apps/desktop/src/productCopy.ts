@@ -34,7 +34,7 @@ export const productCopy = {
     emptyState: "还没有留下记忆。和我聊聊，或主动告诉我一件希望记住的事。",
   },
   chatPage: {
-    title: "陪伴",
+    title: "聊天",
     description: "直接和我说话；重要的事我会按规则整理，之后可在记忆里查看和撤回。",
     inputPlaceholder: "和我说说现在发生的事...",
     quickPrompts: [

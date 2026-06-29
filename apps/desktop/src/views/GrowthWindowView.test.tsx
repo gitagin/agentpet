@@ -86,7 +86,7 @@ describe("GrowthWindowView", () => {
     vi.clearAllMocks();
   });
 
-  it("loads growth dimensions and history from the backend snapshot", async () => {
+  it("loads growth dimensions and history from the local snapshot", async () => {
     const api = createApi();
 
     render(<GrowthWindowView api={api} />);
@@ -95,7 +95,7 @@ describe("GrowthWindowView", () => {
     await waitFor(() => expect(api.getGrowthSnapshot).toHaveBeenCalledTimes(1));
 
     expect(screen.getAllByText("边界稳定").length).toBeGreaterThanOrEqual(2);
-    expect(screen.getByText("聊天日记 3 · 长期记忆 2 · Wiki 1 · 可撤回 1")).toBeInTheDocument();
+    expect(screen.getByText("聊天日记 3 · 长期记忆 2 · 资料页 1 · 可撤回 1")).toBeInTheDocument();
     expect(screen.getByText("记忆脉络")).toBeInTheDocument();
     expect(screen.getByText("回应默契")).toBeInTheDocument();
     expect(screen.getByText("安心边界")).toBeInTheDocument();

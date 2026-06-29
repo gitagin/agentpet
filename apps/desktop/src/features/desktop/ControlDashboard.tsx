@@ -275,7 +275,7 @@ export function ControlDashboard({
             }}
           >
             <strong>支撑工作台</strong>
-            <span>提醒、任务、工作流状态和定位工具收在这里，不抢聊天入口。</span>
+            <span>提醒、待办、跟进状态和定位工具收在这里，不抢聊天入口。</span>
           </summary>
           {supportToolsOpen ? (
             <div className="control-support-grid">
@@ -310,7 +310,7 @@ export function ControlDashboard({
             }}
           >
             <strong>高级管理与诊断</strong>
-            <span>连接、模型、知识整理、设置和角色资源还在，但默认不参与首分钟体验。</span>
+            <span>连接、模型、资料工具、设置和角色资源还在，但默认不参与首分钟体验。</span>
           </summary>
           {secondaryToolsOpen ? (
             <Suspense fallback={null}>

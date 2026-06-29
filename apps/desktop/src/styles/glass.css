@@ -1,19 +1,19 @@
 .glass-card {
-  background: var(--card-bg);
-  backdrop-filter: var(--card-blur);
-  -webkit-backdrop-filter: var(--card-blur);
-  border-radius: var(--card-radius);
-  border: var(--card-border);
-  box-shadow: var(--card-shadow);
+  background: var(--surface-panel);
+  backdrop-filter: var(--glass-blur-soft);
+  -webkit-backdrop-filter: var(--glass-blur-soft);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-card);
 }
 
 .glass-pill {
-  background: rgba(255, 255, 255, 0.82);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  border-radius: 999px;
-  border: 1px solid rgba(55, 73, 82, 0.12);
+  background: var(--surface);
+  backdrop-filter: var(--glass-blur-soft);
+  -webkit-backdrop-filter: var(--glass-blur-soft);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--line-soft);
   padding: 4px 12px;
   font-size: 12px;
-  color: var(--color-text-soft);
+  color: var(--muted);
 }

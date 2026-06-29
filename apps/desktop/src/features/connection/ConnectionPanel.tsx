@@ -35,7 +35,7 @@ export function ConnectionPanel({
       }}
     >
       <label>
-        <span>后端地址</span>
+        <span>本机服务地址</span>
         <input
           value={settings.baseUrl}
           onChange={(event) => onSettingsChange({ ...settings, baseUrl: event.target.value })}

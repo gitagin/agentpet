@@ -28,11 +28,18 @@ describe("BottomNav", () => {
   });
 
   it("keeps navigation switching wired through the primary routes", () => {
-    const targetTab = primaryNavigationTabs[4];
+    const targetTab = primaryNavigationTabs[3];
     render(<BottomNav activeTab={primaryNavigationTabs[0]} />);
 
     fireEvent.click(screen.getByRole("button", { name: targetTab }));
 
     expect(window.location.hash).toBe(`#${navigationHashForTab(targetTab)}`);
+  });
+
+  it("can render secondary routes without pretending a primary tab is active", () => {
+    render(<BottomNav activeTab={null} />);
+
+    expect(screen.getAllByRole("button")).toHaveLength(primaryNavigationTabs.length);
+    expect(screen.queryByRole("button", { current: "page" })).not.toBeInTheDocument();
   });
 });

@@ -70,7 +70,7 @@ export function buildPetInputIntentMessage(mode: PetInputMode, rawText: string):
     const subject = text || "请根据今天的本地记录做一次简短回顾。";
     return [
       `回顾今天：${subject}`,
-      "请优先检索本地聊天日记、长期记忆、任务和知识整理内容；没有依据的内容请明确说明。用户可见回复请使用普通中文，不要使用工程词。",
+      "请优先检索本地聊天日记、长期记忆、任务和资料整理内容；没有依据的内容请明确说明。用户可见回复请使用普通中文，不要使用工程词。",
     ].join("\n");
   }
 
@@ -81,12 +81,12 @@ export function buildPetInputIntentMessage(mode: PetInputMode, rawText: string):
   const intentPrompts: Record<Exclude<PetInputMode, "chat" | "review">, string> = {
     note: "记住",
     task: "提醒",
-    wiki: "整理资料到知识页",
+    wiki: "整理资料到资料页",
   };
   const guardrails: Record<Exclude<PetInputMode, "chat" | "review">, string> = {
     note: "请按现有记忆策略判断是否值得沉淀；敏感、高风险或低置信内容不要直接写入。用户可见回复请用“记住”“记忆”表达。",
     task: "请按现有任务策略创建任务或提醒；需要确认的内容先进入确认流程。用户可见回复请用“提醒”表达。",
-    wiki: "这是资料整理请求，请按现有知识页策略规划整理；高风险写入仍需确认。用户可见回复请用“资料”“知识页”表达，避免直接说技术格式或内部模块名。",
+    wiki: "这是资料整理请求，请按现有资料页策略规划整理；高风险写入仍需确认。用户可见回复请用“资料”“资料页”表达，避免直接说技术格式或内部模块名。",
   };
   const focusedMode = mode as Exclude<PetInputMode, "chat" | "review">;
   return [`${intentPrompts[focusedMode]}：${text}`, guardrails[focusedMode]].join("\n");

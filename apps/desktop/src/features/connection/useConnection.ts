@@ -76,7 +76,7 @@ export function useConnection({ onNotice, onSettingsStatus }: UseConnectionOptio
       setHealth(response);
       const businessReady = await checkBusinessAccess({ silent: options.silent });
       if (!options.silent && businessReady) {
-        callbacks.current.onNotice({ tone: "success", message: "后端健康检查和业务鉴权均通过。" });
+        callbacks.current.onNotice({ tone: "success", message: "本机服务健康检查和业务鉴权均通过。" });
       }
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
@@ -86,7 +86,7 @@ export function useConnection({ onNotice, onSettingsStatus }: UseConnectionOptio
         return;
       }
       setBusinessAuthStatus("unknown");
-      setBusinessAuthMessage("后端健康检查失败，尚未检查业务接口鉴权。");
+      setBusinessAuthMessage("本机服务健康检查失败，尚未检查业务接口鉴权。");
       callbacks.current.onNotice({ tone: "error", message: describeError(error, "健康检查失败") });
     } finally {
       setCheckingHealth(false);

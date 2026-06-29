@@ -1,12 +1,12 @@
 .live2d-copy h2 {
   margin: 4px 0 8px;
-  color: #17242a;
+  color: var(--text);
   font-size: 22px;
 }
 
 .live2d-copy p:last-child {
   margin: 0;
-  color: #52656f;
+  color: var(--muted);
   line-height: 1.45;
 }
 
@@ -14,32 +14,32 @@
   margin-top: 12px;
   display: grid;
   gap: 3px;
-  border: 1px solid rgba(32, 75, 87, 0.18);
-  border-radius: 8px;
-  background: #f8fafb;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
   padding: 10px 12px;
 }
 
 .live2d-resource-summary strong {
-  color: #17242a;
+  color: var(--text);
   font-size: 13px;
 }
 
 .live2d-resource-summary span {
-  color: #52656f;
+  color: var(--muted);
   font-size: 12px;
   line-height: 1.45;
 }
 
 .live2d-resource-recognized {
-  border-color: rgba(47, 143, 98, 0.3);
-  background: #f4fbf7;
+  border-color: var(--success-border);
+  background: var(--success-bg);
 }
 
 .live2d-resource-missing,
 .live2d-resource-error {
-  border-color: rgba(217, 103, 112, 0.34);
-  background: #fff7f7;
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
 }
 
 .live2d-status-grid {
@@ -51,9 +51,9 @@
 
 .live2d-status-grid div {
   min-width: 0;
-  border: 1px solid #dce5ea;
-  border-radius: 6px;
-  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-strong);
   padding: 8px 10px;
 }
 
@@ -64,21 +64,21 @@
 }
 
 .live2d-status-grid span {
-  color: #52656f;
+  color: var(--muted);
   font-size: 11px;
   font-weight: 700;
 }
 
 .live2d-status-grid strong {
   margin-top: 3px;
-  color: #17242a;
+  color: var(--text);
   font-size: 12px;
   line-height: 1.35;
 }
 
 .live2d-status-grid .live2d-renderer-pending {
-  border-color: rgba(189, 107, 65, 0.32);
-  background: #fff9f2;
+  border-color: var(--warning-border);
+  background: var(--warning-bg);
 }
 
 .live2d-stage {
@@ -86,14 +86,14 @@
   min-height: 275px;
   display: grid;
   place-items: end center;
-  border: 1px solid rgba(255, 255, 255, 0.62);
-  border-radius: 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-md);
   background:
-    radial-gradient(circle at 50% 18%, rgba(255, 255, 255, 0.92), transparent 26%),
-    radial-gradient(ellipse at 50% 82%, rgba(231, 166, 195, 0.34), transparent 38%),
-    linear-gradient(#fff8fb 0 0) top / 100% 58% no-repeat,
-    linear-gradient(#f2e7ff 0 0) bottom / 100% 42% no-repeat;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82), 0 18px 34px rgba(119, 77, 104, 0.1);
+    radial-gradient(circle at 50% 18%, rgba(255, 255, 255, 0.86), transparent 26%),
+    radial-gradient(ellipse at 50% 82%, rgba(143, 66, 102, 0.1), transparent 38%),
+    linear-gradient(var(--surface-strong) 0 0) top / 100% 58% no-repeat,
+    linear-gradient(var(--surface-stage) 0 0) bottom / 100% 42% no-repeat;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82), var(--shadow-panel);
   overflow: hidden;
   isolation: isolate;
 }
@@ -173,6 +173,15 @@
   margin: 10px auto 0;
 }
 
+.live2d-panel-stage .live2d-state-cue {
+  left: 50%;
+  right: auto;
+  bottom: 16px;
+  max-width: min(380px, calc(100% - 32px));
+  transform: translateX(-50%);
+  box-shadow: var(--shadow-card);
+}
+
 .live2d-panel-stage .live2d-scanline,
 .live2d-panel-stage .live2d-meter,
 .live2d-panel-stage .live2d-stage::before {
@@ -184,7 +193,7 @@
   width: 100vw;
   height: 100vh;
   overflow: hidden;
-  background: #f7f7f2;
+  background: var(--bg-agent);
 }
 
 .stage-host-route {
@@ -331,7 +340,7 @@
   width: min(228px, calc(100% - 32px));
   transform: translateX(-50%);
   border-style: solid;
-  background: rgba(255, 255, 255, 0.86);
+  background: var(--surface-panel);
   -webkit-app-region: no-drag;
   pointer-events: none;
 }
@@ -387,7 +396,7 @@
   width: min(224px, calc(100% - 28px));
   min-height: 42px;
   transform: translateX(-50%);
-  background: rgba(255, 255, 255, 0.82);
+  background: var(--surface-panel);
   -webkit-app-region: no-drag;
   pointer-events: none;
 }
@@ -413,14 +422,14 @@
   gap: 2px;
   align-content: stretch;
   padding: 7px 10px 8px;
-  border: 1px solid rgba(91, 139, 120, 0.2);
-  border-radius: 17px 17px 13px 9px;
+  border: 1px solid var(--success-border);
+  border-radius: var(--radius-bubble) var(--radius-bubble) 13px var(--radius-md);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(247, 252, 250, 0.88)),
-    rgba(255, 255, 255, 0.9);
-  box-shadow: 0 10px 22px rgba(64, 92, 91, 0.14);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+    linear-gradient(180deg, var(--surface-strong), var(--surface-subtle)),
+    var(--surface-panel);
+  box-shadow: var(--shadow-card);
+  backdrop-filter: var(--glass-blur-soft);
+  -webkit-backdrop-filter: var(--glass-blur-soft);
   pointer-events: auto;
   -webkit-app-region: no-drag;
 }
@@ -439,11 +448,11 @@
   width: 10px;
   height: 10px;
   transform: translateX(-50%) rotate(45deg);
-  border-right: 1px solid rgba(91, 139, 120, 0.18);
-  border-bottom: 1px solid rgba(91, 139, 120, 0.18);
+  border-right: 1px solid var(--success-border);
+  border-bottom: 1px solid var(--success-border);
   border-radius: 0 0 3px 0;
   background: inherit;
-  box-shadow: 4px 4px 8px rgba(64, 92, 91, 0.05);
+  box-shadow: 4px 4px 8px rgba(38, 58, 67, 0.05);
 }
 
 .stage-agent-bubble.pet-agent-bubble.no-header {
@@ -460,7 +469,7 @@
 
 .stage-agent-bubble.pet-agent-bubble .pet-agent-bubble-text {
   max-height: 86px;
-  color: #31515d;
+  color: var(--color-info);
   font-size: 14px;
   line-height: 1.48;
   text-wrap: pretty;
@@ -487,14 +496,14 @@
   justify-content: space-between;
   gap: 6px;
   flex: 1 1 auto;
-  color: #1f3f48;
+  color: var(--text);
   font-size: 11px;
   line-height: 1.1;
 }
 
 .pet-agent-bubble-text {
   min-height: 0;
-  color: #31535c;
+  color: var(--color-info);
   font-size: 10.5px;
   line-height: 1.32;
   overflow: hidden;
@@ -506,19 +515,19 @@
 }
 
 .pet-agent-bubble-text:focus-visible {
-  box-shadow: inset 0 0 0 1px rgba(49, 83, 92, 0.16);
-  border-radius: 8px;
+  box-shadow: inset 0 0 0 1px var(--line);
+  border-radius: var(--radius-md);
 }
 
 .pet-agent-bubble.error {
-  border-color: rgba(164, 65, 58, 0.28);
-  background: rgba(255, 246, 244, 0.92);
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
 }
 
 .pet-agent-bubble.reminder,
 .pet-agent-bubble.tool {
-  border-color: rgba(47, 143, 98, 0.28);
-  background: rgba(244, 251, 247, 0.92);
+  border-color: var(--success-border);
+  background: var(--success-bg);
 }
 
 .pet-input-dock {
@@ -535,11 +544,11 @@
   gap: 2px;
   align-items: stretch;
   padding: 3px 5px;
-  border: 1px solid rgba(202, 113, 151, 0.18);
+  border: 1px solid var(--line);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.86);
-  box-shadow: 0 14px 28px rgba(119, 77, 104, 0.17);
-  backdrop-filter: blur(12px);
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-card);
+  backdrop-filter: var(--glass-blur-soft);
   pointer-events: auto;
   -webkit-app-region: no-drag;
 }
@@ -569,14 +578,14 @@
   border: 0;
   border-radius: 999px;
   padding: 0 9px;
-  background: rgba(247, 251, 248, 0.94);
-  color: #213d45;
+  background: var(--surface-strong);
+  color: var(--text);
   font-size: 11px;
   outline: none;
 }
 
 .pet-input-dock input:focus {
-  box-shadow: inset 0 0 0 1px rgba(47, 143, 98, 0.38);
+  box-shadow: inset 0 0 0 1px var(--success-border);
 }
 
 .pet-input-dock button {
@@ -586,10 +595,10 @@
   box-sizing: border-box;
   display: inline-grid;
   place-items: center;
-  border: 1px solid rgba(38, 72, 83, 0.18);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.94);
-  color: #244d58;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface-strong);
+  color: var(--color-info);
   padding: 0;
   font-size: 11px;
   line-height: 1;
@@ -599,23 +608,23 @@
   width: 100%;
   height: 13px;
   min-height: 0;
-  border-color: rgba(38, 72, 83, 0.12);
-  background: rgba(247, 251, 248, 0.74);
-  color: rgba(36, 77, 88, 0.74);
+  border-color: var(--line-soft);
+  background: var(--surface-subtle);
+  color: var(--muted);
   font-size: 10px;
   font-weight: 700;
 }
 
 .pet-input-mode-switch button.is-active {
-  border-color: rgba(47, 143, 98, 0.45);
-  background: rgba(221, 243, 231, 0.92);
-  color: #1f6a45;
+  border-color: var(--success-border);
+  background: var(--success-bg);
+  color: var(--success);
 }
 
 .pet-input-dock button:hover:not(:disabled) {
-  border-color: rgba(47, 143, 98, 0.42);
-  background: rgba(244, 251, 247, 0.96);
-  color: #1f6a45;
+  border-color: var(--success-border);
+  background: var(--success-bg);
+  color: var(--success);
 }
 
 .pet-input-dock button:disabled {
@@ -624,7 +633,7 @@
 }
 
 .pet-input-dock button.danger {
-  color: #a0413a;
+  color: var(--danger);
 }
 
 .pet-shell.pet-debug-hitbox .pet-agent-bubble,
@@ -644,6 +653,14 @@
   transform: translateX(-50%);
   -webkit-app-region: no-drag;
   pointer-events: none;
+}
+
+.live2d-panel-pet .live2d-state-cue {
+  top: 8px;
+  left: 50%;
+  right: auto;
+  width: min(218px, calc(100% - 28px));
+  transform: translateX(-50%);
 }
 
 .live2d-runtime-host {
@@ -681,25 +698,25 @@
   right: 72px;
   display: grid;
   gap: 3px;
-  border: 1px dashed rgba(32, 75, 87, 0.32);
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.78);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
   padding: 8px 10px;
 }
 
 .live2d-render-loading .live2d-runtime-placeholder {
-  border-color: rgba(43, 107, 122, 0.42);
-  background: rgba(241, 248, 250, 0.9);
+  border-color: var(--info-border);
+  background: var(--info-bg);
 }
 
 .live2d-render-preview .live2d-runtime-placeholder {
-  border-color: rgba(31, 138, 138, 0.36);
-  background: rgba(241, 250, 248, 0.92);
+  border-color: var(--success-border);
+  background: var(--success-bg);
 }
 
 .live2d-render-failed .live2d-runtime-placeholder {
-  border-color: rgba(217, 103, 112, 0.46);
-  background: rgba(255, 247, 247, 0.92);
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
 }
 
 .live2d-render-mounted .live2d-runtime-placeholder,
@@ -724,12 +741,12 @@
 }
 
 .live2d-runtime-placeholder strong {
-  color: #17242a;
+  color: var(--text);
   font-size: 12px;
 }
 
 .live2d-runtime-placeholder span {
-  color: #52656f;
+  color: var(--muted);
   font-size: 11px;
   line-height: 1.35;
 }
@@ -743,7 +760,7 @@
   bottom: 20px;
   height: 18px;
   border-radius: 50%;
-  background: rgba(132, 82, 120, 0.14);
+  background: var(--brand-soft);
 }
 
 .live2d-scanline {
@@ -753,7 +770,7 @@
   right: 0;
   top: 40%;
   height: 1px;
-  background: rgba(43, 107, 122, 0.2);
+  background: var(--info-soft);
   pointer-events: none;
 }
 
@@ -771,8 +788,8 @@
 
 .live2d-meter span {
   width: 6px;
-  border-radius: 2px;
-  background: rgba(43, 107, 122, 0.32);
+  border-radius: var(--radius-xs);
+  background: var(--info-soft);
 }
 
 .live2d-meter span:nth-child(1) {
@@ -815,10 +832,10 @@
 }
 
 .live2d-cover figcaption {
-  border: 1px solid rgba(32, 75, 87, 0.16);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.86);
-  color: #40535c;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface-panel);
+  color: var(--muted);
   padding: 3px 9px;
   font-size: 12px;
   font-weight: 700;
@@ -1016,31 +1033,163 @@
   min-height: 48px;
   display: grid;
   gap: 2px;
-  border: 1px solid rgba(32, 75, 87, 0.22);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
   padding: 8px 10px;
-  backdrop-filter: blur(6px);
+  backdrop-filter: var(--glass-blur-soft);
 }
 
 .live2d-status-card strong {
-  color: #17242a;
+  color: var(--text);
   font-size: 13px;
 }
 
 .live2d-status-card span {
-  color: #52656f;
+  color: var(--muted);
   font-size: 12px;
   overflow-wrap: anywhere;
+}
+
+.live2d-state-cue {
+  position: absolute;
+  z-index: 16;
+  display: grid;
+  grid-template-columns: 11px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  box-sizing: border-box;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface-panel);
+  padding: 7px 12px;
+  color: var(--text);
+  pointer-events: none;
+  backdrop-filter: var(--glass-blur-soft);
+  -webkit-backdrop-filter: var(--glass-blur-soft);
+  transition: border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+}
+
+.live2d-state-pulse {
+  --live2d-state-pulse-rgb: 91, 139, 120;
+  width: 11px;
+  height: 11px;
+  border-radius: var(--radius-pill);
+  background: #5b8b78;
+  box-shadow: 0 0 0 5px rgba(var(--live2d-state-pulse-rgb), 0.14);
+}
+
+.live2d-state-copy {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.live2d-state-copy strong,
+.live2d-state-copy small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.live2d-state-copy strong {
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.15;
+}
+
+.live2d-state-copy small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.live2d-panel-pet .live2d-state-copy strong {
+  font-size: 11px;
+}
+
+.live2d-panel-pet .live2d-state-copy small {
+  font-size: 10px;
+}
+
+.live2d-cue-idle .live2d-state-cue {
+  background: var(--surface);
+}
+
+.live2d-cue-idle .live2d-state-pulse {
+  --live2d-state-pulse-rgb: 111, 139, 132;
+  background: #6f8b84;
+  box-shadow: 0 0 0 5px rgba(var(--live2d-state-pulse-rgb), 0.12);
+}
+
+.live2d-cue-thinking .live2d-state-cue,
+.live2d-cue-speaking .live2d-state-cue {
+  border-color: var(--info-border);
+  background: var(--info-bg);
+}
+
+.live2d-cue-thinking .live2d-state-pulse,
+.live2d-cue-speaking .live2d-state-pulse {
+  --live2d-state-pulse-rgb: 90, 110, 177;
+  background: #5a6eb1;
+  box-shadow: 0 0 0 5px rgba(var(--live2d-state-pulse-rgb), 0.16);
+  animation: live2d-state-pulse 1.25s ease-out infinite;
+}
+
+.live2d-cue-remembered .live2d-state-cue {
+  border-color: var(--success-border);
+  background: var(--success-bg);
+}
+
+.live2d-cue-remembered .live2d-state-pulse {
+  --live2d-state-pulse-rgb: 47, 143, 98;
+  background: #2f8f62;
+  box-shadow: 0 0 0 5px rgba(var(--live2d-state-pulse-rgb), 0.16);
+}
+
+.live2d-cue-confirming .live2d-state-cue {
+  border-color: var(--warning-border);
+  background: var(--warning-bg);
+}
+
+.live2d-cue-confirming .live2d-state-pulse {
+  --live2d-state-pulse-rgb: 189, 107, 65;
+  background: #bd6b41;
+  box-shadow: 0 0 0 5px rgba(var(--live2d-state-pulse-rgb), 0.16);
+  animation: live2d-state-pulse 1.55s ease-out infinite;
+}
+
+.live2d-cue-tasking .live2d-state-cue {
+  border-color: var(--warning-border);
+  background: var(--warning-bg);
+}
+
+.live2d-cue-tasking .live2d-state-pulse {
+  --live2d-state-pulse-rgb: 185, 131, 31;
+  background: #b9831f;
+  box-shadow: 0 0 0 5px rgba(var(--live2d-state-pulse-rgb), 0.16);
+}
+
+.live2d-cue-error .live2d-state-cue {
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+}
+
+.live2d-cue-error .live2d-state-pulse {
+  --live2d-state-pulse-rgb: 164, 65, 58;
+  background: #a4413a;
+  box-shadow: 0 0 0 5px rgba(var(--live2d-state-pulse-rgb), 0.16);
 }
 
 .live2d-layout-warning {
   display: grid;
   gap: 3px;
-  border: 1px solid rgba(217, 103, 112, 0.46);
-  border-radius: 6px;
-  background: #fff7f7;
-  color: #842929;
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-sm);
+  background: var(--danger-bg);
+  color: var(--danger);
   padding: 8px 10px;
 }
 
@@ -1067,9 +1216,9 @@
 
 .live2d-runtime-card div {
   min-width: 0;
-  border: 1px solid #dce5ea;
-  border-radius: 6px;
-  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-strong);
   padding: 8px 10px;
 }
 
@@ -1080,27 +1229,27 @@
 }
 
 .live2d-runtime-card span {
-  color: #52656f;
+  color: var(--muted);
   font-size: 11px;
   font-weight: 700;
 }
 
 .live2d-runtime-card strong {
   margin-top: 3px;
-  color: #17242a;
+  color: var(--text);
   font-size: 12px;
   line-height: 1.35;
 }
 
 .live2d-runtime-assets-ready .live2d-runtime-card div:first-child {
-  border-color: rgba(47, 143, 98, 0.3);
-  background: #f4fbf7;
+  border-color: var(--success-border);
+  background: var(--success-bg);
 }
 
 .live2d-runtime-failed .live2d-runtime-card div:first-child,
 .live2d-runtime-not-connected .live2d-runtime-card div:first-child {
-  border-color: rgba(217, 103, 112, 0.34);
-  background: #fff7f7;
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
 }
 
 .live2d-diagnostic-summary {
@@ -1112,9 +1261,9 @@
 
 .live2d-diagnostic-summary div {
   min-width: 0;
-  border: 1px solid #dce5ea;
-  border-radius: 6px;
-  background: #f8fafb;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-subtle);
   padding: 8px 10px;
 }
 
@@ -1124,7 +1273,7 @@
 }
 
 .live2d-diagnostic-summary dt {
-  color: #52656f;
+  color: var(--muted);
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
@@ -1132,7 +1281,7 @@
 
 .live2d-diagnostic-summary dd {
   margin-top: 3px;
-  color: #26363d;
+  color: var(--text);
   font-size: 12px;
   line-height: 1.35;
   overflow-wrap: anywhere;
@@ -1147,9 +1296,9 @@
 
 .live2d-resource-list div {
   min-width: 0;
-  border: 1px solid #dce5ea;
-  border-radius: 6px;
-  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-strong);
   padding: 8px 10px;
 }
 
@@ -1160,7 +1309,7 @@
 
 .live2d-resource-list dd {
   margin-top: 3px;
-  color: #26363d;
+  color: var(--text);
   font-size: 12px;
   overflow-wrap: anywhere;
 }
@@ -1186,7 +1335,7 @@
 
 .live2d-presence .live2d-status-card {
   border-color: rgba(92, 121, 196, 0.48);
-  background: rgba(238, 244, 255, 0.92);
+  background: var(--info-bg);
 }
 
 .live2d-presence .live2d-arm.left {
@@ -1215,7 +1364,7 @@
 
 .live2d-speaking .live2d-status-card {
   border-color: rgba(92, 121, 196, 0.5);
-  background: rgba(238, 244, 255, 0.94);
+  background: var(--info-bg);
 }
 
 .live2d-reflective .live2d-model {
@@ -1229,7 +1378,7 @@
 
 .live2d-reflective .live2d-status-card {
   border-color: rgba(94, 139, 118, 0.42);
-  background: rgba(245, 251, 247, 0.94);
+  background: var(--success-bg);
 }
 
 .live2d-memory .live2d-scanline {

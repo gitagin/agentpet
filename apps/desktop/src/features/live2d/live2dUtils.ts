@@ -50,7 +50,7 @@ export function getLive2DStageView({
       state: "disconnected",
       label: "未连接",
       mood: "离线待命",
-      message: "模型壳已经就位，正在等待本地后端连接。",
+      message: "模型壳已经就位，正在等待本机服务连接。",
       hint: "请先检查连接状态",
     };
   }

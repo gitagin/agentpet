@@ -22,11 +22,11 @@ export function MemoryProposalActivityCard({ entry, busy, onAct }: MemoryProposa
           <strong>长期记忆确认 · {memoryTypeLabels[proposal.type]}</strong>
           <small>高风险确认 / {formatProposalStatus(proposal.status)}</small>
         </div>
-        <span>{proposal.proposal_id}</span>
+        <span>{formatProposalStatus(proposal.status)}</span>
       </div>
       <p>{proposal.content || proposal.preview_markdown || "无预览内容"}</p>
-      <small>目标：{proposal.target_path}</small>
-      {proposal.diff ? <small>差异：{formatDiffSummary(proposal.diff)}</small> : null}
+      <small>保存位置：确认后写入本机记忆</small>
+      {proposal.diff ? <small>变化：{formatDiffSummary(proposal.diff)}</small> : null}
       <div className="button-row">
         <button
           type="button"

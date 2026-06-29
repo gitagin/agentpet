@@ -146,9 +146,9 @@ function formatActionType(value: string): string {
     "memory.consolidation.skip": "已跳过慢记忆整理。",
     "memory.long_term.write": "已保存或更新长期记忆。",
     "memory.long_term.skip": "已跳过长期记忆。",
-    "wiki.answer_summary.write": "已保存可复用的 Wiki 摘要。",
-    "wiki.answer_summary.skip": "已跳过 Wiki 摘要。",
-    "wiki.page.write": "已创建或更新知识页。",
+    "wiki.answer_summary.write": "已保存可复用的资料页摘要。",
+    "wiki.answer_summary.skip": "已跳过资料页摘要。",
+    "wiki.page.write": "已创建或更新资料页。",
   };
   return labels[value] || value;
 }
@@ -165,7 +165,7 @@ export function formatReceiptTitle(receipt: VisibleContinuityReceipt): string {
     return "已跳过长期记忆";
   }
   if (normalized.startsWith("skipped wiki summary")) {
-    return "已跳过 Wiki 摘要";
+    return "已跳过资料页摘要";
   }
   if (normalized.startsWith("skipped slow memory consolidation")) {
     return "已跳过慢记忆整理";
@@ -194,7 +194,7 @@ function formatReceiptSummary(receipt: VisibleContinuityReceipt): string {
     return "这次内容较短或临时性较强，没有形成值得长期保存的整理项。";
   }
   if (normalized.includes("not contain enough reusable knowledge") || normalized.includes("did not produce saveable")) {
-    return "这次回复没有提炼出适合沉淀到知识库的可复用内容。";
+    return "这次回复没有提炼出适合沉淀到资料库的可复用内容。";
   }
   return receipt.summary;
 }

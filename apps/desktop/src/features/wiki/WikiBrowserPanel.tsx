@@ -101,18 +101,18 @@ export function WikiBrowserPanel({
     ? {
         tone: "error",
         title: "未设置本机文件夹",
-        description: "请先在设置中选择保存位置，之后才能写入知识页。",
+        description: "请先在设置中选择保存位置，之后才能写入资料页。",
       }
     : indexRequired
       ? {
           tone: "warning",
           title: "需要索引",
-          description: "整理完成后刷新状态，最近生成的知识页会显示为卡片。",
+          description: "整理完成后刷新状态，最近生成的资料页会显示为卡片。",
         }
       : noWikiPages
         ? {
             tone: "empty",
-            title: "还没有知识页",
+            title: "还没有资料页",
             description: "从上方整理器粘贴一段材料，预览后即可生成第一张卡片。",
           }
         : null;
@@ -125,15 +125,15 @@ export function WikiBrowserPanel({
         : "刷新状态后会显示最近整理出的页面。";
 
   return (
-    <Panel id="wiki-browser-panel" icon={<BookOpen size={18} />} title="最近整理出的知识页">
+    <Panel id="wiki-browser-panel" icon={<BookOpen size={18} />} title="最近整理出的资料页">
       <div className="wiki-browser-shell">
-        <section className="wiki-recent-output" aria-label="最近知识页">
+        <section className="wiki-recent-output" aria-label="最近资料页">
           <div className="section-heading">
-            <strong>最近生成的知识页</strong>
+            <strong>最近生成的资料页</strong>
             <span>{recentSummary}</span>
           </div>
           {readinessState ? (
-            <div className={`wiki-readiness-banner ${readinessState.tone}`} aria-label="知识整理状态">
+            <div className={`wiki-readiness-banner ${readinessState.tone}`} aria-label="资料整理状态">
               <div>
                 <strong>{readinessState.title}</strong>
                 <span>{readinessState.description}</span>
@@ -141,7 +141,7 @@ export function WikiBrowserPanel({
             </div>
           ) : null}
           {onTryKnowledgeSnippet ? (
-            <div className="guided-trial-actions" aria-label="试用知识整理操作">
+            <div className="guided-trial-actions" aria-label="试用资料整理操作">
               <button type="button" className="secondary" onClick={onTryKnowledgeSnippet} disabled={workflowBusy}>
                 <BookOpen size={16} />
                 粘贴知识片段
@@ -181,7 +181,7 @@ export function WikiBrowserPanel({
                 </article>
               ))
             ) : (
-              <p className="field-note">还没有可展示的知识页。请从上方整理器创建或更新一个页面。</p>
+              <p className="field-note">还没有可展示的资料页。请从上方整理器创建或更新一个页面。</p>
             )}
           </div>
         </section>

@@ -44,32 +44,24 @@ export function ChatWikiProposalCard({
         <div>
           <strong>{proposal.title}</strong>
           <small>
-            {proposal.proposal_type} / {formatChatWikiProposalState(proposal.state)}
-            {proposal.backend_status ? ` / 后端 ${formatTaskStatus(proposal.backend_status)}` : ""}
+            {formatChatWikiProposalType(proposal.proposal_type)} / {formatChatWikiProposalState(proposal.state)}
+            {proposal.backend_status ? ` / 处理${formatTaskStatus(proposal.backend_status)}` : ""}
           </small>
         </div>
-        <span>{proposal.review_id || proposal.run_id || proposal.id}</span>
+        <span>{proposal.selected_targets.length || targetOptions.length} 个目标</span>
       </div>
       {proposal.summary || proposal.review_summary ? <p>{proposal.review_summary || proposal.summary}</p> : null}
       <dl className="details wiki-chat-proposal-meta">
         <div>
-          <dt>运行 ID</dt>
-          <dd>{proposal.run_id || "无"}</dd>
-        </div>
-        <div>
-          <dt>审查 ID</dt>
-          <dd>{proposal.review_id || "无"}</dd>
-        </div>
-        <div>
-          <dt>审查</dt>
-          <dd>{proposal.review_status ? formatTaskStatus(proposal.review_status) : "未知"}</dd>
+          <dt>处理状态</dt>
+          <dd>{proposal.review_status ? formatTaskStatus(proposal.review_status) : formatChatWikiProposalState(proposal.state)}</dd>
         </div>
         <div>
           <dt>来源</dt>
-          <dd>{proposal.source_hash ? proposal.source_hash.slice(0, 12) : proposal.source_id || "未知"}</dd>
+          <dd>{proposal.source_hash || proposal.source_id ? "已识别本次来源" : "未知"}</dd>
         </div>
       </dl>
-      <div className="wiki-chat-proposal-targets" aria-label="资料库确认项目标">
+      <div className="wiki-chat-proposal-targets" aria-label="资料整理确认目标">
         <strong>目标页面</strong>
         {targetOptions.length > 0 ? (
           targetOptions.map((targetPath) => (
@@ -117,7 +109,7 @@ export function ChatWikiProposalCard({
           type="button"
           onClick={() => onApply(message.id, proposal.id)}
           disabled={!canApply}
-          title={canApply ? "将已选择目标写入本机知识页" : "需要先确认，并选择至少一个带必要校验信息的目标"}
+          title={canApply ? "将已选择目标写入本机资料页" : "需要先确认，并选择至少一个带必要校验信息的目标"}
         >
           {proposal.state === "applying" ? <Loader2 className="spin" size={16} /> : <FileDown size={16} />}
           确认写入
@@ -125,4 +117,14 @@ export function ChatWikiProposalCard({
       </div>
     </article>
   );
+}
+
+function formatChatWikiProposalType(type: string): string {
+  const labels: Record<string, string> = {
+    ingest: "资料整理",
+    query_archive: "查询整理",
+    synthesize: "综合整理",
+    lint: "检查修复",
+  };
+  return labels[type] || "资料整理";
 }

@@ -101,7 +101,6 @@ export function formatWikiProposalEventDetail(
   rawData: string,
 ): string {
   const summary = pickPayloadString(payload, ["summary", "message", "description"]);
-  const proposalId = pickPayloadString(payload, ["proposal_id", "id", "run_id"]);
   const title = pickPayloadString(payload, ["title", "page_title"]);
   const target = pickPayloadString(payload, ["target_path", "relative_path", "path"]);
   const operation = pickPayloadString(payload, ["operation", "action"]);
@@ -113,18 +112,17 @@ export function formatWikiProposalEventDetail(
     target ? `目标 ${target}` : null,
     operation ? `操作 ${operation}` : null,
     status ? `状态 ${formatWorkflowStatus(status)}` : null,
-    proposalId ? `ID ${proposalId}` : null,
     pagePlanCount !== null ? `${pagePlanCount} 个页面计划` : null,
   ].filter(Boolean);
 
   if (parts.length > 0) {
-    return truncateEventDetail(`${parts.join("；")}；需确认后才会写入本机知识页。`);
+    return truncateEventDetail(`${parts.join("；")}；需确认后才会写入本机资料页。`);
   }
 
   const payloadPreview = formatStreamPayloadPreview(payload, rawData);
   return payloadPreview
-    ? `收到 ${eventName}：${payloadPreview}；需确认后才会写入本机知识页。`
-    : `收到 ${eventName} 事件；需确认后才会写入本机知识页。`;
+    ? `收到 ${eventName}：${payloadPreview}；需确认后才会写入本机资料页。`
+    : `收到 ${eventName} 事件；需确认后才会写入本机资料页。`;
 }
 
 function pickPayloadStringArray(payload: Record<string, unknown> | null, key: string): string[] {
@@ -161,7 +159,7 @@ export function normalizeChatWikiProposal(payload: Record<string, unknown> | nul
   const recommendedTargets = pickPayloadStringArray(payload, "recommended_targets");
   const selectedTargets = recommendedTargets.length > 0 ? recommendedTargets : targetPaths;
   const proposalType = pickPayloadString(payload, ["proposal_type"]) || "ingest";
-  const title = pickPayloadString(payload, ["title", "page_title"]) || "知识整理确认项";
+  const title = pickPayloadString(payload, ["title", "page_title"]) || "资料整理确认";
   const id = reviewId || runId || sourceId || sourceHash || crypto.randomUUID();
 
   return {

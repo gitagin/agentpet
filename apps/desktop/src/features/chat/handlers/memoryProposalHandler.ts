@@ -8,7 +8,7 @@ export function memoryProposalHandler({ messageId, payload, context }: StreamHan
   }
   appendChatEvent(messageId, {
     label: "记忆确认项",
-    detail: `已创建待确认长期记忆：${proposalId}`,
+    detail: "已整理一条待确认长期记忆。",
     tone: "success",
   });
   if (!petChat.replyStartedRef.current) {

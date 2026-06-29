@@ -14,7 +14,7 @@ export function describeError(error: unknown, prefix?: string): string {
   }
   if (error instanceof Error) {
     if (error.name === "TypeError" && /fetch|network/i.test(error.message)) {
-      return `${lead}无法连接后端。请确认桌面端已启动托管后端，或检查后端地址和端口 8765。`;
+      return `${lead}无法连接本机服务。请确认桌面端已启动托管服务，或检查服务地址和端口 8765。`;
     }
     return `${lead}${error.message}`;
   }
@@ -26,14 +26,14 @@ export function isSidecarStartingError(error: unknown): boolean {
 }
 
 export function businessAuthMismatchMessage(): string {
-  return "后端健康检查通过，但业务接口鉴权失败。可能已有 8765 后端和当前桌面端会话令牌不一致，请关闭旧后端后重新运行 npm run electron:dev。";
+  return "本机服务健康检查通过，但业务接口鉴权失败。可能已有 8765 服务和当前桌面端会话令牌不一致，请关闭旧服务后重新运行 npm run electron:dev。";
 }
 
 export function describeBusinessAuthFailure(error: unknown): BusinessAuthFailure {
   if (error instanceof ApiError && error.status === 401) {
     return {
       status: "unauthorized",
-      message: "后端已启动，但业务接口鉴权失败。可能已有 8765 后端和当前桌面端会话令牌不一致。",
+      message: "本机服务已启动，但业务接口鉴权失败。可能已有 8765 服务和当前桌面端会话令牌不一致。",
     };
   }
   return {

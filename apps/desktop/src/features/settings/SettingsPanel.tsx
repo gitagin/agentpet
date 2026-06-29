@@ -118,7 +118,7 @@ export function SettingsPanel({
       <section className="settings-intro" aria-label="设置引导">
         <div>
           <p className="eyebrow">先能对话，再决定保存</p>
-          <h3>连接全局模型后就能开始；需要精调时再为 5 个核心 Agent 单独覆盖模型。</h3>
+          <h3>连接全局模型后就能开始；需要精调时再为 5 个职责模型单独覆盖。</h3>
         </div>
         <ol>
           <li>配置模型</li>
@@ -151,8 +151,8 @@ export function SettingsPanel({
       />
       <details className="agent-model-section settings-card advanced-agent-model-settings">
         <summary>
-          <strong>高级 Agent 模型路由</strong>
-          <span>可选覆盖 5 个核心 Agent；大多数情况下保持全局模型即可。</span>
+          <strong>高级职责模型路由</strong>
+          <span>可选覆盖 5 个职责模型；大多数情况下保持全局模型即可。</span>
         </summary>
         <AgentConfigForm
           drafts={agentModelDrafts}

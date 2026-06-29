@@ -170,6 +170,18 @@
   font-size: 12px;
 }
 
+.guided-trial-actions .chat-demo-trial {
+  border-color: rgba(173, 72, 106, 0.28);
+  background: rgba(255, 242, 247, 0.9);
+  color: #7a2d54;
+  font-weight: 800;
+}
+
+.guided-trial-actions .chat-demo-trial:hover:not(:disabled) {
+  border-color: rgba(173, 72, 106, 0.42);
+  background: rgba(255, 232, 241, 0.94);
+}
+
 .memory-review-trial-actions {
   margin: -2px 0 0;
 }
@@ -930,4 +942,3 @@
   font-weight: 700;
   text-transform: uppercase;
 }
-

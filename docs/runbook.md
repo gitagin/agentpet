@@ -182,6 +182,52 @@ Expected Electron behavior:
 - Sidecar status and user-facing errors are shown in Chinese.
 - Closing the control console hides it; exiting from the pet menu or tray exits the app and stops the managed sidecar.
 
+## 30-Second Companion Demo
+
+Use this path when recording or reviewing the product loop. The setup isolates demo state from real notes and local app data; the recording itself should only show the pet/chat surface, one message, the assistant reply, the memory receipt, and either `查看记忆` or `撤回`.
+
+Prepare isolated demo state from the repository root:
+
+```powershell
+New-Item -ItemType Directory -Force .\.tmp\PetMemoryDemoVault | Out-Null
+$demoRoot = (Resolve-Path .\.tmp).Path
+$env:AGENT_PET_SESSION_TOKEN = "dev-token"
+$env:AGENT_PET_DATA_DIR = Join-Path $demoRoot "agent-pet-demo-data"
+$env:AGENT_PET_SQLITE_PATH = Join-Path $demoRoot "agent-pet-demo.sqlite3"
+```
+
+Start Electron from the same shell so the managed sidecar inherits those variables, and keep it running:
+
+```powershell
+Push-Location .\apps\desktop
+npm run electron:dev
+Pop-Location
+```
+
+If the demo database has not bound a test knowledge folder yet, open a second PowerShell from the repository root and initialize only the disposable folder:
+
+```powershell
+$headers = @{ Authorization = "Bearer dev-token" }
+$demoVault = (Resolve-Path .\.tmp\PetMemoryDemoVault).Path
+Invoke-RestMethod http://127.0.0.1:8765/api/vaults/init `
+  -Method Post `
+  -Headers $headers `
+  -ContentType "application/json" `
+  -Body (@{ path = $demoVault; create_if_missing = $true; confirmed = $true } | ConvertTo-Json)
+```
+
+Do not use a real personal Vault for this demo. If `127.0.0.1:8765` is already occupied, run `.\scripts\check-trial-processes.ps1` and decide manually whether the existing backend is yours before closing anything.
+
+Record the 30-second story:
+
+1. Open the pet chat surface.
+2. Click `30 秒试走：记住演示内容`.
+3. Click `发送`.
+4. Wait for the assistant reply and the `这次我做了什么` receipt.
+5. Click `查看记忆` to inspect the saved memory, or click `撤回` to prove the write is reversible.
+
+The trial is only valid if the receipt comes from the real chat response and persisted action data. Do not replace it with screenshots, seeded DOM, or a mocked demo layer.
+
 ## Manual v0.1 Chain
 
 Use this chain when validating the developer-machine flow by hand:

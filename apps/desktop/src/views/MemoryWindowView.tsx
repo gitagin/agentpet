@@ -105,7 +105,7 @@ const reviewCoachCards: ReviewCoachCardConfig[] = [
   {
     kind: "today",
     title: "今日复盘",
-    description: "把今天的日记、任务、记忆和知识整理更新合成本地复盘。",
+    description: "把今天的日记、任务、记忆和资料整理更新合成本地复盘。",
     windowDays: 1,
     target: 1,
     buttonLabel: "生成今日复盘",
@@ -121,7 +121,7 @@ const reviewCoachCards: ReviewCoachCardConfig[] = [
   {
     kind: "monthly",
     title: "月度复盘",
-    description: "生成结合长期记忆、任务状态和知识整理输出的月度报告。",
+    description: "生成结合长期记忆、任务状态和资料整理输出的月度报告。",
     windowDays: 30,
     target: "monthly",
     buttonLabel: "生成月度复盘",
@@ -404,7 +404,7 @@ function LocalAssetDashboard({
   const items = [
     { label: "聊天日记天数", value: String(stats?.chat_diary_days ?? 0), meta: `${stats?.chat_diary_entries ?? 0} 条记录`, icon: NotebookTabs },
     { label: "长期记忆", value: String(stats?.long_term_memory_count ?? 0), meta: "使用中 / 待确认", icon: Database },
-    { label: "知识页", value: String(stats?.wiki_page_count ?? 0), meta: "不含核心维护页", icon: BookOpen },
+    { label: "资料页", value: String(stats?.wiki_page_count ?? 0), meta: "不含核心维护页", icon: BookOpen },
     { label: "任务完成", value: taskValue, meta: "完成 / 总数", icon: CheckCircle2 },
     { label: "最近整理", value: latest, meta: "本机记录", icon: History },
     { label: "可撤回操作", value: String(stats?.reversible_operation_count ?? 0), meta: "尚未撤回", icon: RotateCcw },
@@ -475,7 +475,7 @@ function RetrospectiveWindowPanel({
         <span>日记 {window.summary.diary_objects || 0}</span>
         <span>长期记忆 {window.summary.long_term_memories || 0}</span>
         <span>任务 {window.tasks.total}</span>
-      <span>知识整理 {window.summary.wiki_updates || 0}</span>
+      <span>资料整理 {window.summary.wiki_updates || 0}</span>
       </div>
       {window.has_data ? (
         <>
@@ -498,7 +498,7 @@ function RetrospectiveWindowPanel({
             </p>
           </div>
           <div className="retrospective-section">
-            <strong>新增记忆和知识整理</strong>
+            <strong>新增记忆和资料整理</strong>
             {window.long_term_memories.slice(0, 3).map((item) => (
               <p key={item.id}>
                 {item.summary} <small>{item.category} / {item.status}</small>
@@ -509,7 +509,7 @@ function RetrospectiveWindowPanel({
                 {item.title} <small>{item.path}</small>
               </p>
             ))}
-            {!window.long_term_memories.length && !window.wiki_updates.length ? <p>暂无新增长期记忆或知识整理。</p> : null}
+            {!window.long_term_memories.length && !window.wiki_updates.length ? <p>暂无新增长期记忆或资料整理。</p> : null}
           </div>
           <div className="retrospective-section">
             <strong>重复偏好/关注点</strong>
@@ -525,7 +525,7 @@ function RetrospectiveWindowPanel({
           </div>
         </>
       ) : (
-        <EmptyState text="这个时间窗口还没有可回顾的本机积累。先完成一次聊天、任务或知识整理后再回来查看。" />
+        <EmptyState text="这个时间窗口还没有可回顾的本机积累。先完成一次聊天、任务或资料整理后再回来查看。" />
       )}
       <button type="button" className="secondary" onClick={() => onGenerateReport(window.days)} disabled={busy}>
         {busy ? <Loader2 className="spin" size={16} /> : <FileText size={16} />}
@@ -541,7 +541,7 @@ function ReviewCoverageList({ window }: { window: RetrospectiveWindow | null }) 
     { label: "聊天日记", value: coverage.chatDiary },
     { label: "任务", value: coverage.tasks },
     { label: "长期记忆", value: coverage.longTermMemory },
-    { label: "知识整理", value: coverage.wiki },
+    { label: "资料整理", value: coverage.wiki },
   ];
   return (
     <dl className="review-coverage-list" aria-label="来源覆盖">
@@ -616,7 +616,7 @@ function ReviewCoachCard({
       <ReviewCoverageList window={window} />
       {window?.has_data ? (
         <p className="field-note">
-          使用 {window.summary.diary_objects || 0} 条日记、{window.tasks.total} 个任务、{window.summary.long_term_memories || 0} 条记忆事实和 {window.summary.wiki_updates || 0} 次知识整理。
+          使用 {window.summary.diary_objects || 0} 条日记、{window.tasks.total} 个任务、{window.summary.long_term_memories || 0} 条记忆事实和 {window.summary.wiki_updates || 0} 次资料整理。
         </p>
       ) : (
         <p className="field-note">这个复盘窗口还没有本地来源数据。</p>
@@ -1635,7 +1635,7 @@ export default function MemoryWindowView({
                 onGenerateReport={(days) => void generateReport(days)}
               />
             ) : (
-              <EmptyState text="还没有复盘数据。请先完成一次聊天、任务或知识整理。" />
+              <EmptyState text="还没有复盘数据。请先完成一次聊天、任务或资料整理。" />
             )}
           </section>
 
@@ -1861,7 +1861,7 @@ export default function MemoryWindowView({
         {filteredEntries.length > 0 ? (
           <div className="memory-trust-workspace" aria-label="AI 记住了什么">
             <div className="section-heading compact">
-              <strong>AI 记住了什么</strong>
+              <strong>我记住了什么</strong>
               <span>按写入类型、跳过原因和可撤回状态归类；敏感跳过项只显示安全摘要。</span>
             </div>
             <div className="memory-trust-group-grid">

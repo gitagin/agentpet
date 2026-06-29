@@ -33,6 +33,22 @@ export type Live2DStageRuntimeDirective = {
   warnings: string[];
 };
 
+export type Live2DCompanionCueState =
+  | "idle"
+  | "thinking"
+  | "speaking"
+  | "remembered"
+  | "confirming"
+  | "tasking"
+  | "error";
+
+export type Live2DCompanionCue = {
+  state: Live2DCompanionCueState;
+  label: string;
+  detail: string;
+  ariaLabel: string;
+};
+
 const live2DStageActionKeys: Record<Live2DStageState, string> = {
   disconnected: "system_offline",
   idle: "idle",
@@ -44,6 +60,17 @@ const live2DStageActionKeys: Record<Live2DStageState, string> = {
   tasking: "task_create",
   diagnosed: "system_diagnosed",
 };
+
+const rememberedLive2DActionKeys = new Set([
+  "memory_found",
+  "memory_not_found",
+  "memory_save_diary",
+  "wiki_organize",
+  "wiki_archive",
+  "continuity_remember",
+  "system_diagnosed",
+  "celebrate_small",
+]);
 
 type Live2DRenderLifecycleStatus = "loading" | "mounted" | "preview" | "failed";
 
@@ -74,6 +101,70 @@ function getLive2DRenderLifecycleText(status: Live2DRenderLifecycleStatus): stri
     failed: "模型渲染不可用",
   };
   return labels[status];
+}
+
+export function getLive2DCompanionCue({
+  stage,
+  actionKey,
+  speaking,
+  renderStatus,
+}: {
+  stage: Live2DStageView;
+  actionKey: string;
+  speaking: boolean;
+  renderStatus: Live2DRenderLifecycleStatus;
+}): Live2DCompanionCue {
+  const normalizedActionKey = actionKey.trim();
+  const createCue = (state: Live2DCompanionCueState, label: string, detail: string): Live2DCompanionCue => ({
+    state,
+    label,
+    detail,
+    ariaLabel: `${label}：${detail}`,
+  });
+
+  if (stage.state === "disconnected" || normalizedActionKey === "system_error") {
+    return createCue(
+      "error",
+      "连接待恢复",
+      stage.state === "disconnected" ? "本地助手还没连上。" : "这次没处理好，可以重试。",
+    );
+  }
+
+  if (stage.state === "confirming" || normalizedActionKey === "memory_confirm_needed") {
+    return createCue("confirming", "等你确认", stage.hint || "需要你点头才会记下。");
+  }
+
+  if (stage.state === "tasking" || normalizedActionKey === "task_create") {
+    return createCue("tasking", "任务已记下", stage.hint || "可以在提醒和待办里查看。");
+  }
+
+  if (rememberedLive2DActionKeys.has(normalizedActionKey) || stage.state === "memory" || stage.state === "presence" || stage.state === "reflective" || stage.state === "diagnosed") {
+    if (normalizedActionKey === "memory_not_found") {
+      return createCue("remembered", "没找到旧线索", "不会装作记得，也不会擅自写入。");
+    }
+    if (stage.state === "diagnosed") {
+      return createCue("remembered", "状态已更新", "最近整理有记录可查。");
+    }
+    return createCue("remembered", "已记住线索", stage.hint || "有来源时会给你看。");
+  }
+
+  if (stage.state === "thinking") {
+    return createCue("thinking", "正在想", stage.hint || "可以随时打断。");
+  }
+
+  if (speaking || normalizedActionKey === "tts_speaking" || normalizedActionKey === "chat_talk") {
+    return createCue("speaking", "正在说", "回复时会跟着动。");
+  }
+
+  if (renderStatus === "loading") {
+    return createCue("thinking", "正在醒来", "等我一下，形象马上出来。");
+  }
+
+  if (renderStatus === "preview" || renderStatus === "failed") {
+    return createCue("idle", "静态陪伴中", "聊天和记忆照常可用。");
+  }
+
+  return createCue("idle", "我在", stage.hint || "继续聊、记一条或建提醒。");
 }
 
 function getInitialLive2DRenderStatus(
@@ -639,6 +730,12 @@ export function Live2DStage({
     resourceCountText,
     layoutWarning,
   });
+  const companionCue = getLive2DCompanionCue({
+    stage,
+    actionKey: runtimeCommand.actionKey,
+    speaking,
+    renderStatus: renderLifecycle.status,
+  });
   const isPointerOnPetModel = (clientX: number, clientY: number) => {
     if (renderLifecycle.status !== "mounted") {
       return true;
@@ -676,15 +773,16 @@ export function Live2DStage({
   } : null;
 
   if (variant === "pet") {
-    const shouldRenderPetFallbackComposition = renderLifecycle.status !== "mounted" || Boolean(layoutWarning);
+    const shouldRenderPetFallbackComposition = renderLifecycle.status !== "mounted";
 
     return (
       <section
-        className={`panel live2d-panel live2d-panel-pet live2d-${stage.state}${speaking ? " live2d-speaking" : ""} live2d-runtime-${runtime.status} live2d-render-${renderLifecycle.status} live2d-render-mode-${renderLifecycle.renderMode || "unknown"}`}
+        className={`panel live2d-panel live2d-panel-pet live2d-${stage.state} live2d-cue-${companionCue.state}${speaking ? " live2d-speaking" : ""} live2d-runtime-${runtime.status} live2d-render-${renderLifecycle.status} live2d-render-mode-${renderLifecycle.renderMode || "unknown"}`}
         aria-label="桌宠模型"
         data-live2d-speaking={speaking ? "true" : "false"}
         data-live2d-action-key={runtimeCommand.actionKey}
         data-live2d-action-trigger={actionTriggerKey || ""}
+        data-live2d-cue={companionCue.state}
       >
         <div
           className="live2d-pet-stage"
@@ -695,6 +793,7 @@ export function Live2DStage({
           data-live2d-speaking={speaking ? "true" : "false"}
           data-live2d-action-key={runtimeCommand.actionKey}
           data-live2d-action-trigger={actionTriggerKey || ""}
+          data-live2d-cue={companionCue.state}
         >
           <div className="live2d-runtime-host" aria-label="桌宠模型运行时画布区域">
             <canvas
@@ -739,21 +838,20 @@ export function Live2DStage({
                 </div>
               )}
 
-              {renderLifecycle.status !== "mounted" ? (
-                <div className="live2d-runtime-placeholder">
-                  <strong>{lifecycleText}</strong>
-                  <span>{renderLifecycle.message}</span>
-                </div>
-              ) : null}
-
-              {layoutWarning ? (
-                <div className="live2d-layout-warning" role="status" aria-live="polite">
-                  <strong>模型布局提示</strong>
-                  <span>{layoutWarning}</span>
-                </div>
-              ) : null}
             </div>
           ) : null}
+          <div
+            className="live2d-state-cue"
+            role="status"
+            aria-live="polite"
+            aria-label={companionCue.ariaLabel}
+          >
+            <span className="live2d-state-pulse" aria-hidden="true" />
+            <span className="live2d-state-copy">
+              <strong>{companionCue.label}</strong>
+              <small>{companionCue.detail}</small>
+            </span>
+          </div>
           {petInteractions ? (
             <>
               <div
@@ -776,11 +874,12 @@ export function Live2DStage({
   if (variant === "stage") {
     return (
       <section
-        className={`panel live2d-panel live2d-panel-stage live2d-${stage.state}${speaking ? " live2d-speaking" : ""} live2d-runtime-${runtime.status} live2d-render-${renderLifecycle.status} live2d-render-mode-${renderLifecycle.renderMode || "unknown"}`}
+        className={`panel live2d-panel live2d-panel-stage live2d-${stage.state} live2d-cue-${companionCue.state}${speaking ? " live2d-speaking" : ""} live2d-runtime-${runtime.status} live2d-render-${renderLifecycle.status} live2d-render-mode-${renderLifecycle.renderMode || "unknown"}`}
         aria-label="陪伴模型"
         data-live2d-speaking={speaking ? "true" : "false"}
         data-live2d-action-key={runtimeCommand.actionKey}
         data-live2d-action-trigger={actionTriggerKey || ""}
+        data-live2d-cue={companionCue.state}
       >
         <div
           className="live2d-stage"
@@ -791,6 +890,7 @@ export function Live2DStage({
           data-live2d-speaking={speaking ? "true" : "false"}
           data-live2d-action-key={runtimeCommand.actionKey}
           data-live2d-action-trigger={actionTriggerKey || ""}
+          data-live2d-cue={companionCue.state}
         >
           <div className="live2d-runtime-host" aria-label="桌宠模型运行时画布区域">
             <canvas
@@ -800,12 +900,6 @@ export function Live2DStage({
               width={560}
               height={720}
             />
-            {renderLifecycle.status !== "mounted" ? (
-              <div className="live2d-runtime-placeholder">
-                <strong>{lifecycleText}</strong>
-                <span>{renderLifecycle.message}</span>
-              </div>
-            ) : null}
           </div>
           <div className="live2d-scanline" />
           {asset.hasIcon ? (
@@ -839,15 +933,21 @@ export function Live2DStage({
           )}
           <div className="live2d-status-card">
             <strong>{stage.mood}</strong>
-            <span>{stage.hint} · {lifecycleText}</span>
+            <span>{companionCue.detail}</span>
+          </div>
+          <div
+            className="live2d-state-cue"
+            role="status"
+            aria-live="polite"
+            aria-label={companionCue.ariaLabel}
+          >
+            <span className="live2d-state-pulse" aria-hidden="true" />
+            <span className="live2d-state-copy">
+              <strong>{companionCue.label}</strong>
+              <small>{companionCue.detail}</small>
+            </span>
           </div>
         </div>
-        {layoutWarning ? (
-          <div className="live2d-layout-warning" role="status" aria-live="polite">
-            <strong>模型布局提示</strong>
-            <span>{layoutWarning}</span>
-          </div>
-        ) : null}
       </section>
     );
   }

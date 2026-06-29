@@ -528,7 +528,7 @@ describe("App", () => {
     expect(companionEntry.getByRole("button", { name: /陪我聊聊/ })).toHaveAttribute("data-stage-route", "chat");
     expect(companionEntry.getByRole("button", { name: /看看记忆/ })).toHaveAttribute("data-stage-route", "memory");
     expect(companionEntry.getByRole("button", { name: /设置边界/ })).toHaveAttribute("data-stage-route", "settings");
-    expect(companionEntry.getByText("更多能力").closest("details")).not.toHaveAttribute("open");
+    expect(companionEntry.getByText("更多和高级").closest("details")).not.toHaveAttribute("open");
     expect(screen.queryByText("高级管理与诊断")).not.toBeInTheDocument();
   });
 
@@ -744,16 +744,16 @@ describe("App", () => {
     expect(companionEntry.getByRole("button", { name: /陪我聊聊/ })).toHaveAttribute("data-stage-route", "chat");
     expect(companionEntry.getByRole("button", { name: /看看记忆/ })).toHaveAttribute("data-stage-route", "memory");
     expect(companionEntry.getByRole("button", { name: /设置边界/ })).toHaveAttribute("data-stage-route", "settings");
-    fireEvent.click(companionEntry.getByText("更多能力"));
+    fireEvent.click(companionEntry.getByText("更多和高级"));
     expect(companionEntry.getByRole("button", { name: /提醒和待办/ })).toHaveAttribute("data-stage-route", "agent");
-    expect(companionEntry.getByRole("button", { name: /整理资料/ })).toHaveAttribute("data-stage-route", "world");
+    expect(companionEntry.getByRole("button", { name: /资料工具/ })).toHaveAttribute("data-stage-route", "world");
   });
 
   it("renders core product routes as dedicated workspaces instead of chat-only surfaces", async () => {
     const routes = [
-      { hash: "#agent", query: () => screen.findByLabelText("任务工作区") },
+      { hash: "#agent", query: () => screen.findByLabelText("提醒和待办区") },
       { hash: "#memory", query: () => screen.findByRole("heading", { name: "我的记忆" }) },
-      { hash: "#world", query: () => screen.findByRole("heading", { name: "知识整理" }) },
+      { hash: "#world", query: () => screen.findByRole("heading", { name: "资料工具" }) },
     ];
 
     for (const route of routes) {

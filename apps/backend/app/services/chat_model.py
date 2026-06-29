@@ -4,7 +4,9 @@ import asyncio
 import re
 from collections.abc import AsyncIterator, Callable, Sequence
 from dataclasses import dataclass
+from dataclasses import replace as dataclass_replace
 from typing import Any, Mapping, Protocol, runtime_checkable
+from urllib.parse import urlparse
 
 from app.models.enums import AgentId
 
@@ -114,6 +116,7 @@ class LangChainGraphChatClient:
     timeout_seconds: float = 30.0
     model_factory: ModelFactory | None = None
     agent_factory: AgentFactory | None = None
+    auth_scheme: str | None = None
 
     async def complete(self, *, user_message: str, system_prompt: str | None = None) -> str:
         result = await self.complete_with_tools(
@@ -143,7 +146,16 @@ class LangChainGraphChatClient:
         except TimeoutError as exc:
             raise classify_chat_model_exception(exc) from exc
         except Exception as exc:
-            raise classify_chat_model_exception(exc) from exc
+            error = classify_chat_model_exception(exc)
+            if self._should_retry_with_bearer_auth(error):
+                async for chunk in self._retry_with_bearer_auth().stream_complete(
+                    user_message=user_message,
+                    system_prompt=system_prompt,
+                ):
+                    saw_text = True
+                    yield chunk
+                return
+            raise error from exc
 
         if not saw_text:
             raise ChatModelError(
@@ -175,9 +187,26 @@ class LangChainGraphChatClient:
         except TimeoutError as exc:
             raise classify_chat_model_exception(exc) from exc
         except Exception as exc:
-            raise classify_chat_model_exception(exc) from exc
+            error = classify_chat_model_exception(exc)
+            if self._should_retry_with_bearer_auth(error):
+                return await self._retry_with_bearer_auth().complete_with_tools(
+                    user_message=user_message,
+                    system_prompt=system_prompt,
+                    tools=tools,
+                )
+            raise error from exc
 
         return ChatModelRunResult(text=_extract_text(result), raw_result=result)
+
+    def _should_retry_with_bearer_auth(self, error: ChatModelError) -> bool:
+        return (
+            error.code == "authentication_failed"
+            and self.auth_scheme is None
+            and _uses_api_key_header(self.base_url)
+        )
+
+    def _retry_with_bearer_auth(self) -> "LangChainGraphChatClient":
+        return dataclass_replace(self, auth_scheme="bearer")
 
     async def _invoke_agent(
         self,
@@ -245,12 +274,26 @@ def _default_model_factory(client: LangChainGraphChatClient, *, streaming: bool 
     from langchain_openai import ChatOpenAI
 
     return ChatOpenAI(
-        api_key=client.api_key,
+        **_openai_auth_kwargs(api_key=client.api_key, base_url=client.base_url, auth_scheme=client.auth_scheme),
         base_url=client.base_url.rstrip("/"),
         model=client.model,
         timeout=client.timeout_seconds,
         streaming=streaming,
     )
+
+
+def _openai_auth_kwargs(*, api_key: str, base_url: str, auth_scheme: str | None = None) -> dict[str, Any]:
+    if auth_scheme == "api-key" or (auth_scheme is None and _uses_api_key_header(base_url)):
+        return {
+            "api_key": "",
+            "default_headers": {"api-key": api_key},
+        }
+    return {"api_key": api_key}
+
+
+def _uses_api_key_header(base_url: str) -> bool:
+    hostname = (urlparse(base_url.strip()).hostname or "").lower()
+    return hostname == "xiaomimimo.com" or hostname.endswith(".xiaomimimo.com")
 
 
 def _default_agent_factory(model: Any, system_prompt: str | None, tools: Sequence[Any]) -> Any:

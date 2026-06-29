@@ -46,11 +46,11 @@ export const agentOutcomeDefinitions: Record<AgentOutcomeKey, { label: string; d
   },
   retrieval: {
     label: "统一检索",
-    description: "按范围检索个人记忆、日记对象、每日聊天和知识库。",
+    description: "按范围检索个人记忆、日记对象、每日聊天和资料库。",
   },
   action: {
     label: "本地动作",
-    description: "统一规划任务、Wiki 和记忆提案，执行仍走确定性工具和风险策略。",
+    description: "统一规划提醒、资料整理和记忆候选，执行仍走确定性工具和风险策略。",
   },
   reflection: {
     label: "后台反思",
@@ -62,7 +62,7 @@ export const agentOutcomeDefinitions: Record<AgentOutcomeKey, { label: string; d
   },
   knowledge_page: {
     label: "知识",
-    description: "把可复用来源材料整理为知识页、摘要或报告。",
+    description: "把可复用来源材料整理为资料页、摘要或报告。",
   },
   memory_review: {
     label: "记忆",
@@ -70,7 +70,7 @@ export const agentOutcomeDefinitions: Record<AgentOutcomeKey, { label: string; d
   },
   cited_answer: {
     label: "带引用回答",
-    description: "检索本地记忆、聊天日记和知识整理上下文，为回答提供来源。",
+    description: "检索本地记忆、聊天日记和资料整理上下文，为回答提供来源。",
   },
   relationship_continuity: {
     label: "陪伴状态",
@@ -81,42 +81,42 @@ export const agentOutcomeDefinitions: Record<AgentOutcomeKey, { label: string; d
 export const agentModelDefinitions: AgentModelDefinition[] = [
   {
     id: "chat_agent",
-    label: "Chat Agent",
+    label: "回复模型",
     description: "唯一的用户可见回复出口，负责把上下文、动作结果和陪伴状态合成为自然语言。",
     outcome: "chat",
     outcomeLabel: "聊天回复",
   },
   {
     id: "semantic_analysis_agent",
-    label: "Router Agent",
+    label: "理解模型",
     description: "轻量分类器，判断意图、检索范围、查询词和动作类型；强规则命中时可跳过模型调用。",
     outcome: "classification",
     outcomeLabel: "意图分类",
   },
   {
     id: "retrieval_agent",
-    label: "Retrieval Agent",
-    description: "统一检索个人记忆、日记对象、每日聊天和知识库，必要时整理成引用上下文。",
+    label: "查找模型",
+    description: "统一检索个人记忆、日记对象、每日聊天和资料库，必要时整理成引用上下文。",
     outcome: "retrieval",
     outcomeLabel: "统一检索",
   },
   {
     id: "action_agent",
-    label: "Action Agent",
-    description: "统一规划任务、Wiki 和记忆提案；真正写入和提醒由本地工具按风险策略执行。",
+    label: "行动模型",
+    description: "统一规划提醒、资料整理和记忆候选；真正写入和提醒由本地工具按风险策略执行。",
     outcome: "action",
     outcomeLabel: "本地动作",
   },
   {
     id: "reflection_agent",
-    label: "Reflection Agent",
+    label: "整理模型",
     description: "回复后在后台整理日记对象、长期记忆候选、连续性更新和可复用摘要。",
     outcome: "reflection",
     outcomeLabel: "后台反思",
   },
 ];
 
-export const agentModelCountLabel = "Agent 路由";
+export const agentModelCountLabel = "职责模型";
 
 export function agentOutcomeLabel(agentId: AgentModelId | string): string {
   return agentModelDefinitions.find((agent) => agent.id === agentId)?.outcomeLabel || "路由";

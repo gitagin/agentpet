@@ -32,11 +32,19 @@ export type AgentOutcomeActivity = {
   detail: string;
 };
 
+const memoryProposalTypeLabels: Record<string, string> = {
+  preference: "偏好",
+  fact: "事实",
+  event: "事件",
+  goal: "目标",
+  rule: "规则",
+};
+
 export const memoryTrustGroupDefinitions: Array<Omit<MemoryTrustGroup, "entries">> = [
   { key: "long_term", label: "长期记忆", description: "偏好、背景、连续性和需要确认的长期记忆。" },
   { key: "chat_diary", label: "聊天日记", description: "普通对话归档到本机日记。" },
   { key: "structured_diary", label: "结构化日记", description: "从对话中提取的主题、事件和可检索日记对象。" },
-  { key: "wiki_summary", label: "知识页摘要", description: "从有价值回答沉淀出的知识页、摘要或待确认计划。" },
+  { key: "wiki_summary", label: "资料页摘要", description: "从有价值回答沉淀出的资料页、摘要或待确认计划。" },
   { key: "tasks", label: "任务/提醒", description: "从对话创建或更新的本地任务和提醒。" },
   { key: "skipped", label: "已跳过", description: "敏感、低价值、重复或没有可保存内容的安全记录。" },
 ];
@@ -141,7 +149,7 @@ export function formatAgentActionType(actionType: string): string {
     return "已跳过长期记忆";
   }
   if (actionType === "wiki.answer_summary.skip") {
-    return "已跳过知识页摘要";
+    return "已跳过资料页摘要";
   }
   const labels: Record<string, string> = {
     "agent_action.revert": "撤回自动整理",
@@ -160,14 +168,14 @@ export function formatAgentActionType(actionType: string): string {
     "sqlite.schema_change": "本机数据结构变更",
     "vault.bind": "绑定本机文件夹",
     "vault.switch": "切换本机文件夹",
-    "wiki.ingest.apply": "资料库页面应用",
-    "wiki.lint.repair": "资料库检查修复",
-    "wiki.lint.report": "已生成资料库检查报告",
-    "wiki.answer_summary.write": "已自动总结到资料库",
-    "wiki.page.write": "已整理资料库页面",
-    "wiki.page.replace_section": "资料库章节替换",
-    "wiki.query_archive.write": "已归档资料库查询",
-    "wiki.synthesize.write": "已综合整理资料库",
+    "wiki.ingest.apply": "资料页应用",
+    "wiki.lint.repair": "资料页检查修复",
+    "wiki.lint.report": "已生成资料页检查报告",
+    "wiki.answer_summary.write": "已自动总结到资料页",
+    "wiki.page.write": "已整理资料页",
+    "wiki.page.replace_section": "资料页章节替换",
+    "wiki.query_archive.write": "已整理资料页查询",
+    "wiki.synthesize.write": "已综合整理资料页",
   };
   return labels[actionType] || actionType.split(".").join(" / ");
 }
@@ -268,6 +276,7 @@ export function classifyAgentActionArtifact(action: AgentAction): AgentActionArt
     return "task";
   }
   if (
+    actionType === "chat.daily_archive" ||
     actionType === "diary.structured_memory" ||
     actionType.startsWith("memory.long_term") ||
     actionType.startsWith("memory.proposal") ||
@@ -294,6 +303,7 @@ export function getAgentActionOutcomeKey(action: AgentAction): AgentOutcomeKey |
     return "knowledge_page";
   }
   if (
+    actionType === "chat.daily_archive" ||
     actionType === "diary.structured_memory" ||
     actionType.startsWith("memory.long_term") ||
     actionType.startsWith("memory.proposal") ||
@@ -330,7 +340,7 @@ export function buildAgentOutcomeActivities(
       return;
     }
     const display = getAgentActionDisplayFields(action);
-    add(key, `${display.statusLabel} · ${display.actionName}`);
+    add(key, `${display.statusLabel} · ${display.actionTypeLabel}`);
   });
 
   tasks.forEach((task) => {
@@ -338,13 +348,16 @@ export function buildAgentOutcomeActivities(
   });
 
   memoryProposals.forEach((proposal) => {
-    add("memory_review", `${proposal.status === "pending" ? "待确认" : formatAgentActionStatus(proposal.status)} · ${proposal.type}`);
+    add(
+      "memory_review",
+      `${proposal.status === "pending" ? "待确认" : formatAgentActionStatus(proposal.status)} · ${memoryProposalTypeLabels[proposal.type] || "记忆"}`,
+    );
   });
 
   wikiProposals
     .filter((proposal) => proposal.state !== "rejected")
     .forEach((proposal) => {
-      add("knowledge_page", `${proposal.state === "applied" ? "已写入" : "待确认"} · ${proposal.title || proposal.proposal_type}`);
+      add("knowledge_page", `${proposal.state === "applied" ? "已写入" : "待确认"} · 资料整理`);
     });
 
   return Array.from(details.entries()).map(([key, values]) => ({
@@ -380,7 +393,7 @@ export function formatAgentActionTargetPaths(action: AgentAction): string {
   return action.target_paths.length > 0 ? action.target_paths.join(", ") : "无目标文件";
 }
 
-function isSkippedAgentAction(action: AgentAction): boolean {
+export function isSkippedAgentAction(action: AgentAction): boolean {
   const actionType = action.action_type.toLocaleLowerCase();
   return action.status === "skipped" || actionType.endsWith(".skip") || actionType.includes(".skip.");
 }
@@ -395,7 +408,7 @@ export function formatAgentActionSkippedReason(action: AgentAction): string {
   const searchable = `${reason} ${summary}`.toLocaleLowerCase();
 
   if (reason === "automation_disabled" || searchable.includes("organization are disabled") || searchable.includes("automation is disabled")) {
-    return "自动整理策略当前关闭，所以这次对话只保留聊天结果，没有写入日记、长期记忆或知识页。可在配置页的“自动整理策略”里开启低风险自动整理。";
+    return "自动整理策略当前关闭，所以这次对话只保留聊天结果，没有写入日记、长期记忆或资料页。可在配置页的“自动整理策略”里开启低风险自动整理。";
   }
   if (searchable.includes("sensitive")) {
     return "这次内容可能包含敏感信息，已按安全策略跳过写入。";
@@ -407,7 +420,7 @@ export function formatAgentActionSkippedReason(action: AgentAction): string {
     return "这次内容较短或临时性较强，没有形成值得长期保存的整理项。";
   }
   if (searchable.includes("not contain enough reusable knowledge") || searchable.includes("did not produce saveable")) {
-    return "这次回复没有提炼出适合沉淀到知识页的可复用内容。";
+    return "这次回复没有提炼出适合沉淀到资料页的可复用内容。";
   }
   if (summary) {
     return summary;

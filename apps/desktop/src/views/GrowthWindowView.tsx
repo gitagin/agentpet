@@ -50,7 +50,7 @@ function statsLine(snapshot: GrowthSnapshotResponse): string {
   return [
     `聊天日记 ${stats.chat_diary_entries}`,
     `长期记忆 ${stats.long_term_memory_count}`,
-    `Wiki ${stats.wiki_page_count}`,
+    `资料页 ${stats.wiki_page_count}`,
     `可撤回 ${stats.reversible_operation_count}`,
   ].join(" · ");
 }
@@ -98,8 +98,8 @@ export default function GrowthWindowView({ api }: GrowthWindowViewProps) {
     <FeatureWindowShell
       eyebrow="成长"
       title="成长记录"
-      description="你留下的日记、记忆、边界操作和知识整理，会变成桌宠可见的成长轨迹。"
-      activeTab="成长"
+      description="你留下的日记、记忆、边界操作和资料整理，会变成桌宠可见的成长轨迹。"
+      activeTab={null}
     >
       <div className="feature-page-stack growth-page-stack">
         <Panel title="当前变化" icon={<Sprout size={18} />} className="feature-window-panel growth-summary-panel">

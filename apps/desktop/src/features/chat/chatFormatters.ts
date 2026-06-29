@@ -4,7 +4,7 @@ const CITATION_SOURCE_SCOPE_LABELS: Record<string, string> = {
   personal_memory: "长期记忆",
   diary_objects: "结构化日记",
   daily_chat: "每日聊天日记",
-  knowledge_base: "知识整理",
+  knowledge_base: "资料整理",
   pending_memory: "待确认记忆",
   all: "全部本地资产",
 };

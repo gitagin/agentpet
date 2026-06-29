@@ -15,7 +15,9 @@ import {
   classifyAgentActionArtifact,
   type AgentOutcomeActivity,
   getAgentActionDisplayFields,
+  isSkippedAgentAction,
 } from "../../services/agentActivity";
+import { memoryTypeLabels } from "../memory/memoryConstants";
 import { formatProposalStatus } from "../memory/memoryUtils";
 import { formatTaskStatus } from "../tasks/taskReducer";
 
@@ -33,8 +35,8 @@ type ChatAgentActionSummaryProps = {
   onOpenReport?: (path?: string) => void;
 };
 
-type ArtifactKind = "task" | "memory" | "wiki" | "review";
-type ArtifactTone = "success" | "pending" | "failed" | "reverted";
+type ArtifactKind = "task" | "memory" | "wiki" | "review" | "skip";
+type ArtifactTone = "success" | "pending" | "failed" | "reverted" | "skipped";
 
 type ArtifactCard = {
   id: string;
@@ -70,22 +72,24 @@ export function ChatAgentActionSummary({
 
   const pendingCount = artifacts.filter((artifact) => artifact.tone === "pending").length;
   const failedCount = artifacts.filter((artifact) => artifact.tone === "failed").length;
+  const skippedCount = artifacts.filter((artifact) => artifact.tone === "skipped").length;
 
   return (
     <section className="message-agent-actions chat-artifacts" aria-label="聊天整理结果">
       <div className="message-agent-actions-head">
         <div>
-          <strong>整理结果</strong>
+          <strong>这次我做了什么</strong>
           <span>
-            {artifacts.length > 0 ? `${artifacts.length} 个结果` : "没有整理结果"}
-            {pendingCount > 0 ? ` / ${pendingCount} 个待确认` : ""}
-            {failedCount > 0 ? ` / ${failedCount} 个失败` : ""}
+            {artifacts.length > 0 ? `${artifacts.length} 条回执` : "没有新回执"}
+            {pendingCount > 0 ? ` / ${pendingCount} 条待确认` : ""}
+            {failedCount > 0 ? ` / ${failedCount} 条未完成` : ""}
+            {skippedCount > 0 ? ` / ${skippedCount} 条已跳过` : ""}
           </span>
         </div>
       </div>
       {artifacts.length === 0 ? (
         <p className="message-agent-action-empty-reason">
-          本轮没有创建任务、记忆、知识页或复盘报告。
+          这轮没有产生新的记忆、任务或资料整理。
         </p>
       ) : (
         <>
@@ -118,8 +122,8 @@ function AiTeamActivity({ activities }: { activities: AgentOutcomeActivity[] }) 
   return (
     <details className="ai-team-activity">
       <summary>
-        <strong>自动整理活动</strong>
-        <span>{activities.length} 个结果支持区域</span>
+        <strong>整理明细</strong>
+        <span>{activities.length} 类后台整理</span>
       </summary>
       <div className="ai-team-activity-list">
         {activities.map((activity) => (
@@ -168,7 +172,6 @@ function ArtifactResultCard({
         </div>
       </div>
       <p>{artifact.summary}</p>
-      {artifact.path ? <code>{artifact.path}</code> : null}
       <div className="chat-artifact-meta">
         {artifact.meta.map((item) => (
           <small key={item}>{item}</small>
@@ -206,14 +209,19 @@ function buildArtifactCards(
   const cards: ArtifactCard[] = [];
 
   tasks.forEach((task) => {
+    const taskFailed = task.status === "failed";
     cards.push({
       id: `task-${task.task_id}`,
       kind: "task",
-      tone: task.status === "failed" ? "failed" : "success",
-      eyebrow: "已创建任务",
+      tone: taskFailed ? "failed" : "success",
+      eyebrow: taskFailed ? "任务未创建" : "已创建任务",
       title: task.title,
-      summary: task.remind_at ? `提醒：${task.remind_at}` : "已从本轮聊天创建。",
-      meta: [formatTaskStatus(task.status), task.timezone_label || task.timezone || ""].filter(Boolean),
+      summary: taskFailed
+        ? "这条任务没有创建成功，暂时不会提醒你。"
+        : task.remind_at
+          ? `我会按这个时间提醒你：${task.remind_at}`
+          : "已从这轮聊天里记下一件待办。",
+      meta: ["低风险", formatTaskStatus(task.status), taskFailed ? "未保存" : "", task.timezone_label || task.timezone || ""].filter(Boolean),
       task,
     });
   });
@@ -223,10 +231,15 @@ function buildArtifactCards(
       id: `memory-proposal-${proposal.proposal_id}`,
       kind: "memory",
       tone: proposal.status === "failed" ? "failed" : proposal.status === "pending" ? "pending" : "success",
-      eyebrow: proposal.status === "pending" ? "记忆待确认" : "已写入记忆",
-      title: proposal.target_path || "长期记忆",
-      summary: proposal.content || proposal.preview_markdown || "有一条记忆候选正在等待复核。",
-      meta: [formatProposalStatus(proposal.status), proposal.type].filter(Boolean),
+      eyebrow: proposal.status === "pending" ? "等你确认" : proposal.status === "failed" ? "记忆未保存" : "已记住",
+      title: memoryTypeLabels[proposal.type] || "长期记忆",
+      summary:
+        proposal.status === "pending"
+          ? userSafeText(proposal.content || proposal.preview_markdown, "这条记忆需要你确认后才会保存。")
+          : proposal.status === "failed"
+            ? "这条记忆没有保存成功，暂时不会影响之后的聊天。"
+            : userSafeText(proposal.content || proposal.preview_markdown, "已写入长期记忆，之后聊天会参考。"),
+      meta: [formatProposalStatus(proposal.status), proposal.status === "pending" ? "未写入" : "可查看"].filter(Boolean),
       path: proposal.target_path,
     });
   });
@@ -239,16 +252,22 @@ function buildArtifactCards(
         id: `wiki-proposal-${proposal.id}`,
         kind: "wiki",
         tone: proposal.state === "failed" ? "failed" : proposal.state === "applied" ? "success" : "pending",
-        eyebrow: proposal.state === "applied" ? "已写入知识页" : "知识页待确认",
-        title: proposal.title || path || "知识页",
-        summary: proposal.review_summary || proposal.summary || proposal.error || "有一条知识页更新正在等待复核。",
-        meta: [formatWikiProposalState(proposal.state), proposal.proposal_type].filter(Boolean),
+        eyebrow: proposal.state === "applied" ? "已整理资料" : proposal.state === "failed" ? "资料未保存" : "等你确认",
+        title: userSafeText(proposal.title, "资料整理"),
+        summary:
+          proposal.state === "failed"
+            ? userSafeText(proposal.error || proposal.review_summary || proposal.summary, "这次资料整理没有保存成功。")
+            : proposal.state === "applied"
+              ? userSafeText(proposal.review_summary || proposal.summary, "已把可复用内容整理成资料页。")
+              : userSafeText(proposal.review_summary || proposal.summary, "需要你确认后才会写入资料页。"),
+        meta: [formatWikiProposalState(proposal.state), proposal.state === "applied" ? "可查看" : "未写入"].filter(Boolean),
         path,
       });
     });
 
   actions.forEach((action) => {
-    const kind = classifyAgentActionArtifact(action);
+    const skipped = isSkippedAgentAction(action);
+    const kind: ArtifactKind | null = skipped ? "skip" : classifyAgentActionArtifact(action);
     if (!kind) {
       return;
     }
@@ -263,9 +282,9 @@ function buildArtifactCards(
       kind,
       tone: actionTone(action),
       eyebrow: actionEyebrow(action, kind),
-      title: display.actionName,
-      summary: display.summary,
-      meta: [display.statusLabel, display.riskTierLabel].filter(Boolean),
+      title: actionTitle(action, kind, display),
+      summary: actionSummary(action, kind, display),
+      meta: actionMeta(action, kind, display),
       path,
       action,
     });
@@ -282,34 +301,52 @@ function primaryArtifactAction(
   onOpenReport?: (path?: string) => void,
 ): { label: string; onClick: () => void } | null {
   if (artifact.kind === "task" && onOpenTask) {
-    return { label: "打开任务", onClick: () => onOpenTask(artifact.task) };
+    return { label: "查看任务", onClick: () => onOpenTask(artifact.task) };
   }
   if (artifact.kind === "memory" && onOpenMemory) {
-    return { label: "打开记忆", onClick: onOpenMemory };
+    return { label: "查看记忆", onClick: onOpenMemory };
   }
   if (artifact.kind === "wiki" && onOpenWiki) {
-    return { label: "打开知识页", onClick: () => onOpenWiki(artifact.path) };
+    return { label: "查看资料页", onClick: () => onOpenWiki(artifact.path) };
   }
   if (artifact.kind === "review" && onOpenReport) {
-    return { label: "打开报告", onClick: () => onOpenReport(artifact.path) };
+    return { label: "查看报告", onClick: () => onOpenReport(artifact.path) };
   }
   return null;
 }
 
 function actionEyebrow(action: AgentAction, kind: ArtifactKind): string {
+  if (kind === "skip") {
+    return "已安全跳过";
+  }
   if (kind === "task") {
-    return "已创建任务";
+    return action.status === "failed" || action.error ? "任务未创建" : "已创建任务";
   }
   if (kind === "review") {
-    return "已生成复盘";
+    return action.status === "failed" || action.error ? "复盘未生成" : "已生成复盘";
   }
   if (kind === "memory") {
-    return action.decision === "ask" || action.status === "pending" ? "记忆待确认" : "已写入记忆";
+    if (action.status === "failed" || action.error) {
+      return "记忆未保存";
+    }
+    if (action.status === "reverted") {
+      return "记忆已撤回";
+    }
+    return action.decision === "ask" || action.status === "pending" ? "等你确认" : "已记住";
   }
-  return action.decision === "ask" || action.status === "pending" ? "知识页待确认" : "已写入知识页";
+  if (action.status === "failed" || action.error) {
+    return "资料未保存";
+  }
+  if (action.status === "reverted") {
+    return "整理已撤回";
+  }
+  return action.decision === "ask" || action.status === "pending" ? "等你确认" : "已整理资料";
 }
 
 function actionTone(action: AgentAction): ArtifactTone {
+  if (isSkippedAgentAction(action)) {
+    return "skipped";
+  }
   if (action.status === "failed" || Boolean(action.error)) {
     return "failed";
   }
@@ -320,6 +357,99 @@ function actionTone(action: AgentAction): ArtifactTone {
     return "pending";
   }
   return "success";
+}
+
+function actionTitle(action: AgentAction, kind: ArtifactKind, display: ReturnType<typeof getAgentActionDisplayFields>): string {
+  const actionType = action.action_type.toLocaleLowerCase();
+  if (kind === "skip") {
+    return userSafeText(display.actionName, "已跳过自动整理");
+  }
+  if (kind === "task") {
+    return userSafeText(action.title, "任务");
+  }
+  if (kind === "review") {
+    return userSafeText(action.title, "复盘报告");
+  }
+  if (actionType === "chat.daily_archive") {
+    return "聊天日记";
+  }
+  if (actionType === "diary.structured_memory") {
+    return "聊天重点";
+  }
+  if (actionType.startsWith("continuity.")) {
+    return "陪伴状态";
+  }
+  if (actionType.startsWith("memory.")) {
+    return userSafeText(action.title, "长期记忆");
+  }
+  if (actionType.startsWith("wiki.")) {
+    return userSafeText(action.title, display.actionTypeLabel.includes("/") ? "资料整理" : display.actionTypeLabel);
+  }
+  return userSafeText(action.title || display.actionName, "整理结果");
+}
+
+function actionSummary(action: AgentAction, kind: ArtifactKind, display: ReturnType<typeof getAgentActionDisplayFields>): string {
+  const actionType = action.action_type.toLocaleLowerCase();
+  if (action.status === "failed" || action.error) {
+    return userSafeText(action.error || display.summary, "这次整理没有完成，暂时没有保存新内容。");
+  }
+  if (kind === "skip") {
+    return display.summary;
+  }
+  if (action.status === "reverted") {
+    return "已撤回，这次整理不会再作为当前结果使用。";
+  }
+  if (action.decision === "ask" || action.status === "pending") {
+    return "需要你确认后才会真正写入。";
+  }
+  if (actionType === "chat.daily_archive") {
+    return "已把这轮聊天保存到本机日记，之后可以用来接上上下文。";
+  }
+  if (actionType === "diary.structured_memory") {
+    return "已把这轮聊天提炼成可检索的日记线索。";
+  }
+  if (actionType.startsWith("continuity.")) {
+    return "已更新陪伴状态，之后会用来接上关系、情绪或未完话题。";
+  }
+  if (actionType.startsWith("memory.long_term")) {
+    return "已更新长期记忆，之后聊天会参考。";
+  }
+  if (actionType.startsWith("wiki.")) {
+    return kind === "review" ? "已生成复盘报告，可在回顾里查看。" : "已把可复用内容整理成资料页。";
+  }
+  return userSafeText(display.summary, "已完成这次整理。");
+}
+
+function actionMeta(
+  action: AgentAction,
+  kind: ArtifactKind,
+  display: ReturnType<typeof getAgentActionDisplayFields>,
+): string[] {
+  const meta = [display.statusLabel, display.riskTierLabel, display.decisionLabel];
+  if (kind === "skip") {
+    meta.push("没有写入", "无需撤回");
+  } else if (action.status === "failed" || action.error) {
+    meta.push("未保存");
+  } else if (action.decision === "ask" || action.status === "pending") {
+    meta.push("未写入");
+  } else if (canRevertAgentAction(action)) {
+    meta.push("可撤回");
+  } else if (action.reversible) {
+    meta.push("当前不可撤回");
+  } else {
+    meta.push("不可撤回");
+  }
+  return Array.from(new Set(meta.filter(Boolean)));
+}
+
+function userSafeText(value: string | undefined | null, fallback: string): string {
+  const text = value?.trim();
+  if (!text) {
+    return fallback;
+  }
+  const internalPattern =
+    /\b(agent_actions?|agent|proposal|vault|wiki|fts|sidecar|runtime|skipped|saveable|confirmation-only|automation_disabled)\b|[A-Za-z]:\\|\.md\b|[\\/]/i;
+  return internalPattern.test(text) ? fallback : text;
 }
 
 function firstPath(...groups: Array<string[] | undefined>): string | undefined {
@@ -359,6 +489,9 @@ function artifactIcon(kind: ArtifactKind, tone: ArtifactTone) {
   }
   if (kind === "review") {
     return <FileText size={17} />;
+  }
+  if (kind === "skip") {
+    return <CheckCircle2 size={17} />;
   }
   return <CheckCircle2 size={17} />;
 }

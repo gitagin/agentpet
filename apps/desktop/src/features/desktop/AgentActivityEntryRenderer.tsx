@@ -116,11 +116,11 @@ function ContinuityProposalActivityCard({ entry, busy, onAct }: ContinuityPropos
             置信度 {formatConfidence(proposal.confidence)}
           </small>
         </div>
-        <span>{proposal.proposal_id}</span>
+        <span>{formatContinuityStatus(proposal.status)}</span>
       </div>
       <p>{isOpenThread ? `要让我下次记得继续这个话题吗？${proposal.summary}` : proposal.summary}</p>
       <small>{isOpenThread ? "为什么会出现：" : "证据："}{proposal.evidence}</small>
-      <small>来源：{proposal.source_message_id || "未知"} / {proposal.agent_run_id || "无运行 ID"}</small>
+      <small>来源：本次聊天</small>
       <div className="button-row">
         <button
           type="button"

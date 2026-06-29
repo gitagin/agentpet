@@ -139,7 +139,7 @@ const defaultActionDirectives: Record<string, Required<Pick<Live2DActionDirectiv
   },
   system_connecting: {
     expression: "3clever",
-    petHint: "正在连接本地后端。",
+    petHint: "正在连接本机服务。",
     controlSummary: "系统连接中状态。",
   },
   system_offline: {

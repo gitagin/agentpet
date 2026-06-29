@@ -97,7 +97,7 @@ export function VaultBindingSection({
             <dd>{markdownCount}</dd>
           </div>
           <div>
-            <dt>知识页</dt>
+            <dt>资料页</dt>
             <dd>{wikiPageCount}</dd>
           </div>
           <div>

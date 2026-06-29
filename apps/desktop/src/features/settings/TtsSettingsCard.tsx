@@ -293,7 +293,7 @@ export function TtsSettingsCard({
               ? keyConfigured && keyMasked
                 ? `已保存密钥：${keyMasked}`
                 : "尚未保存密钥。"
-              : "不需要密钥时，后端不会添加 Authorization header。"}
+              : "不需要密钥时，本机服务不会添加 Authorization header。"}
           </p>
           <details className="settings-advanced-actions tts-advanced-template">
             <summary>高级请求模板</summary>

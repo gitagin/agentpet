@@ -21,7 +21,7 @@
 }
 
 .pet-shell.pet-dragging::before {
-  background: radial-gradient(circle at 50% 68%, rgba(92, 160, 148, 0.14), rgba(92, 160, 148, 0) 42%);
+  background: radial-gradient(circle at 50% 68%, var(--success-soft), rgba(92, 160, 148, 0) 42%);
   opacity: 1;
   transform: translateZ(0);
   will-change: opacity;
@@ -66,17 +66,17 @@
   box-sizing: border-box;
   transform: translateX(-50%);
   padding: 7px 11px;
-  border: 1px solid rgba(202, 113, 151, 0.2);
+  border: 1px solid rgba(143, 66, 102, 0.18);
   border-radius: 16px 16px 16px 5px;
-  background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 10px 22px rgba(119, 77, 104, 0.14);
-  color: #4c3d4b;
+  background: var(--surface-strong);
+  box-shadow: var(--shadow-card);
+  color: var(--brand-strong);
   font-size: 12px;
   font-weight: 800;
   line-height: 1.15;
   text-align: center;
   pointer-events: none;
-  backdrop-filter: blur(12px);
+  backdrop-filter: var(--glass-blur-soft);
   -webkit-app-region: no-drag;
 }
 
@@ -88,8 +88,8 @@
   width: 11px;
   height: 11px;
   transform: rotate(45deg);
-  border-right: 1px solid rgba(202, 113, 151, 0.16);
-  border-bottom: 1px solid rgba(202, 113, 151, 0.16);
+  border-right: 1px solid rgba(143, 66, 102, 0.14);
+  border-bottom: 1px solid rgba(143, 66, 102, 0.14);
   background: inherit;
 }
 
@@ -103,18 +103,18 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid rgba(202, 113, 151, 0.24);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.86);
-  box-shadow: 0 10px 22px rgba(119, 77, 104, 0.16);
-  color: #4c3d4b;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-control);
+  color: var(--text);
   padding: 0;
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0;
   line-height: 1;
   text-align: center;
-  backdrop-filter: blur(12px);
+  backdrop-filter: var(--glass-blur-soft);
   opacity: 0;
   pointer-events: none;
   transform: translate(var(--pet-shortcut-origin-x), var(--pet-shortcut-origin-y)) scale(0.34) rotate(720deg);
@@ -143,44 +143,44 @@
 }
 
 .pet-shortcut-bar.is-visible .pet-shortcut-button:hover {
-  border-color: rgba(192, 95, 135, 0.42);
-  background: rgba(255, 249, 246, 0.96);
+  border-color: rgba(143, 66, 102, 0.34);
+  background: var(--surface-strong);
   color: var(--brand-strong);
 }
 
 .pet-shortcut-button.primary {
-  border-color: rgba(202, 113, 151, 0.34);
-  background: rgba(255, 249, 246, 0.94);
+  border-color: rgba(143, 66, 102, 0.34);
+  background: var(--brand-soft);
   color: var(--brand-strong);
 }
 
 .pet-shortcut-bar.is-visible .pet-shortcut-button.primary:hover {
-  border-color: rgba(192, 95, 135, 0.56);
-  background: rgba(255, 241, 236, 0.98);
+  border-color: rgba(143, 66, 102, 0.46);
+  background: rgba(143, 66, 102, 0.16);
 }
 
 .pet-shortcut-button.voice {
-  border-color: rgba(93, 86, 138, 0.5);
-  background: rgba(93, 86, 138, 0.92);
-  color: #fbf8ff;
+  border-color: rgba(66, 109, 135, 0.48);
+  background: var(--color-info);
+  color: #ffffff;
 }
 
 .pet-shortcut-bar.is-visible .pet-shortcut-button.voice:hover {
-  border-color: rgba(76, 67, 120, 0.6);
-  background: rgba(76, 67, 120, 0.98);
-  color: #fff;
+  border-color: rgba(48, 88, 111, 0.62);
+  background: #315c73;
+  color: #ffffff;
 }
 
 .pet-shortcut-button.danger {
-  border-color: rgba(196, 75, 75, 0.42);
-  background: rgba(196, 75, 75, 0.9);
-  color: #fff8f8;
+  border-color: var(--danger-border);
+  background: var(--danger);
+  color: #ffffff;
 }
 
 .pet-shortcut-bar.is-visible .pet-shortcut-button.danger:hover {
-  border-color: rgba(172, 50, 50, 0.54);
-  background: rgba(181, 57, 57, 0.96);
-  color: #fff;
+  border-color: rgba(157, 63, 77, 0.48);
+  background: #843343;
+  color: #ffffff;
 }
 
 @keyframes pet-shortcut-roll-out {
@@ -214,4 +214,3 @@
     transform: translate(var(--pet-shortcut-origin-x), var(--pet-shortcut-origin-y)) scale(0.34) rotate(720deg);
   }
 }
-

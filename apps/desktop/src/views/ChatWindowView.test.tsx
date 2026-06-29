@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { ChatMessage } from "../types";
-import ChatWindowView from "./ChatWindowView";
+import ChatWindowView, { demoMemoryTrialPrompt } from "./ChatWindowView";
 
 const onboardingPanel = (
   <section aria-label="首次使用引导">
@@ -55,11 +55,15 @@ describe("ChatWindowView", () => {
       />,
     );
 
-    expect(screen.getByRole("heading", { name: "陪伴" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "聊天" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "切换到陪伴" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "切换到记住" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "切换到提醒" })).toHaveClass("secondary");
     expect(screen.getByRole("tab", { name: "切换到整理资料" })).toHaveClass("secondary");
+
+    fireEvent.click(screen.getByRole("button", { name: demoMemoryTrialPrompt.label }));
+    expect(onModeChange).toHaveBeenCalledWith("note");
+    expect(onInputChange).toHaveBeenCalledWith(demoMemoryTrialPrompt.text);
 
     fireEvent.click(screen.getByRole("button", { name: "明天提醒我继续这件事" }));
     expect(onModeChange).toHaveBeenCalledWith("task");

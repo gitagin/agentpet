@@ -12,8 +12,19 @@
   .bottom-nav-icon,
   .bottom-nav-indicator,
   .stage-action-card,
+  .live2d-state-pulse,
+  .live2d-model,
+  .live2d-cover,
+  .live2d-arm,
+  .live2d-mouth,
+  .live2d-scanline,
+  .live2d-meter span,
   button {
     transform: none !important;
+  }
+
+  .live2d-state-pulse {
+    box-shadow: 0 0 0 4px rgba(91, 139, 120, 0.12) !important;
   }
 }
 
@@ -528,4 +539,3 @@
     padding: 15px;
   }
 }
-

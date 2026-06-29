@@ -35,9 +35,9 @@ export function AgentConfigForm({
   onTestAgentModel,
 }: AgentConfigFormProps) {
   return (
-    <section className="agent-model-section" aria-label="高级 Agent 模型路由">
+    <section className="agent-model-section" aria-label="高级职责模型路由">
       <div className="section-heading">
-        <strong>5 个核心 Agent</strong>
+        <strong>5 个职责模型</strong>
         <span>默认继承全局模型；只有某个职责需要单独优化时再覆盖。</span>
       </div>
       <button type="button" className="secondary" onClick={onRefreshSettings} disabled={loadingSettingsStatus}>

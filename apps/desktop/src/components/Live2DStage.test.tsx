@@ -7,7 +7,7 @@ vi.mock("../services/live2dRuntime", () => ({
   mountLive2DRendererBoundary: vi.fn(),
 }));
 
-import { Live2DStage, getLive2DAssetStatusText } from "./Live2DStage";
+import { Live2DStage, getLive2DAssetStatusText, getLive2DCompanionCue } from "./Live2DStage";
 import { createRendererMountContext, mountLive2DRendererBoundary } from "../services/live2dRuntime";
 import type { Live2DAssetInfo, Live2DRuntimeBoundary, Live2DRuntimeHandle } from "../services/live2dRuntime";
 
@@ -121,6 +121,37 @@ function renderStage(
 }
 
 describe("Live2DStage", () => {
+  it("maps real companion states to visible user-facing cues", () => {
+    expect(getLive2DCompanionCue({ stage, actionKey: "idle", speaking: false, renderStatus: "mounted" })).toMatchObject({
+      state: "idle",
+      label: "我在",
+    });
+    expect(getLive2DCompanionCue({ stage: { ...stage, state: "thinking" }, actionKey: "chat_think", speaking: false, renderStatus: "mounted" })).toMatchObject({
+      state: "thinking",
+      label: "正在想",
+    });
+    expect(getLive2DCompanionCue({ stage, actionKey: "chat_talk", speaking: true, renderStatus: "mounted" })).toMatchObject({
+      state: "speaking",
+      label: "正在说",
+    });
+    expect(getLive2DCompanionCue({ stage: { ...stage, state: "memory" }, actionKey: "memory_save_diary", speaking: false, renderStatus: "mounted" })).toMatchObject({
+      state: "remembered",
+      label: "已记住线索",
+    });
+    expect(getLive2DCompanionCue({ stage: { ...stage, state: "confirming" }, actionKey: "memory_confirm_needed", speaking: false, renderStatus: "mounted" })).toMatchObject({
+      state: "confirming",
+      label: "等你确认",
+    });
+    expect(getLive2DCompanionCue({ stage: { ...stage, state: "tasking" }, actionKey: "task_create", speaking: false, renderStatus: "mounted" })).toMatchObject({
+      state: "tasking",
+      label: "任务已记下",
+    });
+    expect(getLive2DCompanionCue({ stage: { ...stage, state: "disconnected" }, actionKey: "system_offline", speaking: false, renderStatus: "mounted" })).toMatchObject({
+      state: "error",
+      label: "连接待恢复",
+    });
+  });
+
   it("renders the panel model status without mounting the renderer", () => {
     renderStage();
 
@@ -151,6 +182,9 @@ describe("Live2DStage", () => {
     expect(screen.getByLabelText("桌宠模型状态：待命陪伴")).toBeInTheDocument();
     expect(screen.getByLabelText("桌宠模型运行时画布区域")).toBeInTheDocument();
     expect(screen.getByLabelText("桌宠模型静态回退封面")).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "静态陪伴中：聊天和记忆照常可用。" })).toBeInTheDocument();
+    expect(screen.queryByText("模型布局提示")).not.toBeInTheDocument();
+    expect(screen.queryByText("模型渲染不可用")).not.toBeInTheDocument();
 
     fireEvent.pointerDown(hitRegion);
     fireEvent.pointerMove(hitRegion);
@@ -175,9 +209,12 @@ describe("Live2DStage", () => {
     expect(screen.getByLabelText("陪伴模型")).toBeInTheDocument();
     expect(screen.getByLabelText("陪伴模型状态：待命陪伴")).toBeInTheDocument();
     expect(screen.getByLabelText("桌宠模型运行时画布区域")).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "静态陪伴中：聊天和记忆照常可用。" })).toBeInTheDocument();
     expect(screen.queryByLabelText("模型运行时边界状态")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("模型运行时诊断摘要")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("模型资源状态")).not.toBeInTheDocument();
+    expect(screen.queryByText("模型布局提示")).not.toBeInTheDocument();
+    expect(screen.queryByText("模型渲染不可用")).not.toBeInTheDocument();
   });
 
   it("marks the stage as speaking while TTS playback is active", () => {
@@ -189,7 +226,9 @@ describe("Live2DStage", () => {
     expect(shell).toHaveClass("live2d-speaking");
     expect(shell).toHaveAttribute("data-live2d-speaking", "true");
     expect(shell).toHaveAttribute("data-live2d-action-key", "tts_speaking");
+    expect(shell).toHaveAttribute("data-live2d-cue", "speaking");
     expect(stageView).toHaveAttribute("data-live2d-speaking", "true");
+    expect(screen.getByRole("status", { name: "正在说：回复时会跟着动。" })).toBeInTheDocument();
   });
 
   it("lets a reply-driven action override the generic speaking action", async () => {
@@ -540,8 +579,9 @@ describe("Live2DStage", () => {
 
     expect(screen.getByLabelText("桌宠模型")).toHaveClass("live2d-runtime-preview-only");
     expect(screen.getByLabelText("桌宠模型")).toHaveClass("live2d-render-preview");
-    expect(screen.getByText("角色静态预览")).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "静态陪伴中：聊天和记忆照常可用。" })).toBeInTheDocument();
     expect(screen.getByLabelText("桌宠模型静态回退封面")).toBeInTheDocument();
     expect(screen.queryByText("模型渲染不可用")).not.toBeInTheDocument();
+    expect(screen.queryByText("角色静态预览")).not.toBeInTheDocument();
   });
 });

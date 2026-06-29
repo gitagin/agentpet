@@ -150,7 +150,7 @@ describe("SettingsPanel", () => {
     const guidedActions = within(screen.getByRole("region", { name: "设置引导" }));
 
     expect(screen.getByText("先能对话，再决定保存")).toBeInTheDocument();
-    expect(screen.getByText("连接全局模型后就能开始；需要精调时再为 5 个核心 Agent 单独覆盖模型。")).toBeInTheDocument();
+    expect(screen.getByText("连接全局模型后就能开始；需要精调时再为 5 个职责模型单独覆盖。")).toBeInTheDocument();
     fireEvent.click(guidedActions.getByRole("button", { name: "测试模型" }));
     fireEvent.click(guidedActions.getByRole("button", { name: "选择保存位置" }));
     fireEvent.click(guidedActions.getByRole("button", { name: "刷新设置" }));
@@ -166,15 +166,15 @@ describe("SettingsPanel", () => {
   it("keeps specialist model configuration behind advanced outcome-oriented settings", () => {
     const { container } = renderSettingsPanel();
 
-    const advanced = screen.getByText("高级 Agent 模型路由").closest("details");
+    const advanced = screen.getByText("高级职责模型路由").closest("details");
 
     expect(advanced).not.toHaveAttribute("open");
-    expect(screen.getByText("5 个核心 Agent")).toBeInTheDocument();
-    expect(screen.getByText("Chat Agent")).toBeInTheDocument();
-    expect(screen.getByText("Router Agent")).toBeInTheDocument();
-    expect(screen.getByText("Retrieval Agent")).toBeInTheDocument();
-    expect(screen.getByText("Action Agent")).toBeInTheDocument();
-    expect(screen.getByText("Reflection Agent")).toBeInTheDocument();
+    expect(screen.getByText("5 个职责模型")).toBeInTheDocument();
+    expect(screen.getByText("回复模型")).toBeInTheDocument();
+    expect(screen.getByText("理解模型")).toBeInTheDocument();
+    expect(screen.getByText("查找模型")).toBeInTheDocument();
+    expect(screen.getByText("行动模型")).toBeInTheDocument();
+    expect(screen.getByText("整理模型")).toBeInTheDocument();
     expect(container.textContent).not.toMatch(/9 agents|9 个智能体|9个智能体/);
   });
 

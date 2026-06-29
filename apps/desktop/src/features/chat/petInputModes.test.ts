@@ -36,18 +36,18 @@ describe("pet input modes", () => {
     expect(buildPetInputIntentMessage("note", "我偏好简洁可追踪的结果")).toContain("现有记忆策略");
     expect(buildPetInputIntentMessage("task", "明天 10 点检查验收脚本")).toContain("提醒：明天 10 点检查验收脚本");
     expect(buildPetInputIntentMessage("task", "明天 10 点检查验收脚本")).toContain("需要确认的内容先进入确认流程");
-    expect(buildPetInputIntentMessage("wiki", "把 TASK-05 决策沉淀到知识页")).toContain(
-      "整理资料到知识页：把 TASK-05 决策沉淀到知识页",
+    expect(buildPetInputIntentMessage("wiki", "把 TASK-05 决策沉淀到资料页")).toContain(
+      "整理资料到资料页：把 TASK-05 决策沉淀到资料页",
     );
-    expect(buildPetInputIntentMessage("wiki", "把 TASK-05 决策沉淀到知识页")).toContain("高风险写入仍需确认");
-    expect(buildPetInputIntentMessage("wiki", "把 TASK-05 决策沉淀到知识页")).toContain("用户可见回复请用“资料”“知识页”表达");
+    expect(buildPetInputIntentMessage("wiki", "把 TASK-05 决策沉淀到资料页")).toContain("高风险写入仍需确认");
+    expect(buildPetInputIntentMessage("wiki", "把 TASK-05 决策沉淀到资料页")).toContain("用户可见回复请用“资料”“资料页”表达");
   });
 
   it("allows an empty today review request without bypassing retrieval policy", () => {
     const message = buildPetInputIntentMessage("review", "  ");
 
     expect(message).toContain("回顾今天：请根据今天的本地记录做一次简短回顾。");
-    expect(message).toContain("优先检索本地聊天日记、长期记忆、任务和知识整理内容");
+    expect(message).toContain("优先检索本地聊天日记、长期记忆、任务和资料整理内容");
     expect(message).toContain("用户可见回复请使用普通中文，不要使用工程词");
   });
 });

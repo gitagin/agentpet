@@ -12,7 +12,7 @@ export function FeatureWindowShell({
   eyebrow: string;
   title: string;
   description: string;
-  activeTab: PrimaryNavigationTab;
+  activeTab?: PrimaryNavigationTab | null;
   children: ReactNode;
 }) {
   return (

@@ -1,7 +1,7 @@
 import type { ChatToolEvent, Citation, ModelTestResponse } from "../../types";
 import type { LastIndexRun } from "../settings/settingsTypes";
 import { formatTaskStatus } from "../tasks/taskReducer";
-import { agentLabel, type AgentModelDraft } from "../../services/agentModelDrafts";
+import type { AgentModelDraft } from "../../services/agentModelDrafts";
 import { formatModelTestResult } from "../settings/settingsFormatters";
 import type { ControlWorkflowItem } from "./ControlDashboard";
 
@@ -23,6 +23,14 @@ type BuildControlWorkflowItemsInput = {
   hasContinuityState: boolean;
   pendingContinuityCount: number;
   continuityStateItemCount: number;
+};
+
+const modelWorkflowLabels: Record<string, string> = {
+  chat_agent: "回复和陪伴",
+  semantic_analysis_agent: "理解意图",
+  retrieval_agent: "查找记忆",
+  action_agent: "任务和整理",
+  reflection_agent: "后台整理",
 };
 
 export function buildControlWorkflowItems({
@@ -48,7 +56,7 @@ export function buildControlWorkflowItems({
     const testResult = agentModelTestResults[draft.agent_id];
     const tested = testResult?.status === "ok";
     return {
-      label: agentLabel(draft.agent_id),
+      label: modelWorkflowLabels[draft.agent_id] || "模型能力",
       status: tested ? "done" : draft.configured ? "active" : "blocked",
       detail: tested && testResult
         ? formatModelTestResult(testResult)
@@ -70,14 +78,14 @@ export function buildControlWorkflowItems({
           : "可选：设置本地导出文件夹，方便之后备份和复盘。",
     },
     {
-      label: "助手运行事件",
+      label: "本次聊天线索",
       status: hasAgentEventSignal ? "done" : streaming ? "active" : "blocked",
       detail: latestChatEvent
         ? `${latestChatEvent.label}：${latestChatEvent.detail}`
         : latestCitation
           ? `引用：${latestCitation.relative_path}`
-          : streaming
-            ? "正在等待 SSE 工具事件。"
+        : streaming
+            ? "正在等待本次聊天的整理线索。"
             : "向桌宠提问后显示检索、记忆、任务或引用事件。",
       targetId: latestCitationTargetId,
     },

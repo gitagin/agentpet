@@ -43,8 +43,8 @@ const automationToggles: AutomationToggle[] = [
   },
   {
     key: "auto_wiki_organize",
-    title: "知识页自动整理",
-    description: "允许低风险资料库总结、补充和报告自动执行，并记录活动账本。",
+    title: "资料页自动整理",
+    description: "允许低风险资料总结、补充和报告自动执行，并记录可追溯活动。",
   },
   {
     key: "local_privacy_mode",

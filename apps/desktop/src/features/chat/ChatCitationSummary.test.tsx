@@ -49,7 +49,7 @@ describe("ChatCitationSummary", () => {
     );
 
     expect(screen.getByText("检索范围")).toBeInTheDocument();
-    expect(screen.getByText("长期记忆 / 知识整理")).toBeInTheDocument();
+    expect(screen.getByText("长期记忆 / 资料整理")).toBeInTheDocument();
     expect(screen.getByText(/候选 3 条，采用 2 条/)).toBeInTheDocument();
     expect(screen.getByText(/长期记忆 1/)).toBeInTheDocument();
     expect(screen.getByText("Memories/LongTerm/Profile.md")).toBeInTheDocument();

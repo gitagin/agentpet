@@ -75,19 +75,19 @@ const stageActions: StageAction[] = [
 const advancedStageActions: StageAction[] = [
   {
     label: "成长记录",
-    detail: "看长期陪伴状态和互动变化",
+    detail: "查看长期陪伴状态和变化记录",
     route: "growth",
     icon: HeartPulse,
   },
   {
     label: "提醒和待办",
-    detail: "安排提醒，整理要继续跟进的事",
+    detail: "管理提醒、待办和执行日志",
     route: "agent",
     icon: FolderKanban,
   },
   {
-    label: "整理资料",
-    detail: "把有用片段沉淀到本地知识页",
+    label: "资料工具",
+    detail: "维护本地资料整理和归档",
     route: "world",
     icon: BookOpen,
   },
@@ -199,7 +199,7 @@ export default function StageView({
             })}
           </div>
           <details className="stage-advanced-routes">
-            <summary>更多能力</summary>
+            <summary>更多和高级</summary>
             <div className="stage-action-grid compact">
               {advancedStageActions.map((action) => {
                 const Icon = action.icon;

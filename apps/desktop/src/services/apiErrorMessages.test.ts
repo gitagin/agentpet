@@ -24,11 +24,11 @@ describe("apiErrorMessages", () => {
     expect(message).toBe("设置状态读取失败: forbidden: 无权限 (request req-1)");
   });
 
-  it("classifies network failures with a Chinese backend hint", () => {
+  it("classifies network failures with a Chinese local service hint", () => {
     const message = describeError(new TypeError("fetch failed"), "健康检查失败");
 
     expect(message).toContain("健康检查失败");
-    expect(message).toContain("无法连接后端");
+    expect(message).toContain("无法连接本机服务");
     expect(message).toContain("8765");
   });
 
@@ -45,7 +45,7 @@ describe("apiErrorMessages", () => {
   });
 
   it("returns a reusable mismatch notice for health-success auth mismatch", () => {
-    expect(businessAuthMismatchMessage()).toContain("后端健康检查通过");
+    expect(businessAuthMismatchMessage()).toContain("本机服务健康检查通过");
     expect(businessAuthMismatchMessage()).toContain("npm run electron:dev");
   });
   it("recognizes Electron sidecar startup responses as transient", () => {

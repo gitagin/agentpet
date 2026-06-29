@@ -369,7 +369,7 @@ describe("MemoryWindowView", () => {
     const dashboard = (await screen.findByRole("button", { name: /刷新积累/ })).closest("section") as HTMLElement;
     expect(dashboard).toBeInTheDocument();
     expect(within(dashboard).getByText("聊天日记天数")).toBeInTheDocument();
-    expect(within(dashboard).getByText("知识页")).toBeInTheDocument();
+    expect(within(dashboard).getByText("资料页")).toBeInTheDocument();
     expect(within(dashboard).getByText("5")).toBeInTheDocument();
     expect(within(dashboard).getByText("任务完成")).toBeInTheDocument();
     expect(within(dashboard).getByText("3/6")).toBeInTheDocument();
@@ -629,8 +629,8 @@ describe("MemoryWindowView", () => {
     expect(within(todayCard as HTMLElement).getByText("聊天日记")).toBeInTheDocument();
     expect(within(todayCard as HTMLElement).getByText("任务")).toBeInTheDocument();
     expect(within(todayCard as HTMLElement).getByText("长期记忆")).toBeInTheDocument();
-    expect(within(todayCard as HTMLElement).getByText("知识整理")).toBeInTheDocument();
-    expect(within(todayCard as HTMLElement).getByText("使用 1 条日记、1 个任务、1 条记忆事实和 1 次知识整理。")).toBeInTheDocument();
+    expect(within(todayCard as HTMLElement).getByText("资料整理")).toBeInTheDocument();
+    expect(within(todayCard as HTMLElement).getByText("使用 1 条日记、1 个任务、1 条记忆事实和 1 次资料整理。")).toBeInTheDocument();
   });
 
   it("shows a weekly memory review and applies lightweight review actions", async () => {

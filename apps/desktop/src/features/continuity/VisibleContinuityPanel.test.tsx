@@ -147,10 +147,10 @@ function retrospectiveResponse(): RetrospectiveResponse {
 }
 
 function sidecarStartingError(): ApiError {
-  return new ApiError("本地后端正在启动，请稍候再试", 503, {
+  return new ApiError("本机服务正在启动，请稍候再试", 503, {
     error: {
       code: "sidecar_starting",
-      message: "本地后端正在启动，请稍候再试",
+      message: "本机服务正在启动，请稍候再试",
     },
   });
 }

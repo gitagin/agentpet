@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { BookOpen, Brain, ListChecks, MessageCircle, Settings, Sparkles, Sprout } from "lucide-react";
+import { Brain, MessageCircle, Settings, Sparkles } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { openPrimaryNavigationTab, primaryNavigationTabs, type PrimaryNavigationTab } from "./navigation";
 
@@ -8,22 +8,22 @@ const bottomNavIcons: Record<PrimaryNavigationTab, LucideIcon> = {
   [primaryNavigationTabs[0]]: Sparkles,
   [primaryNavigationTabs[1]]: MessageCircle,
   [primaryNavigationTabs[2]]: Brain,
-  [primaryNavigationTabs[3]]: Sprout,
-  [primaryNavigationTabs[4]]: ListChecks,
-  [primaryNavigationTabs[5]]: BookOpen,
-  [primaryNavigationTabs[6]]: Settings,
+  [primaryNavigationTabs[3]]: Settings,
 };
 
 let hasBottomNavPosition = false;
 let lastBottomNavActiveIndex = 0;
 
-export function BottomNav({ activeTab, visible = true }: { activeTab: PrimaryNavigationTab; visible?: boolean }) {
-  const activeIndex = Math.max(0, primaryNavigationTabs.indexOf(activeTab));
-  const [indicatorIndex, setIndicatorIndex] = useState(() => (hasBottomNavPosition ? lastBottomNavActiveIndex : activeIndex));
+export function BottomNav({ activeTab, visible = true }: { activeTab?: PrimaryNavigationTab | null; visible?: boolean }) {
+  const activeIndex = activeTab ? primaryNavigationTabs.indexOf(activeTab) : -1;
+  const hasActiveTab = activeIndex >= 0;
+  const [indicatorIndex, setIndicatorIndex] = useState(() => (
+    hasBottomNavPosition ? lastBottomNavActiveIndex : Math.max(0, activeIndex)
+  ));
   const buttonRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
   useLayoutEffect(() => {
-    if (!visible) {
+    if (!visible || !hasActiveTab) {
       return;
     }
 
@@ -42,9 +42,12 @@ export function BottomNav({ activeTab, visible = true }: { activeTab: PrimaryNav
     });
 
     return () => window.cancelAnimationFrame(animationFrame);
-  }, [activeIndex, visible]);
+  }, [activeIndex, hasActiveTab, visible]);
 
   useEffect(() => {
+    if (!hasActiveTab) {
+      return;
+    }
     const activeButton = buttonRefs.current[activeIndex];
     if (!activeButton?.scrollIntoView) {
       return;
@@ -54,11 +57,11 @@ export function BottomNav({ activeTab, visible = true }: { activeTab: PrimaryNav
       block: "nearest",
       inline: "center",
     });
-  }, [activeIndex]);
+  }, [activeIndex, hasActiveTab]);
 
   return (
     <nav
-      className="bottom-nav"
+      className={`bottom-nav${hasActiveTab ? "" : " no-active"}`}
       aria-label="主导航"
       style={{ "--bottom-nav-active-index": indicatorIndex } as CSSProperties}
     >

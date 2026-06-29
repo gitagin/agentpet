@@ -14,7 +14,7 @@ function health(details: AgentModelHealth[], globalConfigured = true): ModelHeal
 }
 
 describe("ModelHealthBanner", () => {
-  it("describes model health as five core agents", () => {
+  it("describes model health as five responsibility models", () => {
     const response = health(
       agentModelDefinitions.map((definition) => ({
         agent_id: definition.id,
@@ -25,7 +25,7 @@ describe("ModelHealthBanner", () => {
 
     const banner = getModelHealthBannerState(response);
 
-    expect(banner?.message).toContain("2/5 个核心 Agent");
+    expect(banner?.message).toContain("2/5 个职责模型");
     expect(banner?.message).not.toMatch(/9 agents|9 个智能体|结果路由|task_agent|wiki_manager_agent/);
   });
 
@@ -38,6 +38,6 @@ describe("ModelHealthBanner", () => {
       })),
     );
 
-    expect(getModelHealthBannerState(response)?.message).toContain("5 个核心 Agent 正在继承全局模型");
+    expect(getModelHealthBannerState(response)?.message).toContain("5 个职责模型正在继承全局模型");
   });
 });

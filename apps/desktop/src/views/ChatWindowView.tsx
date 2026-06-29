@@ -71,6 +71,12 @@ const chatTrialPrompts: Array<{ label: string; mode: PetInputMode; text: string 
   },
 ];
 
+export const demoMemoryTrialPrompt = {
+  label: "30 秒试走：记住演示内容",
+  mode: "note" as const,
+  text: "记住：这是一次演示，我正在准备 30 秒产品走查。",
+};
+
 function scheduleFrame(callback: FrameRequestCallback): number {
   if (typeof window.requestAnimationFrame === "function") {
     return window.requestAnimationFrame(callback);
@@ -173,7 +179,7 @@ export default function ChatWindowView({
       eyebrow="和我说话"
       title={productCopy.chatPage.title}
       description={productCopy.chatPage.description}
-      activeTab="陪伴"
+      activeTab="聊天"
     >
       <Panel icon={<MessageSquareText size={18} />} title="和我说说" className="feature-window-panel chat-panel">
         {shouldDeferOnboarding ? null : onboardingPanel}
@@ -215,6 +221,15 @@ export default function ChatWindowView({
           ))}
         </div>
         <div className="guided-trial-actions chat-guided-trials" aria-label="可以这样说">
+          <button
+            type="button"
+            className="secondary chat-demo-trial"
+            onClick={() => fillTrialPrompt(demoMemoryTrialPrompt.mode, demoMemoryTrialPrompt.text)}
+            disabled={streaming}
+          >
+            <Sparkles size={16} />
+            {demoMemoryTrialPrompt.label}
+          </button>
           {chatTrialPrompts.map((trial) => (
             <button
               key={trial.label}

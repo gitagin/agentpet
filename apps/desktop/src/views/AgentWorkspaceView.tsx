@@ -388,7 +388,7 @@ export default function AgentWorkspaceView({ api }: AgentWorkspaceViewProps) {
         if (requestError instanceof DOMException && requestError.name === "AbortError") {
           return;
         }
-        setError(describeError(requestError, "任务工作区加载失败"));
+        setError(describeError(requestError, "提醒和待办加载失败"));
       } finally {
         if (!options.silent) {
           setLoading(false);
@@ -457,7 +457,7 @@ export default function AgentWorkspaceView({ api }: AgentWorkspaceViewProps) {
     const remindAt = tomorrowMorningLocal();
     updateTaskDraft({
       title: "检查发布清单",
-      description: "从任务工作区创建的快捷试用提醒。",
+      description: "从提醒和待办页创建的快捷试用提醒。",
       due_at: remindAt,
       remind_at: remindAt,
       timezone: localTimezone,
@@ -487,7 +487,7 @@ export default function AgentWorkspaceView({ api }: AgentWorkspaceViewProps) {
   const title = loading && !currentTask ? "正在加载当前任务" : currentTask?.name || "暂无当前任务";
   const statusLabel = currentTask ? statusLabels[currentTask.status] : loading ? statusLabels.running : statusLabels.idle;
   const statusTone = currentTask?.status || (loading ? "running" : "idle");
-  const description = currentTask?.description || (loading ? "正在从本地 sidecar 读取任务状态。" : "当前没有正在运行的任务。");
+  const description = currentTask?.description || (loading ? "正在读取本机任务状态。" : "当前没有正在运行的任务。");
   const mergedTodayTasks = mergeTodayTasks(todayTasks, tasks, localTimezone);
   const upcomingReminders = upcomingReminderTasks(tasks);
   const triggeredReminders = triggeredReminderTasks(tasks);
@@ -495,12 +495,12 @@ export default function AgentWorkspaceView({ api }: AgentWorkspaceViewProps) {
 
   return (
     <FeatureWindowShell
-      eyebrow="本地执行"
-      title="任务"
-      description="直接创建提醒、管理任务卡片，并保留执行步骤和日志作为辅助细节。"
-      activeTab="任务"
+      eyebrow="更多和高级"
+      title="提醒和待办"
+      description="创建提醒、查看待办，并把执行步骤和日志收在辅助细节里。"
+      activeTab={null}
     >
-      <div className="task-workspace-grid" aria-label="任务工作区">
+      <div className="task-workspace-grid" aria-label="提醒和待办区">
         <Panel icon={<PlusCircle size={18} />} title="创建任务" className="feature-window-panel task-create-panel">
           <div className="guided-trial-actions" aria-label="任务快捷示例">
             <button type="button" className="secondary" onClick={fillTomorrowReminderTrial} disabled={creatingTask}>

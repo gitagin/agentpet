@@ -8,7 +8,7 @@ function task(overrides: Partial<TaskItem> = {}): TaskItem {
   return {
     task_id: "task-1",
     title: "规划发布",
-    description: "交付任务工作区",
+    description: "交付提醒和待办页",
     status: "pending",
     due_at: "2026-06-06T10:00:00Z",
     remind_at: "2026-06-06T09:30:00Z",
@@ -66,7 +66,7 @@ describe("AgentWorkspaceView", () => {
     expect(screen.getByLabelText("任务创建表单")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "创建明天的提醒" }));
     expect(screen.getByLabelText("任务标题")).toHaveValue("检查发布清单");
-    expect(screen.getByLabelText("说明")).toHaveValue("从任务工作区创建的快捷试用提醒。");
+    expect(screen.getByLabelText("说明")).toHaveValue("从提醒和待办页创建的快捷试用提醒。");
     expect(String((screen.getByLabelText("提醒时间") as HTMLInputElement).value)).toMatch(/T09:00$/);
     expect(screen.getByText("还没有任务。可以用上方表单创建第一个任务。")).toBeInTheDocument();
     expect(screen.getByText("暂无当前任务。")).toBeInTheDocument();

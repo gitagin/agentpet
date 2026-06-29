@@ -4,7 +4,13 @@ import asyncio
 
 import pytest
 
-from app.services.chat_model import ChatModelError, LangChainGraphChatClient, classify_chat_model_exception
+from app.services.chat_model import (
+    ChatModelError,
+    LangChainGraphChatClient,
+    _default_model_factory,
+    _openai_auth_kwargs,
+    classify_chat_model_exception,
+)
 
 
 class FakeAIMessage:
@@ -25,6 +31,14 @@ class FakeAgent:
 class FailingAgent:
     async def ainvoke(self, payload):
         raise RuntimeError("provider down")
+
+
+class AuthFailingAgent:
+    async def ainvoke(self, payload):
+        class AuthError(Exception):
+            status_code = 401
+
+        raise AuthError("invalid api key")
 
 
 class HangingAgent:
@@ -166,6 +180,83 @@ def test_langchain_graph_client_passes_tools_to_create_agent() -> None:
     assert result.text == "已调用工具"
     assert result.raw_result == {"messages": [fake_agent.result["messages"][0]]}
     assert captured["tools"] == fake_tools
+
+
+def test_openai_auth_kwargs_uses_api_key_header_for_xiaomi_mimo() -> None:
+    kwargs = _openai_auth_kwargs(
+        api_key="mimo-secret-value",
+        base_url="https://token-plan-sgp.xiaomimimo.com/v1/",
+    )
+
+    assert kwargs == {
+        "api_key": "",
+        "default_headers": {"api-key": "mimo-secret-value"},
+    }
+
+
+def test_openai_auth_kwargs_keeps_bearer_for_other_openai_compatible_hosts() -> None:
+    kwargs = _openai_auth_kwargs(
+        api_key="deepseek-secret-value",
+        base_url="https://api.deepseek.com/v1",
+    )
+
+    assert kwargs == {"api_key": "deepseek-secret-value"}
+
+
+def test_default_model_factory_removes_bearer_for_xiaomi_mimo_host() -> None:
+    pytest.importorskip("langchain_openai")
+    client = LangChainGraphChatClient(
+        api_key="mimo-secret-value",
+        base_url="https://api.xiaomimimo.com/v1/",
+        model="mimo-v2.5-pro",
+    )
+
+    model = _default_model_factory(client)
+    headers = model.root_client.default_headers
+
+    assert headers["api-key"] == "mimo-secret-value"
+    assert "Authorization" not in headers
+
+
+def test_default_model_factory_keeps_bearer_for_deepseek_host() -> None:
+    pytest.importorskip("langchain_openai")
+    client = LangChainGraphChatClient(
+        api_key="deepseek-secret-value",
+        base_url="https://api.deepseek.com/v1/",
+        model="deepseek-v4-pro",
+    )
+
+    model = _default_model_factory(client)
+    headers = model.root_client.default_headers
+
+    assert headers["Authorization"] == "Bearer deepseek-secret-value"
+    assert "api-key" not in headers
+
+
+def test_xiaomi_mimo_auth_failure_retries_with_bearer_scheme() -> None:
+    attempts = []
+
+    def fake_model_factory(client: LangChainGraphChatClient, *, streaming: bool = False):
+        attempts.append(client.auth_scheme)
+        return client.auth_scheme or "api-key"
+
+    def fake_agent_factory(model, _system_prompt, _tools):
+        if model == "api-key":
+            return AuthFailingAgent()
+        return FakeAgent({"messages": [FakeAIMessage("OK")]})
+
+    client = LangChainGraphChatClient(
+        api_key="mimo-secret-value",
+        base_url="https://api.xiaomimimo.com/v1/",
+        model="mimo-v2.5-pro",
+        model_factory=fake_model_factory,
+        agent_factory=fake_agent_factory,
+    )
+
+    result = asyncio.run(async_complete(client, user_message="hello"))
+
+    assert result == "OK"
+    assert attempts == [None, "bearer"]
 
 
 def test_langchain_graph_client_wraps_agent_errors() -> None:

@@ -154,11 +154,11 @@ describe("StageView", () => {
     expect(screen.getByRole("button", { name: /陪我聊聊/ })).toHaveAttribute("data-stage-route", "chat");
     expect(screen.getByRole("button", { name: /看看记忆/ })).toHaveAttribute("data-stage-route", "memory");
     expect(screen.getByRole("button", { name: /设置边界/ })).toHaveAttribute("data-stage-route", "settings");
-    const advanced = screen.getByText("更多能力").closest("details");
+    const advanced = screen.getByText("更多和高级").closest("details");
     expect(advanced).not.toHaveAttribute("open");
     expect(screen.getByRole("button", { name: /提醒和待办/ })).toHaveAttribute("data-stage-route", "agent");
     expect(screen.getByRole("button", { name: /成长记录/ })).toHaveAttribute("data-stage-route", "growth");
-    expect(screen.getByRole("button", { name: /整理资料/ })).toHaveAttribute("data-stage-route", "world");
+    expect(screen.getByRole("button", { name: /资料工具/ })).toHaveAttribute("data-stage-route", "world");
     expect(screen.getByLabelText("聊天输入")).toBeInTheDocument();
   });
 
@@ -233,7 +233,7 @@ describe("StageView", () => {
     fireEvent.click(screen.getByRole("button", { name: /成长记录/ }));
     expect(window.location.hash).toBe("#growth");
 
-    fireEvent.click(screen.getByRole("button", { name: /整理资料/ }));
+    fireEvent.click(screen.getByRole("button", { name: /资料工具/ }));
     expect(window.location.hash).toBe("#world");
   });
 
