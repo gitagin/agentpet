@@ -23,6 +23,7 @@ function createHarness() {
   const petChat = {
     assistantReplyRef,
     assistantHiddenReplyTextsRef,
+    latestContinuitySignalRef: { current: null },
     replyStartedRef,
     markStreamEventReceived: vi.fn(),
     appendAssistantReplyText: vi.fn((text: string) => {
@@ -49,6 +50,7 @@ function createHarness() {
     scheduleStreamWatchdog: vi.fn(),
     failStream: vi.fn(),
     startReplyPaging: vi.fn(),
+    showContinuityPresenceBubble: vi.fn(),
   } as unknown as PetChatBubbleController;
   const context = {
     petChat,
@@ -108,6 +110,16 @@ describe("applyStreamEvent assistant reply visibility", () => {
     expect(harness.context.onVisibleAssistantReply).toHaveBeenCalledTimes(1);
   });
 
+  it("reads OpenAI-compatible streamed delta content", () => {
+    const harness = createHarness();
+
+    applyStreamEvent("assistant-1", event("message", { choices: [{ delta: { content: "你好，我在。" } }] }), harness.context);
+
+    expect(harness.messages[0].content).toBe("你好，我在。");
+    expect(harness.petChat.replyStartedRef.current).toBe(true);
+    expect(harness.context.onVisibleAssistantReply).toHaveBeenCalledTimes(1);
+  });
+
   it("records continuity proposals without replacing the pending answer bubble", () => {
     const harness = createHarness();
 
@@ -115,6 +127,29 @@ describe("applyStreamEvent assistant reply visibility", () => {
 
     expect(harness.context.appendChatEvent).toHaveBeenCalled();
     expect(harness.petChat.showBubble).not.toHaveBeenCalled();
+    expect(harness.petChat.scheduleStreamWatchdog).not.toHaveBeenCalled();
+    expect(harness.petChat.replyStartedRef.current).toBe(false);
+  });
+
+  it("records continuity signals without replacing the pending answer bubble", () => {
+    const harness = createHarness();
+    const signal = {
+      kind: "open_thread",
+      title: "下次接着聊",
+      summary: "我还记着这个未完话题。",
+      intensity: "medium",
+      display_hint: "只在本机提示，不会写入本地文件。",
+      source_state_keys: ["unresolved_threads"],
+    };
+    vi.mocked(harness.context.normalizeContinuitySignal).mockReturnValue(signal);
+
+    applyStreamEvent("assistant-1", event("continuity_signal", signal), harness.context);
+
+    expect(harness.context.setLatestContinuitySignal).toHaveBeenCalledWith(signal);
+    expect(harness.context.upsertChatContinuitySignal).toHaveBeenCalledWith("assistant-1", signal);
+    expect(harness.context.appendChatEvent).toHaveBeenCalledWith("assistant-1", expect.objectContaining({ label: "下次接着聊" }));
+    expect(harness.petChat.showBubble).not.toHaveBeenCalled();
+    expect(harness.petChat.showContinuityPresenceBubble).not.toHaveBeenCalled();
     expect(harness.petChat.scheduleStreamWatchdog).not.toHaveBeenCalled();
     expect(harness.petChat.replyStartedRef.current).toBe(false);
   });
@@ -159,6 +194,38 @@ describe("applyStreamEvent assistant reply visibility", () => {
 
     expect(harness.messages[0]).toMatchObject({ content: "Hello.", status: "completed" });
     expect(harness.context.onVisibleAssistantReply).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads OpenAI-compatible final message content", () => {
+    const harness = createHarness();
+
+    applyStreamEvent(
+      "assistant-1",
+      event("reply_ready", { choices: [{ message: { content: "这是最终回复。" } }] }),
+      harness.context,
+    );
+
+    expect(harness.messages[0]).toMatchObject({ content: "这是最终回复。", status: "completed" });
+    expect(harness.context.onVisibleAssistantReply).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not let a trailing done event overwrite an already visible reply", () => {
+    const harness = createHarness();
+
+    applyStreamEvent("assistant-1", event("token", { token: "真正的回答。" }), harness.context);
+    applyStreamEvent("assistant-1", event("done", { text: "done" }), harness.context);
+
+    expect(harness.messages[0]).toMatchObject({ content: "真正的回答。", status: "completed" });
+    expect(harness.petChat.setAssistantReplyText).not.toHaveBeenCalledWith("done");
+  });
+
+  it("still completes from a done event when no visible reply has started", () => {
+    const harness = createHarness();
+
+    applyStreamEvent("assistant-1", event("done", { text: "最终回答。" }), harness.context);
+
+    expect(harness.messages[0]).toMatchObject({ content: "最终回答。", status: "completed" });
+    expect(harness.petChat.setAssistantReplyText).toHaveBeenCalledWith("最终回答。");
   });
 
   it("filters final reply_ready text before completing the message", () => {

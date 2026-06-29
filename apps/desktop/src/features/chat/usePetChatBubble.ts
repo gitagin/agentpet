@@ -3,7 +3,7 @@ import type { Dispatch, SetStateAction } from "react";
 import type { ChatContinuitySignal, ChatMessage, TtsPlaybackItem, TtsPlaybackState, TtsProviderId, TtsVoice } from "../../types";
 import { getPetBubblePageDelay, paginatePetBubbleReply, segmentPetBubbleText } from "../../services/petBubblePagination";
 import type { PetBubblePhase, PetBubbleState, PetBubbleTone } from "./chatTypes";
-import { petStreamFinalTimeoutMs, petStreamFinalWatchdogDelayMs } from "./chatTypes";
+import { petStreamFinalTimeoutMs } from "./chatTypes";
 import {
   createAssistantReplyTextFilter,
   filterAssistantReplyText,
@@ -281,8 +281,7 @@ export function usePetChatBubble({
       }
 
       const elapsedMs = streamStartedAtRef.current === null ? 0 : Date.now() - streamStartedAtRef.current;
-      const remainingFinalMs = Math.max(0, petStreamFinalTimeoutMs - elapsedMs);
-      const finalDelayMs = Math.min(petStreamFinalWatchdogDelayMs, remainingFinalMs);
+      const finalDelayMs = Math.max(0, petStreamFinalTimeoutMs - elapsedMs);
       streamWatchdogTimerRef.current = window.setTimeout(() => {
         streamWatchdogTimerRef.current = null;
         if (hasStreamTerminalState()) {

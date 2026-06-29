@@ -1,8 +1,9 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "../../services/apiClient";
 import type { DesktopApi } from "../../services/desktopApi";
 import { VisibleContinuityPanel } from "./VisibleContinuityPanel";
+import { VISIBLE_CONTINUITY_REQUEST_TIMEOUT_MS } from "./useVisibleContinuity";
 import type { RetrospectiveResponse } from "../../types";
 import type { VisibleContinuitySnapshotResponse } from "./visibleContinuityTypes";
 
@@ -164,7 +165,7 @@ describe("VisibleContinuityPanel", () => {
     expect(screen.getByText(/当任务、日记或记忆反复提到同一条线索后/)).toBeInTheDocument();
     expect(screen.getByText("Weekly playback is warming up")).toBeInTheDocument();
     expect(screen.getByText("Start a chat or capture one note.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Help me decide what is worth continuing today/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /帮我看看今天该接着做什么/ })).toBeDisabled();
   });
 
   it("renders full snapshot data with receipt status, safe target path, and project next step", () => {
@@ -182,7 +183,7 @@ describe("VisibleContinuityPanel", () => {
     expect(screen.getByText("Agent Pet")).toBeInTheDocument();
     expect(screen.getByText("Active")).toBeInTheDocument();
     expect(screen.getAllByText("Continue the snapshot API.").length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: /Help me continue this task/ })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /继续：Ship visible continuity/ })).toBeDisabled();
     expect(screen.getByText("Weekly local playback preview")).toBeInTheDocument();
     expect(screen.getAllByText("visible continuity").length).toBeGreaterThan(0);
   });
@@ -192,7 +193,7 @@ describe("VisibleContinuityPanel", () => {
 
     render(<VisibleContinuityPanel snapshot={fullSnapshot()} onContinuePrompt={onContinuePrompt} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /Help me continue this task/ }));
+    fireEvent.click(screen.getByRole("button", { name: /继续：Ship visible continuity/ }));
 
     expect(onContinuePrompt).toHaveBeenCalledWith("Help me continue this task: Ship visible continuity");
   });
@@ -230,6 +231,32 @@ describe("VisibleContinuityPanel", () => {
     await waitFor(() => expect(api.getVisibleContinuitySnapshot).toHaveBeenCalledTimes(2), { timeout: 2000 });
     await waitFor(() => expect(screen.getByText("Continue from the latest local context")).toBeInTheDocument());
     expect(screen.queryByText(/连续性快照加载失败/)).not.toBeInTheDocument();
+  });
+
+  it("stops loading when the continuity snapshot request never settles", async () => {
+    vi.useFakeTimers();
+    try {
+      const api = {
+        getVisibleContinuitySnapshot: vi.fn(() => new Promise<VisibleContinuitySnapshotResponse>(() => undefined)),
+        revertAgentAction: vi.fn(),
+        getRetrospectives: vi.fn(),
+        writeRetrospectivePeriodReport: vi.fn(),
+      } as unknown as DesktopApi;
+
+      render(<VisibleContinuityPanel api={api} />);
+
+      expect(screen.getByText("正在加载最新本地连续性快照。")).toBeInTheDocument();
+
+      await act(async () => {
+        vi.advanceTimersByTime(VISIBLE_CONTINUITY_REQUEST_TIMEOUT_MS);
+        await Promise.resolve();
+      });
+
+      expect(screen.queryByText("正在加载最新本地连续性快照。")).not.toBeInTheDocument();
+      expect(screen.getByText(/连续性快照加载超时，请刷新重试/)).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("reverts a reversible receipt through the desktop API and refreshes the snapshot", async () => {

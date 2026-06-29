@@ -577,11 +577,6 @@ function App() {
             ),
         );
         petChat.startReplyPaging(assistantId);
-        const signal = petChat.latestContinuitySignalForMessage(assistantId);
-        if (signal) {
-          const delay = Math.min(9000, Math.max(1200, petChat.replyPagesRef.current.length * 2600));
-          window.setTimeout(() => petChat.showContinuityPresenceBubble(signal), delay);
-        }
       } else {
         petChat.completeStreamWithoutReply(assistantId);
       }

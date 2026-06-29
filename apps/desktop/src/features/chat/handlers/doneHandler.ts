@@ -4,7 +4,8 @@ import type { StreamHandlerInput } from "../streamDispatcher";
 export function doneHandler({ messageId, sseEvent, payload, context }: StreamHandlerInput) {
   const { petChat, setMessages } = context;
   const doneText = extractSseText(sseEvent, payload);
-  if (doneText) {
+  const currentVisibleReplyText = petChat.assistantReplyRef.current;
+  if (doneText && (sseEvent.event !== "done" || !currentVisibleReplyText.trim())) {
     petChat.setAssistantReplyText(doneText);
   }
   const visibleReplyText = petChat.assistantReplyRef.current;

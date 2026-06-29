@@ -4,6 +4,7 @@ import type { Dispatch, SetStateAction } from "react";
 import type { ChatContinuitySignal, ChatMessage, TtsPlaybackItem } from "../../types";
 import { getPetBubblePageDelay } from "../../services/petBubblePagination";
 import { usePetChatBubble } from "./usePetChatBubble";
+import { petStreamFinalTimeoutMs } from "./chatTypes";
 import type { TtsPlaybackQueueController } from "../tts";
 
 function createTtsQueueMock(): TtsPlaybackQueueController {
@@ -168,6 +169,31 @@ describe("usePetChatBubble", () => {
     expect(result.current.bubble.title).toBe("Still checking");
     expect(result.current.bubble.message).toMatch(/^Waiting for the actual reply/);
     expect(onFinalTimeout).not.toHaveBeenCalled();
+  });
+
+  it("does not fire the final no-reply timeout before the stream final timeout", () => {
+    const { result } = renderPetChatBubbleHook();
+    const onFinalTimeout = vi.fn();
+
+    act(() => {
+      result.current.resetStreamState("assistant-slow-provider");
+      result.current.scheduleStreamWatchdog("Still checking", "Waiting for the actual reply.", 1000, onFinalTimeout);
+      vi.advanceTimersByTime(1000);
+    });
+
+    expect(onFinalTimeout).not.toHaveBeenCalled();
+
+    act(() => {
+      vi.advanceTimersByTime(petStreamFinalTimeoutMs - 1001);
+    });
+
+    expect(onFinalTimeout).not.toHaveBeenCalled();
+
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+
+    expect(onFinalTimeout).toHaveBeenCalledOnce();
   });
 
   it("keeps short replies on a single page and hides them after the read delay", () => {

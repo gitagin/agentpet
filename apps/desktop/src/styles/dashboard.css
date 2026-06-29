@@ -299,13 +299,19 @@
 .stage-continuity-panel {
   min-height: 0;
   height: 100%;
-  padding: 13px;
+  padding: 14px 15px;
   box-shadow: var(--shadow-card);
   contain: none;
 }
 
+.stage-continuity-panel.visible-continuity-panel {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.84), rgba(244, 251, 248, 0.62)),
+    rgba(255, 255, 255, 0.52);
+}
+
 .stage-continuity-panel .visible-continuity-content {
-  gap: 8px;
+  gap: 10px;
 }
 
 .stage-continuity-panel .panel-title {
@@ -317,6 +323,11 @@
   gap: 10px;
 }
 
+.stage-continuity-panel .visible-continuity-header strong {
+  font-size: 16px;
+  line-height: 1.2;
+}
+
 .stage-continuity-panel .visible-continuity-kicker,
 .stage-continuity-panel .visible-continuity-content > .visible-continuity-section:not(:first-child),
 .stage-continuity-panel .visible-continuity-today-grid,
@@ -326,8 +337,94 @@
 
 .stage-continuity-panel .visible-continuity-section {
   border-color: var(--success-border);
-  background: var(--success-bg);
-  padding: 10px;
+  background:
+    linear-gradient(180deg, rgba(245, 253, 250, 0.8), rgba(255, 255, 255, 0.66)),
+    var(--success-bg);
+  padding: 11px;
+}
+
+.stage-continuity-panel .visible-continuity-section-head {
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 9px;
+}
+
+.stage-continuity-panel .visible-continuity-section-head svg {
+  width: 28px;
+  height: 28px;
+}
+
+.stage-continuity-panel .visible-continuity-section-head h3 {
+  font-size: 14px;
+}
+
+.stage-continuity-panel .visible-continuity-section-head p {
+  display: -webkit-box;
+  margin-top: 3px;
+  color: #5b6c70;
+  font-size: 12px;
+  line-height: 1.35;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.stage-continuity-panel .visible-continuity-resume {
+  gap: 6px;
+}
+
+.stage-continuity-panel .visible-continuity-resume-button {
+  grid-template-columns: 26px minmax(0, 1fr);
+  min-height: 50px;
+  border-color: rgba(112, 132, 143, 0.2);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: none;
+  padding: 9px 10px;
+}
+
+.stage-continuity-panel .visible-continuity-resume-button svg {
+  width: 26px;
+  height: 26px;
+  background: rgba(70, 135, 134, 0.12);
+  color: #2f7675;
+}
+
+.stage-continuity-panel .visible-continuity-resume-button span {
+  font-size: 14px;
+  line-height: 1.28;
+}
+
+.stage-continuity-panel .visible-continuity-prompt-row {
+  margin-top: 0;
+  gap: 6px;
+}
+
+.stage-continuity-panel .visible-continuity-prompt-button {
+  padding: 7px 8px;
+  font-size: 12px;
+}
+
+.stage-continuity-panel .visible-continuity-source-details {
+  border-top-color: rgba(112, 132, 143, 0.1);
+  padding-top: 4px;
+}
+
+.stage-continuity-panel .visible-continuity-source-details summary {
+  color: #657477;
+  font-size: 11px;
+}
+
+.stage-continuity-panel .visible-continuity-quick-facts {
+  gap: 5px;
+}
+
+.stage-continuity-panel .visible-continuity-quick-facts span {
+  max-width: 100%;
+  border: 0;
+  background: rgba(255, 255, 255, 0.46);
+  color: #53666b;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 6px;
 }
 
 .stage-command-layout.has-outcome .stage-command-panel {
