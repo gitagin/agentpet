@@ -73,7 +73,7 @@ export function useDesktopWindowRouting({
   }, []);
 
   useEffect(() => {
-    if (windowMode !== "control") {
+    if (windowMode !== "control" && windowMode !== "stage") {
       return;
     }
     const unsubscribe = window.agentDesktop?.onControlTargetRequested?.((targetId) => {

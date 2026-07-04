@@ -1,0 +1,384 @@
+import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/features/settings/AgentConfigForm.tsx");import __vite__cjsImport0_react_jsxDevRuntime from "/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=bc5f1d7c"; const jsxDEV = __vite__cjsImport0_react_jsxDevRuntime["jsxDEV"];
+import * as RefreshRuntime from "/@react-refresh";
+const inWebWorker = typeof WorkerGlobalScope !== "undefined" && self instanceof WorkerGlobalScope;
+let prevRefreshReg;
+let prevRefreshSig;
+if (import.meta.hot && !inWebWorker) {
+  if (!window.$RefreshReg$) {
+    throw new Error(
+      "@vitejs/plugin-react can't detect preamble. Something is wrong."
+    );
+  }
+  prevRefreshReg = window.$RefreshReg$;
+  prevRefreshSig = window.$RefreshSig$;
+  window.$RefreshReg$ = RefreshRuntime.getRefreshReg("E:/agentproject/apps/desktop/src/features/settings/AgentConfigForm.tsx");
+  window.$RefreshSig$ = RefreshRuntime.createSignatureFunctionForTransform;
+}
+import { Bot, Loader2, RefreshCw, ShieldCheck } from "/node_modules/.vite/deps/lucide-react.js?v=bc5f1d7c";
+import {
+  agentModelDefinitions,
+  hasUnsavedAgentModelDraft,
+  isSupportedProviderDraft
+} from "/src/services/agentModelDrafts.ts";
+import { formatBooleanStatus, formatModelTestResult } from "/src/features/settings/settingsFormatters.ts";
+export function AgentConfigForm({
+  drafts,
+  globalModelDraft,
+  testResults,
+  savingIds,
+  testingIds,
+  loadingSettingsStatus,
+  onRefreshSettings,
+  onUpdateDraft,
+  onSaveAgentModel,
+  onTestAgentModel
+}) {
+  return /* @__PURE__ */ jsxDEV("section", { className: "agent-model-section", "aria-label": "高级职责模型路由", children: [
+    /* @__PURE__ */ jsxDEV("div", { className: "section-heading", children: [
+      /* @__PURE__ */ jsxDEV("strong", { children: "5 个职责模型" }, void 0, false, {
+        fileName: "E:/agentproject/apps/desktop/src/features/settings/AgentConfigForm.tsx",
+        lineNumber: 59,
+        columnNumber: 9
+      }, this),
+      /* @__PURE__ */ jsxDEV("span", { children: "默认继承全局模型；只有某个职责需要单独优化时再覆盖。" }, void 0, false, {
+        fileName: "E:/agentproject/apps/desktop/src/features/settings/AgentConfigForm.tsx",
+        lineNumber: 60,
+        columnNumber: 9
+      }, this)
+    ] }, void 0, true, {
+      fileName: "E:/agentproject/apps/desktop/src/features/settings/AgentConfigForm.tsx",
+      lineNumber: 58,
+      columnNumber: 7
+    }, this),
+    /* @__PURE__ */ jsxDEV("button", { type: "button", className: "secondary", onClick: onRefreshSettings, disabled: loadingSettingsStatus, children: [
+      loadingSettingsStatus ? /* @__PURE__ */ jsxDEV(Loader2, { className: "spin", size: 16 }, void 0, false, {
+        fileName: "E:/agentproject/apps/desktop/src/features/settings/AgentConfigForm.tsx",
+        lineNumber: 63,
+        columnNumber: 34
+      }, this) : /* @__PURE__ */ jsxDEV(RefreshCw, { size: 16 }, void 0, false, {
+        fileName: "E:/agentproject/apps/desktop/src/features/settings/AgentConfigForm.tsx",
+        lineNumber: 63,
+        columnNumber: 75
+      }, this),
+      "刷新状态"
+    ] }, void 0, true, {
+      fileName: "E:/agentproject/apps/desktop/src/features/settings/AgentConfigForm.tsx",
+      lineNumber: 62,
+      columnNumber: 7
+    }, this),
+    /* @__PURE__ */ jsxDEV("div", { className: "agent-model-list", children: drafts.map((draft) => {
+      const definition = agentModelDefinitions.find((agent) => agent.id === draft.agent_id);
+      const testResult = testResults[draft.agent_id];
+      const saving = savingIds.has(draft.agent_id);
+      const testing = testingIds.has(draft.agent_id);
+      const hasUnsavedDraft = hasUnsavedAgentModelDraft(draft);
+      const usingGlobalModel = !draft.enabled;
+      const providerUnsupported = !usingGlobalModel && Boolean(draft.provider.trim()) && !isSupportedProviderDraft(draft.provider);
+      return /* @__PURE__ */ jsxDEV("article", { className: "agent-model-row", children: [
+        /* @__PURE__ */ jsxDEV("div", { className: "agent-model-title", children: [
+          /* @__PURE__ */ jsxDEV("strong", { children: definition?.label || draft.agent_id }, void 0, false, {
+            fileName: "E:/agentproject/apps/desktop/src/features/settings/AgentConfigForm.tsx",
+            lineNumber: 78,
+            columnNumber: 17
+          }, this),
+          definition?.outcomeLabel ? /* @__PURE__ */ jsxDEV("em", { children: definition.outcomeLabel }, void 0, false, {
+            fileName: "E:/agentproject/apps/desktop/src/features/settings/AgentConfigForm.tsx",
+            lineNumber: 79,
+            columnNumber: 45
+          }, this) : null,
+          /* @__PURE__ */ jsxDEV("span", { children: definition?.description }, void 0, false, {
+            fileName: "E:/agentproject/apps/desktop/src/features/settings/AgentConfigForm.tsx",
+            lineNumber: 80,
+            columnNumber: 17
+          }, this),
+          /* @__PURE__ */ jsxDEV("label", { className: "checkbox-row", children: [
+            /* @__PURE__ */ jsxDEV(
+              "input",
+              {
+                type: "checkbox",
+                checked: usingGlobalModel,
+                onChange: (event) => onUpdateDraft(draft.agent_id, { enabled: !event.target.checked })
+              },
+              void 0,
+              false,
+              {
+                fileName: "E:/agentproject/apps/desktop/src/features/settings/AgentConfigForm.tsx",
+                lineNumber: 82,
+                columnNumber: 19
+              },
+              this
+            ),
+            "使用全局模型"
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/settings/AgentConfigForm.tsx",
+            lineNumber: 81,
+            columnNumber: 17
+          }, this),
+          usingGlobalModel ? /* @__PURE__ */ jsxDEV("span", { className: "agent-model-inherited", children: [
+            "继承：",
+            globalModelDraft.provider || "未配置提供方",
+            " / ",
+            globalModelDraft.base_url || "未配置接口地址",
+            " / ",
+            globalModelDraft.model || "未配置模型"
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/settings/AgentConfigForm.tsx",
+            lineNumber: 90,
+            columnNumber: 17
+          }, this) : null
+        ] }, void 0, true, {
+          fileName: "E:/agentproject/apps/desktop/src/features/settings/AgentConfigForm.tsx",
+          lineNumber: 77,
+          columnNumber: 15
+        }, this),
+        /* @__PURE__ */ jsxDEV("label", { children: [
+          /* @__PURE__ */ jsxDEV("span", { children: "提供方" }, void 0, false, {
+            fileName: "E:/agentproject/apps/desktop/src/features/settings/AgentConfigForm.tsx",
+            lineNumber: 96,
+            columnNumber: 17
+          }, this),
+          /* @__PURE__ */ jsxDEV(
+            "input",
+            {
+              value: draft.provider,
+              onChange: (event) => onUpdateDraft(draft.agent_id, { provider: event.target.value }),
+              placeholder: "openai-compatible",
+              disabled: usingGlobalModel
+            },
+            void 0,
+            false,
+            {
+              fileName: "E:/agentproject/apps/desktop/src/features/settings/AgentConfigForm.tsx",
+              lineNumber: 97,
+              columnNumber: 17
+            },
+            this
+          )
+        ] }, void 0, true, {
+          fileName: "E:/agentproject/apps/desktop/src/features/settings/AgentConfigForm.tsx",
+          lineNumber: 95,
+          columnNumber: 15
+        }, this),
+        /* @__PURE__ */ jsxDEV("label", { children: [
+          /* @__PURE__ */ jsxDEV("span", { children: "接口地址" }, void 0, false, {
+            fileName: "E:/agentproject/apps/desktop/src/features/settings/AgentConfigForm.tsx",
+            lineNumber: 105,
+            columnNumber: 17
+          }, this),
+          /* @__PURE__ */ jsxDEV(
+            "input",
+            {
+              value: draft.base_url,
+              onChange: (event) => onUpdateDraft(draft.agent_id, { base_url: event.target.value }),
+              disabled: usingGlobalModel
+            },
+            void 0,
+            false,
+            {
+              fileName: "E:/agentproject/apps/desktop/src/features/settings/AgentConfigForm.tsx",
+              lineNumber: 106,
+              columnNumber: 17
+            },
+            this
+          )
+        ] }, void 0, true, {
+          fileName: "E:/agentproject/apps/desktop/src/features/settings/AgentConfigForm.tsx",
+          lineNumber: 104,
+          columnNumber: 15
+        }, this),
+        /* @__PURE__ */ jsxDEV("label", { children: [
+          /* @__PURE__ */ jsxDEV("span", { children: "模型" }, void 0, false, {
+            fileName: "E:/agentproject/apps/desktop/src/features/settings/AgentConfigForm.tsx",
+            lineNumber: 113,
+            columnNumber: 17
+          }, this),
+          /* @__PURE__ */ jsxDEV(
+            "input",
+            {
+              value: draft.model,
+              onChange: (event) => onUpdateDraft(draft.agent_id, { model: event.target.value }),
+              disabled: usingGlobalModel
+            },
+            void 0,
+            false,
+            {
+              fileName: "E:/agentproject/apps/desktop/src/features/settings/AgentConfigForm.tsx",
+              lineNumber: 114,
+              columnNumber: 17
+            },
+            this
+          )
+        ] }, void 0, true, {
+          fileName: "E:/agentproject/apps/desktop/src/features/settings/AgentConfigForm.tsx",
+          lineNumber: 112,
+          columnNumber: 15
+        }, this),
+        /* @__PURE__ */ jsxDEV("label", { children: [
+          /* @__PURE__ */ jsxDEV("span", { children: "密钥" }, void 0, false, {
+            fileName: "E:/agentproject/apps/desktop/src/features/settings/AgentConfigForm.tsx",
+            lineNumber: 121,
+            columnNumber: 17
+          }, this),
+          /* @__PURE__ */ jsxDEV(
+            "input",
+            {
+              value: draft.api_key,
+              onChange: (event) => onUpdateDraft(draft.agent_id, { api_key: event.target.value }),
+              placeholder: draft.masked || "请输入密钥",
+              type: "password",
+              disabled: usingGlobalModel
+            },
+            void 0,
+            false,
+            {
+              fileName: "E:/agentproject/apps/desktop/src/features/settings/AgentConfigForm.tsx",
+              lineNumber: 122,
+              columnNumber: 17
+            },
+            this
+          )
+        ] }, void 0, true, {
+          fileName: "E:/agentproject/apps/desktop/src/features/settings/AgentConfigForm.tsx",
+          lineNumber: 120,
+          columnNumber: 15
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { className: "agent-model-actions", children: [
+          /* @__PURE__ */ jsxDEV("button", { type: "button", onClick: () => onSaveAgentModel(draft.agent_id), disabled: saving, children: [
+            saving ? /* @__PURE__ */ jsxDEV(Loader2, { className: "spin", size: 16 }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/settings/AgentConfigForm.tsx",
+              lineNumber: 132,
+              columnNumber: 29
+            }, this) : /* @__PURE__ */ jsxDEV(ShieldCheck, { size: 16 }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/settings/AgentConfigForm.tsx",
+              lineNumber: 132,
+              columnNumber: 70
+            }, this),
+            "保存"
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/settings/AgentConfigForm.tsx",
+            lineNumber: 131,
+            columnNumber: 17
+          }, this),
+          /* @__PURE__ */ jsxDEV(
+            "button",
+            {
+              type: "button",
+              className: "secondary",
+              onClick: () => onTestAgentModel(draft.agent_id),
+              disabled: testing || hasUnsavedDraft || providerUnsupported,
+              children: [
+                testing ? /* @__PURE__ */ jsxDEV(Loader2, { className: "spin", size: 16 }, void 0, false, {
+                  fileName: "E:/agentproject/apps/desktop/src/features/settings/AgentConfigForm.tsx",
+                  lineNumber: 141,
+                  columnNumber: 30
+                }, this) : /* @__PURE__ */ jsxDEV(Bot, { size: 16 }, void 0, false, {
+                  fileName: "E:/agentproject/apps/desktop/src/features/settings/AgentConfigForm.tsx",
+                  lineNumber: 141,
+                  columnNumber: 71
+                }, this),
+                "试连"
+              ]
+            },
+            void 0,
+            true,
+            {
+              fileName: "E:/agentproject/apps/desktop/src/features/settings/AgentConfigForm.tsx",
+              lineNumber: 135,
+              columnNumber: 17
+            },
+            this
+          )
+        ] }, void 0, true, {
+          fileName: "E:/agentproject/apps/desktop/src/features/settings/AgentConfigForm.tsx",
+          lineNumber: 130,
+          columnNumber: 15
+        }, this),
+        /* @__PURE__ */ jsxDEV("dl", { className: "agent-model-status", children: [
+          /* @__PURE__ */ jsxDEV("div", { children: [
+            /* @__PURE__ */ jsxDEV("dt", { children: "配置状态" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/settings/AgentConfigForm.tsx",
+              lineNumber: 147,
+              columnNumber: 19
+            }, this),
+            /* @__PURE__ */ jsxDEV("dd", { children: usingGlobalModel ? "使用全局模型" : formatBooleanStatus(draft.configured) }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/settings/AgentConfigForm.tsx",
+              lineNumber: 148,
+              columnNumber: 19
+            }, this)
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/settings/AgentConfigForm.tsx",
+            lineNumber: 146,
+            columnNumber: 17
+          }, this),
+          /* @__PURE__ */ jsxDEV("div", { children: [
+            /* @__PURE__ */ jsxDEV("dt", { children: "密钥状态" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/settings/AgentConfigForm.tsx",
+              lineNumber: 151,
+              columnNumber: 19
+            }, this),
+            /* @__PURE__ */ jsxDEV("dd", { children: usingGlobalModel ? "继承全局密钥" : draft.masked || "未配置" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/settings/AgentConfigForm.tsx",
+              lineNumber: 152,
+              columnNumber: 19
+            }, this)
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/settings/AgentConfigForm.tsx",
+            lineNumber: 150,
+            columnNumber: 17
+          }, this),
+          /* @__PURE__ */ jsxDEV("div", { children: [
+            /* @__PURE__ */ jsxDEV("dt", { children: "试连结果" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/settings/AgentConfigForm.tsx",
+              lineNumber: 155,
+              columnNumber: 19
+            }, this),
+            /* @__PURE__ */ jsxDEV("dd", { children: providerUnsupported ? "提供方只支持 openai-compatible。" : hasUnsavedDraft ? "有未保存改动，请先保存。" : testResult ? formatModelTestResult(testResult) : "尚未试连" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/settings/AgentConfigForm.tsx",
+              lineNumber: 156,
+              columnNumber: 19
+            }, this)
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/settings/AgentConfigForm.tsx",
+            lineNumber: 154,
+            columnNumber: 17
+          }, this)
+        ] }, void 0, true, {
+          fileName: "E:/agentproject/apps/desktop/src/features/settings/AgentConfigForm.tsx",
+          lineNumber: 145,
+          columnNumber: 15
+        }, this)
+      ] }, draft.agent_id, true, {
+        fileName: "E:/agentproject/apps/desktop/src/features/settings/AgentConfigForm.tsx",
+        lineNumber: 76,
+        columnNumber: 13
+      }, this);
+    }) }, void 0, false, {
+      fileName: "E:/agentproject/apps/desktop/src/features/settings/AgentConfigForm.tsx",
+      lineNumber: 66,
+      columnNumber: 7
+    }, this)
+  ] }, void 0, true, {
+    fileName: "E:/agentproject/apps/desktop/src/features/settings/AgentConfigForm.tsx",
+    lineNumber: 57,
+    columnNumber: 5
+  }, this);
+}
+_c = AgentConfigForm;
+var _c;
+$RefreshReg$(_c, "AgentConfigForm");
+if (import.meta.hot && !inWebWorker) {
+  window.$RefreshReg$ = prevRefreshReg;
+  window.$RefreshSig$ = prevRefreshSig;
+}
+if (import.meta.hot && !inWebWorker) {
+  RefreshRuntime.__hmr_import(import.meta.url).then((currentExports) => {
+    RefreshRuntime.registerExportsForReactRefresh("E:/agentproject/apps/desktop/src/features/settings/AgentConfigForm.tsx", currentExports);
+    import.meta.hot.accept((nextExports) => {
+      if (!nextExports) return;
+      const invalidateMessage = RefreshRuntime.validateRefreshBoundaryAndEnqueueUpdate("E:/agentproject/apps/desktop/src/features/settings/AgentConfigForm.tsx", currentExports, nextExports);
+      if (invalidateMessage) import.meta.hot.invalidate(invalidateMessage);
+    });
+  });
+}
+
+//# sourceMappingURL=data:application/json;base64,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VkY7QUFBQTtBQUFBO0FBQUE7QUFBQSxpQkFXQTtBQUFBLGFBcEJGO0FBQUE7QUFBQTtBQUFBO0FBQUEsZUFxQkE7QUFBQSxXQTFGWU4sTUFBTUssVUFBcEI7QUFBQTtBQUFBO0FBQUE7QUFBQSxhQTJGQTtBQUFBLElBRUosQ0FBQyxLQXZHSDtBQUFBO0FBQUE7QUFBQTtBQUFBLFdBd0dBO0FBQUEsT0FqSEY7QUFBQTtBQUFBO0FBQUE7QUFBQSxTQWtIQTtBQUVKO0FBQUN3QixLQWpJZXpDO0FBQWUsSUFBQXlDO0FBQUEsYUFBQUEsSUFBQSIsIm5hbWVzIjpbIkJvdCIsIkxvYWRlcjIiLCJSZWZyZXNoQ3ciLCJTaGllbGRDaGVjayIsImFnZW50TW9kZWxEZWZpbml0aW9ucyIsImhhc1Vuc2F2ZWRBZ2VudE1vZGVsRHJhZnQiLCJpc1N1cHBvcnRlZFByb3ZpZGVyRHJhZnQiLCJmb3JtYXRCb29sZWFuU3RhdHVzIiwiZm9ybWF0TW9kZWxUZXN0UmVzdWx0IiwiQWdlbnRDb25maWdGb3JtIiwiZHJhZnRzIiwiZ2xvYmFsTW9kZWxEcmFmdCIsInRlc3RSZXN1bHRzIiwic2F2aW5nSWRzIiwidGVzdGluZ0lkcyIsImxvYWRpbmdTZXR0aW5nc1N0YXR1cyIsIm9uUmVmcmVzaFNldHRpbmdzIiwib25VcGRhdGVEcmFmdCIsIm9uU2F2ZUFnZW50TW9kZWwiLCJvblRlc3RBZ2VudE1vZGVsIiwibWFwIiwiZHJhZnQiLCJkZWZpbml0aW9uIiwiZmluZCIsImFnZW50IiwiaWQiLCJhZ2VudF9pZCIsInRlc3RSZXN1bHQiLCJzYXZpbmciLCJoYXMiLCJ0ZXN0aW5nIiwiaGFzVW5zYXZlZERyYWZ0IiwidXNpbmdHbG9iYWxNb2RlbCIsImVuYWJsZWQiLCJwcm92aWRlclVuc3VwcG9ydGVkIiwiQm9vbGVhbiIsInByb3ZpZGVyIiwidHJpbSIsImxhYmVsIiwib3V0Y29tZUxhYmVsIiwiZGVzY3JpcHRpb24iLCJldmVudCIsInRhcmdldCIsImNoZWNrZWQiLCJiYXNlX3VybCIsIm1vZGVsIiwidmFsdWUiLCJhcGlfa2V5IiwibWFza2VkIiwiY29uZmlndXJlZCIsIl9jIl0sImlnbm9yZUxpc3QiOltdLCJzb3VyY2VzIjpbIkFnZW50Q29uZmlnRm9ybS50c3giXSwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0IHsgQm90LCBMb2FkZXIyLCBSZWZyZXNoQ3csIFNoaWVsZENoZWNrIH0gZnJvbSBcImx1Y2lkZS1yZWFjdFwiO1xyXG5pbXBvcnQgdHlwZSB7IEFnZW50TW9kZWxJZCwgTW9kZWxUZXN0UmVzcG9uc2UgfSBmcm9tIFwiLi4vLi4vdHlwZXNcIjtcclxuaW1wb3J0IHtcclxuICBhZ2VudE1vZGVsRGVmaW5pdGlvbnMsXHJcbiAgaGFzVW5zYXZlZEFnZW50TW9kZWxEcmFmdCxcclxuICBpc1N1cHBvcnRlZFByb3ZpZGVyRHJhZnQsXHJcbiAgdHlwZSBBZ2VudE1vZGVsRHJhZnQsXHJcbn0gZnJvbSBcIi4uLy4uL3NlcnZpY2VzL2FnZW50TW9kZWxEcmFmdHNcIjtcclxuaW1wb3J0IHsgZm9ybWF0Qm9vbGVhblN0YXR1cywgZm9ybWF0TW9kZWxUZXN0UmVzdWx0IH0gZnJvbSBcIi4vc2V0dGluZ3NGb3JtYXR0ZXJzXCI7XHJcbmltcG9ydCB0eXBlIHsgR2xvYmFsTW9kZWxEcmFmdCB9IGZyb20gXCIuL3NldHRpbmdzVHlwZXNcIjtcclxuXHJcbnR5cGUgQWdlbnRDb25maWdGb3JtUHJvcHMgPSB7XHJcbiAgZHJhZnRzOiBBZ2VudE1vZGVsRHJhZnRbXTtcclxuICBnbG9iYWxNb2RlbERyYWZ0OiBHbG9iYWxNb2RlbERyYWZ0O1xyXG4gIHRlc3RSZXN1bHRzOiBSZWNvcmQ8c3RyaW5nLCBNb2RlbFRlc3RSZXNwb25zZSB8IHVuZGVmaW5lZD47XHJcbiAgc2F2aW5nSWRzOiBTZXQ8c3RyaW5nPjtcclxuICB0ZXN0aW5nSWRzOiBTZXQ8c3RyaW5nPjtcclxuICBsb2FkaW5nU2V0dGluZ3NTdGF0dXM6IGJvb2xlYW47XHJcbiAgb25SZWZyZXNoU2V0dGluZ3M6ICgpID0+IHZvaWQ7XHJcbiAgb25VcGRhdGVEcmFmdDogKGFnZW50SWQ6IEFnZW50TW9kZWxJZCwgcGF0Y2g6IFBhcnRpYWw8QWdlbnRNb2RlbERyYWZ0PikgPT4gdm9pZDtcclxuICBvblNhdmVBZ2VudE1vZGVsOiAoYWdlbnRJZDogQWdlbnRNb2RlbElkKSA9PiB2b2lkO1xyXG4gIG9uVGVzdEFnZW50TW9kZWw6IChhZ2VudElkOiBBZ2VudE1vZGVsSWQpID0+IHZvaWQ7XHJcbn07XHJcblxyXG5leHBvcnQgZnVuY3Rpb24gQWdlbnRDb25maWdGb3JtKHtcclxuICBkcmFmdHMsXHJcbiAgZ2xvYmFsTW9kZWxEcmFmdCxcclxuICB0ZXN0UmVzdWx0cyxcclxuICBzYXZpbmdJZHMsXHJcbiAgdGVzdGluZ0lkcyxcclxuICBsb2FkaW5nU2V0dGluZ3NTdGF0dXMsXHJcbiAgb25SZWZyZXNoU2V0dGluZ3MsXHJcbiAgb25VcGRhdGVEcmFmdCxcclxuICBvblNhdmVBZ2VudE1vZGVsLFxyXG4gIG9uVGVzdEFnZW50TW9kZWwsXHJcbn06IEFnZW50Q29uZmlnRm9ybVByb3BzKSB7XHJcbiAgcmV0dXJuIChcclxuICAgIDxzZWN0aW9uIGNsYXNzTmFtZT1cImFnZW50LW1vZGVsLXNlY3Rpb25cIiBhcmlhLWxhYmVsPVwi6auY57qn6IGM6LSj5qih5Z6L6Lev55SxXCI+XG4gICAgICA8ZGl2IGNsYXNzTmFtZT1cInNlY3Rpb24taGVhZGluZ1wiPlxuICAgICAgICA8c3Ryb25nPjUg5Liq6IGM6LSj5qih5Z6LPC9zdHJvbmc+XG4gICAgICAgIDxzcGFuPum7mOiupOe7p+aJv+WFqOWxgOaooeWei++8m+WPquacieafkOS4quiBjOi0o+mcgOimgeWNleeLrOS8mOWMluaXtuWGjeimhuebluOAgjwvc3Bhbj5cclxuICAgICAgPC9kaXY+XHJcbiAgICAgIDxidXR0b24gdHlwZT1cImJ1dHRvblwiIGNsYXNzTmFtZT1cInNlY29uZGFyeVwiIG9uQ2xpY2s9e29uUmVmcmVzaFNldHRpbmdzfSBkaXNhYmxlZD17bG9hZGluZ1NldHRpbmdzU3RhdHVzfT5cclxuICAgICAgICB7bG9hZGluZ1NldHRpbmdzU3RhdHVzID8gPExvYWRlcjIgY2xhc3NOYW1lPVwic3BpblwiIHNpemU9ezE2fSAvPiA6IDxSZWZyZXNoQ3cgc2l6ZT17MTZ9IC8+fVxyXG4gICAgICAgIOWIt+aWsOeKtuaAgVxyXG4gICAgICA8L2J1dHRvbj5cclxuICAgICAgPGRpdiBjbGFzc05hbWU9XCJhZ2VudC1tb2RlbC1saXN0XCI+XHJcbiAgICAgICAge2RyYWZ0cy5tYXAoKGRyYWZ0KSA9PiB7XHJcbiAgICAgICAgICBjb25zdCBkZWZpbml0aW9uID0gYWdlbnRNb2RlbERlZmluaXRpb25zLmZpbmQoKGFnZW50KSA9PiBhZ2VudC5pZCA9PT0gZHJhZnQuYWdlbnRfaWQpO1xyXG4gICAgICAgICAgY29uc3QgdGVzdFJlc3VsdCA9IHRlc3RSZXN1bHRzW2RyYWZ0LmFnZW50X2lkXTtcclxuICAgICAgICAgIGNvbnN0IHNhdmluZyA9IHNhdmluZ0lkcy5oYXMoZHJhZnQuYWdlbnRfaWQpO1xyXG4gICAgICAgICAgY29uc3QgdGVzdGluZyA9IHRlc3RpbmdJZHMuaGFzKGRyYWZ0LmFnZW50X2lkKTtcclxuICAgICAgICAgIGNvbnN0IGhhc1Vuc2F2ZWREcmFmdCA9IGhhc1Vuc2F2ZWRBZ2VudE1vZGVsRHJhZnQoZHJhZnQpO1xyXG4gICAgICAgICAgY29uc3QgdXNpbmdHbG9iYWxNb2RlbCA9ICFkcmFmdC5lbmFibGVkO1xyXG4gICAgICAgICAgY29uc3QgcHJvdmlkZXJVbnN1cHBvcnRlZCA9ICF1c2luZ0dsb2JhbE1vZGVsICYmIEJvb2xlYW4oZHJhZnQucHJvdmlkZXIudHJpbSgpKSAmJiAhaXNTdXBwb3J0ZWRQcm92aWRlckRyYWZ0KGRyYWZ0LnByb3ZpZGVyKTtcclxuICAgICAgICAgIHJldHVybiAoXHJcbiAgICAgICAgICAgIDxhcnRpY2xlIGtleT17ZHJhZnQuYWdlbnRfaWR9IGNsYXNzTmFtZT1cImFnZW50LW1vZGVsLXJvd1wiPlxyXG4gICAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwiYWdlbnQtbW9kZWwtdGl0bGVcIj5cclxuICAgICAgICAgICAgICAgIDxzdHJvbmc+e2RlZmluaXRpb24/LmxhYmVsIHx8IGRyYWZ0LmFnZW50X2lkfTwvc3Ryb25nPlxyXG4gICAgICAgICAgICAgICAge2RlZmluaXRpb24/Lm91dGNvbWVMYWJlbCA/IDxlbT57ZGVmaW5pdGlvbi5vdXRjb21lTGFiZWx9PC9lbT4gOiBudWxsfVxyXG4gICAgICAgICAgICAgICAgPHNwYW4+e2RlZmluaXRpb24/LmRlc2NyaXB0aW9ufTwvc3Bhbj5cclxuICAgICAgICAgICAgICAgIDxsYWJlbCBjbGFzc05hbWU9XCJjaGVja2JveC1yb3dcIj5cclxuICAgICAgICAgICAgICAgICAgPGlucHV0XHJcbiAgICAgICAgICAgICAgICAgICAgdHlwZT1cImNoZWNrYm94XCJcclxuICAgICAgICAgICAgICAgICAgICBjaGVja2VkPXt1c2luZ0dsb2JhbE1vZGVsfVxyXG4gICAgICAgICAgICAgICAgICAgIG9uQ2hhbmdlPXsoZXZlbnQpID0+IG9uVXBkYXRlRHJhZnQoZHJhZnQuYWdlbnRfaWQsIHsgZW5hYmxlZDogIWV2ZW50LnRhcmdldC5jaGVja2VkIH0pfVxyXG4gICAgICAgICAgICAgICAgICAvPlxyXG4gICAgICAgICAgICAgICAgICDkvb/nlKjlhajlsYDmqKHlnotcclxuICAgICAgICAgICAgICAgIDwvbGFiZWw+XHJcbiAgICAgICAgICAgICAgICB7dXNpbmdHbG9iYWxNb2RlbCA/IChcclxuICAgICAgICAgICAgICAgICAgPHNwYW4gY2xhc3NOYW1lPVwiYWdlbnQtbW9kZWwtaW5oZXJpdGVkXCI+XHJcbiAgICAgICAgICAgICAgICAgICAg57un5om/77yae2dsb2JhbE1vZGVsRHJhZnQucHJvdmlkZXIgfHwgXCLmnKrphY3nva7mj5DkvpvmlrlcIn0gLyB7Z2xvYmFsTW9kZWxEcmFmdC5iYXNlX3VybCB8fCBcIuacqumFjee9ruaOpeWPo+WcsOWdgFwifSAvIHtnbG9iYWxNb2RlbERyYWZ0Lm1vZGVsIHx8IFwi5pyq6YWN572u5qih5Z6LXCJ9XHJcbiAgICAgICAgICAgICAgICAgIDwvc3Bhbj5cclxuICAgICAgICAgICAgICAgICkgOiBudWxsfVxyXG4gICAgICAgICAgICAgIDwvZGl2PlxyXG4gICAgICAgICAgICAgIDxsYWJlbD5cclxuICAgICAgICAgICAgICAgIDxzcGFuPuaPkOS+m+aWuTwvc3Bhbj5cclxuICAgICAgICAgICAgICAgIDxpbnB1dFxyXG4gICAgICAgICAgICAgICAgICB2YWx1ZT17ZHJhZnQucHJvdmlkZXJ9XHJcbiAgICAgICAgICAgICAgICAgIG9uQ2hhbmdlPXsoZXZlbnQpID0+IG9uVXBkYXRlRHJhZnQoZHJhZnQuYWdlbnRfaWQsIHsgcHJvdmlkZXI6IGV2ZW50LnRhcmdldC52YWx1ZSB9KX1cclxuICAgICAgICAgICAgICAgICAgcGxhY2Vob2xkZXI9XCJvcGVuYWktY29tcGF0aWJsZVwiXHJcbiAgICAgICAgICAgICAgICAgIGRpc2FibGVkPXt1c2luZ0dsb2JhbE1vZGVsfVxyXG4gICAgICAgICAgICAgICAgLz5cclxuICAgICAgICAgICAgICA8L2xhYmVsPlxyXG4gICAgICAgICAgICAgIDxsYWJlbD5cclxuICAgICAgICAgICAgICAgIDxzcGFuPuaOpeWPo+WcsOWdgDwvc3Bhbj5cclxuICAgICAgICAgICAgICAgIDxpbnB1dFxyXG4gICAgICAgICAgICAgICAgICB2YWx1ZT17ZHJhZnQuYmFzZV91cmx9XHJcbiAgICAgICAgICAgICAgICAgIG9uQ2hhbmdlPXsoZXZlbnQpID0+IG9uVXBkYXRlRHJhZnQoZHJhZnQuYWdlbnRfaWQsIHsgYmFzZV91cmw6IGV2ZW50LnRhcmdldC52YWx1ZSB9KX1cclxuICAgICAgICAgICAgICAgICAgZGlzYWJsZWQ9e3VzaW5nR2xvYmFsTW9kZWx9XHJcbiAgICAgICAgICAgICAgICAvPlxyXG4gICAgICAgICAgICAgIDwvbGFiZWw+XHJcbiAgICAgICAgICAgICAgPGxhYmVsPlxyXG4gICAgICAgICAgICAgICAgPHNwYW4+5qih5Z6LPC9zcGFuPlxyXG4gICAgICAgICAgICAgICAgPGlucHV0XHJcbiAgICAgICAgICAgICAgICAgIHZhbHVlPXtkcmFmdC5tb2RlbH1cclxuICAgICAgICAgICAgICAgICAgb25DaGFuZ2U9eyhldmVudCkgPT4gb25VcGRhdGVEcmFmdChkcmFmdC5hZ2VudF9pZCwgeyBtb2RlbDogZXZlbnQudGFyZ2V0LnZhbHVlIH0pfVxyXG4gICAgICAgICAgICAgICAgICBkaXNhYmxlZD17dXNpbmdHbG9iYWxNb2RlbH1cclxuICAgICAgICAgICAgICAgIC8+XHJcbiAgICAgICAgICAgICAgPC9sYWJlbD5cclxuICAgICAgICAgICAgICA8bGFiZWw+XHJcbiAgICAgICAgICAgICAgICA8c3Bhbj7lr4bpkqU8L3NwYW4+XHJcbiAgICAgICAgICAgICAgICA8aW5wdXRcclxuICAgICAgICAgICAgICAgICAgdmFsdWU9e2RyYWZ0LmFwaV9rZXl9XHJcbiAgICAgICAgICAgICAgICAgIG9uQ2hhbmdlPXsoZXZlbnQpID0+IG9uVXBkYXRlRHJhZnQoZHJhZnQuYWdlbnRfaWQsIHsgYXBpX2tleTogZXZlbnQudGFyZ2V0LnZhbHVlIH0pfVxyXG4gICAgICAgICAgICAgICAgICBwbGFjZWhvbGRlcj17ZHJhZnQubWFza2VkIHx8IFwi6K+36L6T5YWl5a+G6ZKlXCJ9XHJcbiAgICAgICAgICAgICAgICAgIHR5cGU9XCJwYXNzd29yZFwiXHJcbiAgICAgICAgICAgICAgICAgIGRpc2FibGVkPXt1c2luZ0dsb2JhbE1vZGVsfVxyXG4gICAgICAgICAgICAgICAgLz5cclxuICAgICAgICAgICAgICA8L2xhYmVsPlxyXG4gICAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwiYWdlbnQtbW9kZWwtYWN0aW9uc1wiPlxyXG4gICAgICAgICAgICAgICAgPGJ1dHRvbiB0eXBlPVwiYnV0dG9uXCIgb25DbGljaz17KCkgPT4gb25TYXZlQWdlbnRNb2RlbChkcmFmdC5hZ2VudF9pZCl9IGRpc2FibGVkPXtzYXZpbmd9PlxyXG4gICAgICAgICAgICAgICAgICB7c2F2aW5nID8gPExvYWRlcjIgY2xhc3NOYW1lPVwic3BpblwiIHNpemU9ezE2fSAvPiA6IDxTaGllbGRDaGVjayBzaXplPXsxNn0gLz59XHJcbiAgICAgICAgICAgICAgICAgIOS/neWtmFxyXG4gICAgICAgICAgICAgICAgPC9idXR0b24+XHJcbiAgICAgICAgICAgICAgICA8YnV0dG9uXHJcbiAgICAgICAgICAgICAgICAgIHR5cGU9XCJidXR0b25cIlxyXG4gICAgICAgICAgICAgICAgICBjbGFzc05hbWU9XCJzZWNvbmRhcnlcIlxyXG4gICAgICAgICAgICAgICAgICBvbkNsaWNrPXsoKSA9PiBvblRlc3RBZ2VudE1vZGVsKGRyYWZ0LmFnZW50X2lkKX1cclxuICAgICAgICAgICAgICAgICAgZGlzYWJsZWQ9e3Rlc3RpbmcgfHwgaGFzVW5zYXZlZERyYWZ0IHx8IHByb3ZpZGVyVW5zdXBwb3J0ZWR9XHJcbiAgICAgICAgICAgICAgICA+XHJcbiAgICAgICAgICAgICAgICAgIHt0ZXN0aW5nID8gPExvYWRlcjIgY2xhc3NOYW1lPVwic3BpblwiIHNpemU9ezE2fSAvPiA6IDxCb3Qgc2l6ZT17MTZ9IC8+fVxyXG4gICAgICAgICAgICAgICAgICDor5Xov55cclxuICAgICAgICAgICAgICAgIDwvYnV0dG9uPlxyXG4gICAgICAgICAgICAgIDwvZGl2PlxyXG4gICAgICAgICAgICAgIDxkbCBjbGFzc05hbWU9XCJhZ2VudC1tb2RlbC1zdGF0dXNcIj5cclxuICAgICAgICAgICAgICAgIDxkaXY+XHJcbiAgICAgICAgICAgICAgICAgIDxkdD7phY3nva7nirbmgIE8L2R0PlxyXG4gICAgICAgICAgICAgICAgICA8ZGQ+e3VzaW5nR2xvYmFsTW9kZWwgPyBcIuS9v+eUqOWFqOWxgOaooeWei1wiIDogZm9ybWF0Qm9vbGVhblN0YXR1cyhkcmFmdC5jb25maWd1cmVkKX08L2RkPlxyXG4gICAgICAgICAgICAgICAgPC9kaXY+XHJcbiAgICAgICAgICAgICAgICA8ZGl2PlxyXG4gICAgICAgICAgICAgICAgICA8ZHQ+5a+G6ZKl54q25oCBPC9kdD5cclxuICAgICAgICAgICAgICAgICAgPGRkPnt1c2luZ0dsb2JhbE1vZGVsID8gXCLnu6fmib/lhajlsYDlr4bpkqVcIiA6IGRyYWZ0Lm1hc2tlZCB8fCBcIuacqumFjee9rlwifTwvZGQ+XHJcbiAgICAgICAgICAgICAgICA8L2Rpdj5cclxuICAgICAgICAgICAgICAgIDxkaXY+XHJcbiAgICAgICAgICAgICAgICAgIDxkdD7or5Xov57nu5Pmnpw8L2R0PlxyXG4gICAgICAgICAgICAgICAgICA8ZGQ+XHJcbiAgICAgICAgICAgICAgICAgICAge3Byb3ZpZGVyVW5zdXBwb3J0ZWRcclxuICAgICAgICAgICAgICAgICAgICAgID8gXCLmj5Dkvpvmlrnlj6rmlK/mjIEgb3BlbmFpLWNvbXBhdGlibGXjgIJcIlxyXG4gICAgICAgICAgICAgICAgICAgICAgOiBoYXNVbnNhdmVkRHJhZnRcclxuICAgICAgICAgICAgICAgICAgICAgICAgPyBcIuacieacquS/neWtmOaUueWKqO+8jOivt+WFiOS/neWtmOOAglwiXHJcbiAgICAgICAgICAgICAgICAgICAgICAgIDogdGVzdFJlc3VsdFxyXG4gICAgICAgICAgICAgICAgICAgICAgICAgID8gZm9ybWF0TW9kZWxUZXN0UmVzdWx0KHRlc3RSZXN1bHQpXHJcbiAgICAgICAgICAgICAgICAgICAgICAgICAgOiBcIuWwmuacquivlei/nlwifVxyXG4gICAgICAgICAgICAgICAgICA8L2RkPlxyXG4gICAgICAgICAgICAgICAgPC9kaXY+XHJcbiAgICAgICAgICAgICAgPC9kbD5cclxuICAgICAgICAgICAgPC9hcnRpY2xlPlxyXG4gICAgICAgICAgKTtcclxuICAgICAgICB9KX1cclxuICAgICAgPC9kaXY+XHJcbiAgICA8L3NlY3Rpb24+XHJcbiAgKTtcclxufVxyXG4iXSwiZmlsZSI6IkU6L2FnZW50cHJvamVjdC9hcHBzL2Rlc2t0b3Avc3JjL2ZlYXR1cmVzL3NldHRpbmdzL0FnZW50Q29uZmlnRm9ybS50c3gifQ==

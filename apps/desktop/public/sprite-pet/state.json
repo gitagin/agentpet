@@ -1,0 +1,33 @@
+{
+  "characters": {
+    "halfbody": {
+      "window": "home",
+      "draggable": false,
+      "type": "layered-portrait",
+      "base": "sprite-pet/halfbody/base.png",
+      "breathing": {
+        "enabled": true,
+        "durationMs": 3200,
+        "scale": [1, 1.006],
+        "translateY": [0, -2]
+      },
+      "blink": {
+        "triggerIntervalMs": [2500, 6000],
+        "frames": {
+          "open": "sprite-pet/halfbody/blink/open.png",
+          "half": "sprite-pet/halfbody/blink/half.png",
+          "closed": "sprite-pet/halfbody/blink/closed.png"
+        }
+      },
+      "visemes": {
+        "closed": "sprite-pet/halfbody/viseme/closed.png",
+        "AI": "sprite-pet/halfbody/viseme/AI.png",
+        "E": "sprite-pet/halfbody/viseme/E.png",
+        "O": "sprite-pet/halfbody/viseme/O.png",
+        "MBP": "sprite-pet/halfbody/viseme/MBP.png",
+        "FV": "sprite-pet/halfbody/viseme/FV.png",
+        "smile": "sprite-pet/halfbody/viseme/smile.png"
+      }
+    }
+  }
+}

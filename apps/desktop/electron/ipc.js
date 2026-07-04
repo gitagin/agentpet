@@ -10,6 +10,7 @@ const allowedRendererUiStateKeys = new Set([
   "agent-pet.live2d-default-model-migration",
   "agent-pet.live2d-model-id",
   "agent-pet.wiki-archive-candidate",
+  "agent-pet.control-home-day-records.v1",
 ]);
 const trustedAppWindowRoles = new Set(["pet", "control", "stage", "agent", "feature"]);
 const vaultPickerWindowRoles = new Set(["control", "stage", "feature"]);

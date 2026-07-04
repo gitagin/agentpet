@@ -4,8 +4,9 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import App from "./App";
-import type { DesktopSidecarStatus } from "./types";
+import type { AgentAction, DesktopSidecarStatus } from "./types";
 import type { Live2DAssetInfo, Live2DRuntimeBoundary } from "./services/live2dRuntime";
+import { navigationHashForTab, primaryNavigationTabs } from "./views/navigation";
 
 const mockPetShowInput = vi.hoisted(() => vi.fn());
 const mockTtsStop = vi.hoisted(() => vi.fn());
@@ -28,6 +29,14 @@ const live2dStageRenderProps = vi.hoisted(() => [] as Array<{
   variant: "panel" | "pet" | "stage";
   canvasRef: unknown;
   active: boolean;
+  petInteractions?: {
+    onPointerDown?: (event: PointerEvent<HTMLElement>) => void;
+    onPointerMove?: (event: PointerEvent<HTMLElement>) => void;
+    onPointerUp?: (event: PointerEvent<HTMLElement>) => void;
+  };
+}>);
+const spritePetStageRenderProps = vi.hoisted(() => [] as Array<{
+  canvasRef: unknown;
   petInteractions?: {
     onPointerDown?: (event: PointerEvent<HTMLElement>) => void;
     onPointerMove?: (event: PointerEvent<HTMLElement>) => void;
@@ -59,6 +68,38 @@ vi.mock("./components/Live2DStage", () => ({
     return (
       <section
         aria-label={variant === "pet" ? "mock pet stage" : variant === "stage" ? "mock stage stage" : "mock panel stage"}
+        onPointerDown={petInteractions?.onPointerDown}
+        onPointerMove={petInteractions?.onPointerMove}
+        onPointerUp={petInteractions?.onPointerUp}
+        onPointerCancel={petInteractions?.onPointerCancel}
+        onLostPointerCapture={petInteractions?.onLostPointerCapture}
+        onContextMenu={petInteractions?.onContextMenu}
+        onDoubleClick={petInteractions?.onDoubleClick}
+      />
+    );
+  },
+}));
+
+vi.mock("./features/pet/SpritePetStage", () => ({
+  SpritePetStage: ({
+    canvasRef,
+    petInteractions,
+  }: {
+    canvasRef?: unknown;
+    petInteractions?: {
+      onPointerDown?: (event: PointerEvent<HTMLElement>) => void;
+      onPointerMove?: (event: PointerEvent<HTMLElement>) => void;
+      onPointerUp?: (event: PointerEvent<HTMLElement>) => void;
+      onPointerCancel?: (event: PointerEvent<HTMLElement>) => void;
+      onLostPointerCapture?: (event: PointerEvent<HTMLElement>) => void;
+      onContextMenu?: (event: MouseEvent<HTMLElement>) => void;
+      onDoubleClick?: (event: MouseEvent<HTMLElement>) => void;
+    };
+  }) => {
+    spritePetStageRenderProps.push({ canvasRef, petInteractions });
+    return (
+      <section
+        aria-label="mock pet stage"
         onPointerDown={petInteractions?.onPointerDown}
         onPointerMove={petInteractions?.onPointerMove}
         onPointerUp={petInteractions?.onPointerUp}
@@ -190,6 +231,33 @@ const api = {
   exportDiagnostics: vi.fn(),
   resetLocalState: vi.fn(),
 };
+
+function agentActionForTest(index: number): AgentAction {
+  const day = String(index).padStart(2, "0");
+  return {
+    action_id: `action-${index}`,
+    source_agent_run_id: `run-${index}`,
+    source_conversation_id: `conversation-${index}`,
+    source_message_id: `message-${index}`,
+    action_type: "chat.daily_archive",
+    risk_tier: "low",
+    decision: "auto",
+    status: "completed",
+    title: `测试自动整理 ${index}`,
+    summary: `这是第 ${index} 条完整记忆记录`,
+    target_paths: [`Daily/2026-07-${day}.md`],
+    reversible: false,
+    reverted_by: null,
+    reverts_action_id: null,
+    error: null,
+    source: {},
+    diff_summary: "",
+    metadata: {},
+    created_at: `2026-07-${day}T10:00:00.000Z`,
+    updated_at: `2026-07-${day}T10:00:00.000Z`,
+    completed_at: `2026-07-${day}T10:00:00.000Z`,
+  };
+}
 
 vi.mock("./services/sse", () => ({
   fetchSseStream: vi.fn().mockImplementation(async (_client, _url, handlers) => {
@@ -517,37 +585,87 @@ describe("App", () => {
     mockTtsQueueStatus.current = "idle";
     mockTtsQueueError.current = null;
     live2dStageRenderProps.length = 0;
+    spritePetStageRenderProps.length = 0;
     vi.clearAllMocks();
   });
 
-  it("renders the Today route when desktop bridge is unavailable", async () => {
+  it("renders the homeboard route when desktop bridge is unavailable", async () => {
     render(<App />);
 
-    expect(await screen.findByRole("heading", { name: "今天想从哪里继续？" })).toBeInTheDocument();
-    const companionEntry = within(screen.getByLabelText("陪伴入口"));
-    expect(companionEntry.getByRole("button", { name: /陪我聊聊/ })).toHaveAttribute("data-stage-route", "chat");
-    expect(companionEntry.getByRole("button", { name: /看看记忆/ })).toHaveAttribute("data-stage-route", "memory");
-    expect(companionEntry.getByRole("button", { name: /设置边界/ })).toHaveAttribute("data-stage-route", "settings");
-    expect(companionEntry.getByText("更多和高级").closest("details")).not.toHaveAttribute("open");
-    expect(screen.queryByText("高级管理与诊断")).not.toBeInTheDocument();
+    expect(await screen.findByLabelText("Agent Pet 首页")).toBeInTheDocument();
+    expect(screen.getByLabelText("今日随行")).toBeInTheDocument();
+    expect(screen.getByLabelText("Agent Pet 观测台")).toBeInTheDocument();
+    expect(screen.getByLabelText("记忆回顾")).toBeInTheDocument();
+    expect(document.querySelector(".control-stage-background")?.getAttribute("src")).toMatch(
+      /^\/images\/home\.png\?v=\d+$/,
+    );
+    expect(document.querySelector(".halfbody-pet-portrait-base")?.getAttribute("src")).toMatch(
+      /^\/sprite-pet\/halfbody\/base\.png\?v=\d+$/,
+    );
+    expect(document.querySelector(".bottom-nav-center-avatar img")?.getAttribute("src")).toMatch(
+      /^\/images\/character\.png\?v=\d+$/,
+    );
+    expect(screen.queryByLabelText("陪伴入口")).not.toBeInTheDocument();
   });
 
-  it("keeps the control dashboard companion-first while preserving support tools", async () => {
+  it("loads enough agent actions for the memory review to include older dates", async () => {
+    render(<App />);
+
+    await waitFor(() => expect(api.listAgentActions).toHaveBeenCalled());
+    expect(api.listAgentActions.mock.calls[0][0]).toBe(200);
+    expect(api.listAgentActions.mock.calls[0][1]).toBeNull();
+    expect(api.listAgentActions.mock.calls[0][2]).toBeInstanceOf(AbortSignal);
+  });
+
+  it("shows the complete loaded memory list from the view-all memory drawer", async () => {
+    api.listAgentActions.mockResolvedValueOnce({
+      actions: Array.from({ length: 9 }, (_, index) => agentActionForTest(index + 1)),
+    });
+
+    render(<App />);
+
+    await waitFor(() => expect(api.listAgentActions).toHaveBeenCalled());
+    expect(await screen.findByText("测试自动整理 1")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "查看全部记忆" }));
+
+    const activityLog = document.querySelector("#agent-activity-log");
+    expect(activityLog).toBeTruthy();
+    expect(within(activityLog as HTMLElement).getByText("测试自动整理 9")).toBeInTheDocument();
+  });
+
+  it("returns the homeboard date selector directly to today", async () => {
+    render(<App />);
+
+    expect(await screen.findByLabelText("Agent Pet 首页")).toBeInTheDocument();
+    const previousDay = screen.getByRole("button", { name: "查看前一天" });
+    const today = screen.getByRole("button", { name: "回到今天" });
+
+    expect(today).toBeDisabled();
+
+    fireEvent.click(previousDay);
+    fireEvent.click(previousDay);
+    expect(today).not.toBeDisabled();
+
+    fireEvent.click(today);
+    expect(today).toBeDisabled();
+  });
+
+  it("keeps the control homeboard companion-first while preserving support tools", async () => {
     window.location.hash = "#control";
 
     render(<App />);
 
-    expect(await screen.findByRole("heading", { name: "先和我说一句话" })).toBeInTheDocument();
-    expect(screen.getByLabelText("桌宠陪伴区")).toBeInTheDocument();
-    expect(screen.getByText("今天要跟进的事")).toBeInTheDocument();
-    expect(screen.getByText("直接告诉我现在发生了什么")).toBeInTheDocument();
-    expect(screen.getByLabelText("聊天和最近整理")).toBeInTheDocument();
-    expect(screen.getByLabelText("最近自动整理活动")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Agent Pet 首页")).toBeInTheDocument();
+    expect(screen.getByLabelText("今日随行")).toBeInTheDocument();
+    expect(screen.getByLabelText("Agent Pet 观测台")).toBeInTheDocument();
+    expect(screen.getByLabelText("记忆回顾")).toBeInTheDocument();
     expect(screen.queryByLabelText("mock visible continuity panel")).not.toBeInTheDocument();
-    expect(screen.getByText("今天要跟进的事")).toBeInTheDocument();
-    expect(screen.getByLabelText("mock panel stage")).toBeInTheDocument();
+    expect(screen.getByText("今日目标")).toBeInTheDocument();
+    expect(document.querySelector(".halfbody-pet-portrait")).toBeInTheDocument();
     expect(screen.queryByLabelText("mock task panel")).not.toBeInTheDocument();
-    const supportNavigation = document.querySelector(".control-support-nav");
+    const drawers = Array.from(document.querySelectorAll(".control-detail-drawer"));
+    const supportNavigation = drawers.find((drawer) => drawer.textContent?.includes("计划与连续性"));
     expect(supportNavigation).toBeInTheDocument();
     expect(supportNavigation).not.toHaveAttribute("open");
 
@@ -555,8 +673,7 @@ describe("App", () => {
     expect(await screen.findByLabelText("mock task panel")).toBeInTheDocument();
     expect(await screen.findByLabelText("mock visible continuity panel")).toBeInTheDocument();
 
-    expect(screen.getByText("高级管理与诊断")).toBeInTheDocument();
-    const secondaryNavigation = document.querySelector(".control-secondary-nav");
+    const secondaryNavigation = drawers.find((drawer) => drawer.textContent?.includes("高级管理"));
     expect(secondaryNavigation).toBeInTheDocument();
     expect(secondaryNavigation).not.toHaveAttribute("open");
     expect(screen.queryByLabelText("mock connection panel")).not.toBeInTheDocument();
@@ -603,9 +720,6 @@ describe("App", () => {
     expect(screen.getByText("要让我下次记得继续这个话题吗？之前聊到苹果但还没确认喜好。")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /记住下次聊/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /不用记/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /去确认/ })).toBeInTheDocument();
-    expect(screen.getByText("下次可接着聊")).toBeInTheDocument();
-    expect(screen.getByText("继续聊水果偏好")).toBeInTheDocument();
     expect(screen.queryByText(/连续性确认/)).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /记住下次聊/ }));
@@ -614,7 +728,7 @@ describe("App", () => {
     expect(await screen.findByText(/已记住，下次可以自然接着聊/)).toBeInTheDocument();
   });
 
-  it("starts the first-use onboarding as a normal chat and persists completion", async () => {
+  it("starts the first-use onboarding from advanced management and persists completion", async () => {
     const uiState = new Map<string, string>();
     window.agentDesktop = {
       platform: "win32",
@@ -628,10 +742,11 @@ describe("App", () => {
         }
       }),
     };
-    window.location.hash = "#chat";
+    window.location.hash = "#stage";
 
     render(<App />);
 
+    fireEvent.click(screen.getByText("高级管理"));
     const onboarding = await screen.findByLabelText("首次使用引导");
     expect(onboarding).toBeInTheDocument();
     const submitButton = screen.getByRole("button", { name: "开始第一次聊天" });
@@ -673,7 +788,7 @@ describe("App", () => {
     expect(screen.queryByLabelText("首次使用引导")).not.toBeInTheDocument();
   });
 
-  it("keeps first-use save preference optional instead of requiring a storage path", async () => {
+  it("keeps first-use save preference optional inside advanced management", async () => {
     const uiState = new Map<string, string>();
     window.agentDesktop = {
       platform: "win32",
@@ -687,10 +802,11 @@ describe("App", () => {
         }
       }),
     };
-    window.location.hash = "#chat";
+    window.location.hash = "#stage";
 
     render(<App />);
 
+    fireEvent.click(screen.getByText("高级管理"));
     expect(await screen.findByLabelText("首次使用引导")).toBeInTheDocument();
     expect(screen.queryByText("保存位置")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("保存位置")).not.toBeInTheDocument();
@@ -705,6 +821,22 @@ describe("App", () => {
     expect(request.message).toContain("今天想让我从哪里陪你继续：先陪我接住今天这件事");
     expect(request.message).toContain("记忆保存偏好：未填写");
     expect(request.message).not.toContain("保存位置");
+  });
+
+  it("does not show first-use onboarding inside the chat route", async () => {
+    window.agentDesktop = {
+      platform: "win32",
+      versions: {},
+      getUiState: vi.fn(() => null),
+      setUiState: vi.fn(),
+    };
+    window.location.hash = "#chat";
+
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { name: "聊天" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("首次使用引导")).not.toBeInTheDocument();
+    expect(screen.queryByText("今天想让我从哪里陪你继续？")).not.toBeInTheDocument();
   });
 
   it("does not show first-use onboarding after completion is stored in Electron UI state", async () => {
@@ -734,19 +866,40 @@ describe("App", () => {
     expect(screen.queryByRole("heading", { name: "桌面记忆助手" })).not.toBeInTheDocument();
   });
 
-  it("renders stage feature entries from the stage route", async () => {
+  it("renders the homeboard from the stage home route", async () => {
     window.location.hash = "#stage";
 
     render(<App />);
 
-    expect(await screen.findByLabelText("陪伴入口")).toBeInTheDocument();
-    const companionEntry = within(screen.getByLabelText("陪伴入口"));
-    expect(companionEntry.getByRole("button", { name: /陪我聊聊/ })).toHaveAttribute("data-stage-route", "chat");
-    expect(companionEntry.getByRole("button", { name: /看看记忆/ })).toHaveAttribute("data-stage-route", "memory");
-    expect(companionEntry.getByRole("button", { name: /设置边界/ })).toHaveAttribute("data-stage-route", "settings");
-    fireEvent.click(companionEntry.getByText("更多和高级"));
-    expect(companionEntry.getByRole("button", { name: /提醒和待办/ })).toHaveAttribute("data-stage-route", "agent");
-    expect(companionEntry.getByRole("button", { name: /资料工具/ })).toHaveAttribute("data-stage-route", "world");
+    expect(await screen.findByLabelText("Agent Pet 首页")).toBeInTheDocument();
+    expect(screen.getByLabelText("今日随行")).toBeInTheDocument();
+    expect(screen.getByLabelText("Agent Pet 观测台")).toBeInTheDocument();
+    expect(screen.getByLabelText("记忆回顾")).toBeInTheDocument();
+  });
+
+  it("keeps the bottom navigation active state synchronized on every primary route", async () => {
+    for (const tab of primaryNavigationTabs) {
+      window.location.hash = `#${navigationHashForTab(tab)}`;
+      const { container, unmount } = render(<App />);
+
+      await waitFor(() => {
+        const activeButtons = Array.from(container.querySelectorAll<HTMLButtonElement>(".bottom-nav-button.active"))
+          .filter((button) => !button.closest("[hidden]"));
+
+        expect(activeButtons).toHaveLength(1);
+        expect(activeButtons[0]).toHaveTextContent(tab);
+        expect(activeButtons[0]).toHaveAttribute("aria-current", "page");
+      });
+
+      const activeNav = Array.from(container.querySelectorAll<HTMLElement>(".bottom-nav"))
+        .find((nav) => !nav.closest("[hidden]"));
+      expect(activeNav).toBeTruthy();
+
+      fireEvent.click(within(activeNav!).getByRole("button", { name: primaryNavigationTabs[0] }));
+      expect(window.location.hash).toBe(`#${navigationHashForTab(primaryNavigationTabs[0])}`);
+
+      unmount();
+    }
   });
 
   it("renders core product routes as dedicated workspaces instead of chat-only surfaces", async () => {
@@ -767,7 +920,7 @@ describe("App", () => {
     }
   });
 
-  it("toggles pet shortcut buttons from the Live2D right-click menu gesture", async () => {
+  it("toggles pet shortcut buttons from the sprite pet right-click menu gesture", async () => {
     window.location.hash = "#pet";
     window.agentDesktop = {
       platform: "win32",
@@ -907,7 +1060,7 @@ describe("App", () => {
       releasePointerCapture: vi.fn(),
       hasPointerCapture: vi.fn(() => true),
     } as unknown as HTMLElement;
-    const petStageProps = live2dStageRenderProps.find((props) => props.variant === "pet");
+    const petStageProps = spritePetStageRenderProps[spritePetStageRenderProps.length - 1];
     const petInteractions = petStageProps?.petInteractions;
     expect(petInteractions).toBeTruthy();
     const canvas = document.createElement("canvas");
@@ -999,36 +1152,39 @@ describe("App", () => {
     expect(window.agentDesktop.getWindowMode).toHaveBeenCalledTimes(1);
   });
 
-  it("uses an isolated Live2D canvas ref for each renderer surface", async () => {
+  it("uses the static home character on home routes and keeps the pet sprite isolated", async () => {
     window.location.hash = "#control";
     render(<App />);
-    expect(await screen.findByLabelText("mock panel stage")).toBeInTheDocument();
-    const panelRef = live2dStageRenderProps.find((props) => props.variant === "panel")?.canvasRef;
+    expect(await screen.findByLabelText("Agent Pet 首页")).toBeInTheDocument();
+    expect(document.querySelector(".control-stage-background")?.getAttribute("src")).toMatch(
+      /^\/images\/home\.png\?v=\d+$/,
+    );
+    expect(document.querySelector(".halfbody-pet-portrait-base")?.getAttribute("src")).toMatch(
+      /^\/sprite-pet\/halfbody\/base\.png\?v=\d+$/,
+    );
+    expect(live2dStageRenderProps.find((props) => props.variant === "panel")).toBeUndefined();
 
     live2dStageRenderProps.length = 0;
+    spritePetStageRenderProps.length = 0;
     window.location.hash = "#pet";
     render(<App />);
     expect(await screen.findByLabelText("mock pet stage")).toBeInTheDocument();
-    const petRef = live2dStageRenderProps.find((props) => props.variant === "pet")?.canvasRef;
+    const petRef = spritePetStageRenderProps[spritePetStageRenderProps.length - 1]?.canvasRef;
 
     live2dStageRenderProps.length = 0;
+    spritePetStageRenderProps.length = 0;
     window.location.hash = "#stage";
-    window.agentDesktop = {
-      platform: "win32",
-      versions: {},
-      getWindowMode: vi.fn().mockResolvedValue("stage"),
-      onStageRouteRequested: vi.fn(() => () => undefined),
-    };
     render(<App />);
-    expect(await screen.findByLabelText("mock stage stage")).toBeInTheDocument();
-    const stageRef = live2dStageRenderProps.find((props) => props.variant === "stage")?.canvasRef;
+    expect(await screen.findByLabelText("Agent Pet 首页")).toBeInTheDocument();
+    expect(document.querySelector(".control-stage-background")?.getAttribute("src")).toMatch(
+      /^\/images\/home\.png\?v=\d+$/,
+    );
+    expect(document.querySelector(".halfbody-pet-portrait-base")?.getAttribute("src")).toMatch(
+      /^\/sprite-pet\/halfbody\/base\.png\?v=\d+$/,
+    );
+    expect(live2dStageRenderProps.find((props) => props.variant === "stage")).toBeUndefined();
 
-    expect(panelRef).toBeTruthy();
     expect(petRef).toBeTruthy();
-    expect(stageRef).toBeTruthy();
-    expect(panelRef).not.toBe(petRef);
-    expect(panelRef).not.toBe(stageRef);
-    expect(petRef).not.toBe(stageRef);
   });
 
   it("keeps active TTS playing when the renderer document is hidden", async () => {
@@ -1038,7 +1194,7 @@ describe("App", () => {
 
     try {
       render(<App />);
-      expect(await screen.findByLabelText("mock panel stage")).toBeInTheDocument();
+      expect(await screen.findByLabelText("Agent Pet 首页")).toBeInTheDocument();
 
       act(() => {
         document.dispatchEvent(new Event("visibilitychange"));
@@ -1055,7 +1211,7 @@ describe("App", () => {
     window.location.hash = "#control";
 
     render(<App />);
-    expect(await screen.findByLabelText("mock panel stage")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Agent Pet 首页")).toBeInTheDocument();
 
     act(() => {
       window.dispatchEvent(new PageTransitionEvent("pagehide"));
@@ -1068,7 +1224,7 @@ describe("App", () => {
     window.location.hash = "#control";
     render(<App />);
 
-    expect(await screen.findByLabelText("mock panel stage")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Agent Pet 首页")).toBeInTheDocument();
     expect(mockCreateBackendTtsProvider).toHaveBeenCalledWith(expect.objectContaining({ api }));
     expect(mockCreateBackendTtsProvider).toHaveBeenCalledWith(expect.objectContaining({ api, providerId: "xiaomi-mimo" }));
   });
@@ -1115,7 +1271,7 @@ describe("App", () => {
     };
 
     render(<App />);
-    expect(await screen.findByLabelText("首页常驻路由")).toHaveAttribute("aria-hidden", "false");
+    expect(await screen.findByLabelText("Agent Pet 首页")).toBeInTheDocument();
 
     act(() => {
       window.location.hash = "#chat";
@@ -1125,7 +1281,7 @@ describe("App", () => {
     await waitFor(() => expect(mockTtsStop).toHaveBeenCalledWith("window_mode_changed"));
   });
 
-  it("keeps the stage Live2D route mounted while navigating inside the stage window", async () => {
+  it("navigates stage-window routes away from and back to the homeboard", async () => {
     window.location.hash = "#stage";
     let requestStageRoute: ((mode: "stage" | "agent" | "chat" | "memory" | "world" | "settings") => void) | null = null;
     window.agentDesktop = {
@@ -1140,33 +1296,27 @@ describe("App", () => {
 
     render(<App />);
 
-    expect(await screen.findByLabelText("首页常驻路由")).toHaveAttribute("aria-hidden", "false");
+    expect(await screen.findByLabelText("Agent Pet 首页")).toBeInTheDocument();
 
     act(() => {
       window.location.hash = "#chat";
       window.dispatchEvent(new HashChangeEvent("hashchange"));
     });
 
-    await waitFor(() => expect(screen.getByLabelText("首页常驻路由")).toHaveAttribute("aria-hidden", "true"));
-    expect(screen.getByLabelText("首页常驻路由")).toBeInTheDocument();
-    expect(live2dStageRenderProps.at(-1)).toMatchObject({ variant: "stage", active: false });
+    await waitFor(() => expect(screen.getByLabelText("当前活动路由")).toBeInTheDocument());
 
     act(() => {
       requestStageRoute?.("settings");
     });
 
     await waitFor(() => expect(window.location.hash).toBe("#settings"));
-    expect(screen.getByLabelText("首页常驻路由")).toHaveAttribute("aria-hidden", "true");
-    expect(screen.getByLabelText("首页常驻路由")).toBeInTheDocument();
-    expect(live2dStageRenderProps.at(-1)).toMatchObject({ variant: "stage", active: false });
+    expect(screen.getByLabelText("当前活动路由")).toBeInTheDocument();
 
     act(() => {
       window.location.hash = "#stage";
       window.dispatchEvent(new HashChangeEvent("hashchange"));
     });
 
-    await waitFor(() => expect(screen.getByLabelText("首页常驻路由")).toHaveAttribute("aria-hidden", "false"));
-    expect(screen.getByLabelText("首页常驻路由")).toBeInTheDocument();
-    expect(live2dStageRenderProps.at(-1)).toMatchObject({ variant: "stage", active: true });
+    await waitFor(() => expect(screen.getByLabelText("Agent Pet 首页")).toBeInTheDocument());
   });
 });

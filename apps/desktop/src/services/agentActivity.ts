@@ -383,10 +383,61 @@ export type AgentActionDisplayFields = {
 };
 
 export function formatAgentActionSource(action: AgentAction): string {
-  return Object.entries(action.source || {})
-    .filter(([, value]) => Boolean(value))
-    .map(([key, value]) => `${key}=${value}`)
-    .join(" / ");
+  const readableSources: string[] = [];
+  const addSource = (label: string) => {
+    if (!readableSources.includes(label)) {
+      readableSources.push(label);
+    }
+  };
+  const rawSource = action.source || {};
+  const sourceLabel = rawSource.label || rawSource.title || rawSource.name;
+
+  if (sourceLabel) {
+    addSource(String(sourceLabel));
+  }
+  if (action.source_message_id || rawSource.source_message_id || rawSource.message_id) {
+    addSource("来自一条聊天消息");
+  }
+  if (action.source_conversation_id || rawSource.source_conversation_id || rawSource.conversation_id) {
+    addSource("关联当前对话");
+  }
+  if (action.source_agent_run_id || rawSource.source_agent_run_id || rawSource.agent_run_id) {
+    addSource("由自动整理流程生成");
+  }
+
+  Object.entries(rawSource)
+    .filter(([key, value]) => Boolean(value) && !isTechnicalSourceKey(key))
+    .forEach(([key, value]) => {
+      addSource(`${formatReadableSourceKey(key)}：${value}`);
+    });
+
+  return readableSources.join(" / ");
+}
+
+function isTechnicalSourceKey(key: string): boolean {
+  return [
+    "agent_run_id",
+    "conversation_id",
+    "id",
+    "label",
+    "message_id",
+    "name",
+    "source_agent_run_id",
+    "source_conversation_id",
+    "source_message_id",
+    "title",
+  ].includes(key);
+}
+
+function formatReadableSourceKey(key: string): string {
+  const labels: Record<string, string> = {
+    channel: "渠道",
+    feature: "功能",
+    kind: "类型",
+    reason: "原因",
+    trigger: "触发方式",
+  };
+  return labels[key] || key.replace(/_/g, " ");
 }
 
 export function formatAgentActionTargetPaths(action: AgentAction): string {

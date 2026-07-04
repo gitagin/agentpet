@@ -1,0 +1,8 @@
+Use case: reference image edit.
+Asset type: 2D desktop-pet rigging layer split asset sheet.
+Primary request: Using the input image as the strict character reference, create a clean production asset sheet that separates the same adult anime cat-eared girl into rig-ready cutout parts. Include these separated parts: back hair mass, front bangs, left cat ear, right cat ear, face/head base, neck, torso in black techwear jacket, left arm resting, right arm resting, alternate waving arm, open eyes, closed/blink eyes, half-lidded serious eyes, eyebrows, mouth neutral, mouth small open, mouth wide open, mouth smile, mouth thinking, hair accessories, earrings, necklace charms, jacket straps, glowing cyan device charm. Arrange parts with clear spacing on one canvas, like a PSD layer extraction board.
+Input image: Preserve the exact identity, face shape, black long hair, pink-purple eyes, black cat ears with pale inner fur, pink hair streaks, black techwear jacket, metallic hair clips, dangling earrings, cyan glowing charm, soft anime linework, and warm rim lighting from the reference.
+Style/medium: high-end anime illustration, clean line art, soft shaded cutout assets, consistent with the reference image.
+Composition/framing: wide 1536x1024 sheet, no table, no background scene, parts separated with generous negative space, every part fully visible and not cropped.
+Constraints: adult character; do not redesign the character; do not add extra characters; no text labels, no watermark, no logo; do not merge the separated parts into a single posed character; keep edges clean for later transparency removal.
+Output needs: solid pure chroma green background only (#00FF00), so the background can be removed locally; all character parts must be opaque and not green.

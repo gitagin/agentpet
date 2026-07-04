@@ -1,0 +1,10 @@
+{
+  "ok": true,
+  "portraitJson": "E:\\agentproject\\apps\\desktop\\public\\pets\\agent-pet-neko\\portrait\\portrait.json",
+  "base": "E:\\agentproject\\apps\\desktop\\public\\pets\\agent-pet-neko\\portrait\\base.png",
+  "statesDir": "E:\\agentproject\\apps\\desktop\\public\\pets\\agent-pet-neko\\portrait\\states",
+  "visemesDir": "E:\\agentproject\\apps\\desktop\\public\\pets\\agent-pet-neko\\portrait\\visemes",
+  "statesContactSheet": "E:\\agentproject\\apps\\desktop\\public\\pets\\agent-pet-neko\\portrait\\qa\\states-contact-sheet.png",
+  "visemesContactSheet": "E:\\agentproject\\apps\\desktop\\public\\pets\\agent-pet-neko\\portrait\\qa\\visemes-contact-sheet.png",
+  "validation": "E:\\agentproject\\apps\\desktop\\public\\pets\\agent-pet-neko\\portrait\\qa\\validation.json"
+}

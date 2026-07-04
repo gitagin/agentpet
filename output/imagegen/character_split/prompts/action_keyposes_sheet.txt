@@ -1,0 +1,8 @@
+Use case: reference image edit.
+Asset type: 2D desktop-pet animation keypose sheet.
+Primary request: Using the input image as the strict character reference, create a clean action keypose sheet of the same adult anime cat-eared girl for a desktop companion. Show eight separate upper-body poses in a neat 4 by 2 grid: idle breathing pose, blink pose with closed eyes, ear twitch pose with one ear slightly tilted, speaking pose with open mouth, friendly wave pose, waiting pose, thinking pose with hand near chin, serious inspecting pose with focused eyes leaning slightly forward.
+Input image: Preserve the same identity, black long hair, black cat ears with pale inner fur, pink-purple eyes, pink hair streaks, black techwear jacket, metal hair clips, earrings, necklace charm, cyan glowing device charm, soft anime shading, and warm rim highlights from the reference.
+Style/medium: polished anime character sheet, consistent proportions and costume across every pose.
+Composition/framing: 1536x1024 landscape canvas, eight evenly spaced full upper-body panels, character visible from head to folded arms or waist in each panel, clean readable silhouettes.
+Constraints: adult character; no extra characters; no text labels; no watermark; no logo; avoid changing hairstyle, outfit, accessories, eye color, or color palette; keep pose changes moderate so the character remains recognizable.
+Output needs: neutral dark studio background, clean panel spacing, suitable as animation reference for later layer rigging.

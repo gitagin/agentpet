@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { CSSProperties, FormEvent, RefObject } from "react";
 import {
   BookOpen,
@@ -16,10 +16,13 @@ import type { DesktopApi } from "../services/desktopApi";
 import type { PetBubbleState } from "../features/chat/chatTypes";
 import { PetReplyBubble } from "../features/chat/PetReplyBubble";
 import { VisibleContinuityPanel } from "../features/continuity";
+import { HalfbodyPetPortrait } from "../features/halfbody/HalfbodyPetPortrait";
+import type { HalfbodyPetPortraitHandle } from "../features/halfbody/HalfbodyPetPortrait";
 import { productCopy } from "../productCopy";
 import { BottomNav } from "./BottomNav";
 
 type StageRoute = "agent" | "chat" | "growth" | "memory" | "settings" | "world";
+type StagePortraitRenderer = "halfbody" | "live2d";
 
 type StageAction = {
   label: string;
@@ -45,11 +48,13 @@ type StageViewProps = {
   ttsSpeaking?: boolean;
   live2dActionKeyOverride?: string | null;
   live2dActionTriggerKey?: string | null;
+  portraitRenderer?: StagePortraitRenderer;
   active?: boolean;
   api?: DesktopApi;
 };
 
 const profile = { name: productCopy.displayName, mood: "本地待命" };
+const defaultStagePortraitRenderer: StagePortraitRenderer = "halfbody";
 
 const stageActions: StageAction[] = [
   {
@@ -114,10 +119,12 @@ export default function StageView({
   ttsSpeaking = false,
   live2dActionKeyOverride = null,
   live2dActionTriggerKey = null,
+  portraitRenderer = defaultStagePortraitRenderer,
   active = true,
   api,
 }: StageViewProps) {
   const [chatInput, setChatInput] = useState("");
+  const halfbodyPortraitRef = useRef<HalfbodyPetPortraitHandle>(null);
   const now = new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
 
   const handleSubmit = useCallback(
@@ -235,18 +242,22 @@ export default function StageView({
                 onResumePaging={() => onResumePaging?.()}
               />
             ) : null}
-            <Live2DStage
-              key={`stage-${live2dAsset.modelId}`}
-              stage={live2dStage}
-              asset={live2dAsset}
-              runtime={live2dRuntime}
-              canvasRef={live2dCanvasRef}
-              variant="stage"
-              speaking={ttsSpeaking}
-              actionKeyOverride={live2dActionKeyOverride}
-              actionTriggerKey={live2dActionTriggerKey}
-              active={active}
-            />
+            {portraitRenderer === "halfbody" ? (
+              <HalfbodyPetPortrait ref={halfbodyPortraitRef} active={active} />
+            ) : (
+              <Live2DStage
+                key={`stage-${live2dAsset.modelId}`}
+                stage={live2dStage}
+                asset={live2dAsset}
+                runtime={live2dRuntime}
+                canvasRef={live2dCanvasRef}
+                variant="stage"
+                speaking={ttsSpeaking}
+                actionKeyOverride={live2dActionKeyOverride}
+                actionTriggerKey={live2dActionTriggerKey}
+                active={active}
+              />
+            )}
           </div>
         </section>
       </section>
@@ -273,7 +284,7 @@ export default function StageView({
           )}
         </form>
 
-        <BottomNav activeTab="今日" visible={active} />
+        <BottomNav activeTab="首页" visible={active} />
       </footer>
     </main>
   );

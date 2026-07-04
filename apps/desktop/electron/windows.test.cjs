@@ -172,6 +172,17 @@ describe("createWindowManager stage window lifecycle", () => {
     expect(electron.BrowserWindow).toHaveBeenCalledOnce();
   });
 
+  it("opens the control window on the stage home route", () => {
+    const electron = createElectronMock();
+    const { createWindowManager } = loadWindowsWithMocks({ electron });
+    const state = { isQuitting: false };
+    const manager = createManager(createWindowManager, state);
+
+    const controlWindow = manager.createControlWindow();
+
+    expect(controlWindow.loadURL).toHaveBeenCalledWith("http://127.0.0.1:5173#stage");
+  });
+
   it("destroys the pet window before showing the stage window", () => {
     const electron = createElectronMock();
     const { createWindowManager } = loadWindowsWithMocks({ electron });

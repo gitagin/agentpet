@@ -1,0 +1,114 @@
+{
+  "version": 1,
+  "description": "Action map for character_live2d_import after Cubism export.",
+  "actions": {
+    "idle": {
+      "expression": "happy",
+      "motion": {
+        "group": "Idle",
+        "index": 0
+      },
+      "petHint": "待机呼吸。",
+      "controlSummary": "呼吸和轻微身体摆动。"
+    },
+    "chat_listen": {
+      "expression": "happy",
+      "motion": {
+        "group": "Idle",
+        "index": 1
+      },
+      "petHint": "正在听你说。",
+      "controlSummary": "等待与注视动作。"
+    },
+    "chat_think": {
+      "expression": "confused",
+      "motion": {
+        "group": "Chat",
+        "index": 0
+      },
+      "petHint": "正在思考。",
+      "controlSummary": "疑惑眉眼和思考视线。"
+    },
+    "chat_talk": {
+      "expression": "happy",
+      "motion": {
+        "group": "Face",
+        "index": 1
+      },
+      "petHint": "正在说话。",
+      "controlSummary": "循环口型动作。"
+    },
+    "chat_done": {
+      "expression": "happy",
+      "motion": {
+        "group": "Idle",
+        "index": 0
+      },
+      "petHint": "回复完成。",
+      "controlSummary": "回到轻待机。"
+    },
+    "serious_inspect": {
+      "expression": "contempt",
+      "motion": {
+        "group": "Chat",
+        "index": 1
+      },
+      "petHint": "认真查看。",
+      "controlSummary": "压眼、视线巡查、轻微前倾。"
+    },
+    "support_hand_down": {
+      "expression": "happy",
+      "motion": {
+        "group": "Gesture",
+        "index": 0
+      },
+      "petHint": "把撑脸的手放下。",
+      "controlSummary": "从托脸姿势过渡到端坐。"
+    },
+    "ear_twitch": {
+      "expression": "happy",
+      "motion": {
+        "group": "Gesture",
+        "index": 1
+      },
+      "petHint": "耳朵轻动。",
+      "controlSummary": "左右耳轻微抖动。"
+    },
+    "blink": {
+      "expression": "happy",
+      "motion": {
+        "group": "Face",
+        "index": 0
+      },
+      "petHint": "眨眼。",
+      "controlSummary": "双眼快速闭合再张开。"
+    },
+    "system_error": {
+      "expression": "angry",
+      "motion": {
+        "group": "Chat",
+        "index": 1
+      },
+      "petHint": "状态需要检查。",
+      "controlSummary": "严肃查看。"
+    },
+    "emotion_comfort": {
+      "expression": "sad",
+      "motion": {
+        "group": "Idle",
+        "index": 0
+      },
+      "petHint": "我会陪着你。",
+      "controlSummary": "柔和陪伴状态。"
+    },
+    "celebrate_small": {
+      "expression": "happy",
+      "motion": {
+        "group": "Gesture",
+        "index": 1
+      },
+      "petHint": "做得不错。",
+      "controlSummary": "轻快反应。"
+    }
+  }
+}

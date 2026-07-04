@@ -1,0 +1,50 @@
+{
+  "id": "kuromimi-q-chibi",
+  "displayName": "Kuromimi Q Chibi",
+  "description": "Q版黑猫耳桌宠，128px 帧动画，品红背景用于自动透明抠图。",
+  "spritesheetPath": "spritesheet.webp",
+  "sprite": {
+    "frameWidth": 128,
+    "frameHeight": 128,
+    "columns": 6,
+    "rows": 7,
+    "backgroundColor": "#FF00FF"
+  },
+  "animations": {
+    "idle": {
+      "row": 0,
+      "frames": 4,
+      "fps": 4
+    },
+    "running-right": {
+      "row": 1,
+      "frames": 6,
+      "fps": 6
+    },
+    "running-left": {
+      "row": 2,
+      "frames": 6,
+      "fps": 6
+    },
+    "waving": {
+      "row": 3,
+      "frames": 5,
+      "fps": 5
+    },
+    "jumping": {
+      "row": 4,
+      "frames": 4,
+      "fps": 4
+    },
+    "waiting": {
+      "row": 5,
+      "frames": 4,
+      "fps": 4
+    },
+    "failed": {
+      "row": 6,
+      "frames": 4,
+      "fps": 4
+    }
+  }
+}

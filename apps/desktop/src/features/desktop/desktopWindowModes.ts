@@ -8,7 +8,7 @@ export function detectDesktopWindowMode(): DesktopWindowMode {
   if (isDesktopWindowMode(mode)) {
     return mode;
   }
-  return "control";
+  return "stage";
 }
 
 export function isDesktopWindowMode(mode: unknown): mode is DesktopWindowMode {

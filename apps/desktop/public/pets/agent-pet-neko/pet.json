@@ -1,0 +1,207 @@
+{
+  "id": "agent-pet-neko",
+  "displayName": "Agent Pet Neko",
+  "description": "Q-version pixel sprite desktop pet: black cat-ear gothic girl with pink eyes and simple clear animation states.",
+  "spritesheetPath": "spritesheet.webp",
+  "fallbackPngPath": "spritesheet.png",
+  "cell": {
+    "width": 192,
+    "height": 208
+  },
+  "layout": {
+    "columns": 8,
+    "rows": 9,
+    "width": 1536,
+    "height": 1872
+  },
+  "background": "transparent",
+  "style": "pixel-sprite, thick outline, limited black/dark-gray/pink/white palette",
+  "animations": {
+    "idle": {
+      "row": 0,
+      "frames": 6,
+      "columns": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "durationsMs": [
+        280,
+        110,
+        110,
+        140,
+        140,
+        320
+      ]
+    },
+    "running-right": {
+      "row": 1,
+      "frames": 8,
+      "columns": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durationsMs": [
+        120,
+        120,
+        120,
+        120,
+        120,
+        120,
+        120,
+        220
+      ]
+    },
+    "running-left": {
+      "row": 2,
+      "frames": 8,
+      "columns": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "durationsMs": [
+        120,
+        120,
+        120,
+        120,
+        120,
+        120,
+        120,
+        220
+      ]
+    },
+    "waving": {
+      "row": 3,
+      "frames": 6,
+      "columns": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "durationsMs": [
+        140,
+        140,
+        140,
+        140,
+        140,
+        280
+      ]
+    },
+    "thinking": {
+      "row": 4,
+      "frames": 6,
+      "columns": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "durationsMs": [
+        170,
+        150,
+        150,
+        170,
+        150,
+        260
+      ]
+    },
+    "working": {
+      "row": 5,
+      "frames": 6,
+      "columns": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "durationsMs": [
+        120,
+        120,
+        120,
+        120,
+        120,
+        220
+      ]
+    },
+    "done": {
+      "row": 6,
+      "frames": 5,
+      "columns": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "durationsMs": [
+        140,
+        120,
+        120,
+        150,
+        280
+      ]
+    },
+    "failed": {
+      "row": 7,
+      "frames": 6,
+      "columns": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "durationsMs": [
+        180,
+        160,
+        160,
+        180,
+        180,
+        280
+      ]
+    },
+    "sleeping": {
+      "row": 8,
+      "frames": 6,
+      "columns": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "durationsMs": [
+        320,
+        320,
+        360,
+        320,
+        320,
+        420
+      ]
+    }
+  }
+}

@@ -36,6 +36,104 @@
   cursor: default;
 }
 
+.sprite-pet-panel {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: block;
+  overflow: visible;
+  background: transparent;
+  pointer-events: none;
+}
+
+.sprite-pet-stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  isolation: isolate;
+}
+
+.sprite-pet-canvas-host {
+  position: absolute;
+  z-index: 4;
+  left: 50%;
+  right: auto;
+  top: auto;
+  bottom: var(--pet-model-hit-bottom);
+  width: min(var(--pet-model-hit-width), calc(100% - 36px));
+  height: var(--pet-model-hit-height);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.pet-shell.pet-bubble-visible .sprite-pet-canvas-host {
+  bottom: 16px;
+}
+
+.sprite-pet-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  filter: drop-shadow(0 15px 18px rgba(35, 50, 58, 0.2));
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.pet-shell.pet-dragging .sprite-pet-canvas {
+  filter: drop-shadow(0 0 10px rgba(80, 169, 154, 0.42)) drop-shadow(0 12px 16px rgba(35, 50, 58, 0.16));
+  will-change: transform;
+}
+
+.sprite-pet-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.sprite-pet-panel .pet-hit-region {
+  position: absolute;
+  z-index: 20;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 0;
+  background: transparent;
+  pointer-events: auto;
+  cursor: default;
+  touch-action: none;
+  -webkit-user-drag: none;
+}
+
+.sprite-pet-panel .pet-hit-region:active {
+  cursor: default;
+}
+
+.sprite-pet-panel .pet-hit-model {
+  bottom: var(--pet-model-hit-bottom);
+  width: min(var(--pet-model-hit-width), calc(100% - 36px));
+  height: var(--pet-model-hit-height);
+}
+
+.pet-shell.pet-bubble-visible .sprite-pet-panel .pet-hit-model {
+  bottom: 48px;
+}
+
+.sprite-pet-panel .pet-hit-bubble {
+  bottom: var(--pet-chat-bubble-hit-bottom);
+  width: min(var(--pet-chat-bubble-hit-width), calc(100% - 24px));
+  height: var(--pet-chat-bubble-hit-height);
+}
+
 .pet-shortcut-bar {
   position: absolute;
   z-index: 32;

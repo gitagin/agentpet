@@ -1,0 +1,1501 @@
+import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/features/wiki/WikiWorkflowPanel.tsx");import __vite__cjsImport0_react_jsxDevRuntime from "/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=bc5f1d7c"; const jsxDEV = __vite__cjsImport0_react_jsxDevRuntime["jsxDEV"];
+import * as RefreshRuntime from "/@react-refresh";
+const inWebWorker = typeof WorkerGlobalScope !== "undefined" && self instanceof WorkerGlobalScope;
+let prevRefreshReg;
+let prevRefreshSig;
+if (import.meta.hot && !inWebWorker) {
+  if (!window.$RefreshReg$) {
+    throw new Error(
+      "@vitejs/plugin-react can't detect preamble. Something is wrong."
+    );
+  }
+  prevRefreshReg = window.$RefreshReg$;
+  prevRefreshSig = window.$RefreshSig$;
+  window.$RefreshReg$ = RefreshRuntime.getRefreshReg("E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx");
+  window.$RefreshSig$ = RefreshRuntime.createSignatureFunctionForTransform;
+}
+import { Check, CircleAlert, FileDown, FolderOpen, ListChecks, Loader2, MessageSquareText, RefreshCw, Search, ShieldCheck } from "/node_modules/.vite/deps/lucide-react.js?v=bc5f1d7c";
+import { Panel } from "/src/components/layout.tsx";
+import { formatTaskStatus } from "/src/features/tasks/taskReducer.ts";
+import { defaultWikiArchiveTargetPath } from "/src/features/wiki/wikiConstants.ts";
+import {
+  formatWikiArchiveDetail,
+  formatWikiArchiveHistoryMeta,
+  formatWikiDiagnosticKind,
+  formatWikiPreview,
+  formatWikiWorkflowResult,
+  getWikiArchiveId
+} from "/src/features/wiki/wikiUtils.ts";
+const dailyWikiTargetTypes = [
+  { value: "concept", label: "概念", description: "定义一个想法、方法或术语。" },
+  { value: "entity", label: "实体", description: "跟踪人物、项目、论文或组织。" },
+  { value: "comparison", label: "对比", description: "比较两个想法、工具或决策。" },
+  { value: "report", label: "报告", description: "把来源材料整理成更新或复盘页面。" },
+  { value: "summary", label: "摘要", description: "把来源沉淀成可复用的知识摘要。" }
+];
+function dailyTargetTypeFromSourceType(sourceType) {
+  const value = sourceType?.trim();
+  return dailyWikiTargetTypes.some((option) => option.value === value) ? value : "summary";
+}
+export function WikiWorkflowPanel({
+  draft,
+  tagInput,
+  linkInput,
+  approvedTargetsInput,
+  reviewForceRefresh,
+  preview,
+  reviewResult,
+  applyResult,
+  lintResult,
+  diagnosticsQueue,
+  schemaStatus,
+  indexStatus,
+  logStatus,
+  coreStatus,
+  coreError,
+  archiveHistory,
+  archiveHistoryStatus,
+  archiveHistoryError,
+  openedArchive,
+  openingArchiveId,
+  companionContextReports,
+  companionContextReportStatus,
+  companionContextReportError,
+  lastWikiArchiveId,
+  workflowAction,
+  latestArchiveMessage,
+  latestKnowledgeCitationCount,
+  archiveHistorySummary,
+  archiveHistoryLoading,
+  lintIssueCount,
+  formatIssueSeverity,
+  onDraftChange,
+  onTagInputChange,
+  onLinkInputChange,
+  onApprovedTargetsInputChange,
+  onReviewForceRefreshChange,
+  onPreview,
+  onReview,
+  onApply,
+  onArchiveLatestQuery,
+  onSynthesize,
+  onRunLint,
+  onLoadDiagnosticsQueue,
+  onLoadArchiveHistory,
+  onLoadCoreStatus,
+  onUseReviewRecommendedTargets,
+  onOpenArchive
+}) {
+  const workflowBusy = workflowAction !== null;
+  const dailyTargetType = dailyTargetTypeFromSourceType(draft.source_type);
+  const previewPlans = preview?.page_plans.slice(0, 4) || [];
+  const latestApplySummary = formatWikiWorkflowResult(applyResult, formatTaskStatus);
+  function handleDailyTargetChange(value) {
+    onDraftChange({ source_type: value });
+    const currentTags = tagInput.split(",").map((tag) => tag.trim()).filter(Boolean);
+    if (!currentTags.some((tag) => tag.toLowerCase() === value)) {
+      onTagInputChange([...currentTags, value].join(", "));
+    }
+  }
+  return /* @__PURE__ */ jsxDEV(Panel, { id: "wiki-workflow-panel", icon: /* @__PURE__ */ jsxDEV(FileDown, { size: 18 }, void 0, false, {
+    fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+    lineNumber: 182,
+    columnNumber: 43
+  }, this), title: "日常资料整理", children: [
+    /* @__PURE__ */ jsxDEV("form", { className: "wiki-daily-flow", "aria-label": "日常资料整理", onSubmit: onPreview, children: [
+      /* @__PURE__ */ jsxDEV("section", { className: "wiki-daily-primary", "aria-label": "创建或更新资料页", children: [
+        /* @__PURE__ */ jsxDEV("div", { className: "section-heading", children: [
+          /* @__PURE__ */ jsxDEV("strong", { children: "日常整理入口" }, void 0, false, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 186,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV("span", { children: "粘贴来源材料，选择要沉淀的资料类型，先预览计划，再应用到资料页。" }, void 0, false, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 187,
+            columnNumber: 13
+          }, this)
+        ] }, void 0, true, {
+          fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+          lineNumber: 185,
+          columnNumber: 11
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { className: "wiki-flow-steps", "aria-label": "资料整理步骤", children: [
+          /* @__PURE__ */ jsxDEV("span", { children: "1 粘贴来源" }, void 0, false, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 190,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV("span", { children: "2 预览计划" }, void 0, false, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 191,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV("span", { children: "3 应用页面" }, void 0, false, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 192,
+            columnNumber: 13
+          }, this)
+        ] }, void 0, true, {
+          fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+          lineNumber: 189,
+          columnNumber: 11
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { className: "wiki-daily-grid", children: /* @__PURE__ */ jsxDEV("label", { className: "wiki-title-field", children: [
+          /* @__PURE__ */ jsxDEV("span", { children: "标题" }, void 0, false, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 196,
+            columnNumber: 15
+          }, this),
+          /* @__PURE__ */ jsxDEV(
+            "input",
+            {
+              value: draft.title,
+              onChange: (event) => onDraftChange({ title: event.target.value }),
+              placeholder: "决策笔记、项目简报、论文摘要"
+            },
+            void 0,
+            false,
+            {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 197,
+              columnNumber: 15
+            },
+            this
+          )
+        ] }, void 0, true, {
+          fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+          lineNumber: 195,
+          columnNumber: 13
+        }, this) }, void 0, false, {
+          fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+          lineNumber: 194,
+          columnNumber: 11
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { className: "wiki-target-type-picker", role: "group", "aria-label": "目标类型", children: dailyWikiTargetTypes.map(
+          (option) => /* @__PURE__ */ jsxDEV(
+            "button",
+            {
+              type: "button",
+              className: `wiki-target-type-button${dailyTargetType === option.value ? " active" : ""}`,
+              "aria-pressed": dailyTargetType === option.value,
+              onClick: () => handleDailyTargetChange(option.value),
+              children: [
+                /* @__PURE__ */ jsxDEV("strong", { children: option.label }, void 0, false, {
+                  fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+                  lineNumber: 213,
+                  columnNumber: 17
+                }, this),
+                /* @__PURE__ */ jsxDEV("span", { children: option.description }, void 0, false, {
+                  fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+                  lineNumber: 214,
+                  columnNumber: 17
+                }, this)
+              ]
+            },
+            option.value,
+            true,
+            {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 206,
+              columnNumber: 13
+            },
+            this
+          )
+        ) }, void 0, false, {
+          fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+          lineNumber: 204,
+          columnNumber: 11
+        }, this),
+        /* @__PURE__ */ jsxDEV("label", { children: [
+          /* @__PURE__ */ jsxDEV("span", { children: "来源内容" }, void 0, false, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 219,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV(
+            "textarea",
+            {
+              value: draft.content,
+              onChange: (event) => onDraftChange({ content: event.target.value }),
+              placeholder: "粘贴会议纪要、研究摘录、决策记录或一小段知识片段。"
+            },
+            void 0,
+            false,
+            {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 220,
+              columnNumber: 13
+            },
+            this
+          )
+        ] }, void 0, true, {
+          fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+          lineNumber: 218,
+          columnNumber: 11
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { className: "wiki-daily-grid", children: [
+          /* @__PURE__ */ jsxDEV("label", { children: [
+            /* @__PURE__ */ jsxDEV("span", { children: "来源链接或笔记 ID" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 228,
+              columnNumber: 15
+            }, this),
+            /* @__PURE__ */ jsxDEV(
+              "input",
+              {
+                value: draft.source_uri || "",
+                onChange: (event) => onDraftChange({ source_uri: event.target.value }),
+                placeholder: "可选 URL、文件名或聊天引用"
+              },
+              void 0,
+              false,
+              {
+                fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+                lineNumber: 229,
+                columnNumber: 15
+              },
+              this
+            )
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 227,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV("label", { children: [
+            /* @__PURE__ */ jsxDEV("span", { children: "标签" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 236,
+              columnNumber: 15
+            }, this),
+            /* @__PURE__ */ jsxDEV("input", { value: tagInput, onChange: (event) => onTagInputChange(event.target.value), placeholder: "产品, 研究, 决策" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 237,
+              columnNumber: 15
+            }, this)
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 235,
+            columnNumber: 13
+          }, this)
+        ] }, void 0, true, {
+          fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+          lineNumber: 226,
+          columnNumber: 11
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { className: "button-row", children: [
+          /* @__PURE__ */ jsxDEV("button", { type: "submit", disabled: workflowBusy, children: [
+            workflowAction === "preview" ? /* @__PURE__ */ jsxDEV(Loader2, { className: "spin", size: 16 }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 242,
+              columnNumber: 47
+            }, this) : /* @__PURE__ */ jsxDEV(Search, { size: 16 }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 242,
+              columnNumber: 88
+            }, this),
+            "预览"
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 241,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV("button", { type: "button", className: "secondary", onClick: onApply, disabled: workflowBusy || !preview, children: [
+            workflowAction === "apply" ? /* @__PURE__ */ jsxDEV(Loader2, { className: "spin", size: 16 }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 246,
+              columnNumber: 45
+            }, this) : /* @__PURE__ */ jsxDEV(Check, { size: 16 }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 246,
+              columnNumber: 86
+            }, this),
+            "应用"
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 245,
+            columnNumber: 13
+          }, this)
+        ] }, void 0, true, {
+          fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+          lineNumber: 240,
+          columnNumber: 11
+        }, this)
+      ] }, void 0, true, {
+        fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+        lineNumber: 184,
+        columnNumber: 9
+      }, this),
+      /* @__PURE__ */ jsxDEV("section", { className: "wiki-daily-preview", "aria-label": "资料页预览结果", children: [
+        /* @__PURE__ */ jsxDEV("div", { className: "section-heading", children: [
+          /* @__PURE__ */ jsxDEV("strong", { children: "预览" }, void 0, false, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 254,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV("span", { children: preview ? `${preview.page_plans.length} 个计划页面，确认路径后即可应用。` : "应用任何资料页更新前请先运行预览。" }, void 0, false, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 255,
+            columnNumber: 13
+          }, this)
+        ] }, void 0, true, {
+          fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+          lineNumber: 253,
+          columnNumber: 11
+        }, this),
+        preview ? /* @__PURE__ */ jsxDEV("div", { className: "wiki-preview-plan-list", children: [
+          previewPlans.map(
+            (plan) => /* @__PURE__ */ jsxDEV("article", { className: "wiki-preview-plan-card", children: [
+              /* @__PURE__ */ jsxDEV("strong", { children: plan.title }, void 0, false, {
+                fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+                lineNumber: 265,
+                columnNumber: 19
+              }, this),
+              /* @__PURE__ */ jsxDEV("span", { children: plan.target_path }, void 0, false, {
+                fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+                lineNumber: 266,
+                columnNumber: 19
+              }, this),
+              /* @__PURE__ */ jsxDEV("small", { children: [
+                plan.operation,
+                plan.section ? ` / ${plan.section}` : ""
+              ] }, void 0, true, {
+                fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+                lineNumber: 267,
+                columnNumber: 19
+              }, this)
+            ] }, `${plan.target_path}-${plan.section || "page"}`, true, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 264,
+              columnNumber: 13
+            }, this)
+          ),
+          preview.page_plans.length > previewPlans.length ? /* @__PURE__ */ jsxDEV("p", { className: "field-note", children: [
+            "还有 ",
+            preview.page_plans.length - previewPlans.length,
+            " 个计划页面。"
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 271,
+            columnNumber: 13
+          }, this) : null
+        ] }, void 0, true, {
+          fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+          lineNumber: 262,
+          columnNumber: 11
+        }, this) : /* @__PURE__ */ jsxDEV("p", { className: "field-note", children: "还没有预览。应用经过审查的计划前，这里保持只读。" }, void 0, false, {
+          fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+          lineNumber: 275,
+          columnNumber: 11
+        }, this),
+        applyResult ? /* @__PURE__ */ jsxDEV("div", { className: "wiki-apply-summary", "aria-label": "最近资料页应用结果", children: [
+          /* @__PURE__ */ jsxDEV("strong", { children: "最近输出" }, void 0, false, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 279,
+            columnNumber: 15
+          }, this),
+          /* @__PURE__ */ jsxDEV("span", { children: latestApplySummary }, void 0, false, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 280,
+            columnNumber: 15
+          }, this)
+        ] }, void 0, true, {
+          fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+          lineNumber: 278,
+          columnNumber: 11
+        }, this) : null
+      ] }, void 0, true, {
+        fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+        lineNumber: 252,
+        columnNumber: 9
+      }, this)
+    ] }, void 0, true, {
+      fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+      lineNumber: 183,
+      columnNumber: 7
+    }, this),
+    /* @__PURE__ */ jsxDEV("details", { className: "stack advanced-vault-maintenance", "aria-label": "高级知识库维护工具", children: [
+      /* @__PURE__ */ jsxDEV("summary", { children: [
+        /* @__PURE__ */ jsxDEV("strong", { children: "展开高级维护工具" }, void 0, false, {
+          fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+          lineNumber: 287,
+          columnNumber: 11
+        }, this),
+        /* @__PURE__ */ jsxDEV("span", { children: "包含手工预览、审查、查询归档、综合整理和检查；部分操作会写入本地文本，请先确认目标页面。" }, void 0, false, {
+          fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+          lineNumber: 288,
+          columnNumber: 11
+        }, this)
+      ] }, void 0, true, {
+        fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+        lineNumber: 286,
+        columnNumber: 9
+      }, this),
+      /* @__PURE__ */ jsxDEV("form", { className: "stack", onSubmit: onPreview, children: [
+        /* @__PURE__ */ jsxDEV("div", { className: "section-heading", children: [
+          /* @__PURE__ */ jsxDEV("strong", { children: "维护知识库里的长期记忆" }, void 0, false, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 292,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV("span", { children: "这是高级维护入口，不作为日常主流程；桌宠对话会优先自动整理，只有高风险项才会进入确认流程。" }, void 0, false, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 293,
+            columnNumber: 13
+          }, this)
+        ] }, void 0, true, {
+          fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+          lineNumber: 291,
+          columnNumber: 11
+        }, this),
+        /* @__PURE__ */ jsxDEV("label", { children: [
+          /* @__PURE__ */ jsxDEV("span", { children: "审查/应用目标" }, void 0, false, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 296,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV(
+            "input",
+            {
+              value: approvedTargetsInput,
+              onChange: (event) => onApprovedTargetsInputChange(event.target.value),
+              placeholder: "留空=应用预览全部页面；可用审查推荐填充"
+            },
+            void 0,
+            false,
+            {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 297,
+              columnNumber: 13
+            },
+            this
+          )
+        ] }, void 0, true, {
+          fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+          lineNumber: 295,
+          columnNumber: 11
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { className: "split", children: [
+          /* @__PURE__ */ jsxDEV("label", { children: [
+            /* @__PURE__ */ jsxDEV("span", { children: "标题" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 305,
+              columnNumber: 15
+            }, this),
+            /* @__PURE__ */ jsxDEV("input", { value: draft.title, onChange: (event) => onDraftChange({ title: event.target.value }), placeholder: "运行时笔记" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 306,
+              columnNumber: 15
+            }, this)
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 304,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV("label", { children: [
+            /* @__PURE__ */ jsxDEV("span", { children: "来源类型" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 309,
+              columnNumber: 15
+            }, this),
+            /* @__PURE__ */ jsxDEV(
+              "input",
+              {
+                value: draft.source_type || "",
+                onChange: (event) => onDraftChange({ source_type: event.target.value }),
+                placeholder: "manual"
+              },
+              void 0,
+              false,
+              {
+                fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+                lineNumber: 310,
+                columnNumber: 15
+              },
+              this
+            )
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 308,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV("label", { className: "checkbox-row", children: [
+            /* @__PURE__ */ jsxDEV("input", { type: "checkbox", checked: reviewForceRefresh, onChange: (event) => onReviewForceRefreshChange(event.target.checked) }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 317,
+              columnNumber: 15
+            }, this),
+            /* @__PURE__ */ jsxDEV("span", { children: "审查强制刷新" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 318,
+              columnNumber: 15
+            }, this)
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 316,
+            columnNumber: 13
+          }, this)
+        ] }, void 0, true, {
+          fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+          lineNumber: 303,
+          columnNumber: 11
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { className: "split", children: [
+          /* @__PURE__ */ jsxDEV("label", { children: [
+            /* @__PURE__ */ jsxDEV("span", { children: "来源地址" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 323,
+              columnNumber: 15
+            }, this),
+            /* @__PURE__ */ jsxDEV(
+              "input",
+              {
+                value: draft.source_uri || "",
+                onChange: (event) => onDraftChange({ source_uri: event.target.value }),
+                placeholder: "可选：来源 URL 或本地引用"
+              },
+              void 0,
+              false,
+              {
+                fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+                lineNumber: 324,
+                columnNumber: 15
+              },
+              this
+            )
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 322,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV("label", { children: [
+            /* @__PURE__ */ jsxDEV("span", { children: "最多页面数" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 331,
+              columnNumber: 15
+            }, this),
+            /* @__PURE__ */ jsxDEV(
+              "input",
+              {
+                type: "number",
+                min: 1,
+                max: 15,
+                value: draft.max_pages ?? 15,
+                onChange: (event) => onDraftChange({ max_pages: Number(event.target.value) })
+              },
+              void 0,
+              false,
+              {
+                fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+                lineNumber: 332,
+                columnNumber: 15
+              },
+              this
+            )
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 330,
+            columnNumber: 13
+          }, this)
+        ] }, void 0, true, {
+          fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+          lineNumber: 321,
+          columnNumber: 11
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { className: "split", children: [
+          /* @__PURE__ */ jsxDEV("label", { children: [
+            /* @__PURE__ */ jsxDEV("span", { children: "归档目标" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 343,
+              columnNumber: 15
+            }, this),
+            /* @__PURE__ */ jsxDEV(
+              "input",
+              {
+                value: draft.target_path || "",
+                onChange: (event) => onDraftChange({ target_path: event.target.value }),
+                placeholder: defaultWikiArchiveTargetPath
+              },
+              void 0,
+              false,
+              {
+                fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+                lineNumber: 344,
+                columnNumber: 15
+              },
+              this
+            )
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 342,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV("label", { children: [
+            /* @__PURE__ */ jsxDEV("span", { children: "归档章节" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 351,
+              columnNumber: 15
+            }, this),
+            /* @__PURE__ */ jsxDEV("input", { value: draft.section || "", onChange: (event) => onDraftChange({ section: event.target.value }), placeholder: "可选" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 352,
+              columnNumber: 15
+            }, this)
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 350,
+            columnNumber: 13
+          }, this)
+        ] }, void 0, true, {
+          fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+          lineNumber: 341,
+          columnNumber: 11
+        }, this),
+        /* @__PURE__ */ jsxDEV("label", { children: [
+          /* @__PURE__ */ jsxDEV("span", { children: "内容" }, void 0, false, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 356,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV(
+            "textarea",
+            {
+              value: draft.content,
+              onChange: (event) => onDraftChange({ content: event.target.value }),
+              placeholder: "要写入资料库归档目录的本地文本内容"
+            },
+            void 0,
+            false,
+            {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 357,
+              columnNumber: 13
+            },
+            this
+          )
+        ] }, void 0, true, {
+          fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+          lineNumber: 355,
+          columnNumber: 11
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { className: "split", children: [
+          /* @__PURE__ */ jsxDEV("label", { children: [
+            /* @__PURE__ */ jsxDEV("span", { children: "标签" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 365,
+              columnNumber: 15
+            }, this),
+            /* @__PURE__ */ jsxDEV("input", { value: tagInput, onChange: (event) => onTagInputChange(event.target.value), placeholder: "桌面助手,资料库" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 366,
+              columnNumber: 15
+            }, this)
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 364,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV("label", { children: [
+            /* @__PURE__ */ jsxDEV("span", { children: "关联链接" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 369,
+              columnNumber: 15
+            }, this),
+            /* @__PURE__ */ jsxDEV("input", { value: linkInput, onChange: (event) => onLinkInputChange(event.target.value), placeholder: "资料库/运行时.md, 资料库/接口.md" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 370,
+              columnNumber: 15
+            }, this)
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 368,
+            columnNumber: 13
+          }, this)
+        ] }, void 0, true, {
+          fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+          lineNumber: 363,
+          columnNumber: 11
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { className: "split", children: [
+          /* @__PURE__ */ jsxDEV("label", { className: "checkbox-row", children: [
+            /* @__PURE__ */ jsxDEV("input", { type: "checkbox", checked: draft.write_report, onChange: (event) => onDraftChange({ write_report: event.target.checked }) }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 375,
+              columnNumber: 15
+            }, this),
+            /* @__PURE__ */ jsxDEV("span", { children: "写入检查报告" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 376,
+              columnNumber: 15
+            }, this)
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 374,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV("label", { className: "checkbox-row", children: [
+            /* @__PURE__ */ jsxDEV(
+              "input",
+              {
+                type: "checkbox",
+                checked: draft.allow_mixed_sources,
+                onChange: (event) => onDraftChange({ allow_mixed_sources: event.target.checked })
+              },
+              void 0,
+              false,
+              {
+                fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+                lineNumber: 379,
+                columnNumber: 15
+              },
+              this
+            ),
+            /* @__PURE__ */ jsxDEV("span", { children: "允许混合来源归档" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 384,
+              columnNumber: 15
+            }, this)
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 378,
+            columnNumber: 13
+          }, this)
+        ] }, void 0, true, {
+          fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+          lineNumber: 373,
+          columnNumber: 11
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { className: "button-row", children: [
+          /* @__PURE__ */ jsxDEV("button", { type: "submit", disabled: workflowBusy, children: [
+            workflowAction === "preview" ? /* @__PURE__ */ jsxDEV(Loader2, { className: "spin", size: 16 }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 389,
+              columnNumber: 47
+            }, this) : /* @__PURE__ */ jsxDEV(Search, { size: 16 }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 389,
+              columnNumber: 88
+            }, this),
+            "预览"
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 388,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV("button", { type: "button", className: "secondary", onClick: onReview, disabled: workflowBusy || !preview, children: [
+            workflowAction === "review" ? /* @__PURE__ */ jsxDEV(Loader2, { className: "spin", size: 16 }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 393,
+              columnNumber: 46
+            }, this) : /* @__PURE__ */ jsxDEV(ShieldCheck, { size: 16 }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 393,
+              columnNumber: 87
+            }, this),
+            "审查"
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 392,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV("button", { type: "button", className: "secondary", onClick: onApply, disabled: workflowBusy, children: [
+            workflowAction === "apply" ? /* @__PURE__ */ jsxDEV(Loader2, { className: "spin", size: 16 }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 397,
+              columnNumber: 45
+            }, this) : /* @__PURE__ */ jsxDEV(Check, { size: 16 }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 397,
+              columnNumber: 86
+            }, this),
+            "应用"
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 396,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV(
+            "button",
+            {
+              type: "button",
+              className: "secondary",
+              onClick: onArchiveLatestQuery,
+              disabled: workflowBusy || latestKnowledgeCitationCount === 0,
+              title: latestKnowledgeCitationCount > 0 ? "保存最近一条带知识库引用的已完成助手回复" : "没有可保存的知识库引用回复",
+              children: [
+                workflowAction === "archive" ? /* @__PURE__ */ jsxDEV(Loader2, { className: "spin", size: 16 }, void 0, false, {
+                  fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+                  lineNumber: 407,
+                  columnNumber: 47
+                }, this) : /* @__PURE__ */ jsxDEV(MessageSquareText, { size: 16 }, void 0, false, {
+                  fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+                  lineNumber: 407,
+                  columnNumber: 88
+                }, this),
+                "归档查询"
+              ]
+            },
+            void 0,
+            true,
+            {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 400,
+              columnNumber: 13
+            },
+            this
+          ),
+          /* @__PURE__ */ jsxDEV("button", { type: "button", className: "secondary", onClick: onSynthesize, disabled: workflowBusy, children: [
+            workflowAction === "synthesize" ? /* @__PURE__ */ jsxDEV(Loader2, { className: "spin", size: 16 }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 411,
+              columnNumber: 50
+            }, this) : /* @__PURE__ */ jsxDEV(FileDown, { size: 16 }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 411,
+              columnNumber: 91
+            }, this),
+            "综合整理"
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 410,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV("button", { type: "button", className: "secondary", onClick: onRunLint, disabled: workflowBusy, children: [
+            workflowAction === "lint" ? /* @__PURE__ */ jsxDEV(Loader2, { className: "spin", size: 16 }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 415,
+              columnNumber: 44
+            }, this) : /* @__PURE__ */ jsxDEV(ListChecks, { size: 16 }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 415,
+              columnNumber: 85
+            }, this),
+            "运行检查"
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 414,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV("button", { type: "button", className: "secondary", onClick: onLoadDiagnosticsQueue, disabled: workflowBusy, children: [
+            workflowAction === "diagnostics" ? /* @__PURE__ */ jsxDEV(Loader2, { className: "spin", size: 16 }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 419,
+              columnNumber: 51
+            }, this) : /* @__PURE__ */ jsxDEV(CircleAlert, { size: 16 }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 419,
+              columnNumber: 92
+            }, this),
+            "只读诊断"
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 418,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV("button", { type: "button", className: "secondary", onClick: onLoadArchiveHistory, disabled: workflowBusy || archiveHistoryLoading, children: [
+            archiveHistoryLoading ? /* @__PURE__ */ jsxDEV(Loader2, { className: "spin", size: 16 }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 423,
+              columnNumber: 40
+            }, this) : /* @__PURE__ */ jsxDEV(RefreshCw, { size: 16 }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 423,
+              columnNumber: 81
+            }, this),
+            "刷新归档"
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 422,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV("button", { type: "button", className: "secondary", onClick: onLoadCoreStatus, disabled: workflowBusy || coreStatus === "loading", children: [
+            coreStatus === "loading" ? /* @__PURE__ */ jsxDEV(Loader2, { className: "spin", size: 16 }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 427,
+              columnNumber: 43
+            }, this) : /* @__PURE__ */ jsxDEV(RefreshCw, { size: 16 }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 427,
+              columnNumber: 84
+            }, this),
+            "刷新核心状态"
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 426,
+            columnNumber: 13
+          }, this)
+        ] }, void 0, true, {
+          fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+          lineNumber: 387,
+          columnNumber: 11
+        }, this),
+        /* @__PURE__ */ jsxDEV("dl", { className: "details", children: [
+          /* @__PURE__ */ jsxDEV("div", { children: [
+            /* @__PURE__ */ jsxDEV("dt", { children: "预览" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 433,
+              columnNumber: 15
+            }, this),
+            /* @__PURE__ */ jsxDEV("dd", { children: preview ? `${formatTaskStatus(preview.status)} / ${preview.page_plans.length} 页 / ${preview.source_hash.slice(0, 12)}` : "无" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 434,
+              columnNumber: 15
+            }, this)
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 432,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV("div", { children: [
+            /* @__PURE__ */ jsxDEV("dt", { children: "最近应用" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 437,
+              columnNumber: 15
+            }, this),
+            /* @__PURE__ */ jsxDEV("dd", { children: formatWikiWorkflowResult(applyResult, formatTaskStatus) }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 438,
+              columnNumber: 15
+            }, this)
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 436,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV("div", { children: [
+            /* @__PURE__ */ jsxDEV("dt", { children: "审查" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 441,
+              columnNumber: 15
+            }, this),
+            /* @__PURE__ */ jsxDEV("dd", { children: reviewResult ? `${formatTaskStatus(reviewResult.status)} / ${reviewResult.findings.length} 个发现 / ${reviewResult.recommended_targets.length} 个推荐` : "未运行" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 442,
+              columnNumber: 15
+            }, this)
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 440,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV("div", { children: [
+            /* @__PURE__ */ jsxDEV("dt", { children: "引用来源" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 445,
+              columnNumber: 15
+            }, this),
+            /* @__PURE__ */ jsxDEV("dd", { children: latestArchiveMessage ? `${latestArchiveMessage.id} / ${latestKnowledgeCitationCount} 条知识库引用` : "无" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 446,
+              columnNumber: 15
+            }, this)
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 444,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV("div", { children: [
+            /* @__PURE__ */ jsxDEV("dt", { children: "检查" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 449,
+              columnNumber: 15
+            }, this),
+            /* @__PURE__ */ jsxDEV("dd", { children: lintResult ? `${lintResult.summary.pages ?? 0} 页 / ${lintIssueCount} 个问题` : "未运行" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 450,
+              columnNumber: 15
+            }, this)
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 448,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV("div", { children: [
+            /* @__PURE__ */ jsxDEV("dt", { children: "诊断队列" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 453,
+              columnNumber: 15
+            }, this),
+            /* @__PURE__ */ jsxDEV("dd", { children: diagnosticsQueue ? `${diagnosticsQueue.items.length} 项 / ${diagnosticsQueue.generated_at}` : "未加载" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 454,
+              columnNumber: 15
+            }, this)
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 452,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV("div", { children: [
+            /* @__PURE__ */ jsxDEV("dt", { children: "上下文报告" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 457,
+              columnNumber: 15
+            }, this),
+            /* @__PURE__ */ jsxDEV("dd", { children: companionContextReportStatus === "loading" ? "刷新中" : companionContextReports.length ? `${companionContextReports.length} 条` : "未加载" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 458,
+              columnNumber: 15
+            }, this)
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 456,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV("div", { children: [
+            /* @__PURE__ */ jsxDEV("dt", { children: "最新归档" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 461,
+              columnNumber: 15
+            }, this),
+            /* @__PURE__ */ jsxDEV("dd", { children: lastWikiArchiveId || "无" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 462,
+              columnNumber: 15
+            }, this)
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 460,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV("div", { children: [
+            /* @__PURE__ */ jsxDEV("dt", { children: "历史" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 465,
+              columnNumber: 15
+            }, this),
+            /* @__PURE__ */ jsxDEV("dd", { children: archiveHistorySummary }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 466,
+              columnNumber: 15
+            }, this)
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 464,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV("div", { children: [
+            /* @__PURE__ */ jsxDEV("dt", { children: "结构" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 469,
+              columnNumber: 15
+            }, this),
+            /* @__PURE__ */ jsxDEV("dd", { children: schemaStatus?.exists ? schemaStatus.path : coreStatus === "error" ? "异常" : "未加载" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 470,
+              columnNumber: 15
+            }, this)
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 468,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV("div", { children: [
+            /* @__PURE__ */ jsxDEV("dt", { children: "索引" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 473,
+              columnNumber: 15
+            }, this),
+            /* @__PURE__ */ jsxDEV("dd", { children: indexStatus ? `${indexStatus.entries.length} 条` : "未加载" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 474,
+              columnNumber: 15
+            }, this)
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 472,
+            columnNumber: 13
+          }, this),
+          /* @__PURE__ */ jsxDEV("div", { children: [
+            /* @__PURE__ */ jsxDEV("dt", { children: "日志" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 477,
+              columnNumber: 15
+            }, this),
+            /* @__PURE__ */ jsxDEV("dd", { children: logStatus ? `${logStatus.entries.length} 条` : "未加载" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 478,
+              columnNumber: 15
+            }, this)
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 476,
+            columnNumber: 13
+          }, this)
+        ] }, void 0, true, {
+          fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+          lineNumber: 431,
+          columnNumber: 11
+        }, this),
+        coreError ? /* @__PURE__ */ jsxDEV("p", { className: "field-note error", children: coreError }, void 0, false, {
+          fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+          lineNumber: 481,
+          columnNumber: 24
+        }, this) : null,
+        preview ? /* @__PURE__ */ jsxDEV("pre", { className: "diff-preview", children: formatWikiPreview(preview) }, void 0, false, {
+          fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+          lineNumber: 482,
+          columnNumber: 22
+        }, this) : null,
+        reviewResult ? /* @__PURE__ */ jsxDEV("section", { className: "wiki-review-result", "aria-label": "资料库导入审查结果", children: [
+          /* @__PURE__ */ jsxDEV("div", { className: "section-heading", children: [
+            /* @__PURE__ */ jsxDEV("strong", { children: "审查结果" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 486,
+              columnNumber: 17
+            }, this),
+            /* @__PURE__ */ jsxDEV("span", { children: [
+              formatTaskStatus(reviewResult.status),
+              " / ",
+              reviewResult.review_id
+            ] }, void 0, true, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 487,
+              columnNumber: 17
+            }, this)
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 485,
+            columnNumber: 15
+          }, this),
+          /* @__PURE__ */ jsxDEV("p", { children: reviewResult.summary }, void 0, false, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 489,
+            columnNumber: 15
+          }, this),
+          reviewResult.model_error ? /* @__PURE__ */ jsxDEV("p", { className: "field-note error", children: reviewResult.model_error }, void 0, false, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 490,
+            columnNumber: 43
+          }, this) : null,
+          reviewResult.recommended_targets.length > 0 ? /* @__PURE__ */ jsxDEV("div", { className: "wiki-review-targets", children: [
+            /* @__PURE__ */ jsxDEV("div", { children: [
+              /* @__PURE__ */ jsxDEV("strong", { children: "推荐应用目标" }, void 0, false, {
+                fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+                lineNumber: 494,
+                columnNumber: 21
+              }, this),
+              /* @__PURE__ */ jsxDEV("span", { children: reviewResult.recommended_targets.join(", ") }, void 0, false, {
+                fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+                lineNumber: 495,
+                columnNumber: 21
+              }, this)
+            ] }, void 0, true, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 493,
+              columnNumber: 19
+            }, this),
+            /* @__PURE__ */ jsxDEV("button", { type: "button", className: "secondary", onClick: onUseReviewRecommendedTargets, disabled: workflowBusy, children: [
+              /* @__PURE__ */ jsxDEV(Check, { size: 16 }, void 0, false, {
+                fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+                lineNumber: 498,
+                columnNumber: 21
+              }, this),
+              "使用推荐"
+            ] }, void 0, true, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 497,
+              columnNumber: 19
+            }, this)
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 492,
+            columnNumber: 13
+          }, this) : null,
+          reviewResult.findings.length > 0 ? /* @__PURE__ */ jsxDEV("div", { className: "message-events", children: reviewResult.findings.map(
+            (finding, index) => /* @__PURE__ */ jsxDEV("span", { className: finding.severity === "error" ? "error" : void 0, children: [
+              /* @__PURE__ */ jsxDEV("strong", { children: [
+                formatIssueSeverity(finding.severity),
+                " / ",
+                finding.code
+              ] }, void 0, true, {
+                fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+                lineNumber: 507,
+                columnNumber: 23
+              }, this),
+              finding.target_path ? `${finding.target_path}: ` : "",
+              finding.message
+            ] }, `${finding.code}-${finding.target_path || index}`, true, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 506,
+              columnNumber: 15
+            }, this)
+          ) }, void 0, false, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 504,
+            columnNumber: 13
+          }, this) : null
+        ] }, void 0, true, {
+          fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+          lineNumber: 484,
+          columnNumber: 11
+        }, this) : null,
+        lintResult?.issues.length ? /* @__PURE__ */ jsxDEV("div", { className: "message-events", "aria-label": "资料库检查问题", children: lintResult.issues.slice(0, 6).map(
+          (issue, index) => /* @__PURE__ */ jsxDEV("span", { className: issue.severity === "error" ? "error" : void 0, children: [
+            /* @__PURE__ */ jsxDEV("strong", { children: formatIssueSeverity(issue.severity) }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 520,
+              columnNumber: 19
+            }, this),
+            issue.path ? `${issue.path}${issue.target ? ` -> ${issue.target}` : ""}：` : "",
+            issue.message
+          ] }, `${issue.code}-${issue.path || "wiki"}-${issue.target || index}`, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 519,
+            columnNumber: 13
+          }, this)
+        ) }, void 0, false, {
+          fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+          lineNumber: 517,
+          columnNumber: 11
+        }, this) : null,
+        diagnosticsQueue?.items.length ? /* @__PURE__ */ jsxDEV("section", { className: "wiki-review-result", "aria-label": "资料库只读诊断队列", children: [
+          /* @__PURE__ */ jsxDEV("div", { className: "section-heading", children: [
+            /* @__PURE__ */ jsxDEV("strong", { children: "只读诊断队列" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 530,
+              columnNumber: 17
+            }, this),
+            /* @__PURE__ */ jsxDEV("span", { children: [
+              diagnosticsQueue.items.length,
+              " 项，不写入知识库文件"
+            ] }, void 0, true, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 531,
+              columnNumber: 17
+            }, this)
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 529,
+            columnNumber: 15
+          }, this),
+          /* @__PURE__ */ jsxDEV("div", { className: "message-events", children: diagnosticsQueue.items.slice(0, 8).map(
+            (item) => /* @__PURE__ */ jsxDEV("span", { className: item.severity === "error" ? "error" : void 0, children: [
+              /* @__PURE__ */ jsxDEV("strong", { children: [
+                formatIssueSeverity(item.severity),
+                " / ",
+                formatWikiDiagnosticKind(item.kind)
+              ] }, void 0, true, {
+                fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+                lineNumber: 536,
+                columnNumber: 21
+              }, this),
+              item.related_paths.length ? `${item.related_paths.join(", ")}：` : "",
+              item.question,
+              item.repair_proposal ? ` / 建议：${item.repair_proposal.operation} ${item.repair_proposal.target_path || ""}` : ""
+            ] }, item.id, true, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 535,
+              columnNumber: 15
+            }, this)
+          ) }, void 0, false, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 533,
+            columnNumber: 15
+          }, this)
+        ] }, void 0, true, {
+          fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+          lineNumber: 528,
+          columnNumber: 11
+        }, this) : null,
+        companionContextReportError ? /* @__PURE__ */ jsxDEV("p", { className: "field-note error", children: companionContextReportError }, void 0, false, {
+          fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+          lineNumber: 545,
+          columnNumber: 42
+        }, this) : null,
+        companionContextReports.length ? /* @__PURE__ */ jsxDEV("section", { className: "wiki-review-result", "aria-label": "陪伴上下文报告", children: [
+          /* @__PURE__ */ jsxDEV("div", { className: "section-heading", children: [
+            /* @__PURE__ */ jsxDEV("strong", { children: "陪伴上下文报告" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 549,
+              columnNumber: 17
+            }, this),
+            /* @__PURE__ */ jsxDEV("span", { children: [
+              "最近 ",
+              companionContextReports.length,
+              " 条，只读"
+            ] }, void 0, true, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 550,
+              columnNumber: 17
+            }, this)
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 548,
+            columnNumber: 15
+          }, this),
+          /* @__PURE__ */ jsxDEV("div", { className: "message-events", children: companionContextReports.map(
+            (report) => /* @__PURE__ */ jsxDEV("span", { children: [
+              /* @__PURE__ */ jsxDEV("strong", { children: [
+                report.strategy,
+                " / ",
+                report.agent_run_id
+              ] }, void 0, true, {
+                fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+                lineNumber: 555,
+                columnNumber: 21
+              }, this),
+              "候选 ",
+              report.candidate_count,
+              "，选中 ",
+              report.selected_count,
+              "，预算丢弃 ",
+              report.budget_drop_count,
+              "，范围 ",
+              report.selected_scopes.join(", ") || "无"
+            ] }, report.id, true, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 554,
+              columnNumber: 15
+            }, this)
+          ) }, void 0, false, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 552,
+            columnNumber: 15
+          }, this)
+        ] }, void 0, true, {
+          fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+          lineNumber: 547,
+          columnNumber: 11
+        }, this) : companionContextReportStatus === "empty" ? /* @__PURE__ */ jsxDEV("p", { className: "field-note", children: "还没有陪伴上下文报告。" }, void 0, false, {
+          fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+          lineNumber: 562,
+          columnNumber: 11
+        }, this) : null,
+        openedArchive ? /* @__PURE__ */ jsxDEV("pre", { className: "diff-preview wiki-opened-archive", children: formatWikiArchiveDetail(openedArchive) }, void 0, false, {
+          fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+          lineNumber: 564,
+          columnNumber: 28
+        }, this) : null,
+        /* @__PURE__ */ jsxDEV("section", { className: "wiki-archive-history", "aria-label": "资料库查询归档历史", children: [
+          /* @__PURE__ */ jsxDEV("div", { className: "section-heading", children: [
+            /* @__PURE__ */ jsxDEV("strong", { children: "查询归档历史" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 567,
+              columnNumber: 15
+            }, this),
+            /* @__PURE__ */ jsxDEV("span", { children: archiveHistorySummary }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+              lineNumber: 568,
+              columnNumber: 15
+            }, this)
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 566,
+            columnNumber: 13
+          }, this),
+          archiveHistoryError ? /* @__PURE__ */ jsxDEV("p", { className: "field-note error", children: archiveHistoryError }, void 0, false, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 570,
+            columnNumber: 36
+          }, this) : null,
+          archiveHistory.length > 0 ? /* @__PURE__ */ jsxDEV("div", { className: "wiki-archive-history-list", children: archiveHistory.slice(0, 8).map((archive, index) => {
+            const archiveId = getWikiArchiveId(archive);
+            const opening = Boolean(archiveId && openingArchiveId === archiveId);
+            return /* @__PURE__ */ jsxDEV(
+              "article",
+              {
+                className: `wiki-archive-history-item${archiveId && archiveId === lastWikiArchiveId ? " active" : ""}`,
+                children: [
+                  /* @__PURE__ */ jsxDEV("div", { className: "wiki-archive-history-main", children: [
+                    /* @__PURE__ */ jsxDEV("strong", { children: archive.title || archive.page?.title || archive.target_path }, void 0, false, {
+                      fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+                      lineNumber: 582,
+                      columnNumber: 25
+                    }, this),
+                    /* @__PURE__ */ jsxDEV("span", { children: archive.question }, void 0, false, {
+                      fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+                      lineNumber: 583,
+                      columnNumber: 25
+                    }, this),
+                    /* @__PURE__ */ jsxDEV("small", { children: formatWikiArchiveHistoryMeta(archive, formatTaskStatus) }, void 0, false, {
+                      fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+                      lineNumber: 584,
+                      columnNumber: 25
+                    }, this)
+                  ] }, void 0, true, {
+                    fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+                    lineNumber: 581,
+                    columnNumber: 23
+                  }, this),
+                  /* @__PURE__ */ jsxDEV("p", { children: archive.answer_preview }, void 0, false, {
+                    fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+                    lineNumber: 586,
+                    columnNumber: 23
+                  }, this),
+                  /* @__PURE__ */ jsxDEV("button", { type: "button", className: "secondary", onClick: () => onOpenArchive(archiveId), disabled: workflowBusy || !archiveId || Boolean(openingArchiveId), children: [
+                    opening ? /* @__PURE__ */ jsxDEV(Loader2, { className: "spin", size: 16 }, void 0, false, {
+                      fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+                      lineNumber: 588,
+                      columnNumber: 36
+                    }, this) : /* @__PURE__ */ jsxDEV(FolderOpen, { size: 16 }, void 0, false, {
+                      fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+                      lineNumber: 588,
+                      columnNumber: 77
+                    }, this),
+                    "打开"
+                  ] }, void 0, true, {
+                    fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+                    lineNumber: 587,
+                    columnNumber: 23
+                  }, this)
+                ]
+              },
+              archiveId || `${archive.target_path}-${archive.created_at}-${index}`,
+              true,
+              {
+                fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+                lineNumber: 577,
+                columnNumber: 19
+              },
+              this
+            );
+          }) }, void 0, false, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 572,
+            columnNumber: 13
+          }, this) : archiveHistoryStatus === "empty" ? /* @__PURE__ */ jsxDEV("p", { className: "field-note", children: "还没有查询归档。" }, void 0, false, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+            lineNumber: 596,
+            columnNumber: 13
+          }, this) : null
+        ] }, void 0, true, {
+          fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+          lineNumber: 565,
+          columnNumber: 11
+        }, this)
+      ] }, void 0, true, {
+        fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+        lineNumber: 290,
+        columnNumber: 9
+      }, this)
+    ] }, void 0, true, {
+      fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+      lineNumber: 285,
+      columnNumber: 7
+    }, this)
+  ] }, void 0, true, {
+    fileName: "E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx",
+    lineNumber: 182,
+    columnNumber: 5
+  }, this);
+}
+_c = WikiWorkflowPanel;
+var _c;
+$RefreshReg$(_c, "WikiWorkflowPanel");
+if (import.meta.hot && !inWebWorker) {
+  window.$RefreshReg$ = prevRefreshReg;
+  window.$RefreshSig$ = prevRefreshSig;
+}
+if (import.meta.hot && !inWebWorker) {
+  RefreshRuntime.__hmr_import(import.meta.url).then((currentExports) => {
+    RefreshRuntime.registerExportsForReactRefresh("E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx", currentExports);
+    import.meta.hot.accept((nextExports) => {
+      if (!nextExports) return;
+      const invalidateMessage = RefreshRuntime.validateRefreshBoundaryAndEnqueueUpdate("E:/agentproject/apps/desktop/src/features/wiki/WikiWorkflowPanel.tsx", currentExports, nextExports);
+      if (invalidateMessage) import.meta.hot.invalidate(invalidateMessage);
+    });
+  });
+}
+
+//# sourceMappingURL=data:application/json;base64,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O0FBQUE7QUFBQTtBQUFBO0FBQUEsV0EyVEE7QUFBQSxPQWxhRjtBQUFBO0FBQUE7QUFBQTtBQUFBLFNBbWFBO0FBRUo7QUFBQ3NHLEtBdmVldkg7QUFBaUIsSUFBQXVIO0FBQUEsYUFBQUEsSUFBQSIsIm5hbWVzIjpbIkNoZWNrIiwiQ2lyY2xlQWxlcnQiLCJGaWxlRG93biIsIkZvbGRlck9wZW4iLCJMaXN0Q2hlY2tzIiwiTG9hZGVyMiIsIk1lc3NhZ2VTcXVhcmVUZXh0IiwiUmVmcmVzaEN3IiwiU2VhcmNoIiwiU2hpZWxkQ2hlY2siLCJQYW5lbCIsImZvcm1hdFRhc2tTdGF0dXMiLCJkZWZhdWx0V2lraUFyY2hpdmVUYXJnZXRQYXRoIiwiZm9ybWF0V2lraUFyY2hpdmVEZXRhaWwiLCJmb3JtYXRXaWtpQXJjaGl2ZUhpc3RvcnlNZXRhIiwiZm9ybWF0V2lraURpYWdub3N0aWNLaW5kIiwiZm9ybWF0V2lraVByZXZpZXciLCJmb3JtYXRXaWtpV29ya2Zsb3dSZXN1bHQiLCJnZXRXaWtpQXJjaGl2ZUlkIiwiZGFpbHlXaWtpVGFyZ2V0VHlwZXMiLCJ2YWx1ZSIsImxhYmVsIiwiZGVzY3JpcHRpb24iLCJkYWlseVRhcmdldFR5cGVGcm9tU291cmNlVHlwZSIsInNvdXJjZVR5cGUiLCJ0cmltIiwic29tZSIsIm9wdGlvbiIsIldpa2lXb3JrZmxvd1BhbmVsIiwiZHJhZnQiLCJ0YWdJbnB1dCIsImxpbmtJbnB1dCIsImFwcHJvdmVkVGFyZ2V0c0lucHV0IiwicmV2aWV3Rm9yY2VSZWZyZXNoIiwicHJldmlldyIsInJldmlld1Jlc3VsdCIsImFwcGx5UmVzdWx0IiwibGludFJlc3VsdCIsImRpYWdub3N0aWNzUXVldWUiLCJzY2hlbWFTdGF0dXMiLCJpbmRleFN0YXR1cyIsImxvZ1N0YXR1cyIsImNvcmVTdGF0dXMiLCJjb3JlRXJyb3IiLCJhcmNoaXZlSGlzdG9yeSIsImFyY2hpdmVIaXN0b3J5U3RhdHVzIiwiYXJjaGl2ZUhpc3RvcnlFcnJvciIsIm9wZW5lZEFyY2hpdmUiLCJvcGVuaW5nQXJjaGl2ZUlkIiwiY29tcGFuaW9uQ29udGV4dFJlcG9ydHMiLCJjb21wYW5pb25Db250ZXh0UmVwb3J0U3RhdHVzIiwiY29tcGFuaW9uQ29udGV4dFJlcG9ydEVycm9yIiwibGFzdFdpa2lBcmNoaXZlSWQiLCJ3b3JrZmxvd0FjdGlvbiIsImxhdGVzdEFyY2hpdmVNZXNzYWdlIiwibGF0ZXN0S25vd2xlZGdlQ2l0YXRpb25Db3VudCIsImFyY2hpdmVIaXN0b3J5U3VtbWFyeSIsImFyY2hpdmVIaXN0b3J5TG9hZGluZyIsImxpbnRJc3N1ZUNvdW50IiwiZm9ybWF0SXNzdWVTZXZlcml0eSIsIm9uRHJhZnRDaGFuZ2UiLCJvblRhZ0lucHV0Q2hhbmdlIiwib25MaW5rSW5wdXRDaGFuZ2UiLCJvbkFwcHJvdmVkVGFyZ2V0c0lucHV0Q2hhbmdlIiwib25SZXZpZXdGb3JjZVJlZnJlc2hDaGFuZ2UiLCJvblByZXZpZXciLCJvblJldmlldyIsIm9uQXBwbHkiLCJvbkFyY2hpdmVMYXRlc3RRdWVyeSIsIm9uU3ludGhlc2l6ZSIsIm9uUnVuTGludCIsIm9uTG9hZERpYWdub3N0aWNzUXVldWUiLCJvbkxvYWRBcmNoaXZlSGlzdG9yeSIsIm9uTG9hZENvcmVTdGF0dXMiLCJvblVzZVJldmlld1JlY29tbWVuZGVkVGFyZ2V0cyIsIm9uT3BlbkFyY2hpdmUiLCJ3b3JrZmxvd0J1c3kiLCJkYWlseVRhcmdldFR5cGUiLCJzb3VyY2VfdHlwZSIsInByZXZpZXdQbGFucyIsInBhZ2VfcGxhbnMiLCJzbGljZSIsImxhdGVzdEFwcGx5U3VtbWFyeSIsImhhbmRsZURhaWx5VGFyZ2V0Q2hhbmdlIiwiY3VycmVudFRhZ3MiLCJzcGxpdCIsIm1hcCIsInRhZyIsImZpbHRlciIsIkJvb2xlYW4iLCJ0b0xvd2VyQ2FzZSIsImpvaW4iLCJ0aXRsZSIsImV2ZW50IiwidGFyZ2V0IiwiY29udGVudCIsInNvdXJjZV91cmkiLCJsZW5ndGgiLCJwbGFuIiwidGFyZ2V0X3BhdGgiLCJvcGVyYXRpb24iLCJzZWN0aW9uIiwiY2hlY2tlZCIsIm1heF9wYWdlcyIsIk51bWJlciIsIndyaXRlX3JlcG9ydCIsImFsbG93X21peGVkX3NvdXJjZXMiLCJzdGF0dXMiLCJzb3VyY2VfaGFzaCIsImZpbmRpbmdzIiwicmVjb21tZW5kZWRfdGFyZ2V0cyIsImlkIiwic3VtbWFyeSIsInBhZ2VzIiwiaXRlbXMiLCJnZW5lcmF0ZWRfYXQiLCJleGlzdHMiLCJwYXRoIiwiZW50cmllcyIsInJldmlld19pZCIsIm1vZGVsX2Vycm9yIiwiZmluZGluZyIsImluZGV4Iiwic2V2ZXJpdHkiLCJ1bmRlZmluZWQiLCJjb2RlIiwibWVzc2FnZSIsImlzc3VlcyIsImlzc3VlIiwiaXRlbSIsImtpbmQiLCJyZWxhdGVkX3BhdGhzIiwicXVlc3Rpb24iLCJyZXBhaXJfcHJvcG9zYWwiLCJyZXBvcnQiLCJzdHJhdGVneSIsImFnZW50X3J1bl9pZCIsImNhbmRpZGF0ZV9jb3VudCIsInNlbGVjdGVkX2NvdW50IiwiYnVkZ2V0X2Ryb3BfY291bnQiLCJzZWxlY3RlZF9zY29wZXMiLCJhcmNoaXZlIiwiYXJjaGl2ZUlkIiwib3BlbmluZyIsInBhZ2UiLCJhbnN3ZXJfcHJldmlldyIsImNyZWF0ZWRfYXQiLCJfYyJdLCJpZ25vcmVMaXN0IjpbXSwic291cmNlcyI6WyJXaWtpV29ya2Zsb3dQYW5lbC50c3giXSwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0IHR5cGUgeyBGb3JtRXZlbnQgfSBmcm9tIFwicmVhY3RcIjtcclxuaW1wb3J0IHsgQ2hlY2ssIENpcmNsZUFsZXJ0LCBGaWxlRG93biwgRm9sZGVyT3BlbiwgTGlzdENoZWNrcywgTG9hZGVyMiwgTWVzc2FnZVNxdWFyZVRleHQsIFJlZnJlc2hDdywgU2VhcmNoLCBTaGllbGRDaGVjayB9IGZyb20gXCJsdWNpZGUtcmVhY3RcIjtcclxuaW1wb3J0IHsgUGFuZWwgfSBmcm9tIFwiLi4vLi4vY29tcG9uZW50cy9sYXlvdXRcIjtcclxuaW1wb3J0IHR5cGUge1xyXG4gIENoYXRNZXNzYWdlLFxyXG4gIENvbXBhbmlvblJldHJpZXZhbFJlcG9ydCxcclxuICBXaWtpRGlhZ25vc3RpY1F1ZXVlUmVzcG9uc2UsXHJcbiAgV2lraUluZGV4UmVzcG9uc2UsXHJcbiAgV2lraUluZ2VzdEFwcGx5UmVzcG9uc2UsXHJcbiAgV2lraUluZ2VzdFByZXZpZXdSZXNwb25zZSxcclxuICBXaWtpSW5nZXN0UmV2aWV3UmVzcG9uc2UsXHJcbiAgV2lraUxpbnRSdW5SZXNwb25zZSxcclxuICBXaWtpTG9nUmVzcG9uc2UsXHJcbiAgV2lraVF1ZXJ5QXJjaGl2ZURldGFpbFJlc3BvbnNlLFxyXG4gIFdpa2lRdWVyeUFyY2hpdmVIaXN0b3J5SXRlbSxcclxuICBXaWtpUXVlcnlBcmNoaXZlUmVzcG9uc2UsXHJcbiAgV2lraVNjaGVtYVN0YXR1cyxcclxuICBXaWtpU3ludGhlc2l6ZVJlc3BvbnNlLFxyXG59IGZyb20gXCIuLi8uLi90eXBlc1wiO1xyXG5pbXBvcnQgeyBmb3JtYXRUYXNrU3RhdHVzIH0gZnJvbSBcIi4uL3Rhc2tzL3Rhc2tSZWR1Y2VyXCI7XHJcbmltcG9ydCB7IGRlZmF1bHRXaWtpQXJjaGl2ZVRhcmdldFBhdGggfSBmcm9tIFwiLi93aWtpQ29uc3RhbnRzXCI7XHJcbmltcG9ydCB0eXBlIHsgV2lraUFzeW5jU3RhdHVzLCBXaWtpV29ya2Zsb3dBY3Rpb24sIFdpa2lXb3JrZmxvd0RyYWZ0IH0gZnJvbSBcIi4vd2lraVR5cGVzXCI7XHJcbmltcG9ydCB7XHJcbiAgZm9ybWF0V2lraUFyY2hpdmVEZXRhaWwsXHJcbiAgZm9ybWF0V2lraUFyY2hpdmVIaXN0b3J5TWV0YSxcclxuICBmb3JtYXRXaWtpRGlhZ25vc3RpY0tpbmQsXHJcbiAgZm9ybWF0V2lraVByZXZpZXcsXHJcbiAgZm9ybWF0V2lraVdvcmtmbG93UmVzdWx0LFxyXG4gIGdldFdpa2lBcmNoaXZlSWQsXHJcbn0gZnJvbSBcIi4vd2lraVV0aWxzXCI7XHJcblxyXG50eXBlIFdpa2lXb3JrZmxvd1BhbmVsUHJvcHMgPSB7XHJcbiAgZHJhZnQ6IFdpa2lXb3JrZmxvd0RyYWZ0O1xyXG4gIHRhZ0lucHV0OiBzdHJpbmc7XHJcbiAgbGlua0lucHV0OiBzdHJpbmc7XHJcbiAgYXBwcm92ZWRUYXJnZXRzSW5wdXQ6IHN0cmluZztcclxuICByZXZpZXdGb3JjZVJlZnJlc2g6IGJvb2xlYW47XHJcbiAgcHJldmlldzogV2lraUluZ2VzdFByZXZpZXdSZXNwb25zZSB8IG51bGw7XHJcbiAgcmV2aWV3UmVzdWx0OiBXaWtpSW5nZXN0UmV2aWV3UmVzcG9uc2UgfCBudWxsO1xyXG4gIGFwcGx5UmVzdWx0OiBXaWtpSW5nZXN0QXBwbHlSZXNwb25zZSB8IFdpa2lRdWVyeUFyY2hpdmVSZXNwb25zZSB8IFdpa2lTeW50aGVzaXplUmVzcG9uc2UgfCBudWxsO1xyXG4gIGxpbnRSZXN1bHQ6IFdpa2lMaW50UnVuUmVzcG9uc2UgfCBudWxsO1xyXG4gIGRpYWdub3N0aWNzUXVldWU6IFdpa2lEaWFnbm9zdGljUXVldWVSZXNwb25zZSB8IG51bGw7XHJcbiAgc2NoZW1hU3RhdHVzOiBXaWtpU2NoZW1hU3RhdHVzIHwgbnVsbDtcclxuICBpbmRleFN0YXR1czogV2lraUluZGV4UmVzcG9uc2UgfCBudWxsO1xyXG4gIGxvZ1N0YXR1czogV2lraUxvZ1Jlc3BvbnNlIHwgbnVsbDtcclxuICBjb3JlU3RhdHVzOiBXaWtpQXN5bmNTdGF0dXM7XHJcbiAgY29yZUVycm9yOiBzdHJpbmc7XHJcbiAgYXJjaGl2ZUhpc3Rvcnk6IFdpa2lRdWVyeUFyY2hpdmVIaXN0b3J5SXRlbVtdO1xyXG4gIGFyY2hpdmVIaXN0b3J5U3RhdHVzOiBXaWtpQXN5bmNTdGF0dXM7XHJcbiAgYXJjaGl2ZUhpc3RvcnlFcnJvcjogc3RyaW5nO1xyXG4gIG9wZW5lZEFyY2hpdmU6IFdpa2lRdWVyeUFyY2hpdmVEZXRhaWxSZXNwb25zZSB8IG51bGw7XHJcbiAgb3BlbmluZ0FyY2hpdmVJZDogc3RyaW5nIHwgbnVsbDtcclxuICBjb21wYW5pb25Db250ZXh0UmVwb3J0czogQ29tcGFuaW9uUmV0cmlldmFsUmVwb3J0W107XHJcbiAgY29tcGFuaW9uQ29udGV4dFJlcG9ydFN0YXR1czogV2lraUFzeW5jU3RhdHVzO1xyXG4gIGNvbXBhbmlvbkNvbnRleHRSZXBvcnRFcnJvcjogc3RyaW5nO1xyXG4gIGxhc3RXaWtpQXJjaGl2ZUlkOiBzdHJpbmcgfCBudWxsO1xyXG4gIHdvcmtmbG93QWN0aW9uOiBXaWtpV29ya2Zsb3dBY3Rpb24gfCBudWxsO1xyXG4gIGxhdGVzdEFyY2hpdmVNZXNzYWdlPzogQ2hhdE1lc3NhZ2U7XHJcbiAgbGF0ZXN0S25vd2xlZGdlQ2l0YXRpb25Db3VudDogbnVtYmVyO1xyXG4gIGFyY2hpdmVIaXN0b3J5U3VtbWFyeTogc3RyaW5nO1xyXG4gIGFyY2hpdmVIaXN0b3J5TG9hZGluZzogYm9vbGVhbjtcclxuICBsaW50SXNzdWVDb3VudDogbnVtYmVyO1xyXG4gIGZvcm1hdElzc3VlU2V2ZXJpdHk6IChzZXZlcml0eTogc3RyaW5nKSA9PiBzdHJpbmc7XHJcbiAgb25EcmFmdENoYW5nZTogKHBhdGNoOiBQYXJ0aWFsPFdpa2lXb3JrZmxvd0RyYWZ0PikgPT4gdm9pZDtcclxuICBvblRhZ0lucHV0Q2hhbmdlOiAodmFsdWU6IHN0cmluZykgPT4gdm9pZDtcclxuICBvbkxpbmtJbnB1dENoYW5nZTogKHZhbHVlOiBzdHJpbmcpID0+IHZvaWQ7XHJcbiAgb25BcHByb3ZlZFRhcmdldHNJbnB1dENoYW5nZTogKHZhbHVlOiBzdHJpbmcpID0+IHZvaWQ7XHJcbiAgb25SZXZpZXdGb3JjZVJlZnJlc2hDaGFuZ2U6ICh2YWx1ZTogYm9vbGVhbikgPT4gdm9pZDtcclxuICBvblByZXZpZXc6IChldmVudDogRm9ybUV2ZW50KSA9PiB2b2lkO1xyXG4gIG9uUmV2aWV3OiAoKSA9PiB2b2lkO1xyXG4gIG9uQXBwbHk6ICgpID0+IHZvaWQ7XHJcbiAgb25BcmNoaXZlTGF0ZXN0UXVlcnk6ICgpID0+IHZvaWQ7XHJcbiAgb25TeW50aGVzaXplOiAoKSA9PiB2b2lkO1xyXG4gIG9uUnVuTGludDogKCkgPT4gdm9pZDtcclxuICBvbkxvYWREaWFnbm9zdGljc1F1ZXVlOiAoKSA9PiB2b2lkO1xyXG4gIG9uTG9hZEFyY2hpdmVIaXN0b3J5OiAoKSA9PiB2b2lkO1xyXG4gIG9uTG9hZENvcmVTdGF0dXM6ICgpID0+IHZvaWQ7XHJcbiAgb25Vc2VSZXZpZXdSZWNvbW1lbmRlZFRhcmdldHM6ICgpID0+IHZvaWQ7XHJcbiAgb25PcGVuQXJjaGl2ZTogKGFyY2hpdmVJZDogc3RyaW5nKSA9PiB2b2lkO1xyXG59O1xyXG5cclxudHlwZSBEYWlseVdpa2lUYXJnZXRUeXBlID0gXCJjb25jZXB0XCIgfCBcImVudGl0eVwiIHwgXCJjb21wYXJpc29uXCIgfCBcInJlcG9ydFwiIHwgXCJzdW1tYXJ5XCI7XHJcblxyXG5jb25zdCBkYWlseVdpa2lUYXJnZXRUeXBlczogQXJyYXk8eyB2YWx1ZTogRGFpbHlXaWtpVGFyZ2V0VHlwZTsgbGFiZWw6IHN0cmluZzsgZGVzY3JpcHRpb246IHN0cmluZyB9PiA9IFtcclxuICB7IHZhbHVlOiBcImNvbmNlcHRcIiwgbGFiZWw6IFwi5qaC5b+1XCIsIGRlc2NyaXB0aW9uOiBcIuWumuS5ieS4gOS4quaDs+azleOAgeaWueazleaIluacr+ivreOAglwiIH0sXHJcbiAgeyB2YWx1ZTogXCJlbnRpdHlcIiwgbGFiZWw6IFwi5a6e5L2TXCIsIGRlc2NyaXB0aW9uOiBcIui3n+i4quS6uueJqeOAgemhueebruOAgeiuuuaWh+aIlue7hOe7h+OAglwiIH0sXHJcbiAgeyB2YWx1ZTogXCJjb21wYXJpc29uXCIsIGxhYmVsOiBcIuWvueavlFwiLCBkZXNjcmlwdGlvbjogXCLmr5TovoPkuKTkuKrmg7Pms5XjgIHlt6XlhbfmiJblhrPnrZbjgIJcIiB9LFxyXG4gIHsgdmFsdWU6IFwicmVwb3J0XCIsIGxhYmVsOiBcIuaKpeWRilwiLCBkZXNjcmlwdGlvbjogXCLmiormnaXmupDmnZDmlpnmlbTnkIbmiJDmm7TmlrDmiJblpI3nm5jpobXpnaLjgIJcIiB9LFxyXG4gIHsgdmFsdWU6IFwic3VtbWFyeVwiLCBsYWJlbDogXCLmkZjopoFcIiwgZGVzY3JpcHRpb246IFwi5oqK5p2l5rqQ5rKJ5reA5oiQ5Y+v5aSN55So55qE55+l6K+G5pGY6KaB44CCXCIgfSxcclxuXTtcclxuXHJcbmZ1bmN0aW9uIGRhaWx5VGFyZ2V0VHlwZUZyb21Tb3VyY2VUeXBlKHNvdXJjZVR5cGU/OiBzdHJpbmcgfCBudWxsKTogRGFpbHlXaWtpVGFyZ2V0VHlwZSB7XHJcbiAgY29uc3QgdmFsdWUgPSBzb3VyY2VUeXBlPy50cmltKCk7XHJcbiAgcmV0dXJuIGRhaWx5V2lraVRhcmdldFR5cGVzLnNvbWUoKG9wdGlvbikgPT4gb3B0aW9uLnZhbHVlID09PSB2YWx1ZSkgPyAodmFsdWUgYXMgRGFpbHlXaWtpVGFyZ2V0VHlwZSkgOiBcInN1bW1hcnlcIjtcclxufVxyXG5cclxuZXhwb3J0IGZ1bmN0aW9uIFdpa2lXb3JrZmxvd1BhbmVsKHtcclxuICBkcmFmdCxcclxuICB0YWdJbnB1dCxcclxuICBsaW5rSW5wdXQsXHJcbiAgYXBwcm92ZWRUYXJnZXRzSW5wdXQsXHJcbiAgcmV2aWV3Rm9yY2VSZWZyZXNoLFxyXG4gIHByZXZpZXcsXHJcbiAgcmV2aWV3UmVzdWx0LFxyXG4gIGFwcGx5UmVzdWx0LFxyXG4gIGxpbnRSZXN1bHQsXHJcbiAgZGlhZ25vc3RpY3NRdWV1ZSxcclxuICBzY2hlbWFTdGF0dXMsXHJcbiAgaW5kZXhTdGF0dXMsXHJcbiAgbG9nU3RhdHVzLFxyXG4gIGNvcmVTdGF0dXMsXHJcbiAgY29yZUVycm9yLFxyXG4gIGFyY2hpdmVIaXN0b3J5LFxyXG4gIGFyY2hpdmVIaXN0b3J5U3RhdHVzLFxyXG4gIGFyY2hpdmVIaXN0b3J5RXJyb3IsXHJcbiAgb3BlbmVkQXJjaGl2ZSxcclxuICBvcGVuaW5nQXJjaGl2ZUlkLFxyXG4gIGNvbXBhbmlvbkNvbnRleHRSZXBvcnRzLFxyXG4gIGNvbXBhbmlvbkNvbnRleHRSZXBvcnRTdGF0dXMsXHJcbiAgY29tcGFuaW9uQ29udGV4dFJlcG9ydEVycm9yLFxyXG4gIGxhc3RXaWtpQXJjaGl2ZUlkLFxyXG4gIHdvcmtmbG93QWN0aW9uLFxyXG4gIGxhdGVzdEFyY2hpdmVNZXNzYWdlLFxyXG4gIGxhdGVzdEtub3dsZWRnZUNpdGF0aW9uQ291bnQsXHJcbiAgYXJjaGl2ZUhpc3RvcnlTdW1tYXJ5LFxyXG4gIGFyY2hpdmVIaXN0b3J5TG9hZGluZyxcclxuICBsaW50SXNzdWVDb3VudCxcclxuICBmb3JtYXRJc3N1ZVNldmVyaXR5LFxyXG4gIG9uRHJhZnRDaGFuZ2UsXHJcbiAgb25UYWdJbnB1dENoYW5nZSxcclxuICBvbkxpbmtJbnB1dENoYW5nZSxcclxuICBvbkFwcHJvdmVkVGFyZ2V0c0lucHV0Q2hhbmdlLFxyXG4gIG9uUmV2aWV3Rm9yY2VSZWZyZXNoQ2hhbmdlLFxyXG4gIG9uUHJldmlldyxcclxuICBvblJldmlldyxcclxuICBvbkFwcGx5LFxyXG4gIG9uQXJjaGl2ZUxhdGVzdFF1ZXJ5LFxyXG4gIG9uU3ludGhlc2l6ZSxcclxuICBvblJ1bkxpbnQsXHJcbiAgb25Mb2FkRGlhZ25vc3RpY3NRdWV1ZSxcclxuICBvbkxvYWRBcmNoaXZlSGlzdG9yeSxcclxuICBvbkxvYWRDb3JlU3RhdHVzLFxyXG4gIG9uVXNlUmV2aWV3UmVjb21tZW5kZWRUYXJnZXRzLFxyXG4gIG9uT3BlbkFyY2hpdmUsXHJcbn06IFdpa2lXb3JrZmxvd1BhbmVsUHJvcHMpIHtcclxuICBjb25zdCB3b3JrZmxvd0J1c3kgPSB3b3JrZmxvd0FjdGlvbiAhPT0gbnVsbDtcclxuICBjb25zdCBkYWlseVRhcmdldFR5cGUgPSBkYWlseVRhcmdldFR5cGVGcm9tU291cmNlVHlwZShkcmFmdC5zb3VyY2VfdHlwZSk7XHJcbiAgY29uc3QgcHJldmlld1BsYW5zID0gcHJldmlldz8ucGFnZV9wbGFucy5zbGljZSgwLCA0KSB8fCBbXTtcclxuICBjb25zdCBsYXRlc3RBcHBseVN1bW1hcnkgPSBmb3JtYXRXaWtpV29ya2Zsb3dSZXN1bHQoYXBwbHlSZXN1bHQsIGZvcm1hdFRhc2tTdGF0dXMpO1xyXG5cclxuICBmdW5jdGlvbiBoYW5kbGVEYWlseVRhcmdldENoYW5nZSh2YWx1ZTogRGFpbHlXaWtpVGFyZ2V0VHlwZSkge1xyXG4gICAgb25EcmFmdENoYW5nZSh7IHNvdXJjZV90eXBlOiB2YWx1ZSB9KTtcclxuICAgIGNvbnN0IGN1cnJlbnRUYWdzID0gdGFnSW5wdXRcclxuICAgICAgLnNwbGl0KFwiLFwiKVxyXG4gICAgICAubWFwKCh0YWcpID0+IHRhZy50cmltKCkpXHJcbiAgICAgIC5maWx0ZXIoQm9vbGVhbik7XHJcbiAgICBpZiAoIWN1cnJlbnRUYWdzLnNvbWUoKHRhZykgPT4gdGFnLnRvTG93ZXJDYXNlKCkgPT09IHZhbHVlKSkge1xyXG4gICAgICBvblRhZ0lucHV0Q2hhbmdlKFsuLi5jdXJyZW50VGFncywgdmFsdWVdLmpvaW4oXCIsIFwiKSk7XHJcbiAgICB9XHJcbiAgfVxyXG5cclxuICByZXR1cm4gKFxyXG4gICAgPFBhbmVsIGlkPVwid2lraS13b3JrZmxvdy1wYW5lbFwiIGljb249ezxGaWxlRG93biBzaXplPXsxOH0gLz59IHRpdGxlPVwi5pel5bi46LWE5paZ5pW055CGXCI+XG4gICAgICA8Zm9ybSBjbGFzc05hbWU9XCJ3aWtpLWRhaWx5LWZsb3dcIiBhcmlhLWxhYmVsPVwi5pel5bi46LWE5paZ5pW055CGXCIgb25TdWJtaXQ9e29uUHJldmlld30+XG4gICAgICAgIDxzZWN0aW9uIGNsYXNzTmFtZT1cIndpa2ktZGFpbHktcHJpbWFyeVwiIGFyaWEtbGFiZWw9XCLliJvlu7rmiJbmm7TmlrDotYTmlpnpobVcIj5cbiAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cInNlY3Rpb24taGVhZGluZ1wiPlxuICAgICAgICAgICAgPHN0cm9uZz7ml6XluLjmlbTnkIblhaXlj6M8L3N0cm9uZz5cbiAgICAgICAgICAgIDxzcGFuPueymOi0tOadpea6kOadkOaWme+8jOmAieaLqeimgeayiea3gOeahOi1hOaWmeexu+Wei++8jOWFiOmihOiniOiuoeWIku+8jOWGjeW6lOeUqOWIsOi1hOaWmemhteOAgjwvc3Bhbj5cbiAgICAgICAgICA8L2Rpdj5cbiAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cIndpa2ktZmxvdy1zdGVwc1wiIGFyaWEtbGFiZWw9XCLotYTmlpnmlbTnkIbmraXpqqRcIj5cbiAgICAgICAgICAgIDxzcGFuPjEg57KY6LS05p2l5rqQPC9zcGFuPlxyXG4gICAgICAgICAgICA8c3Bhbj4yIOmihOiniOiuoeWIkjwvc3Bhbj5cclxuICAgICAgICAgICAgPHNwYW4+MyDlupTnlKjpobXpnaI8L3NwYW4+XHJcbiAgICAgICAgICA8L2Rpdj5cclxuICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwid2lraS1kYWlseS1ncmlkXCI+XHJcbiAgICAgICAgICAgIDxsYWJlbCBjbGFzc05hbWU9XCJ3aWtpLXRpdGxlLWZpZWxkXCI+XHJcbiAgICAgICAgICAgICAgPHNwYW4+5qCH6aKYPC9zcGFuPlxyXG4gICAgICAgICAgICAgIDxpbnB1dFxyXG4gICAgICAgICAgICAgICAgdmFsdWU9e2RyYWZ0LnRpdGxlfVxyXG4gICAgICAgICAgICAgICAgb25DaGFuZ2U9eyhldmVudCkgPT4gb25EcmFmdENoYW5nZSh7IHRpdGxlOiBldmVudC50YXJnZXQudmFsdWUgfSl9XHJcbiAgICAgICAgICAgICAgICBwbGFjZWhvbGRlcj1cIuWGs+etlueslOiusOOAgemhueebrueugOaKpeOAgeiuuuaWh+aRmOimgVwiXHJcbiAgICAgICAgICAgICAgLz5cclxuICAgICAgICAgICAgPC9sYWJlbD5cclxuICAgICAgICAgIDwvZGl2PlxyXG4gICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJ3aWtpLXRhcmdldC10eXBlLXBpY2tlclwiIHJvbGU9XCJncm91cFwiIGFyaWEtbGFiZWw9XCLnm67moIfnsbvlnotcIj5cclxuICAgICAgICAgICAge2RhaWx5V2lraVRhcmdldFR5cGVzLm1hcCgob3B0aW9uKSA9PiAoXHJcbiAgICAgICAgICAgICAgPGJ1dHRvblxyXG4gICAgICAgICAgICAgICAga2V5PXtvcHRpb24udmFsdWV9XHJcbiAgICAgICAgICAgICAgICB0eXBlPVwiYnV0dG9uXCJcclxuICAgICAgICAgICAgICAgIGNsYXNzTmFtZT17YHdpa2ktdGFyZ2V0LXR5cGUtYnV0dG9uJHtkYWlseVRhcmdldFR5cGUgPT09IG9wdGlvbi52YWx1ZSA/IFwiIGFjdGl2ZVwiIDogXCJcIn1gfVxyXG4gICAgICAgICAgICAgICAgYXJpYS1wcmVzc2VkPXtkYWlseVRhcmdldFR5cGUgPT09IG9wdGlvbi52YWx1ZX1cclxuICAgICAgICAgICAgICAgIG9uQ2xpY2s9eygpID0+IGhhbmRsZURhaWx5VGFyZ2V0Q2hhbmdlKG9wdGlvbi52YWx1ZSl9XHJcbiAgICAgICAgICAgICAgPlxyXG4gICAgICAgICAgICAgICAgPHN0cm9uZz57b3B0aW9uLmxhYmVsfTwvc3Ryb25nPlxyXG4gICAgICAgICAgICAgICAgPHNwYW4+e29wdGlvbi5kZXNjcmlwdGlvbn08L3NwYW4+XHJcbiAgICAgICAgICAgICAgPC9idXR0b24+XHJcbiAgICAgICAgICAgICkpfVxyXG4gICAgICAgICAgPC9kaXY+XHJcbiAgICAgICAgICA8bGFiZWw+XHJcbiAgICAgICAgICAgIDxzcGFuPuadpea6kOWGheWuuTwvc3Bhbj5cclxuICAgICAgICAgICAgPHRleHRhcmVhXHJcbiAgICAgICAgICAgICAgdmFsdWU9e2RyYWZ0LmNvbnRlbnR9XHJcbiAgICAgICAgICAgICAgb25DaGFuZ2U9eyhldmVudCkgPT4gb25EcmFmdENoYW5nZSh7IGNvbnRlbnQ6IGV2ZW50LnRhcmdldC52YWx1ZSB9KX1cclxuICAgICAgICAgICAgICBwbGFjZWhvbGRlcj1cIueymOi0tOS8muiurue6quimgeOAgeeglOeptuaRmOW9leOAgeWGs+etluiusOW9leaIluS4gOWwj+auteefpeivhueJh+auteOAglwiXHJcbiAgICAgICAgICAgIC8+XHJcbiAgICAgICAgICA8L2xhYmVsPlxyXG4gICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJ3aWtpLWRhaWx5LWdyaWRcIj5cclxuICAgICAgICAgICAgPGxhYmVsPlxyXG4gICAgICAgICAgICAgIDxzcGFuPuadpea6kOmTvuaOpeaIlueslOiusCBJRDwvc3Bhbj5cclxuICAgICAgICAgICAgICA8aW5wdXRcclxuICAgICAgICAgICAgICAgIHZhbHVlPXtkcmFmdC5zb3VyY2VfdXJpIHx8IFwiXCJ9XHJcbiAgICAgICAgICAgICAgICBvbkNoYW5nZT17KGV2ZW50KSA9PiBvbkRyYWZ0Q2hhbmdlKHsgc291cmNlX3VyaTogZXZlbnQudGFyZ2V0LnZhbHVlIH0pfVxyXG4gICAgICAgICAgICAgICAgcGxhY2Vob2xkZXI9XCLlj6/pgIkgVVJM44CB5paH5Lu25ZCN5oiW6IGK5aSp5byV55SoXCJcclxuICAgICAgICAgICAgICAvPlxyXG4gICAgICAgICAgICA8L2xhYmVsPlxyXG4gICAgICAgICAgICA8bGFiZWw+XHJcbiAgICAgICAgICAgICAgPHNwYW4+5qCH562+PC9zcGFuPlxyXG4gICAgICAgICAgICAgIDxpbnB1dCB2YWx1ZT17dGFnSW5wdXR9IG9uQ2hhbmdlPXsoZXZlbnQpID0+IG9uVGFnSW5wdXRDaGFuZ2UoZXZlbnQudGFyZ2V0LnZhbHVlKX0gcGxhY2Vob2xkZXI9XCLkuqflk4EsIOeglOeptiwg5Yaz562WXCIgLz5cclxuICAgICAgICAgICAgPC9sYWJlbD5cclxuICAgICAgICAgIDwvZGl2PlxyXG4gICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJidXR0b24tcm93XCI+XHJcbiAgICAgICAgICAgIDxidXR0b24gdHlwZT1cInN1Ym1pdFwiIGRpc2FibGVkPXt3b3JrZmxvd0J1c3l9PlxyXG4gICAgICAgICAgICAgIHt3b3JrZmxvd0FjdGlvbiA9PT0gXCJwcmV2aWV3XCIgPyA8TG9hZGVyMiBjbGFzc05hbWU9XCJzcGluXCIgc2l6ZT17MTZ9IC8+IDogPFNlYXJjaCBzaXplPXsxNn0gLz59XHJcbiAgICAgICAgICAgICAg6aKE6KeIXHJcbiAgICAgICAgICAgIDwvYnV0dG9uPlxyXG4gICAgICAgICAgICA8YnV0dG9uIHR5cGU9XCJidXR0b25cIiBjbGFzc05hbWU9XCJzZWNvbmRhcnlcIiBvbkNsaWNrPXtvbkFwcGx5fSBkaXNhYmxlZD17d29ya2Zsb3dCdXN5IHx8ICFwcmV2aWV3fT5cclxuICAgICAgICAgICAgICB7d29ya2Zsb3dBY3Rpb24gPT09IFwiYXBwbHlcIiA/IDxMb2FkZXIyIGNsYXNzTmFtZT1cInNwaW5cIiBzaXplPXsxNn0gLz4gOiA8Q2hlY2sgc2l6ZT17MTZ9IC8+fVxyXG4gICAgICAgICAgICAgIOW6lOeUqFxyXG4gICAgICAgICAgICA8L2J1dHRvbj5cclxuICAgICAgICAgIDwvZGl2PlxyXG4gICAgICAgIDwvc2VjdGlvbj5cclxuXHJcbiAgICAgICAgPHNlY3Rpb24gY2xhc3NOYW1lPVwid2lraS1kYWlseS1wcmV2aWV3XCIgYXJpYS1sYWJlbD1cIui1hOaWmemhtemihOiniOe7k+aenFwiPlxuICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwic2VjdGlvbi1oZWFkaW5nXCI+XHJcbiAgICAgICAgICAgIDxzdHJvbmc+6aKE6KeIPC9zdHJvbmc+XHJcbiAgICAgICAgICAgIDxzcGFuPlxyXG4gICAgICAgICAgICAgIHtwcmV2aWV3XHJcbiAgICAgICAgICAgICAgICA/IGAke3ByZXZpZXcucGFnZV9wbGFucy5sZW5ndGh9IOS4quiuoeWIkumhtemdou+8jOehruiupOi3r+W+hOWQjuWNs+WPr+W6lOeUqOOAgmBcclxuICAgICAgICAgICAgICAgIDogXCLlupTnlKjku7vkvZXotYTmlpnpobXmm7TmlrDliY3or7flhYjov5DooYzpooTop4jjgIJcIn1cbiAgICAgICAgICAgIDwvc3Bhbj5cclxuICAgICAgICAgIDwvZGl2PlxyXG4gICAgICAgICAge3ByZXZpZXcgPyAoXHJcbiAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwid2lraS1wcmV2aWV3LXBsYW4tbGlzdFwiPlxyXG4gICAgICAgICAgICAgIHtwcmV2aWV3UGxhbnMubWFwKChwbGFuKSA9PiAoXHJcbiAgICAgICAgICAgICAgICA8YXJ0aWNsZSBrZXk9e2Ake3BsYW4udGFyZ2V0X3BhdGh9LSR7cGxhbi5zZWN0aW9uIHx8IFwicGFnZVwifWB9IGNsYXNzTmFtZT1cIndpa2ktcHJldmlldy1wbGFuLWNhcmRcIj5cclxuICAgICAgICAgICAgICAgICAgPHN0cm9uZz57cGxhbi50aXRsZX08L3N0cm9uZz5cclxuICAgICAgICAgICAgICAgICAgPHNwYW4+e3BsYW4udGFyZ2V0X3BhdGh9PC9zcGFuPlxyXG4gICAgICAgICAgICAgICAgICA8c21hbGw+e3BsYW4ub3BlcmF0aW9ufXtwbGFuLnNlY3Rpb24gPyBgIC8gJHtwbGFuLnNlY3Rpb259YCA6IFwiXCJ9PC9zbWFsbD5cclxuICAgICAgICAgICAgICAgIDwvYXJ0aWNsZT5cclxuICAgICAgICAgICAgICApKX1cclxuICAgICAgICAgICAgICB7cHJldmlldy5wYWdlX3BsYW5zLmxlbmd0aCA+IHByZXZpZXdQbGFucy5sZW5ndGggPyAoXHJcbiAgICAgICAgICAgICAgICA8cCBjbGFzc05hbWU9XCJmaWVsZC1ub3RlXCI+6L+Y5pyJIHtwcmV2aWV3LnBhZ2VfcGxhbnMubGVuZ3RoIC0gcHJldmlld1BsYW5zLmxlbmd0aH0g5Liq6K6h5YiS6aG16Z2i44CCPC9wPlxyXG4gICAgICAgICAgICAgICkgOiBudWxsfVxyXG4gICAgICAgICAgICA8L2Rpdj5cclxuICAgICAgICAgICkgOiAoXHJcbiAgICAgICAgICAgIDxwIGNsYXNzTmFtZT1cImZpZWxkLW5vdGVcIj7ov5jmsqHmnInpooTop4jjgILlupTnlKjnu4/ov4flrqHmn6XnmoTorqHliJLliY3vvIzov5nph4zkv53mjIHlj6ror7vjgII8L3A+XHJcbiAgICAgICAgICApfVxyXG4gICAgICAgICAge2FwcGx5UmVzdWx0ID8gKFxyXG4gICAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cIndpa2ktYXBwbHktc3VtbWFyeVwiIGFyaWEtbGFiZWw9XCLmnIDov5HotYTmlpnpobXlupTnlKjnu5PmnpxcIj5cbiAgICAgICAgICAgICAgPHN0cm9uZz7mnIDov5HovpPlh7o8L3N0cm9uZz5cclxuICAgICAgICAgICAgICA8c3Bhbj57bGF0ZXN0QXBwbHlTdW1tYXJ5fTwvc3Bhbj5cclxuICAgICAgICAgICAgPC9kaXY+XHJcbiAgICAgICAgICApIDogbnVsbH1cclxuICAgICAgICA8L3NlY3Rpb24+XHJcbiAgICAgIDwvZm9ybT5cclxuICAgICAgPGRldGFpbHMgY2xhc3NOYW1lPVwic3RhY2sgYWR2YW5jZWQtdmF1bHQtbWFpbnRlbmFuY2VcIiBhcmlhLWxhYmVsPVwi6auY57qn55+l6K+G5bqT57u05oqk5bel5YW3XCI+XHJcbiAgICAgICAgPHN1bW1hcnk+XHJcbiAgICAgICAgICA8c3Ryb25nPuWxleW8gOmrmOe6p+e7tOaKpOW3peWFtzwvc3Ryb25nPlxyXG4gICAgICAgICAgPHNwYW4+5YyF5ZCr5omL5bel6aKE6KeI44CB5a6h5p+l44CB5p+l6K+i5b2S5qGj44CB57u85ZCI5pW055CG5ZKM5qOA5p+l77yb6YOo5YiG5pON5L2c5Lya5YaZ5YWl5pys5Zyw5paH5pys77yM6K+35YWI56Gu6K6k55uu5qCH6aG16Z2i44CCPC9zcGFuPlxyXG4gICAgICAgIDwvc3VtbWFyeT5cclxuICAgICAgICA8Zm9ybSBjbGFzc05hbWU9XCJzdGFja1wiIG9uU3VibWl0PXtvblByZXZpZXd9PlxyXG4gICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJzZWN0aW9uLWhlYWRpbmdcIj5cclxuICAgICAgICAgICAgPHN0cm9uZz7nu7TmiqTnn6Xor4blupPph4znmoTplb/mnJ/orrDlv4Y8L3N0cm9uZz5cclxuICAgICAgICAgICAgPHNwYW4+6L+Z5piv6auY57qn57u05oqk5YWl5Y+j77yM5LiN5L2c5Li65pel5bi45Li75rWB56iL77yb5qGM5a6g5a+56K+d5Lya5LyY5YWI6Ieq5Yqo5pW055CG77yM5Y+q5pyJ6auY6aOO6Zmp6aG55omN5Lya6L+b5YWl56Gu6K6k5rWB56iL44CCPC9zcGFuPlxyXG4gICAgICAgICAgPC9kaXY+XHJcbiAgICAgICAgICA8bGFiZWw+XHJcbiAgICAgICAgICAgIDxzcGFuPuWuoeafpS/lupTnlKjnm67moIc8L3NwYW4+XHJcbiAgICAgICAgICAgIDxpbnB1dFxyXG4gICAgICAgICAgICAgIHZhbHVlPXthcHByb3ZlZFRhcmdldHNJbnB1dH1cclxuICAgICAgICAgICAgICBvbkNoYW5nZT17KGV2ZW50KSA9PiBvbkFwcHJvdmVkVGFyZ2V0c0lucHV0Q2hhbmdlKGV2ZW50LnRhcmdldC52YWx1ZSl9XHJcbiAgICAgICAgICAgICAgcGxhY2Vob2xkZXI9XCLnlZnnqbo95bqU55So6aKE6KeI5YWo6YOo6aG16Z2i77yb5Y+v55So5a6h5p+l5o6o6I2Q5aGr5YWFXCJcclxuICAgICAgICAgICAgLz5cclxuICAgICAgICAgIDwvbGFiZWw+XHJcbiAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cInNwbGl0XCI+XHJcbiAgICAgICAgICAgIDxsYWJlbD5cclxuICAgICAgICAgICAgICA8c3Bhbj7moIfpopg8L3NwYW4+XHJcbiAgICAgICAgICAgICAgPGlucHV0IHZhbHVlPXtkcmFmdC50aXRsZX0gb25DaGFuZ2U9eyhldmVudCkgPT4gb25EcmFmdENoYW5nZSh7IHRpdGxlOiBldmVudC50YXJnZXQudmFsdWUgfSl9IHBsYWNlaG9sZGVyPVwi6L+Q6KGM5pe256yU6K6wXCIgLz5cclxuICAgICAgICAgICAgPC9sYWJlbD5cclxuICAgICAgICAgICAgPGxhYmVsPlxyXG4gICAgICAgICAgICAgIDxzcGFuPuadpea6kOexu+Weizwvc3Bhbj5cclxuICAgICAgICAgICAgICA8aW5wdXRcclxuICAgICAgICAgICAgICAgIHZhbHVlPXtkcmFmdC5zb3VyY2VfdHlwZSB8fCBcIlwifVxyXG4gICAgICAgICAgICAgICAgb25DaGFuZ2U9eyhldmVudCkgPT4gb25EcmFmdENoYW5nZSh7IHNvdXJjZV90eXBlOiBldmVudC50YXJnZXQudmFsdWUgfSl9XHJcbiAgICAgICAgICAgICAgICBwbGFjZWhvbGRlcj1cIm1hbnVhbFwiXHJcbiAgICAgICAgICAgICAgLz5cclxuICAgICAgICAgICAgPC9sYWJlbD5cclxuICAgICAgICAgICAgPGxhYmVsIGNsYXNzTmFtZT1cImNoZWNrYm94LXJvd1wiPlxyXG4gICAgICAgICAgICAgIDxpbnB1dCB0eXBlPVwiY2hlY2tib3hcIiBjaGVja2VkPXtyZXZpZXdGb3JjZVJlZnJlc2h9IG9uQ2hhbmdlPXsoZXZlbnQpID0+IG9uUmV2aWV3Rm9yY2VSZWZyZXNoQ2hhbmdlKGV2ZW50LnRhcmdldC5jaGVja2VkKX0gLz5cclxuICAgICAgICAgICAgICA8c3Bhbj7lrqHmn6XlvLrliLbliLfmlrA8L3NwYW4+XHJcbiAgICAgICAgICAgIDwvbGFiZWw+XHJcbiAgICAgICAgICA8L2Rpdj5cclxuICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwic3BsaXRcIj5cclxuICAgICAgICAgICAgPGxhYmVsPlxyXG4gICAgICAgICAgICAgIDxzcGFuPuadpea6kOWcsOWdgDwvc3Bhbj5cclxuICAgICAgICAgICAgICA8aW5wdXRcclxuICAgICAgICAgICAgICAgIHZhbHVlPXtkcmFmdC5zb3VyY2VfdXJpIHx8IFwiXCJ9XHJcbiAgICAgICAgICAgICAgICBvbkNoYW5nZT17KGV2ZW50KSA9PiBvbkRyYWZ0Q2hhbmdlKHsgc291cmNlX3VyaTogZXZlbnQudGFyZ2V0LnZhbHVlIH0pfVxyXG4gICAgICAgICAgICAgICAgcGxhY2Vob2xkZXI9XCLlj6/pgInvvJrmnaXmupAgVVJMIOaIluacrOWcsOW8leeUqFwiXHJcbiAgICAgICAgICAgICAgLz5cclxuICAgICAgICAgICAgPC9sYWJlbD5cclxuICAgICAgICAgICAgPGxhYmVsPlxyXG4gICAgICAgICAgICAgIDxzcGFuPuacgOWkmumhtemdouaVsDwvc3Bhbj5cclxuICAgICAgICAgICAgICA8aW5wdXRcclxuICAgICAgICAgICAgICAgIHR5cGU9XCJudW1iZXJcIlxyXG4gICAgICAgICAgICAgICAgbWluPXsxfVxyXG4gICAgICAgICAgICAgICAgbWF4PXsxNX1cclxuICAgICAgICAgICAgICAgIHZhbHVlPXtkcmFmdC5tYXhfcGFnZXMgPz8gMTV9XHJcbiAgICAgICAgICAgICAgICBvbkNoYW5nZT17KGV2ZW50KSA9PiBvbkRyYWZ0Q2hhbmdlKHsgbWF4X3BhZ2VzOiBOdW1iZXIoZXZlbnQudGFyZ2V0LnZhbHVlKSB9KX1cclxuICAgICAgICAgICAgICAvPlxyXG4gICAgICAgICAgICA8L2xhYmVsPlxyXG4gICAgICAgICAgPC9kaXY+XHJcbiAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cInNwbGl0XCI+XHJcbiAgICAgICAgICAgIDxsYWJlbD5cclxuICAgICAgICAgICAgICA8c3Bhbj7lvZLmoaPnm67moIc8L3NwYW4+XHJcbiAgICAgICAgICAgICAgPGlucHV0XHJcbiAgICAgICAgICAgICAgICB2YWx1ZT17ZHJhZnQudGFyZ2V0X3BhdGggfHwgXCJcIn1cclxuICAgICAgICAgICAgICAgIG9uQ2hhbmdlPXsoZXZlbnQpID0+IG9uRHJhZnRDaGFuZ2UoeyB0YXJnZXRfcGF0aDogZXZlbnQudGFyZ2V0LnZhbHVlIH0pfVxyXG4gICAgICAgICAgICAgICAgcGxhY2Vob2xkZXI9e2RlZmF1bHRXaWtpQXJjaGl2ZVRhcmdldFBhdGh9XHJcbiAgICAgICAgICAgICAgLz5cclxuICAgICAgICAgICAgPC9sYWJlbD5cclxuICAgICAgICAgICAgPGxhYmVsPlxyXG4gICAgICAgICAgICAgIDxzcGFuPuW9kuaho+eroOiKgjwvc3Bhbj5cclxuICAgICAgICAgICAgICA8aW5wdXQgdmFsdWU9e2RyYWZ0LnNlY3Rpb24gfHwgXCJcIn0gb25DaGFuZ2U9eyhldmVudCkgPT4gb25EcmFmdENoYW5nZSh7IHNlY3Rpb246IGV2ZW50LnRhcmdldC52YWx1ZSB9KX0gcGxhY2Vob2xkZXI9XCLlj6/pgIlcIiAvPlxyXG4gICAgICAgICAgICA8L2xhYmVsPlxyXG4gICAgICAgICAgPC9kaXY+XHJcbiAgICAgICAgICA8bGFiZWw+XHJcbiAgICAgICAgICAgIDxzcGFuPuWGheWuuTwvc3Bhbj5cclxuICAgICAgICAgICAgPHRleHRhcmVhXHJcbiAgICAgICAgICAgICAgdmFsdWU9e2RyYWZ0LmNvbnRlbnR9XHJcbiAgICAgICAgICAgICAgb25DaGFuZ2U9eyhldmVudCkgPT4gb25EcmFmdENoYW5nZSh7IGNvbnRlbnQ6IGV2ZW50LnRhcmdldC52YWx1ZSB9KX1cclxuICAgICAgICAgICAgICBwbGFjZWhvbGRlcj1cIuimgeWGmeWFpei1hOaWmeW6k+W9kuaho+ebruW9leeahOacrOWcsOaWh+acrOWGheWuuVwiXHJcbiAgICAgICAgICAgIC8+XHJcbiAgICAgICAgICA8L2xhYmVsPlxyXG4gICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJzcGxpdFwiPlxyXG4gICAgICAgICAgICA8bGFiZWw+XHJcbiAgICAgICAgICAgICAgPHNwYW4+5qCH562+PC9zcGFuPlxyXG4gICAgICAgICAgICAgIDxpbnB1dCB2YWx1ZT17dGFnSW5wdXR9IG9uQ2hhbmdlPXsoZXZlbnQpID0+IG9uVGFnSW5wdXRDaGFuZ2UoZXZlbnQudGFyZ2V0LnZhbHVlKX0gcGxhY2Vob2xkZXI9XCLmoYzpnaLliqnmiYss6LWE5paZ5bqTXCIgLz5cclxuICAgICAgICAgICAgPC9sYWJlbD5cclxuICAgICAgICAgICAgPGxhYmVsPlxyXG4gICAgICAgICAgICAgIDxzcGFuPuWFs+iBlOmTvuaOpTwvc3Bhbj5cclxuICAgICAgICAgICAgICA8aW5wdXQgdmFsdWU9e2xpbmtJbnB1dH0gb25DaGFuZ2U9eyhldmVudCkgPT4gb25MaW5rSW5wdXRDaGFuZ2UoZXZlbnQudGFyZ2V0LnZhbHVlKX0gcGxhY2Vob2xkZXI9XCLotYTmlpnlupMv6L+Q6KGM5pe2Lm1kLCDotYTmlpnlupMv5o6l5Y+jLm1kXCIgLz5cclxuICAgICAgICAgICAgPC9sYWJlbD5cclxuICAgICAgICAgIDwvZGl2PlxyXG4gICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJzcGxpdFwiPlxyXG4gICAgICAgICAgICA8bGFiZWwgY2xhc3NOYW1lPVwiY2hlY2tib3gtcm93XCI+XHJcbiAgICAgICAgICAgICAgPGlucHV0IHR5cGU9XCJjaGVja2JveFwiIGNoZWNrZWQ9e2RyYWZ0LndyaXRlX3JlcG9ydH0gb25DaGFuZ2U9eyhldmVudCkgPT4gb25EcmFmdENoYW5nZSh7IHdyaXRlX3JlcG9ydDogZXZlbnQudGFyZ2V0LmNoZWNrZWQgfSl9IC8+XHJcbiAgICAgICAgICAgICAgPHNwYW4+5YaZ5YWl5qOA5p+l5oql5ZGKPC9zcGFuPlxyXG4gICAgICAgICAgICA8L2xhYmVsPlxyXG4gICAgICAgICAgICA8bGFiZWwgY2xhc3NOYW1lPVwiY2hlY2tib3gtcm93XCI+XHJcbiAgICAgICAgICAgICAgPGlucHV0XHJcbiAgICAgICAgICAgICAgICB0eXBlPVwiY2hlY2tib3hcIlxyXG4gICAgICAgICAgICAgICAgY2hlY2tlZD17ZHJhZnQuYWxsb3dfbWl4ZWRfc291cmNlc31cclxuICAgICAgICAgICAgICAgIG9uQ2hhbmdlPXsoZXZlbnQpID0+IG9uRHJhZnRDaGFuZ2UoeyBhbGxvd19taXhlZF9zb3VyY2VzOiBldmVudC50YXJnZXQuY2hlY2tlZCB9KX1cclxuICAgICAgICAgICAgICAvPlxyXG4gICAgICAgICAgICAgIDxzcGFuPuWFgeiuuOa3t+WQiOadpea6kOW9kuahozwvc3Bhbj5cclxuICAgICAgICAgICAgPC9sYWJlbD5cclxuICAgICAgICAgIDwvZGl2PlxyXG4gICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJidXR0b24tcm93XCI+XHJcbiAgICAgICAgICAgIDxidXR0b24gdHlwZT1cInN1Ym1pdFwiIGRpc2FibGVkPXt3b3JrZmxvd0J1c3l9PlxyXG4gICAgICAgICAgICAgIHt3b3JrZmxvd0FjdGlvbiA9PT0gXCJwcmV2aWV3XCIgPyA8TG9hZGVyMiBjbGFzc05hbWU9XCJzcGluXCIgc2l6ZT17MTZ9IC8+IDogPFNlYXJjaCBzaXplPXsxNn0gLz59XHJcbiAgICAgICAgICAgICAg6aKE6KeIXHJcbiAgICAgICAgICAgIDwvYnV0dG9uPlxyXG4gICAgICAgICAgICA8YnV0dG9uIHR5cGU9XCJidXR0b25cIiBjbGFzc05hbWU9XCJzZWNvbmRhcnlcIiBvbkNsaWNrPXtvblJldmlld30gZGlzYWJsZWQ9e3dvcmtmbG93QnVzeSB8fCAhcHJldmlld30+XHJcbiAgICAgICAgICAgICAge3dvcmtmbG93QWN0aW9uID09PSBcInJldmlld1wiID8gPExvYWRlcjIgY2xhc3NOYW1lPVwic3BpblwiIHNpemU9ezE2fSAvPiA6IDxTaGllbGRDaGVjayBzaXplPXsxNn0gLz59XHJcbiAgICAgICAgICAgICAg5a6h5p+lXHJcbiAgICAgICAgICAgIDwvYnV0dG9uPlxyXG4gICAgICAgICAgICA8YnV0dG9uIHR5cGU9XCJidXR0b25cIiBjbGFzc05hbWU9XCJzZWNvbmRhcnlcIiBvbkNsaWNrPXtvbkFwcGx5fSBkaXNhYmxlZD17d29ya2Zsb3dCdXN5fT5cclxuICAgICAgICAgICAgICB7d29ya2Zsb3dBY3Rpb24gPT09IFwiYXBwbHlcIiA/IDxMb2FkZXIyIGNsYXNzTmFtZT1cInNwaW5cIiBzaXplPXsxNn0gLz4gOiA8Q2hlY2sgc2l6ZT17MTZ9IC8+fVxyXG4gICAgICAgICAgICAgIOW6lOeUqFxyXG4gICAgICAgICAgICA8L2J1dHRvbj5cclxuICAgICAgICAgICAgPGJ1dHRvblxyXG4gICAgICAgICAgICAgIHR5cGU9XCJidXR0b25cIlxyXG4gICAgICAgICAgICAgIGNsYXNzTmFtZT1cInNlY29uZGFyeVwiXHJcbiAgICAgICAgICAgICAgb25DbGljaz17b25BcmNoaXZlTGF0ZXN0UXVlcnl9XHJcbiAgICAgICAgICAgICAgZGlzYWJsZWQ9e3dvcmtmbG93QnVzeSB8fCBsYXRlc3RLbm93bGVkZ2VDaXRhdGlvbkNvdW50ID09PSAwfVxyXG4gICAgICAgICAgICAgIHRpdGxlPXtsYXRlc3RLbm93bGVkZ2VDaXRhdGlvbkNvdW50ID4gMCA/IFwi5L+d5a2Y5pyA6L+R5LiA5p2h5bim55+l6K+G5bqT5byV55So55qE5bey5a6M5oiQ5Yqp5omL5Zue5aSNXCIgOiBcIuayoeacieWPr+S/neWtmOeahOefpeivhuW6k+W8leeUqOWbnuWkjVwifVxyXG4gICAgICAgICAgICA+XHJcbiAgICAgICAgICAgICAge3dvcmtmbG93QWN0aW9uID09PSBcImFyY2hpdmVcIiA/IDxMb2FkZXIyIGNsYXNzTmFtZT1cInNwaW5cIiBzaXplPXsxNn0gLz4gOiA8TWVzc2FnZVNxdWFyZVRleHQgc2l6ZT17MTZ9IC8+fVxyXG4gICAgICAgICAgICAgIOW9kuaho+afpeivolxyXG4gICAgICAgICAgICA8L2J1dHRvbj5cclxuICAgICAgICAgICAgPGJ1dHRvbiB0eXBlPVwiYnV0dG9uXCIgY2xhc3NOYW1lPVwic2Vjb25kYXJ5XCIgb25DbGljaz17b25TeW50aGVzaXplfSBkaXNhYmxlZD17d29ya2Zsb3dCdXN5fT5cclxuICAgICAgICAgICAgICB7d29ya2Zsb3dBY3Rpb24gPT09IFwic3ludGhlc2l6ZVwiID8gPExvYWRlcjIgY2xhc3NOYW1lPVwic3BpblwiIHNpemU9ezE2fSAvPiA6IDxGaWxlRG93biBzaXplPXsxNn0gLz59XHJcbiAgICAgICAgICAgICAg57u85ZCI5pW055CGXHJcbiAgICAgICAgICAgIDwvYnV0dG9uPlxyXG4gICAgICAgICAgICA8YnV0dG9uIHR5cGU9XCJidXR0b25cIiBjbGFzc05hbWU9XCJzZWNvbmRhcnlcIiBvbkNsaWNrPXtvblJ1bkxpbnR9IGRpc2FibGVkPXt3b3JrZmxvd0J1c3l9PlxyXG4gICAgICAgICAgICAgIHt3b3JrZmxvd0FjdGlvbiA9PT0gXCJsaW50XCIgPyA8TG9hZGVyMiBjbGFzc05hbWU9XCJzcGluXCIgc2l6ZT17MTZ9IC8+IDogPExpc3RDaGVja3Mgc2l6ZT17MTZ9IC8+fVxyXG4gICAgICAgICAgICAgIOi/kOihjOajgOafpVxyXG4gICAgICAgICAgICA8L2J1dHRvbj5cclxuICAgICAgICAgICAgPGJ1dHRvbiB0eXBlPVwiYnV0dG9uXCIgY2xhc3NOYW1lPVwic2Vjb25kYXJ5XCIgb25DbGljaz17b25Mb2FkRGlhZ25vc3RpY3NRdWV1ZX0gZGlzYWJsZWQ9e3dvcmtmbG93QnVzeX0+XHJcbiAgICAgICAgICAgICAge3dvcmtmbG93QWN0aW9uID09PSBcImRpYWdub3N0aWNzXCIgPyA8TG9hZGVyMiBjbGFzc05hbWU9XCJzcGluXCIgc2l6ZT17MTZ9IC8+IDogPENpcmNsZUFsZXJ0IHNpemU9ezE2fSAvPn1cclxuICAgICAgICAgICAgICDlj6ror7vor4rmlq1cclxuICAgICAgICAgICAgPC9idXR0b24+XHJcbiAgICAgICAgICAgIDxidXR0b24gdHlwZT1cImJ1dHRvblwiIGNsYXNzTmFtZT1cInNlY29uZGFyeVwiIG9uQ2xpY2s9e29uTG9hZEFyY2hpdmVIaXN0b3J5fSBkaXNhYmxlZD17d29ya2Zsb3dCdXN5IHx8IGFyY2hpdmVIaXN0b3J5TG9hZGluZ30+XHJcbiAgICAgICAgICAgICAge2FyY2hpdmVIaXN0b3J5TG9hZGluZyA/IDxMb2FkZXIyIGNsYXNzTmFtZT1cInNwaW5cIiBzaXplPXsxNn0gLz4gOiA8UmVmcmVzaEN3IHNpemU9ezE2fSAvPn1cclxuICAgICAgICAgICAgICDliLfmlrDlvZLmoaNcclxuICAgICAgICAgICAgPC9idXR0b24+XHJcbiAgICAgICAgICAgIDxidXR0b24gdHlwZT1cImJ1dHRvblwiIGNsYXNzTmFtZT1cInNlY29uZGFyeVwiIG9uQ2xpY2s9e29uTG9hZENvcmVTdGF0dXN9IGRpc2FibGVkPXt3b3JrZmxvd0J1c3kgfHwgY29yZVN0YXR1cyA9PT0gXCJsb2FkaW5nXCJ9PlxyXG4gICAgICAgICAgICAgIHtjb3JlU3RhdHVzID09PSBcImxvYWRpbmdcIiA/IDxMb2FkZXIyIGNsYXNzTmFtZT1cInNwaW5cIiBzaXplPXsxNn0gLz4gOiA8UmVmcmVzaEN3IHNpemU9ezE2fSAvPn1cclxuICAgICAgICAgICAgICDliLfmlrDmoLjlv4PnirbmgIFcclxuICAgICAgICAgICAgPC9idXR0b24+XHJcbiAgICAgICAgICA8L2Rpdj5cclxuICAgICAgICAgIDxkbCBjbGFzc05hbWU9XCJkZXRhaWxzXCI+XHJcbiAgICAgICAgICAgIDxkaXY+XHJcbiAgICAgICAgICAgICAgPGR0PumihOiniDwvZHQ+XHJcbiAgICAgICAgICAgICAgPGRkPntwcmV2aWV3ID8gYCR7Zm9ybWF0VGFza1N0YXR1cyhwcmV2aWV3LnN0YXR1cyl9IC8gJHtwcmV2aWV3LnBhZ2VfcGxhbnMubGVuZ3RofSDpobUgLyAke3ByZXZpZXcuc291cmNlX2hhc2guc2xpY2UoMCwgMTIpfWAgOiBcIuaXoFwifTwvZGQ+XHJcbiAgICAgICAgICAgIDwvZGl2PlxyXG4gICAgICAgICAgICA8ZGl2PlxyXG4gICAgICAgICAgICAgIDxkdD7mnIDov5HlupTnlKg8L2R0PlxyXG4gICAgICAgICAgICAgIDxkZD57Zm9ybWF0V2lraVdvcmtmbG93UmVzdWx0KGFwcGx5UmVzdWx0LCBmb3JtYXRUYXNrU3RhdHVzKX08L2RkPlxyXG4gICAgICAgICAgICA8L2Rpdj5cclxuICAgICAgICAgICAgPGRpdj5cclxuICAgICAgICAgICAgICA8ZHQ+5a6h5p+lPC9kdD5cclxuICAgICAgICAgICAgICA8ZGQ+e3Jldmlld1Jlc3VsdCA/IGAke2Zvcm1hdFRhc2tTdGF0dXMocmV2aWV3UmVzdWx0LnN0YXR1cyl9IC8gJHtyZXZpZXdSZXN1bHQuZmluZGluZ3MubGVuZ3RofSDkuKrlj5HnjrAgLyAke3Jldmlld1Jlc3VsdC5yZWNvbW1lbmRlZF90YXJnZXRzLmxlbmd0aH0g5Liq5o6o6I2QYCA6IFwi5pyq6L+Q6KGMXCJ9PC9kZD5cclxuICAgICAgICAgICAgPC9kaXY+XHJcbiAgICAgICAgICAgIDxkaXY+XHJcbiAgICAgICAgICAgICAgPGR0PuW8leeUqOadpea6kDwvZHQ+XHJcbiAgICAgICAgICAgICAgPGRkPntsYXRlc3RBcmNoaXZlTWVzc2FnZSA/IGAke2xhdGVzdEFyY2hpdmVNZXNzYWdlLmlkfSAvICR7bGF0ZXN0S25vd2xlZGdlQ2l0YXRpb25Db3VudH0g5p2h55+l6K+G5bqT5byV55SoYCA6IFwi5pegXCJ9PC9kZD5cclxuICAgICAgICAgICAgPC9kaXY+XHJcbiAgICAgICAgICAgIDxkaXY+XHJcbiAgICAgICAgICAgICAgPGR0PuajgOafpTwvZHQ+XHJcbiAgICAgICAgICAgICAgPGRkPntsaW50UmVzdWx0ID8gYCR7bGludFJlc3VsdC5zdW1tYXJ5LnBhZ2VzID8/IDB9IOmhtSAvICR7bGludElzc3VlQ291bnR9IOS4qumXrumimGAgOiBcIuacqui/kOihjFwifTwvZGQ+XHJcbiAgICAgICAgICAgIDwvZGl2PlxyXG4gICAgICAgICAgICA8ZGl2PlxyXG4gICAgICAgICAgICAgIDxkdD7or4rmlq3pmJ/liJc8L2R0PlxyXG4gICAgICAgICAgICAgIDxkZD57ZGlhZ25vc3RpY3NRdWV1ZSA/IGAke2RpYWdub3N0aWNzUXVldWUuaXRlbXMubGVuZ3RofSDpobkgLyAke2RpYWdub3N0aWNzUXVldWUuZ2VuZXJhdGVkX2F0fWAgOiBcIuacquWKoOi9vVwifTwvZGQ+XHJcbiAgICAgICAgICAgIDwvZGl2PlxyXG4gICAgICAgICAgICA8ZGl2PlxyXG4gICAgICAgICAgICAgIDxkdD7kuIrkuIvmlofmiqXlkYo8L2R0PlxyXG4gICAgICAgICAgICAgIDxkZD57Y29tcGFuaW9uQ29udGV4dFJlcG9ydFN0YXR1cyA9PT0gXCJsb2FkaW5nXCIgPyBcIuWIt+aWsOS4rVwiIDogY29tcGFuaW9uQ29udGV4dFJlcG9ydHMubGVuZ3RoID8gYCR7Y29tcGFuaW9uQ29udGV4dFJlcG9ydHMubGVuZ3RofSDmnaFgIDogXCLmnKrliqDovb1cIn08L2RkPlxyXG4gICAgICAgICAgICA8L2Rpdj5cclxuICAgICAgICAgICAgPGRpdj5cclxuICAgICAgICAgICAgICA8ZHQ+5pyA5paw5b2S5qGjPC9kdD5cclxuICAgICAgICAgICAgICA8ZGQ+e2xhc3RXaWtpQXJjaGl2ZUlkIHx8IFwi5pegXCJ9PC9kZD5cclxuICAgICAgICAgICAgPC9kaXY+XHJcbiAgICAgICAgICAgIDxkaXY+XHJcbiAgICAgICAgICAgICAgPGR0PuWOhuWPsjwvZHQ+XHJcbiAgICAgICAgICAgICAgPGRkPnthcmNoaXZlSGlzdG9yeVN1bW1hcnl9PC9kZD5cclxuICAgICAgICAgICAgPC9kaXY+XHJcbiAgICAgICAgICAgIDxkaXY+XHJcbiAgICAgICAgICAgICAgPGR0Pue7k+aehDwvZHQ+XHJcbiAgICAgICAgICAgICAgPGRkPntzY2hlbWFTdGF0dXM/LmV4aXN0cyA/IHNjaGVtYVN0YXR1cy5wYXRoIDogY29yZVN0YXR1cyA9PT0gXCJlcnJvclwiID8gXCLlvILluLhcIiA6IFwi5pyq5Yqg6L29XCJ9PC9kZD5cclxuICAgICAgICAgICAgPC9kaXY+XHJcbiAgICAgICAgICAgIDxkaXY+XHJcbiAgICAgICAgICAgICAgPGR0Pue0ouW8lTwvZHQ+XHJcbiAgICAgICAgICAgICAgPGRkPntpbmRleFN0YXR1cyA/IGAke2luZGV4U3RhdHVzLmVudHJpZXMubGVuZ3RofSDmnaFgIDogXCLmnKrliqDovb1cIn08L2RkPlxyXG4gICAgICAgICAgICA8L2Rpdj5cclxuICAgICAgICAgICAgPGRpdj5cclxuICAgICAgICAgICAgICA8ZHQ+5pel5b+XPC9kdD5cclxuICAgICAgICAgICAgICA8ZGQ+e2xvZ1N0YXR1cyA/IGAke2xvZ1N0YXR1cy5lbnRyaWVzLmxlbmd0aH0g5p2hYCA6IFwi5pyq5Yqg6L29XCJ9PC9kZD5cclxuICAgICAgICAgICAgPC9kaXY+XHJcbiAgICAgICAgICA8L2RsPlxyXG4gICAgICAgICAge2NvcmVFcnJvciA/IDxwIGNsYXNzTmFtZT1cImZpZWxkLW5vdGUgZXJyb3JcIj57Y29yZUVycm9yfTwvcD4gOiBudWxsfVxyXG4gICAgICAgICAge3ByZXZpZXcgPyA8cHJlIGNsYXNzTmFtZT1cImRpZmYtcHJldmlld1wiPntmb3JtYXRXaWtpUHJldmlldyhwcmV2aWV3KX08L3ByZT4gOiBudWxsfVxyXG4gICAgICAgICAge3Jldmlld1Jlc3VsdCA/IChcclxuICAgICAgICAgICAgPHNlY3Rpb24gY2xhc3NOYW1lPVwid2lraS1yZXZpZXctcmVzdWx0XCIgYXJpYS1sYWJlbD1cIui1hOaWmeW6k+WvvOWFpeWuoeafpee7k+aenFwiPlxyXG4gICAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwic2VjdGlvbi1oZWFkaW5nXCI+XHJcbiAgICAgICAgICAgICAgICA8c3Ryb25nPuWuoeafpee7k+aenDwvc3Ryb25nPlxyXG4gICAgICAgICAgICAgICAgPHNwYW4+e2Zvcm1hdFRhc2tTdGF0dXMocmV2aWV3UmVzdWx0LnN0YXR1cyl9IC8ge3Jldmlld1Jlc3VsdC5yZXZpZXdfaWR9PC9zcGFuPlxyXG4gICAgICAgICAgICAgIDwvZGl2PlxyXG4gICAgICAgICAgICAgIDxwPntyZXZpZXdSZXN1bHQuc3VtbWFyeX08L3A+XHJcbiAgICAgICAgICAgICAge3Jldmlld1Jlc3VsdC5tb2RlbF9lcnJvciA/IDxwIGNsYXNzTmFtZT1cImZpZWxkLW5vdGUgZXJyb3JcIj57cmV2aWV3UmVzdWx0Lm1vZGVsX2Vycm9yfTwvcD4gOiBudWxsfVxyXG4gICAgICAgICAgICAgIHtyZXZpZXdSZXN1bHQucmVjb21tZW5kZWRfdGFyZ2V0cy5sZW5ndGggPiAwID8gKFxyXG4gICAgICAgICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJ3aWtpLXJldmlldy10YXJnZXRzXCI+XHJcbiAgICAgICAgICAgICAgICAgIDxkaXY+XHJcbiAgICAgICAgICAgICAgICAgICAgPHN0cm9uZz7mjqjojZDlupTnlKjnm67moIc8L3N0cm9uZz5cclxuICAgICAgICAgICAgICAgICAgICA8c3Bhbj57cmV2aWV3UmVzdWx0LnJlY29tbWVuZGVkX3RhcmdldHMuam9pbihcIiwgXCIpfTwvc3Bhbj5cclxuICAgICAgICAgICAgICAgICAgPC9kaXY+XHJcbiAgICAgICAgICAgICAgICAgIDxidXR0b24gdHlwZT1cImJ1dHRvblwiIGNsYXNzTmFtZT1cInNlY29uZGFyeVwiIG9uQ2xpY2s9e29uVXNlUmV2aWV3UmVjb21tZW5kZWRUYXJnZXRzfSBkaXNhYmxlZD17d29ya2Zsb3dCdXN5fT5cclxuICAgICAgICAgICAgICAgICAgICA8Q2hlY2sgc2l6ZT17MTZ9IC8+XHJcbiAgICAgICAgICAgICAgICAgICAg5L2/55So5o6o6I2QXHJcbiAgICAgICAgICAgICAgICAgIDwvYnV0dG9uPlxyXG4gICAgICAgICAgICAgICAgPC9kaXY+XHJcbiAgICAgICAgICAgICAgKSA6IG51bGx9XHJcbiAgICAgICAgICAgICAge3Jldmlld1Jlc3VsdC5maW5kaW5ncy5sZW5ndGggPiAwID8gKFxyXG4gICAgICAgICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJtZXNzYWdlLWV2ZW50c1wiPlxyXG4gICAgICAgICAgICAgICAgICB7cmV2aWV3UmVzdWx0LmZpbmRpbmdzLm1hcCgoZmluZGluZywgaW5kZXgpID0+IChcclxuICAgICAgICAgICAgICAgICAgICA8c3BhbiBrZXk9e2Ake2ZpbmRpbmcuY29kZX0tJHtmaW5kaW5nLnRhcmdldF9wYXRoIHx8IGluZGV4fWB9IGNsYXNzTmFtZT17ZmluZGluZy5zZXZlcml0eSA9PT0gXCJlcnJvclwiID8gXCJlcnJvclwiIDogdW5kZWZpbmVkfT5cclxuICAgICAgICAgICAgICAgICAgICAgIDxzdHJvbmc+e2Zvcm1hdElzc3VlU2V2ZXJpdHkoZmluZGluZy5zZXZlcml0eSl9IC8ge2ZpbmRpbmcuY29kZX08L3N0cm9uZz5cclxuICAgICAgICAgICAgICAgICAgICAgIHtmaW5kaW5nLnRhcmdldF9wYXRoID8gYCR7ZmluZGluZy50YXJnZXRfcGF0aH06IGAgOiBcIlwifVxyXG4gICAgICAgICAgICAgICAgICAgICAge2ZpbmRpbmcubWVzc2FnZX1cclxuICAgICAgICAgICAgICAgICAgICA8L3NwYW4+XHJcbiAgICAgICAgICAgICAgICAgICkpfVxyXG4gICAgICAgICAgICAgICAgPC9kaXY+XHJcbiAgICAgICAgICAgICAgKSA6IG51bGx9XHJcbiAgICAgICAgICAgIDwvc2VjdGlvbj5cclxuICAgICAgICAgICkgOiBudWxsfVxyXG4gICAgICAgICAge2xpbnRSZXN1bHQ/Lmlzc3Vlcy5sZW5ndGggPyAoXHJcbiAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwibWVzc2FnZS1ldmVudHNcIiBhcmlhLWxhYmVsPVwi6LWE5paZ5bqT5qOA5p+l6Zeu6aKYXCI+XHJcbiAgICAgICAgICAgICAge2xpbnRSZXN1bHQuaXNzdWVzLnNsaWNlKDAsIDYpLm1hcCgoaXNzdWUsIGluZGV4KSA9PiAoXHJcbiAgICAgICAgICAgICAgICA8c3BhbiBrZXk9e2Ake2lzc3VlLmNvZGV9LSR7aXNzdWUucGF0aCB8fCBcIndpa2lcIn0tJHtpc3N1ZS50YXJnZXQgfHwgaW5kZXh9YH0gY2xhc3NOYW1lPXtpc3N1ZS5zZXZlcml0eSA9PT0gXCJlcnJvclwiID8gXCJlcnJvclwiIDogdW5kZWZpbmVkfT5cclxuICAgICAgICAgICAgICAgICAgPHN0cm9uZz57Zm9ybWF0SXNzdWVTZXZlcml0eShpc3N1ZS5zZXZlcml0eSl9PC9zdHJvbmc+XHJcbiAgICAgICAgICAgICAgICAgIHtpc3N1ZS5wYXRoID8gYCR7aXNzdWUucGF0aH0ke2lzc3VlLnRhcmdldCA/IGAgLT4gJHtpc3N1ZS50YXJnZXR9YCA6IFwiXCJ977yaYCA6IFwiXCJ9XHJcbiAgICAgICAgICAgICAgICAgIHtpc3N1ZS5tZXNzYWdlfVxyXG4gICAgICAgICAgICAgICAgPC9zcGFuPlxyXG4gICAgICAgICAgICAgICkpfVxyXG4gICAgICAgICAgICA8L2Rpdj5cclxuICAgICAgICAgICkgOiBudWxsfVxyXG4gICAgICAgICAge2RpYWdub3N0aWNzUXVldWU/Lml0ZW1zLmxlbmd0aCA/IChcclxuICAgICAgICAgICAgPHNlY3Rpb24gY2xhc3NOYW1lPVwid2lraS1yZXZpZXctcmVzdWx0XCIgYXJpYS1sYWJlbD1cIui1hOaWmeW6k+WPquivu+iviuaWremYn+WIl1wiPlxyXG4gICAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwic2VjdGlvbi1oZWFkaW5nXCI+XHJcbiAgICAgICAgICAgICAgICA8c3Ryb25nPuWPquivu+iviuaWremYn+WIlzwvc3Ryb25nPlxyXG4gICAgICAgICAgICAgICAgPHNwYW4+e2RpYWdub3N0aWNzUXVldWUuaXRlbXMubGVuZ3RofSDpobnvvIzkuI3lhpnlhaXnn6Xor4blupPmlofku7Y8L3NwYW4+XHJcbiAgICAgICAgICAgICAgPC9kaXY+XHJcbiAgICAgICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJtZXNzYWdlLWV2ZW50c1wiPlxyXG4gICAgICAgICAgICAgICAge2RpYWdub3N0aWNzUXVldWUuaXRlbXMuc2xpY2UoMCwgOCkubWFwKChpdGVtKSA9PiAoXHJcbiAgICAgICAgICAgICAgICAgIDxzcGFuIGtleT17aXRlbS5pZH0gY2xhc3NOYW1lPXtpdGVtLnNldmVyaXR5ID09PSBcImVycm9yXCIgPyBcImVycm9yXCIgOiB1bmRlZmluZWR9PlxyXG4gICAgICAgICAgICAgICAgICAgIDxzdHJvbmc+e2Zvcm1hdElzc3VlU2V2ZXJpdHkoaXRlbS5zZXZlcml0eSl9IC8ge2Zvcm1hdFdpa2lEaWFnbm9zdGljS2luZChpdGVtLmtpbmQpfTwvc3Ryb25nPlxyXG4gICAgICAgICAgICAgICAgICAgIHtpdGVtLnJlbGF0ZWRfcGF0aHMubGVuZ3RoID8gYCR7aXRlbS5yZWxhdGVkX3BhdGhzLmpvaW4oXCIsIFwiKX3vvJpgIDogXCJcIn1cclxuICAgICAgICAgICAgICAgICAgICB7aXRlbS5xdWVzdGlvbn1cclxuICAgICAgICAgICAgICAgICAgICB7aXRlbS5yZXBhaXJfcHJvcG9zYWwgPyBgIC8g5bu66K6u77yaJHtpdGVtLnJlcGFpcl9wcm9wb3NhbC5vcGVyYXRpb259ICR7aXRlbS5yZXBhaXJfcHJvcG9zYWwudGFyZ2V0X3BhdGggfHwgXCJcIn1gIDogXCJcIn1cclxuICAgICAgICAgICAgICAgICAgPC9zcGFuPlxyXG4gICAgICAgICAgICAgICAgKSl9XHJcbiAgICAgICAgICAgICAgPC9kaXY+XHJcbiAgICAgICAgICAgIDwvc2VjdGlvbj5cclxuICAgICAgICAgICkgOiBudWxsfVxyXG4gICAgICAgICAge2NvbXBhbmlvbkNvbnRleHRSZXBvcnRFcnJvciA/IDxwIGNsYXNzTmFtZT1cImZpZWxkLW5vdGUgZXJyb3JcIj57Y29tcGFuaW9uQ29udGV4dFJlcG9ydEVycm9yfTwvcD4gOiBudWxsfVxyXG4gICAgICAgICAge2NvbXBhbmlvbkNvbnRleHRSZXBvcnRzLmxlbmd0aCA/IChcclxuICAgICAgICAgICAgPHNlY3Rpb24gY2xhc3NOYW1lPVwid2lraS1yZXZpZXctcmVzdWx0XCIgYXJpYS1sYWJlbD1cIumZquS8tOS4iuS4i+aWh+aKpeWRilwiPlxyXG4gICAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwic2VjdGlvbi1oZWFkaW5nXCI+XHJcbiAgICAgICAgICAgICAgICA8c3Ryb25nPumZquS8tOS4iuS4i+aWh+aKpeWRijwvc3Ryb25nPlxyXG4gICAgICAgICAgICAgICAgPHNwYW4+5pyA6L+RIHtjb21wYW5pb25Db250ZXh0UmVwb3J0cy5sZW5ndGh9IOadoe+8jOWPquivuzwvc3Bhbj5cclxuICAgICAgICAgICAgICA8L2Rpdj5cclxuICAgICAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cIm1lc3NhZ2UtZXZlbnRzXCI+XHJcbiAgICAgICAgICAgICAgICB7Y29tcGFuaW9uQ29udGV4dFJlcG9ydHMubWFwKChyZXBvcnQpID0+IChcclxuICAgICAgICAgICAgICAgICAgPHNwYW4ga2V5PXtyZXBvcnQuaWR9PlxyXG4gICAgICAgICAgICAgICAgICAgIDxzdHJvbmc+e3JlcG9ydC5zdHJhdGVneX0gLyB7cmVwb3J0LmFnZW50X3J1bl9pZH08L3N0cm9uZz5cclxuICAgICAgICAgICAgICAgICAgICDlgJnpgIkge3JlcG9ydC5jYW5kaWRhdGVfY291bnR977yM6YCJ5LitIHtyZXBvcnQuc2VsZWN0ZWRfY291bnR977yM6aKE566X5Lii5byDIHtyZXBvcnQuYnVkZ2V0X2Ryb3BfY291bnR977yM6IyD5Zu0IHtyZXBvcnQuc2VsZWN0ZWRfc2NvcGVzLmpvaW4oXCIsIFwiKSB8fCBcIuaXoFwifVxyXG4gICAgICAgICAgICAgICAgICA8L3NwYW4+XHJcbiAgICAgICAgICAgICAgICApKX1cclxuICAgICAgICAgICAgICA8L2Rpdj5cclxuICAgICAgICAgICAgPC9zZWN0aW9uPlxyXG4gICAgICAgICAgKSA6IGNvbXBhbmlvbkNvbnRleHRSZXBvcnRTdGF0dXMgPT09IFwiZW1wdHlcIiA/IChcclxuICAgICAgICAgICAgPHAgY2xhc3NOYW1lPVwiZmllbGQtbm90ZVwiPui/mOayoeaciemZquS8tOS4iuS4i+aWh+aKpeWRiuOAgjwvcD5cclxuICAgICAgICAgICkgOiBudWxsfVxyXG4gICAgICAgICAge29wZW5lZEFyY2hpdmUgPyA8cHJlIGNsYXNzTmFtZT1cImRpZmYtcHJldmlldyB3aWtpLW9wZW5lZC1hcmNoaXZlXCI+e2Zvcm1hdFdpa2lBcmNoaXZlRGV0YWlsKG9wZW5lZEFyY2hpdmUpfTwvcHJlPiA6IG51bGx9XHJcbiAgICAgICAgICA8c2VjdGlvbiBjbGFzc05hbWU9XCJ3aWtpLWFyY2hpdmUtaGlzdG9yeVwiIGFyaWEtbGFiZWw9XCLotYTmlpnlupPmn6Xor6LlvZLmoaPljoblj7JcIj5cclxuICAgICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJzZWN0aW9uLWhlYWRpbmdcIj5cclxuICAgICAgICAgICAgICA8c3Ryb25nPuafpeivouW9kuaho+WOhuWPsjwvc3Ryb25nPlxyXG4gICAgICAgICAgICAgIDxzcGFuPnthcmNoaXZlSGlzdG9yeVN1bW1hcnl9PC9zcGFuPlxyXG4gICAgICAgICAgICA8L2Rpdj5cclxuICAgICAgICAgICAge2FyY2hpdmVIaXN0b3J5RXJyb3IgPyA8cCBjbGFzc05hbWU9XCJmaWVsZC1ub3RlIGVycm9yXCI+e2FyY2hpdmVIaXN0b3J5RXJyb3J9PC9wPiA6IG51bGx9XHJcbiAgICAgICAgICAgIHthcmNoaXZlSGlzdG9yeS5sZW5ndGggPiAwID8gKFxyXG4gICAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwid2lraS1hcmNoaXZlLWhpc3RvcnktbGlzdFwiPlxyXG4gICAgICAgICAgICAgICAge2FyY2hpdmVIaXN0b3J5LnNsaWNlKDAsIDgpLm1hcCgoYXJjaGl2ZSwgaW5kZXgpID0+IHtcclxuICAgICAgICAgICAgICAgICAgY29uc3QgYXJjaGl2ZUlkID0gZ2V0V2lraUFyY2hpdmVJZChhcmNoaXZlKTtcclxuICAgICAgICAgICAgICAgICAgY29uc3Qgb3BlbmluZyA9IEJvb2xlYW4oYXJjaGl2ZUlkICYmIG9wZW5pbmdBcmNoaXZlSWQgPT09IGFyY2hpdmVJZCk7XHJcbiAgICAgICAgICAgICAgICAgIHJldHVybiAoXHJcbiAgICAgICAgICAgICAgICAgICAgPGFydGljbGVcclxuICAgICAgICAgICAgICAgICAgICAgIGtleT17YXJjaGl2ZUlkIHx8IGAke2FyY2hpdmUudGFyZ2V0X3BhdGh9LSR7YXJjaGl2ZS5jcmVhdGVkX2F0fS0ke2luZGV4fWB9XHJcbiAgICAgICAgICAgICAgICAgICAgICBjbGFzc05hbWU9e2B3aWtpLWFyY2hpdmUtaGlzdG9yeS1pdGVtJHthcmNoaXZlSWQgJiYgYXJjaGl2ZUlkID09PSBsYXN0V2lraUFyY2hpdmVJZCA/IFwiIGFjdGl2ZVwiIDogXCJcIn1gfVxyXG4gICAgICAgICAgICAgICAgICAgID5cclxuICAgICAgICAgICAgICAgICAgICAgIDxkaXYgY2xhc3NOYW1lPVwid2lraS1hcmNoaXZlLWhpc3RvcnktbWFpblwiPlxyXG4gICAgICAgICAgICAgICAgICAgICAgICA8c3Ryb25nPnthcmNoaXZlLnRpdGxlIHx8IGFyY2hpdmUucGFnZT8udGl0bGUgfHwgYXJjaGl2ZS50YXJnZXRfcGF0aH08L3N0cm9uZz5cclxuICAgICAgICAgICAgICAgICAgICAgICAgPHNwYW4+e2FyY2hpdmUucXVlc3Rpb259PC9zcGFuPlxyXG4gICAgICAgICAgICAgICAgICAgICAgICA8c21hbGw+e2Zvcm1hdFdpa2lBcmNoaXZlSGlzdG9yeU1ldGEoYXJjaGl2ZSwgZm9ybWF0VGFza1N0YXR1cyl9PC9zbWFsbD5cclxuICAgICAgICAgICAgICAgICAgICAgIDwvZGl2PlxyXG4gICAgICAgICAgICAgICAgICAgICAgPHA+e2FyY2hpdmUuYW5zd2VyX3ByZXZpZXd9PC9wPlxyXG4gICAgICAgICAgICAgICAgICAgICAgPGJ1dHRvbiB0eXBlPVwiYnV0dG9uXCIgY2xhc3NOYW1lPVwic2Vjb25kYXJ5XCIgb25DbGljaz17KCkgPT4gb25PcGVuQXJjaGl2ZShhcmNoaXZlSWQpfSBkaXNhYmxlZD17d29ya2Zsb3dCdXN5IHx8ICFhcmNoaXZlSWQgfHwgQm9vbGVhbihvcGVuaW5nQXJjaGl2ZUlkKX0+XHJcbiAgICAgICAgICAgICAgICAgICAgICAgIHtvcGVuaW5nID8gPExvYWRlcjIgY2xhc3NOYW1lPVwic3BpblwiIHNpemU9ezE2fSAvPiA6IDxGb2xkZXJPcGVuIHNpemU9ezE2fSAvPn1cclxuICAgICAgICAgICAgICAgICAgICAgICAg5omT5byAXHJcbiAgICAgICAgICAgICAgICAgICAgICA8L2J1dHRvbj5cclxuICAgICAgICAgICAgICAgICAgICA8L2FydGljbGU+XHJcbiAgICAgICAgICAgICAgICAgICk7XHJcbiAgICAgICAgICAgICAgICB9KX1cclxuICAgICAgICAgICAgICA8L2Rpdj5cclxuICAgICAgICAgICAgKSA6IGFyY2hpdmVIaXN0b3J5U3RhdHVzID09PSBcImVtcHR5XCIgPyAoXHJcbiAgICAgICAgICAgICAgPHAgY2xhc3NOYW1lPVwiZmllbGQtbm90ZVwiPui/mOayoeacieafpeivouW9kuaho+OAgjwvcD5cclxuICAgICAgICAgICAgKSA6IG51bGx9XHJcbiAgICAgICAgICA8L3NlY3Rpb24+XHJcbiAgICAgICAgPC9mb3JtPlxyXG4gICAgICA8L2RldGFpbHM+XHJcbiAgICA8L1BhbmVsPlxyXG4gICk7XHJcbn1cclxuIl0sImZpbGUiOiJFOi9hZ2VudHByb2plY3QvYXBwcy9kZXNrdG9wL3NyYy9mZWF0dXJlcy93aWtpL1dpa2lXb3JrZmxvd1BhbmVsLnRzeCJ9

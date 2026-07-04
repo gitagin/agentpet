@@ -1,0 +1,338 @@
+import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/features/continuity/TodayCard.tsx");import __vite__cjsImport0_react_jsxDevRuntime from "/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=bc5f1d7c"; const jsxDEV = __vite__cjsImport0_react_jsxDevRuntime["jsxDEV"];
+import * as RefreshRuntime from "/@react-refresh";
+const inWebWorker = typeof WorkerGlobalScope !== "undefined" && self instanceof WorkerGlobalScope;
+let prevRefreshReg;
+let prevRefreshSig;
+if (import.meta.hot && !inWebWorker) {
+  if (!window.$RefreshReg$) {
+    throw new Error(
+      "@vitejs/plugin-react can't detect preamble. Something is wrong."
+    );
+  }
+  prevRefreshReg = window.$RefreshReg$;
+  prevRefreshSig = window.$RefreshSig$;
+  window.$RefreshReg$ = RefreshRuntime.getRefreshReg("E:/agentproject/apps/desktop/src/features/continuity/TodayCard.tsx");
+  window.$RefreshSig$ = RefreshRuntime.createSignatureFunctionForTransform;
+}
+import { CalendarCheck2, CheckCircle2, MessageSquareText } from "/node_modules/.vite/deps/lucide-react.js?v=bc5f1d7c";
+export function TodayCard({ today, onContinuePrompt }) {
+  const hasCarryOver = today.carry_over_items.length > 0;
+  const hasNextSteps = today.suggested_next_steps.length > 0;
+  const hasPrompts = today.continuation_prompts.length > 0;
+  const primaryPrompt = today.continuation_prompts[0];
+  const secondaryPrompts = today.continuation_prompts.slice(1, 3);
+  const primaryCarryOver = today.carry_over_items[0];
+  const primaryNextStep = today.source_count > 0 ? today.suggested_next_steps[0] : void 0;
+  const primaryPromptLabel = primaryPrompt ? formatContinuationPrompt(primaryPrompt) : "";
+  return /* @__PURE__ */ jsxDEV("section", { className: "visible-continuity-section visible-continuity-today", "aria-label": "今日", children: [
+    /* @__PURE__ */ jsxDEV("div", { className: "visible-continuity-section-head", children: [
+      /* @__PURE__ */ jsxDEV(CalendarCheck2, { size: 18, "aria-hidden": "true" }, void 0, false, {
+        fileName: "E:/agentproject/apps/desktop/src/features/continuity/TodayCard.tsx",
+        lineNumber: 41,
+        columnNumber: 9
+      }, this),
+      /* @__PURE__ */ jsxDEV("div", { children: [
+        /* @__PURE__ */ jsxDEV("h3", { children: today.title }, void 0, false, {
+          fileName: "E:/agentproject/apps/desktop/src/features/continuity/TodayCard.tsx",
+          lineNumber: 43,
+          columnNumber: 11
+        }, this),
+        /* @__PURE__ */ jsxDEV("p", { children: formatTodaySummary(today.summary) }, void 0, false, {
+          fileName: "E:/agentproject/apps/desktop/src/features/continuity/TodayCard.tsx",
+          lineNumber: 44,
+          columnNumber: 11
+        }, this)
+      ] }, void 0, true, {
+        fileName: "E:/agentproject/apps/desktop/src/features/continuity/TodayCard.tsx",
+        lineNumber: 42,
+        columnNumber: 9
+      }, this)
+    ] }, void 0, true, {
+      fileName: "E:/agentproject/apps/desktop/src/features/continuity/TodayCard.tsx",
+      lineNumber: 40,
+      columnNumber: 7
+    }, this),
+    hasPrompts ? /* @__PURE__ */ jsxDEV("div", { className: "visible-continuity-resume", "aria-label": "继续最近的对话", children: [
+      /* @__PURE__ */ jsxDEV(
+        "button",
+        {
+          type: "button",
+          className: "visible-continuity-resume-button",
+          onClick: () => onContinuePrompt?.(primaryPrompt),
+          disabled: !onContinuePrompt,
+          title: "在聊天中继续这条线索",
+          children: [
+            /* @__PURE__ */ jsxDEV(MessageSquareText, { size: 16, "aria-hidden": "true" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/continuity/TodayCard.tsx",
+              lineNumber: 56,
+              columnNumber: 13
+            }, this),
+            /* @__PURE__ */ jsxDEV("span", { children: primaryPromptLabel }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/continuity/TodayCard.tsx",
+              lineNumber: 57,
+              columnNumber: 13
+            }, this)
+          ]
+        },
+        void 0,
+        true,
+        {
+          fileName: "E:/agentproject/apps/desktop/src/features/continuity/TodayCard.tsx",
+          lineNumber: 49,
+          columnNumber: 11
+        },
+        this
+      ),
+      secondaryPrompts.length > 0 ? /* @__PURE__ */ jsxDEV("div", { className: "visible-continuity-prompt-row", "aria-label": "其他继续建议", children: secondaryPrompts.map(
+        (prompt) => /* @__PURE__ */ jsxDEV(
+          "button",
+          {
+            type: "button",
+            className: "secondary visible-continuity-prompt-button",
+            onClick: () => onContinuePrompt?.(prompt),
+            disabled: !onContinuePrompt,
+            title: "在聊天中继续这条线索",
+            children: [
+              /* @__PURE__ */ jsxDEV(MessageSquareText, { size: 14, "aria-hidden": "true" }, void 0, false, {
+                fileName: "E:/agentproject/apps/desktop/src/features/continuity/TodayCard.tsx",
+                lineNumber: 70,
+                columnNumber: 19
+              }, this),
+              /* @__PURE__ */ jsxDEV("span", { children: formatContinuationPrompt(prompt) }, void 0, false, {
+                fileName: "E:/agentproject/apps/desktop/src/features/continuity/TodayCard.tsx",
+                lineNumber: 71,
+                columnNumber: 19
+              }, this)
+            ]
+          },
+          prompt,
+          true,
+          {
+            fileName: "E:/agentproject/apps/desktop/src/features/continuity/TodayCard.tsx",
+            lineNumber: 62,
+            columnNumber: 11
+          },
+          this
+        )
+      ) }, void 0, false, {
+        fileName: "E:/agentproject/apps/desktop/src/features/continuity/TodayCard.tsx",
+        lineNumber: 60,
+        columnNumber: 9
+      }, this) : null
+    ] }, void 0, true, {
+      fileName: "E:/agentproject/apps/desktop/src/features/continuity/TodayCard.tsx",
+      lineNumber: 48,
+      columnNumber: 7
+    }, this) : /* @__PURE__ */ jsxDEV("p", { className: "visible-continuity-muted visible-continuity-empty-resume", children: "暂时没有需要续上的话题，直接开聊就好。" }, void 0, false, {
+      fileName: "E:/agentproject/apps/desktop/src/features/continuity/TodayCard.tsx",
+      lineNumber: 78,
+      columnNumber: 7
+    }, this),
+    /* @__PURE__ */ jsxDEV("details", { className: "visible-continuity-source-details", children: [
+      /* @__PURE__ */ jsxDEV("summary", { children: "查看依据" }, void 0, false, {
+        fileName: "E:/agentproject/apps/desktop/src/features/continuity/TodayCard.tsx",
+        lineNumber: 83,
+        columnNumber: 9
+      }, this),
+      /* @__PURE__ */ jsxDEV("div", { className: "visible-continuity-today-grid", children: [
+        /* @__PURE__ */ jsxDEV("div", { children: [
+          /* @__PURE__ */ jsxDEV("span", { className: "visible-continuity-eyebrow", children: "延续事项" }, void 0, false, {
+            fileName: "E:/agentproject/apps/desktop/src/features/continuity/TodayCard.tsx",
+            lineNumber: 86,
+            columnNumber: 13
+          }, this),
+          hasCarryOver ? /* @__PURE__ */ jsxDEV("ul", { className: "visible-continuity-list", children: today.carry_over_items.map(
+            (item) => /* @__PURE__ */ jsxDEV("li", { children: [
+              /* @__PURE__ */ jsxDEV(CheckCircle2, { size: 14, "aria-hidden": "true" }, void 0, false, {
+                fileName: "E:/agentproject/apps/desktop/src/features/continuity/TodayCard.tsx",
+                lineNumber: 91,
+                columnNumber: 21
+              }, this),
+              /* @__PURE__ */ jsxDEV("span", { children: item }, void 0, false, {
+                fileName: "E:/agentproject/apps/desktop/src/features/continuity/TodayCard.tsx",
+                lineNumber: 92,
+                columnNumber: 21
+              }, this)
+            ] }, item, true, {
+              fileName: "E:/agentproject/apps/desktop/src/features/continuity/TodayCard.tsx",
+              lineNumber: 90,
+              columnNumber: 15
+            }, this)
+          ) }, void 0, false, {
+            fileName: "E:/agentproject/apps/desktop/src/features/continuity/TodayCard.tsx",
+            lineNumber: 88,
+            columnNumber: 13
+          }, this) : /* @__PURE__ */ jsxDEV("p", { className: "visible-continuity-muted", children: "暂时没有未收尾的延续事项。" }, void 0, false, {
+            fileName: "E:/agentproject/apps/desktop/src/features/continuity/TodayCard.tsx",
+            lineNumber: 97,
+            columnNumber: 13
+          }, this)
+        ] }, void 0, true, {
+          fileName: "E:/agentproject/apps/desktop/src/features/continuity/TodayCard.tsx",
+          lineNumber: 85,
+          columnNumber: 11
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { children: [
+          /* @__PURE__ */ jsxDEV("span", { className: "visible-continuity-eyebrow", children: "下一步" }, void 0, false, {
+            fileName: "E:/agentproject/apps/desktop/src/features/continuity/TodayCard.tsx",
+            lineNumber: 101,
+            columnNumber: 13
+          }, this),
+          hasNextSteps ? /* @__PURE__ */ jsxDEV("ul", { className: "visible-continuity-list", children: today.suggested_next_steps.map(
+            (item) => /* @__PURE__ */ jsxDEV("li", { children: [
+              /* @__PURE__ */ jsxDEV(CheckCircle2, { size: 14, "aria-hidden": "true" }, void 0, false, {
+                fileName: "E:/agentproject/apps/desktop/src/features/continuity/TodayCard.tsx",
+                lineNumber: 106,
+                columnNumber: 21
+              }, this),
+              /* @__PURE__ */ jsxDEV("span", { children: item }, void 0, false, {
+                fileName: "E:/agentproject/apps/desktop/src/features/continuity/TodayCard.tsx",
+                lineNumber: 107,
+                columnNumber: 21
+              }, this)
+            ] }, item, true, {
+              fileName: "E:/agentproject/apps/desktop/src/features/continuity/TodayCard.tsx",
+              lineNumber: 105,
+              columnNumber: 15
+            }, this)
+          ) }, void 0, false, {
+            fileName: "E:/agentproject/apps/desktop/src/features/continuity/TodayCard.tsx",
+            lineNumber: 103,
+            columnNumber: 13
+          }, this) : /* @__PURE__ */ jsxDEV("p", { className: "visible-continuity-muted", children: "可以先从一条笔记、任务或聊天开始。" }, void 0, false, {
+            fileName: "E:/agentproject/apps/desktop/src/features/continuity/TodayCard.tsx",
+            lineNumber: 112,
+            columnNumber: 13
+          }, this)
+        ] }, void 0, true, {
+          fileName: "E:/agentproject/apps/desktop/src/features/continuity/TodayCard.tsx",
+          lineNumber: 100,
+          columnNumber: 11
+        }, this)
+      ] }, void 0, true, {
+        fileName: "E:/agentproject/apps/desktop/src/features/continuity/TodayCard.tsx",
+        lineNumber: 84,
+        columnNumber: 9
+      }, this)
+    ] }, void 0, true, {
+      fileName: "E:/agentproject/apps/desktop/src/features/continuity/TodayCard.tsx",
+      lineNumber: 82,
+      columnNumber: 7
+    }, this),
+    primaryCarryOver || primaryNextStep ? /* @__PURE__ */ jsxDEV("div", { className: "visible-continuity-quick-facts", "aria-label": "上下文摘要", children: [
+      primaryCarryOver ? /* @__PURE__ */ jsxDEV("span", { children: [
+        /* @__PURE__ */ jsxDEV(CheckCircle2, { size: 13, "aria-hidden": "true" }, void 0, false, {
+          fileName: "E:/agentproject/apps/desktop/src/features/continuity/TodayCard.tsx",
+          lineNumber: 121,
+          columnNumber: 15
+        }, this),
+        primaryCarryOver
+      ] }, void 0, true, {
+        fileName: "E:/agentproject/apps/desktop/src/features/continuity/TodayCard.tsx",
+        lineNumber: 120,
+        columnNumber: 9
+      }, this) : null,
+      primaryNextStep ? /* @__PURE__ */ jsxDEV("span", { children: [
+        /* @__PURE__ */ jsxDEV(CheckCircle2, { size: 13, "aria-hidden": "true" }, void 0, false, {
+          fileName: "E:/agentproject/apps/desktop/src/features/continuity/TodayCard.tsx",
+          lineNumber: 127,
+          columnNumber: 15
+        }, this),
+        primaryNextStep
+      ] }, void 0, true, {
+        fileName: "E:/agentproject/apps/desktop/src/features/continuity/TodayCard.tsx",
+        lineNumber: 126,
+        columnNumber: 9
+      }, this) : null
+    ] }, void 0, true, {
+      fileName: "E:/agentproject/apps/desktop/src/features/continuity/TodayCard.tsx",
+      lineNumber: 118,
+      columnNumber: 7
+    }, this) : null,
+    /* @__PURE__ */ jsxDEV("footer", { className: "visible-continuity-meta", children: [
+      /* @__PURE__ */ jsxDEV("span", { children: [
+        today.source_count,
+        " 条本地来源"
+      ] }, void 0, true, {
+        fileName: "E:/agentproject/apps/desktop/src/features/continuity/TodayCard.tsx",
+        lineNumber: 134,
+        columnNumber: 9
+      }, this),
+      today.updated_at ? /* @__PURE__ */ jsxDEV("time", { dateTime: today.updated_at, children: [
+        "更新于 ",
+        formatDateTime(today.updated_at)
+      ] }, void 0, true, {
+        fileName: "E:/agentproject/apps/desktop/src/features/continuity/TodayCard.tsx",
+        lineNumber: 135,
+        columnNumber: 29
+      }, this) : null
+    ] }, void 0, true, {
+      fileName: "E:/agentproject/apps/desktop/src/features/continuity/TodayCard.tsx",
+      lineNumber: 133,
+      columnNumber: 7
+    }, this)
+  ] }, void 0, true, {
+    fileName: "E:/agentproject/apps/desktop/src/features/continuity/TodayCard.tsx",
+    lineNumber: 39,
+    columnNumber: 5
+  }, this);
+}
+_c = TodayCard;
+function formatTodaySummary(summary) {
+  const normalized = summary.trim();
+  if (!normalized) {
+    return "我会把值得接上的内容放在这里。";
+  }
+  if (normalized.length > 72) {
+    return "找到一条可以接上的线索，先从最近的话题继续。";
+  }
+  return normalized.replace(/^Pulled together\s+/i, "已参考 ").replace(/\s+recent messages?/i, " 条最近聊天").replace(/\s+open tasks?/i, " 个待办").replace(/\s+organization receipts?/i, " 条整理记录");
+}
+function formatContinuationPrompt(prompt) {
+  const normalized = prompt.trim();
+  if (/^Help me decide what is worth continuing today\.?$/i.test(normalized)) {
+    return "帮我看看今天该接着做什么";
+  }
+  const topicMatch = normalized.match(/关于[“"]([^”"]+)[”"]/);
+  if (topicMatch?.[1]) {
+    return `继续：${topicMatch[1]}`;
+  }
+  const cleaned = normalized.replace(/^Help me continue this task:\s*/i, "继续：").replace(/^继续这条线索[:：]\s*/i, "继续：").replace(/^这条最近笔记里有什么值得记住[:：]\s*/i, "").trim();
+  if (!cleaned) {
+    return "继续最近的话题";
+  }
+  if (cleaned.length > 36) {
+    return "继续最近的话题";
+  }
+  return cleaned.startsWith("继续") ? cleaned : `继续：${cleaned}`;
+}
+function formatDateTime(value) {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+  return parsed.toLocaleString("zh-CN", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+var _c;
+$RefreshReg$(_c, "TodayCard");
+if (import.meta.hot && !inWebWorker) {
+  window.$RefreshReg$ = prevRefreshReg;
+  window.$RefreshSig$ = prevRefreshSig;
+}
+if (import.meta.hot && !inWebWorker) {
+  RefreshRuntime.__hmr_import(import.meta.url).then((currentExports) => {
+    RefreshRuntime.registerExportsForReactRefresh("E:/agentproject/apps/desktop/src/features/continuity/TodayCard.tsx", currentExports);
+    import.meta.hot.accept((nextExports) => {
+      if (!nextExports) return;
+      const invalidateMessage = RefreshRuntime.validateRefreshBoundaryAndEnqueueUpdate("E:/agentproject/apps/desktop/src/features/continuity/TodayCard.tsx", currentExports, nextExports);
+      if (invalidateMessage) import.meta.hot.invalidate(invalidateMessage);
+    });
+  });
+}
+
+//# sourceMappingURL=data:application/json;base64,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QSxJQUNwQ0MsT0FBTztBQUFBLElBQ1BDLEtBQUs7QUFBQSxJQUNMQyxNQUFNO0FBQUEsSUFDTkMsUUFBUTtBQUFBLEVBQ1YsQ0FBQztBQUNIO0FBQUMsSUFBQW5CO0FBQUEsYUFBQUEsSUFBQSIsIm5hbWVzIjpbIkNhbGVuZGFyQ2hlY2syIiwiQ2hlY2tDaXJjbGUyIiwiTWVzc2FnZVNxdWFyZVRleHQiLCJUb2RheUNhcmQiLCJ0b2RheSIsIm9uQ29udGludWVQcm9tcHQiLCJoYXNDYXJyeU92ZXIiLCJjYXJyeV9vdmVyX2l0ZW1zIiwibGVuZ3RoIiwiaGFzTmV4dFN0ZXBzIiwic3VnZ2VzdGVkX25leHRfc3RlcHMiLCJoYXNQcm9tcHRzIiwiY29udGludWF0aW9uX3Byb21wdHMiLCJwcmltYXJ5UHJvbXB0Iiwic2Vjb25kYXJ5UHJvbXB0cyIsInNsaWNlIiwicHJpbWFyeUNhcnJ5T3ZlciIsInByaW1hcnlOZXh0U3RlcCIsInNvdXJjZV9jb3VudCIsInVuZGVmaW5lZCIsInByaW1hcnlQcm9tcHRMYWJlbCIsImZvcm1hdENvbnRpbnVhdGlvblByb21wdCIsInRpdGxlIiwiZm9ybWF0VG9kYXlTdW1tYXJ5Iiwic3VtbWFyeSIsIm1hcCIsInByb21wdCIsIml0ZW0iLCJ1cGRhdGVkX2F0IiwiZm9ybWF0RGF0ZVRpbWUiLCJfYyIsIm5vcm1hbGl6ZWQiLCJ0cmltIiwicmVwbGFjZSIsInRlc3QiLCJ0b3BpY01hdGNoIiwibWF0Y2giLCJjbGVhbmVkIiwic3RhcnRzV2l0aCIsInZhbHVlIiwicGFyc2VkIiwiRGF0ZSIsIk51bWJlciIsImlzTmFOIiwiZ2V0VGltZSIsInRvTG9jYWxlU3RyaW5nIiwibW9udGgiLCJkYXkiLCJob3VyIiwibWludXRlIl0sImlnbm9yZUxpc3QiOltdLCJzb3VyY2VzIjpbIlRvZGF5Q2FyZC50c3giXSwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0IHsgQ2FsZW5kYXJDaGVjazIsIENoZWNrQ2lyY2xlMiwgTWVzc2FnZVNxdWFyZVRleHQgfSBmcm9tIFwibHVjaWRlLXJlYWN0XCI7XG5pbXBvcnQgdHlwZSB7IFZpc2libGVDb250aW51aXR5VG9kYXlDYXJkIH0gZnJvbSBcIi4vdmlzaWJsZUNvbnRpbnVpdHlUeXBlc1wiO1xuXHJcbnR5cGUgVG9kYXlDYXJkUHJvcHMgPSB7XHJcbiAgdG9kYXk6IFZpc2libGVDb250aW51aXR5VG9kYXlDYXJkO1xyXG4gIG9uQ29udGludWVQcm9tcHQ/OiAocHJvbXB0OiBzdHJpbmcpID0+IHZvaWQ7XHJcbn07XHJcblxyXG5leHBvcnQgZnVuY3Rpb24gVG9kYXlDYXJkKHsgdG9kYXksIG9uQ29udGludWVQcm9tcHQgfTogVG9kYXlDYXJkUHJvcHMpIHtcbiAgY29uc3QgaGFzQ2FycnlPdmVyID0gdG9kYXkuY2Fycnlfb3Zlcl9pdGVtcy5sZW5ndGggPiAwO1xuICBjb25zdCBoYXNOZXh0U3RlcHMgPSB0b2RheS5zdWdnZXN0ZWRfbmV4dF9zdGVwcy5sZW5ndGggPiAwO1xuICBjb25zdCBoYXNQcm9tcHRzID0gdG9kYXkuY29udGludWF0aW9uX3Byb21wdHMubGVuZ3RoID4gMDtcbiAgY29uc3QgcHJpbWFyeVByb21wdCA9IHRvZGF5LmNvbnRpbnVhdGlvbl9wcm9tcHRzWzBdO1xuICBjb25zdCBzZWNvbmRhcnlQcm9tcHRzID0gdG9kYXkuY29udGludWF0aW9uX3Byb21wdHMuc2xpY2UoMSwgMyk7XG4gIGNvbnN0IHByaW1hcnlDYXJyeU92ZXIgPSB0b2RheS5jYXJyeV9vdmVyX2l0ZW1zWzBdO1xuICBjb25zdCBwcmltYXJ5TmV4dFN0ZXAgPSB0b2RheS5zb3VyY2VfY291bnQgPiAwID8gdG9kYXkuc3VnZ2VzdGVkX25leHRfc3RlcHNbMF0gOiB1bmRlZmluZWQ7XG4gIGNvbnN0IHByaW1hcnlQcm9tcHRMYWJlbCA9IHByaW1hcnlQcm9tcHQgPyBmb3JtYXRDb250aW51YXRpb25Qcm9tcHQocHJpbWFyeVByb21wdCkgOiBcIlwiO1xuXG4gIHJldHVybiAoXG4gICAgPHNlY3Rpb24gY2xhc3NOYW1lPVwidmlzaWJsZS1jb250aW51aXR5LXNlY3Rpb24gdmlzaWJsZS1jb250aW51aXR5LXRvZGF5XCIgYXJpYS1sYWJlbD1cIuS7iuaXpVwiPlxuICAgICAgPGRpdiBjbGFzc05hbWU9XCJ2aXNpYmxlLWNvbnRpbnVpdHktc2VjdGlvbi1oZWFkXCI+XG4gICAgICAgIDxDYWxlbmRhckNoZWNrMiBzaXplPXsxOH0gYXJpYS1oaWRkZW49XCJ0cnVlXCIgLz5cbiAgICAgICAgPGRpdj5cbiAgICAgICAgICA8aDM+e3RvZGF5LnRpdGxlfTwvaDM+XG4gICAgICAgICAgPHA+e2Zvcm1hdFRvZGF5U3VtbWFyeSh0b2RheS5zdW1tYXJ5KX08L3A+XG4gICAgICAgIDwvZGl2PlxuICAgICAgPC9kaXY+XG4gICAgICB7aGFzUHJvbXB0cyA/IChcbiAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJ2aXNpYmxlLWNvbnRpbnVpdHktcmVzdW1lXCIgYXJpYS1sYWJlbD1cIue7p+e7reacgOi/keeahOWvueivnVwiPlxuICAgICAgICAgIDxidXR0b25cbiAgICAgICAgICAgIHR5cGU9XCJidXR0b25cIlxuICAgICAgICAgICAgY2xhc3NOYW1lPVwidmlzaWJsZS1jb250aW51aXR5LXJlc3VtZS1idXR0b25cIlxuICAgICAgICAgICAgb25DbGljaz17KCkgPT4gb25Db250aW51ZVByb21wdD8uKHByaW1hcnlQcm9tcHQpfVxuICAgICAgICAgICAgZGlzYWJsZWQ9eyFvbkNvbnRpbnVlUHJvbXB0fVxuICAgICAgICAgICAgdGl0bGU9XCLlnKjogYrlpKnkuK3nu6fnu63ov5nmnaHnur/ntKJcIlxuICAgICAgICAgID5cbiAgICAgICAgICAgIDxNZXNzYWdlU3F1YXJlVGV4dCBzaXplPXsxNn0gYXJpYS1oaWRkZW49XCJ0cnVlXCIgLz5cbiAgICAgICAgICAgIDxzcGFuPntwcmltYXJ5UHJvbXB0TGFiZWx9PC9zcGFuPlxuICAgICAgICAgIDwvYnV0dG9uPlxuICAgICAgICAgIHtzZWNvbmRhcnlQcm9tcHRzLmxlbmd0aCA+IDAgPyAoXG4gICAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cInZpc2libGUtY29udGludWl0eS1wcm9tcHQtcm93XCIgYXJpYS1sYWJlbD1cIuWFtuS7lue7p+e7reW7uuiurlwiPlxuICAgICAgICAgICAgICB7c2Vjb25kYXJ5UHJvbXB0cy5tYXAoKHByb21wdCkgPT4gKFxuICAgICAgICAgICAgICAgIDxidXR0b25cbiAgICAgICAgICAgICAgICAgIGtleT17cHJvbXB0fVxuICAgICAgICAgICAgICAgICAgdHlwZT1cImJ1dHRvblwiXG4gICAgICAgICAgICAgICAgICBjbGFzc05hbWU9XCJzZWNvbmRhcnkgdmlzaWJsZS1jb250aW51aXR5LXByb21wdC1idXR0b25cIlxuICAgICAgICAgICAgICAgICAgb25DbGljaz17KCkgPT4gb25Db250aW51ZVByb21wdD8uKHByb21wdCl9XG4gICAgICAgICAgICAgICAgICBkaXNhYmxlZD17IW9uQ29udGludWVQcm9tcHR9XG4gICAgICAgICAgICAgICAgICB0aXRsZT1cIuWcqOiBiuWkqeS4ree7p+e7rei/meadoee6v+e0olwiXG4gICAgICAgICAgICAgICAgPlxuICAgICAgICAgICAgICAgICAgPE1lc3NhZ2VTcXVhcmVUZXh0IHNpemU9ezE0fSBhcmlhLWhpZGRlbj1cInRydWVcIiAvPlxuICAgICAgICAgICAgICAgICAgPHNwYW4+e2Zvcm1hdENvbnRpbnVhdGlvblByb21wdChwcm9tcHQpfTwvc3Bhbj5cbiAgICAgICAgICAgICAgICA8L2J1dHRvbj5cbiAgICAgICAgICAgICAgKSl9XG4gICAgICAgICAgICA8L2Rpdj5cbiAgICAgICAgICApIDogbnVsbH1cbiAgICAgICAgPC9kaXY+XG4gICAgICApIDogKFxuICAgICAgICA8cCBjbGFzc05hbWU9XCJ2aXNpYmxlLWNvbnRpbnVpdHktbXV0ZWQgdmlzaWJsZS1jb250aW51aXR5LWVtcHR5LXJlc3VtZVwiPlxuICAgICAgICAgIOaaguaXtuayoeaciemcgOimgee7reS4iueahOivnemimO+8jOebtOaOpeW8gOiBiuWwseWlveOAglxuICAgICAgICA8L3A+XG4gICAgICApfVxuICAgICAgPGRldGFpbHMgY2xhc3NOYW1lPVwidmlzaWJsZS1jb250aW51aXR5LXNvdXJjZS1kZXRhaWxzXCI+XG4gICAgICAgIDxzdW1tYXJ5Puafpeeci+S+neaNrjwvc3VtbWFyeT5cbiAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJ2aXNpYmxlLWNvbnRpbnVpdHktdG9kYXktZ3JpZFwiPlxuICAgICAgICAgIDxkaXY+XG4gICAgICAgICAgICA8c3BhbiBjbGFzc05hbWU9XCJ2aXNpYmxlLWNvbnRpbnVpdHktZXllYnJvd1wiPuW7tue7reS6i+mhuTwvc3Bhbj5cbiAgICAgICAgICAgIHtoYXNDYXJyeU92ZXIgPyAoXG4gICAgICAgICAgICAgIDx1bCBjbGFzc05hbWU9XCJ2aXNpYmxlLWNvbnRpbnVpdHktbGlzdFwiPlxuICAgICAgICAgICAgICAgIHt0b2RheS5jYXJyeV9vdmVyX2l0ZW1zLm1hcCgoaXRlbSkgPT4gKFxuICAgICAgICAgICAgICAgICAgPGxpIGtleT17aXRlbX0+XG4gICAgICAgICAgICAgICAgICAgIDxDaGVja0NpcmNsZTIgc2l6ZT17MTR9IGFyaWEtaGlkZGVuPVwidHJ1ZVwiIC8+XG4gICAgICAgICAgICAgICAgICAgIDxzcGFuPntpdGVtfTwvc3Bhbj5cbiAgICAgICAgICAgICAgICAgIDwvbGk+XG4gICAgICAgICAgICAgICAgKSl9XG4gICAgICAgICAgICAgIDwvdWw+XG4gICAgICAgICAgICApIDogKFxuICAgICAgICAgICAgICA8cCBjbGFzc05hbWU9XCJ2aXNpYmxlLWNvbnRpbnVpdHktbXV0ZWRcIj7mmoLml7bmsqHmnInmnKrmlLblsL7nmoTlu7bnu63kuovpobnjgII8L3A+XG4gICAgICAgICAgICApfVxuICAgICAgICAgIDwvZGl2PlxuICAgICAgICAgIDxkaXY+XG4gICAgICAgICAgICA8c3BhbiBjbGFzc05hbWU9XCJ2aXNpYmxlLWNvbnRpbnVpdHktZXllYnJvd1wiPuS4i+S4gOatpTwvc3Bhbj5cbiAgICAgICAgICAgIHtoYXNOZXh0U3RlcHMgPyAoXG4gICAgICAgICAgICAgIDx1bCBjbGFzc05hbWU9XCJ2aXNpYmxlLWNvbnRpbnVpdHktbGlzdFwiPlxuICAgICAgICAgICAgICAgIHt0b2RheS5zdWdnZXN0ZWRfbmV4dF9zdGVwcy5tYXAoKGl0ZW0pID0+IChcbiAgICAgICAgICAgICAgICAgIDxsaSBrZXk9e2l0ZW19PlxuICAgICAgICAgICAgICAgICAgICA8Q2hlY2tDaXJjbGUyIHNpemU9ezE0fSBhcmlhLWhpZGRlbj1cInRydWVcIiAvPlxuICAgICAgICAgICAgICAgICAgICA8c3Bhbj57aXRlbX08L3NwYW4+XG4gICAgICAgICAgICAgICAgICA8L2xpPlxuICAgICAgICAgICAgICAgICkpfVxuICAgICAgICAgICAgICA8L3VsPlxuICAgICAgICAgICAgKSA6IChcbiAgICAgICAgICAgICAgPHAgY2xhc3NOYW1lPVwidmlzaWJsZS1jb250aW51aXR5LW11dGVkXCI+5Y+v5Lul5YWI5LuO5LiA5p2h56yU6K6w44CB5Lu75Yqh5oiW6IGK5aSp5byA5aeL44CCPC9wPlxuICAgICAgICAgICAgKX1cbiAgICAgICAgICA8L2Rpdj5cbiAgICAgICAgPC9kaXY+XG4gICAgICA8L2RldGFpbHM+XG4gICAgICB7cHJpbWFyeUNhcnJ5T3ZlciB8fCBwcmltYXJ5TmV4dFN0ZXAgPyAoXG4gICAgICAgIDxkaXYgY2xhc3NOYW1lPVwidmlzaWJsZS1jb250aW51aXR5LXF1aWNrLWZhY3RzXCIgYXJpYS1sYWJlbD1cIuS4iuS4i+aWh+aRmOimgVwiPlxuICAgICAgICAgIHtwcmltYXJ5Q2FycnlPdmVyID8gKFxuICAgICAgICAgICAgPHNwYW4+XG4gICAgICAgICAgICAgIDxDaGVja0NpcmNsZTIgc2l6ZT17MTN9IGFyaWEtaGlkZGVuPVwidHJ1ZVwiIC8+XG4gICAgICAgICAgICAgIHtwcmltYXJ5Q2FycnlPdmVyfVxuICAgICAgICAgICAgPC9zcGFuPlxuICAgICAgICAgICkgOiBudWxsfVxuICAgICAgICAgIHtwcmltYXJ5TmV4dFN0ZXAgPyAoXG4gICAgICAgICAgICA8c3Bhbj5cbiAgICAgICAgICAgICAgPENoZWNrQ2lyY2xlMiBzaXplPXsxM30gYXJpYS1oaWRkZW49XCJ0cnVlXCIgLz5cbiAgICAgICAgICAgICAge3ByaW1hcnlOZXh0U3RlcH1cbiAgICAgICAgICAgIDwvc3Bhbj5cbiAgICAgICAgICApIDogbnVsbH1cbiAgICAgICAgPC9kaXY+XG4gICAgICApIDogbnVsbH1cbiAgICAgIDxmb290ZXIgY2xhc3NOYW1lPVwidmlzaWJsZS1jb250aW51aXR5LW1ldGFcIj5cbiAgICAgICAgPHNwYW4+e3RvZGF5LnNvdXJjZV9jb3VudH0g5p2h5pys5Zyw5p2l5rqQPC9zcGFuPlxuICAgICAgICB7dG9kYXkudXBkYXRlZF9hdCA/IDx0aW1lIGRhdGVUaW1lPXt0b2RheS51cGRhdGVkX2F0fT7mm7TmlrDkuo4ge2Zvcm1hdERhdGVUaW1lKHRvZGF5LnVwZGF0ZWRfYXQpfTwvdGltZT4gOiBudWxsfVxuICAgICAgPC9mb290ZXI+XG4gICAgPC9zZWN0aW9uPlxuICApO1xufVxuXG5mdW5jdGlvbiBmb3JtYXRUb2RheVN1bW1hcnkoc3VtbWFyeTogc3RyaW5nKTogc3RyaW5nIHtcbiAgY29uc3Qgbm9ybWFsaXplZCA9IHN1bW1hcnkudHJpbSgpO1xuICBpZiAoIW5vcm1hbGl6ZWQpIHtcbiAgICByZXR1cm4gXCLmiJHkvJrmiorlgLzlvpfmjqXkuIrnmoTlhoXlrrnmlL7lnKjov5nph4zjgIJcIjtcbiAgfVxuICBpZiAobm9ybWFsaXplZC5sZW5ndGggPiA3Mikge1xuICAgIHJldHVybiBcIuaJvuWIsOS4gOadoeWPr+S7peaOpeS4iueahOe6v+e0ou+8jOWFiOS7juacgOi/keeahOivnemimOe7p+e7reOAglwiO1xuICB9XG4gIHJldHVybiBub3JtYWxpemVkXG4gICAgLnJlcGxhY2UoL15QdWxsZWQgdG9nZXRoZXJcXHMrL2ksIFwi5bey5Y+C6ICDIFwiKVxuICAgIC5yZXBsYWNlKC9cXHMrcmVjZW50IG1lc3NhZ2VzPy9pLCBcIiDmnaHmnIDov5HogYrlpKlcIilcbiAgICAucmVwbGFjZSgvXFxzK29wZW4gdGFza3M/L2ksIFwiIOS4quW+heWKnlwiKVxuICAgIC5yZXBsYWNlKC9cXHMrb3JnYW5pemF0aW9uIHJlY2VpcHRzPy9pLCBcIiDmnaHmlbTnkIborrDlvZVcIik7XG59XG5cbmZ1bmN0aW9uIGZvcm1hdENvbnRpbnVhdGlvblByb21wdChwcm9tcHQ6IHN0cmluZyk6IHN0cmluZyB7XG4gIGNvbnN0IG5vcm1hbGl6ZWQgPSBwcm9tcHQudHJpbSgpO1xuICBpZiAoL15IZWxwIG1lIGRlY2lkZSB3aGF0IGlzIHdvcnRoIGNvbnRpbnVpbmcgdG9kYXlcXC4/JC9pLnRlc3Qobm9ybWFsaXplZCkpIHtcbiAgICByZXR1cm4gXCLluK7miJHnnIvnnIvku4rlpKnor6XmjqXnnYDlgZrku4DkuYhcIjtcbiAgfVxuICBjb25zdCB0b3BpY01hdGNoID0gbm9ybWFsaXplZC5tYXRjaCgv5YWz5LqOW+KAnFwiXShbXuKAnVwiXSspW+KAnVwiXS8pO1xuICBpZiAodG9waWNNYXRjaD8uWzFdKSB7XG4gICAgcmV0dXJuIGDnu6fnu63vvJoke3RvcGljTWF0Y2hbMV19YDtcbiAgfVxuICBjb25zdCBjbGVhbmVkID0gbm9ybWFsaXplZFxuICAgIC5yZXBsYWNlKC9eSGVscCBtZSBjb250aW51ZSB0aGlzIHRhc2s6XFxzKi9pLCBcIue7p+e7re+8mlwiKVxuICAgIC5yZXBsYWNlKC9e57un57ut6L+Z5p2h57q/57SiWzrvvJpdXFxzKi9pLCBcIue7p+e7re+8mlwiKVxuICAgIC5yZXBsYWNlKC9e6L+Z5p2h5pyA6L+R56yU6K6w6YeM5pyJ5LuA5LmI5YC85b6X6K6w5L2PWzrvvJpdXFxzKi9pLCBcIlwiKVxuICAgIC50cmltKCk7XG4gIGlmICghY2xlYW5lZCkge1xuICAgIHJldHVybiBcIue7p+e7reacgOi/keeahOivnemimFwiO1xuICB9XG4gIGlmIChjbGVhbmVkLmxlbmd0aCA+IDM2KSB7XG4gICAgcmV0dXJuIFwi57un57ut5pyA6L+R55qE6K+d6aKYXCI7XG4gIH1cbiAgcmV0dXJuIGNsZWFuZWQuc3RhcnRzV2l0aChcIue7p+e7rVwiKSA/IGNsZWFuZWQgOiBg57un57ut77yaJHtjbGVhbmVkfWA7XG59XG5cbmZ1bmN0aW9uIGZvcm1hdERhdGVUaW1lKHZhbHVlOiBzdHJpbmcpOiBzdHJpbmcge1xuICBjb25zdCBwYXJzZWQgPSBuZXcgRGF0ZSh2YWx1ZSk7XHJcbiAgaWYgKE51bWJlci5pc05hTihwYXJzZWQuZ2V0VGltZSgpKSkge1xyXG4gICAgcmV0dXJuIHZhbHVlO1xyXG4gIH1cclxuICByZXR1cm4gcGFyc2VkLnRvTG9jYWxlU3RyaW5nKFwiemgtQ05cIiwge1xyXG4gICAgbW9udGg6IFwic2hvcnRcIixcclxuICAgIGRheTogXCJudW1lcmljXCIsXHJcbiAgICBob3VyOiBcIjItZGlnaXRcIixcclxuICAgIG1pbnV0ZTogXCIyLWRpZ2l0XCIsXHJcbiAgfSk7XHJcbn1cclxuIl0sImZpbGUiOiJFOi9hZ2VudHByb2plY3QvYXBwcy9kZXNrdG9wL3NyYy9mZWF0dXJlcy9jb250aW51aXR5L1RvZGF5Q2FyZC50c3gifQ==

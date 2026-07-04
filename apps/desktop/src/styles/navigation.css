@@ -3,6 +3,12 @@
   --bottom-nav-item-height: 44px;
   --bottom-nav-gap: 4px;
   --bottom-nav-padding: 4px;
+  --bottom-nav-avatar-size: 64px;
+  --bottom-nav-avatar-space: 92px;
+  --bottom-nav-indicator-x: calc(
+    var(--bottom-nav-active-index) * (var(--bottom-nav-item-width) + var(--bottom-nav-gap))
+  );
+  --bottom-nav-indicator-width: var(--bottom-nav-item-width);
   position: relative;
   z-index: 10;
   width: 100%;
@@ -28,6 +34,7 @@
   width: max-content;
   min-width: max-content;
   display: flex;
+  align-items: center;
   gap: var(--bottom-nav-gap);
   margin: 0 auto;
   padding: var(--bottom-nav-padding);
@@ -42,15 +49,13 @@
 .bottom-nav-indicator {
   position: absolute;
   top: var(--bottom-nav-padding);
-  left: var(--bottom-nav-padding);
-  width: var(--bottom-nav-item-width);
+  left: 0;
+  width: var(--bottom-nav-indicator-width);
   height: var(--bottom-nav-item-height);
   border-radius: 999px;
   background: rgba(143, 66, 102, 0.12);
   box-shadow: inset 0 0 0 1px rgba(143, 66, 102, 0.18);
-  transform: translateX(
-    calc(var(--bottom-nav-active-index) * (var(--bottom-nav-item-width) + var(--bottom-nav-gap)))
-  );
+  transform: translateX(var(--bottom-nav-indicator-x));
   transition: transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
@@ -82,6 +87,34 @@
   white-space: nowrap;
   scroll-snap-align: center;
   transition: color 0.18s ease;
+}
+
+.bottom-nav-center-avatar {
+  position: relative;
+  z-index: 2;
+  flex: 0 0 var(--bottom-nav-avatar-space);
+  width: var(--bottom-nav-avatar-space);
+  height: var(--bottom-nav-item-height);
+  overflow: visible;
+  pointer-events: none;
+}
+
+.bottom-nav-center-avatar img {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--bottom-nav-avatar-size);
+  height: var(--bottom-nav-avatar-size);
+  border: 3px solid rgba(224, 112, 145, 0.92);
+  border-radius: 999px;
+  background: rgba(10, 10, 14, 0.94);
+  object-fit: contain;
+  object-position: center;
+  padding: 4px;
+  transform: translate(-50%, -50%);
+  box-shadow:
+    0 0 0 6px rgba(224, 112, 145, 0.14),
+    0 0 32px rgba(224, 112, 145, 0.34);
 }
 
 .bottom-nav-icon {

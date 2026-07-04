@@ -1,0 +1,114 @@
+Starting frontend on http://127.0.0.1:5174
+Backend default expected by the UI: http://127.0.0.1:8765
+
+> agent-pet-desktop@0.0.1-alpha dev
+> node electron/dev.mjs --host 127.0.0.1 --port 5174
+
+
+  [32m[1mVITE[22m v5.4.21[39m  [2mready in [0m[1m468[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://127.0.0.1:[1m5173[22m/[39m
+
+INFO:     127.0.0.1:51055 - "GET /api/settings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51056 - "GET /api/continuity/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51057 - "GET /api/continuity/proposals HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51058 - "GET /api/memory/proposals HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51059 - "GET /api/agent/actions?limit=30 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51060 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51055 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51056 - "GET /api/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51062 - "GET /api/vaults/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51057 - "POST /api/tts/synthesize HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51058 - "POST /api/tts/synthesize HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51059 - "POST /api/tts/synthesize HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51063 - "POST /api/habit-loop/trigger HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51061 - "POST /api/tts/synthesize HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51055 - "GET /api/settings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51056 - "GET /api/settings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51078 - "GET /api/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51098 - "GET /api/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51126 - "GET /api/wiki/query-archives?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51127 - "GET /api/wiki/schema HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51128 - "GET /api/wiki/index HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51129 - "GET /api/wiki/log?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51130 - "GET /api/settings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51131 - "GET /api/continuity/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51132 - "GET /api/continuity/proposals HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51133 - "GET /api/memory/proposals HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51134 - "GET /api/agent/actions?limit=30 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51135 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51136 - "GET /api/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51137 - "GET /api/vaults/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51126 - "POST /api/tts/synthesize HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51127 - "POST /api/tts/synthesize HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51128 - "POST /api/tts/synthesize HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51130 - "GET /api/settings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51131 - "GET /api/settings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51129 - "POST /api/tts/synthesize HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51126 - "GET /api/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51127 - "GET /api/wiki/query-archives?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51128 - "GET /api/wiki/schema HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51129 - "GET /api/wiki/index HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51130 - "GET /api/wiki/log?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51141 - "GET /api/tasks/current HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51142 - "GET /api/tasks/today?timezone=Asia%2FShanghai HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51143 - "GET /api/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51141 - "GET /api/memory/local-assets HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51142 - "GET /api/memory/retrospectives HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51143 - "GET /api/memory/reviews/weekly?days=7&limit=30 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51165 - "GET /api/memory/graph/facts?limit=100 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51141 - "GET /api/wiki/query-archives?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51142 - "GET /api/wiki/schema HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51143 - "GET /api/wiki/index HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51165 - "GET /api/wiki/log?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51141 - "GET /api/tasks/current HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51142 - "GET /api/tasks/today?timezone=Asia%2FShanghai HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51143 - "GET /api/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51141 - "GET /api/memory/local-assets HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51142 - "GET /api/memory/retrospectives HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51143 - "GET /api/memory/reviews/weekly?days=7&limit=30 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51165 - "GET /api/memory/graph/facts?limit=100 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51141 - "GET /api/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51142 - "GET /api/wiki/query-archives?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51143 - "GET /api/wiki/schema HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51165 - "GET /api/wiki/index HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51170 - "GET /api/wiki/log?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51141 - "GET /api/tasks/current HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51142 - "GET /api/tasks/today?timezone=Asia%2FShanghai HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51143 - "GET /api/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51262 - "GET /api/tasks/current HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51263 - "GET /api/tasks/today?timezone=Asia%2FShanghai HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51264 - "GET /api/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51319 - "GET /api/tasks/current HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51320 - "GET /api/tasks/today?timezone=Asia%2FShanghai HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51321 - "GET /api/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51359 - "GET /api/tasks/current HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51360 - "GET /api/tasks/today?timezone=Asia%2FShanghai HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51361 - "GET /api/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51410 - "GET /api/tasks/current HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51411 - "GET /api/tasks/today?timezone=Asia%2FShanghai HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51412 - "GET /api/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51476 - "GET /api/tasks/current HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51477 - "GET /api/tasks/today?timezone=Asia%2FShanghai HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51478 - "GET /api/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51603 - "GET /api/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51604 - "GET /api/wiki/query-archives?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51605 - "GET /api/wiki/schema HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51606 - "GET /api/wiki/index HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51607 - "GET /api/wiki/log?limit=20 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51616 - "GET /api/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51626 - "GET /api/settings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51627 - "GET /api/continuity/state HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51628 - "GET /api/continuity/proposals HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51629 - "GET /api/memory/proposals HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51630 - "GET /api/agent/actions?limit=30 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51626 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51627 - "GET /api/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51631 - "GET /api/vaults/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51632 - "POST /api/habit-loop/trigger HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51633 - "POST /api/tts/synthesize HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51634 - "POST /api/tts/synthesize HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51635 - "POST /api/tts/synthesize HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51626 - "GET /api/settings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51636 - "POST /api/tts/synthesize HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51627 - "GET /api/settings HTTP/1.1" 200 OK

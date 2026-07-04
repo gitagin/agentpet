@@ -1,0 +1,105 @@
+{
+	"Version": 3,
+	"FileReferences": {
+		"Moc": "character_live2d.moc3",
+		"Textures": [
+			"character_live2d.4096/texture_00.png"
+		],
+		"DisplayInfo": "character_live2d.cdi3.json",
+		"Expressions": [
+			{
+				"Name": "angry",
+				"File": "expressions/angry.exp3.json"
+			},
+			{
+				"Name": "happy",
+				"File": "expressions/happy.exp3.json"
+			},
+			{
+				"Name": "confused",
+				"File": "expressions/confused.exp3.json"
+			},
+			{
+				"Name": "sad",
+				"File": "expressions/sad.exp3.json"
+			},
+			{
+				"Name": "fear",
+				"File": "expressions/fear.exp3.json"
+			},
+			{
+				"Name": "surprise",
+				"File": "expressions/surprise.exp3.json"
+			},
+			{
+				"Name": "disgust",
+				"File": "expressions/disgust.exp3.json"
+			},
+			{
+				"Name": "contempt",
+				"File": "expressions/contempt.exp3.json"
+			}
+		],
+		"Motions": {
+			"Idle": [
+				{
+					"File": "motions/Idle/00_idle_breathe.motion3.json"
+				},
+				{
+					"File": "motions/Idle/01_wait_soft_loop.motion3.json"
+				}
+			],
+			"Face": [
+				{
+					"File": "motions/Face/00_blink.motion3.json"
+				},
+				{
+					"File": "motions/Face/01_talk_mouth_loop.motion3.json"
+				}
+			],
+			"Gesture": [
+				{
+					"File": "motions/Gesture/00_support_hand_down_to_sit.motion3.json"
+				},
+				{
+					"File": "motions/Gesture/01_ear_twitch.motion3.json"
+				}
+			],
+			"Chat": [
+				{
+					"File": "motions/Chat/00_thinking_loop.motion3.json"
+				},
+				{
+					"File": "motions/Chat/01_serious_inspect_loop.motion3.json"
+				}
+			]
+		}
+	},
+	"Groups": [
+		{
+			"Target": "Parameter",
+			"Name": "EyeBlink",
+			"Ids": [
+				"ParamEyeLOpen",
+				"ParamEyeROpen"
+			]
+		},
+		{
+			"Target": "Parameter",
+			"Name": "LipSync",
+			"Ids": [
+				"ParamMouthOpenY"
+			]
+		}
+	],
+	"HitAreas": [
+		{
+			"Id": "HitAreaHead",
+			"Name": "Head"
+		},
+		{
+			"Id": "HitAreaBody",
+			"Name": "Body"
+		}
+	]
+}

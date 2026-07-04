@@ -3,18 +3,19 @@ import { describe, expect, it } from "vitest";
 import { navigationHashForTab, primaryNavigationTabs } from "./navigation";
 
 describe("primary navigation", () => {
-  it("keeps only the daily companion loop in primary navigation", () => {
-    expect(primaryNavigationTabs).toEqual(["今日", "聊天", "记忆", "设置"]);
-    expect(primaryNavigationTabs).not.toEqual(expect.arrayContaining(["成长", "任务", "知识", "知识整理", "工作流", "报告"]));
+  it("keeps the screenshot-style companion navigation visible", () => {
+    expect(primaryNavigationTabs).toEqual(["首页", "对话", "记忆", "计划", "工具", "设置"]);
     primaryNavigationTabs.forEach((tab) => {
       expect(tab).not.toMatch(/Wiki|Markdown|Agent|Live2D|API|Vault|token|Bearer/);
     });
   });
 
-  it("routes primary tabs to the user-facing companionship loop", () => {
-    expect(navigationHashForTab("今日")).toBe("stage");
-    expect(navigationHashForTab("聊天")).toBe("chat");
+  it("routes primary tabs to existing user-facing windows", () => {
+    expect(navigationHashForTab("首页")).toBe("stage");
+    expect(navigationHashForTab("对话")).toBe("chat");
     expect(navigationHashForTab("记忆")).toBe("memory");
+    expect(navigationHashForTab("计划")).toBe("agent");
+    expect(navigationHashForTab("工具")).toBe("world");
     expect(navigationHashForTab("设置")).toBe("settings");
   });
 });

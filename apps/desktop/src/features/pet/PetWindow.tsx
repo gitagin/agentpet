@@ -1,11 +1,11 @@
 import { AlarmClockPlus, BookOpen, MessageSquareText, NotebookPen, Settings, VolumeX } from "lucide-react";
 import type { AnimationEventHandler, CSSProperties, FormEvent, PointerEvent, PointerEventHandler, RefObject } from "react";
 import type { Live2DStageView } from "../../components/Live2DStage";
-import { Live2DStage } from "../../components/Live2DStage";
-import type { Live2DAssetInfo, Live2DRuntimeBoundary } from "../../services/live2dRuntime";
 import { PetChatOverlay } from "../chat/PetChatOverlay";
 import type { PetChatBubbleController } from "../chat/usePetChatBubble";
 import type { PetInputMode, PetInputModeOption } from "../chat/petInputModes";
+import { SpritePetStage } from "./SpritePetStage";
+import type { SpritePetDragDirection } from "./spritePetState";
 
 type PetShortcutMotion = "idle" | "opening" | "closing";
 
@@ -21,16 +21,15 @@ export type PetWindowProps = {
   hitboxDebug: boolean;
   petChat: PetChatBubbleController;
   petDragging: boolean;
+  petDragDirection: SpritePetDragDirection;
   petDragSnapshot: PetDragSnapshot;
   showPetEntryHint: boolean;
-  live2dStage: Live2DStageView;
-  live2dAsset: Live2DAssetInfo;
-  live2dRuntime: Live2DRuntimeBoundary;
-  live2dCanvasRef: RefObject<HTMLCanvasElement>;
+  petStage: Live2DStageView;
+  petCanvasRef: RefObject<HTMLCanvasElement>;
   ttsSpeaking: boolean;
   ttsActive: boolean;
-  live2dActionKeyOverride: string | null;
-  live2dActionTriggerKey: string | null;
+  actionKeyOverride: string | null;
+  actionTriggerKey: string | null;
   petInputMode: PetInputMode;
   petInputModes: PetInputModeOption[];
   connected: boolean;
@@ -58,16 +57,15 @@ export function PetWindow({
   hitboxDebug,
   petChat,
   petDragging,
+  petDragDirection,
   petDragSnapshot,
   showPetEntryHint,
-  live2dStage,
-  live2dAsset,
-  live2dRuntime,
-  live2dCanvasRef,
+  petStage,
+  petCanvasRef,
   ttsSpeaking,
   ttsActive,
-  live2dActionKeyOverride,
-  live2dActionTriggerKey,
+  actionKeyOverride,
+  actionTriggerKey,
   petInputMode,
   petInputModes,
   connected,
@@ -103,17 +101,18 @@ export function PetWindow({
       onDragOver={(event) => event.preventDefault()}
       onDrop={(event) => event.preventDefault()}
     >
-      <Live2DStage
-        key={`pet-${live2dAsset.modelId}`}
-        stage={live2dStage}
-        asset={live2dAsset}
-        runtime={live2dRuntime}
-        canvasRef={live2dCanvasRef}
-        variant="pet"
+      <SpritePetStage
+        stage={petStage}
+        canvasRef={petCanvasRef}
+        connected={connected}
+        streaming={streaming}
         speaking={ttsSpeaking}
-        actionKeyOverride={live2dActionKeyOverride}
-        actionTriggerKey={live2dActionTriggerKey}
-        suppressCanvasLayoutWarning={petDragging && Boolean(petDragSnapshot)}
+        inputVisible={petChat.inputVisible}
+        shortcutVisible={petShortcutsVisible}
+        dragging={petDragging}
+        dragDirection={petDragDirection}
+        actionKeyOverride={actionKeyOverride}
+        actionTriggerKey={actionTriggerKey}
         petInteractions={{
           onPointerDown: onBeginPetDrag,
           onPointerMove: onMovePetDrag,

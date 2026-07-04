@@ -65,6 +65,8 @@ describe("ChatMessageList", () => {
 
     const { container } = render(<ChatMessageList messages={messages} />);
 
+    expect(container.querySelector("#message-user-1")).toBeInTheDocument();
+    expect(container.querySelector("#message-assistant-1")).toBeInTheDocument();
     expect(container.querySelector(".message-row.user .message-bubble.user")).toHaveTextContent("今天有点累。");
     expect(container.querySelector(".message-row.assistant .message-bubble.assistant")).toHaveTextContent("先缓一下，我在。");
   });

@@ -1,0 +1,519 @@
+{
+  "ok": true,
+  "method": "imagegen source + deterministic chroma extraction, frame alignment, and atlas composition",
+  "source": "C:\\Users\\ASUS\\.codex\\generated_images\\019f2883-33ab-7123-aa4b-71fad74bd6c6\\ig_06b87815b6dfd491016a47ddf3d89081919747a13f599ff9fa.png",
+  "rows": [
+    {
+      "state": "idle",
+      "row": 0,
+      "source_frames": 5,
+      "output_frames": 6,
+      "sequence": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        2
+      ],
+      "used_cells_non_empty": 6,
+      "unused_cells_transparent": true,
+      "frame_bboxes": [
+        [
+          28,
+          14,
+          164,
+          192
+        ],
+        [
+          29,
+          13,
+          162,
+          191
+        ],
+        [
+          29,
+          14,
+          165,
+          192
+        ],
+        [
+          30,
+          15,
+          162,
+          193
+        ],
+        [
+          29,
+          14,
+          161,
+          192
+        ],
+        [
+          28,
+          13,
+          164,
+          191
+        ]
+      ]
+    },
+    {
+      "state": "running-right",
+      "row": 1,
+      "source_frames": 7,
+      "output_frames": 8,
+      "sequence": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        3
+      ],
+      "used_cells_non_empty": 8,
+      "unused_cells_transparent": true,
+      "frame_bboxes": [
+        [
+          17,
+          32,
+          166,
+          190
+        ],
+        [
+          23,
+          29,
+          164,
+          187
+        ],
+        [
+          24,
+          32,
+          168,
+          190
+        ],
+        [
+          29,
+          28,
+          169,
+          186
+        ],
+        [
+          31,
+          32,
+          171,
+          190
+        ],
+        [
+          29,
+          29,
+          169,
+          187
+        ],
+        [
+          26,
+          32,
+          165,
+          190
+        ],
+        [
+          24,
+          30,
+          164,
+          188
+        ]
+      ]
+    },
+    {
+      "state": "running-left",
+      "row": 2,
+      "source_frames": 7,
+      "output_frames": 8,
+      "sequence": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        3
+      ],
+      "used_cells_non_empty": 8,
+      "unused_cells_transparent": true,
+      "frame_bboxes": [
+        [
+          24,
+          32,
+          175,
+          190
+        ],
+        [
+          28,
+          29,
+          168,
+          187
+        ],
+        [
+          26,
+          32,
+          166,
+          190
+        ],
+        [
+          23,
+          28,
+          163,
+          186
+        ],
+        [
+          20,
+          32,
+          162,
+          190
+        ],
+        [
+          20,
+          29,
+          165,
+          187
+        ],
+        [
+          26,
+          32,
+          165,
+          190
+        ],
+        [
+          28,
+          30,
+          168,
+          188
+        ]
+      ]
+    },
+    {
+      "state": "waving",
+      "row": 3,
+      "source_frames": 5,
+      "output_frames": 6,
+      "sequence": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        2
+      ],
+      "used_cells_non_empty": 6,
+      "unused_cells_transparent": true,
+      "frame_bboxes": [
+        [
+          27,
+          12,
+          164,
+          192
+        ],
+        [
+          28,
+          11,
+          164,
+          191
+        ],
+        [
+          30,
+          10,
+          163,
+          190
+        ],
+        [
+          31,
+          11,
+          163,
+          191
+        ],
+        [
+          27,
+          12,
+          164,
+          192
+        ],
+        [
+          29,
+          11,
+          162,
+          191
+        ]
+      ]
+    },
+    {
+      "state": "thinking",
+      "row": 4,
+      "source_frames": 5,
+      "output_frames": 6,
+      "sequence": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        3
+      ],
+      "used_cells_non_empty": 6,
+      "unused_cells_transparent": true,
+      "frame_bboxes": [
+        [
+          32,
+          14,
+          160,
+          192
+        ],
+        [
+          33,
+          14,
+          158,
+          192
+        ],
+        [
+          32,
+          13,
+          158,
+          191
+        ],
+        [
+          29,
+          13,
+          160,
+          191
+        ],
+        [
+          32,
+          14,
+          160,
+          192
+        ],
+        [
+          29,
+          13,
+          160,
+          191
+        ]
+      ]
+    },
+    {
+      "state": "working",
+      "row": 5,
+      "source_frames": 5,
+      "output_frames": 6,
+      "sequence": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        2
+      ],
+      "used_cells_non_empty": 6,
+      "unused_cells_transparent": true,
+      "frame_bboxes": [
+        [
+          25,
+          34,
+          167,
+          192
+        ],
+        [
+          26,
+          34,
+          168,
+          192
+        ],
+        [
+          25,
+          33,
+          166,
+          191
+        ],
+        [
+          26,
+          34,
+          167,
+          192
+        ],
+        [
+          24,
+          33,
+          167,
+          191
+        ],
+        [
+          26,
+          34,
+          167,
+          192
+        ]
+      ]
+    },
+    {
+      "state": "done",
+      "row": 6,
+      "source_frames": 5,
+      "output_frames": 5,
+      "sequence": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "used_cells_non_empty": 5,
+      "unused_cells_transparent": true,
+      "frame_bboxes": [
+        [
+          26,
+          16,
+          166,
+          192
+        ],
+        [
+          26,
+          4,
+          165,
+          180
+        ],
+        [
+          24,
+          4,
+          168,
+          177
+        ],
+        [
+          32,
+          23,
+          159,
+          184
+        ],
+        [
+          28,
+          54,
+          164,
+          192
+        ]
+      ]
+    },
+    {
+      "state": "failed",
+      "row": 7,
+      "source_frames": 6,
+      "output_frames": 6,
+      "sequence": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "used_cells_non_empty": 6,
+      "unused_cells_transparent": true,
+      "frame_bboxes": [
+        [
+          29,
+          59,
+          163,
+          193
+        ],
+        [
+          32,
+          61,
+          160,
+          195
+        ],
+        [
+          32,
+          63,
+          160,
+          197
+        ],
+        [
+          32,
+          63,
+          159,
+          198
+        ],
+        [
+          32,
+          63,
+          160,
+          197
+        ],
+        [
+          26,
+          61,
+          165,
+          196
+        ]
+      ]
+    },
+    {
+      "state": "sleeping",
+      "row": 8,
+      "source_frames": 6,
+      "output_frames": 6,
+      "sequence": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "used_cells_non_empty": 6,
+      "unused_cells_transparent": true,
+      "frame_bboxes": [
+        [
+          9,
+          84,
+          183,
+          188
+        ],
+        [
+          10,
+          83,
+          184,
+          188
+        ],
+        [
+          9,
+          84,
+          183,
+          188
+        ],
+        [
+          8,
+          87,
+          182,
+          188
+        ],
+        [
+          9,
+          86,
+          183,
+          188
+        ],
+        [
+          10,
+          86,
+          184,
+          188
+        ]
+      ]
+    }
+  ],
+  "notes": [
+    "Source image used a clean connected magenta chroma background and a consistent Agent Pet Neko design.",
+    "Rows with fewer generated poses were completed by reusing same-row neighboring poses with small placement offsets; no new character design was introduced.",
+    "Unused cells after each requested frame count are fully transparent."
+  ]
+}

@@ -19,7 +19,8 @@
       "Bash(python -m pytest apps/backend/tests/unit/agents/test_negotiation_state.py apps/backend/tests/unit/agents/test_registry.py apps/backend/tests/unit/agents/nodes/test_orchestrator.py apps/backend/tests/unit/agents/test_agent_runner.py -q)",
       "Bash(python -m pytest apps/backend/tests/unit/agents/nodes/test_memory_reviewer.py apps/backend/tests/unit/agents/nodes/test_memory.py -q)",
       "Bash(python -m pytest apps/backend/tests/unit/agents/test_agent_runner.py apps/backend/tests/unit/agents/nodes/test_orchestrator.py apps/backend/tests/unit/agents/nodes/test_memory_reviewer.py apps/backend/tests/unit/agents/nodes/test_memory.py -q)",
-      "Bash(python -m pytest apps/backend/tests/unit/agents/nodes/test_wiki_reviewer.py apps/backend/tests/unit/agents/nodes/test_wiki.py -q)"
+      "Bash(python -m pytest apps/backend/tests/unit/agents/nodes/test_wiki_reviewer.py apps/backend/tests/unit/agents/nodes/test_wiki.py -q)",
+      "Bash(python -)"
     ]
   }
 }

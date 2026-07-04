@@ -10,7 +10,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useRef } from "react";
-import type { FormEvent, ReactNode } from "react";
+import type { FormEvent } from "react";
 import { Panel } from "../components/layout";
 import { ChatMessageList } from "../features/chat/ChatMessageList";
 import {
@@ -106,8 +106,6 @@ export default function ChatWindowView({
   onOpenMemory,
   onOpenWiki,
   onOpenReport,
-  onboardingPanel,
-  hasVaultInitialized = false,
   mode = "chat",
   modes = defaultPetInputModes,
   onModeChange = () => undefined,
@@ -125,8 +123,6 @@ export default function ChatWindowView({
   onOpenMemory?: () => void;
   onOpenWiki?: (path?: string) => void;
   onOpenReport?: (path?: string) => void;
-  onboardingPanel?: ReactNode;
-  hasVaultInitialized?: boolean;
   mode?: PetInputMode;
   modes?: PetInputModeOption[];
   onModeChange?: (mode: PetInputMode) => void;
@@ -139,13 +135,6 @@ export default function ChatWindowView({
   const inputRef = useRef<HTMLInputElement>(null);
   const latestMessage = visibleMessages[visibleMessages.length - 1];
   const canSend = connected && !streaming && (input.trim().length > 0 || activeMode.id === "review");
-  const shouldDeferOnboarding = Boolean(onboardingPanel) && (hasVaultInitialized || visibleMessages.length > 0);
-  const deferredOnboarding = shouldDeferOnboarding ? (
-    <details className="chat-onboarding-drawer">
-      <summary>补充首次偏好</summary>
-      {onboardingPanel}
-    </details>
-  ) : null;
 
   useEffect(() => {
     const messageList = messageListRef.current;
@@ -179,10 +168,9 @@ export default function ChatWindowView({
       eyebrow="和我说话"
       title={productCopy.chatPage.title}
       description={productCopy.chatPage.description}
-      activeTab="聊天"
+      activeTab="对话"
     >
       <Panel icon={<MessageSquareText size={18} />} title="和我说说" className="feature-window-panel chat-panel">
-        {shouldDeferOnboarding ? null : onboardingPanel}
         <div className="chat-action-board" role="tablist" aria-label="主要陪伴方式">
           {primaryModes.map((option) => (
             <button
@@ -280,7 +268,6 @@ export default function ChatWindowView({
             <Loader2 className="spin" size={14} /> 正在整理回答...
           </p>
         ) : null}
-        {deferredOnboarding}
       </Panel>
     </FeatureWindowShell>
   );

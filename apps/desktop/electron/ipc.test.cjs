@@ -165,7 +165,7 @@ describe("renderer UI state IPC", () => {
     Module._load = originalModuleLoad;
   });
 
-  it("persists the pet entry hint state through the invoke handler", async () => {
+  it("persists allowed renderer UI state through the invoke handler", async () => {
     const electronMock = createElectronMock();
     const { registerIpcHandlers } = loadIpcWithMocks(electronMock);
     const rendererUiState = new Map();
@@ -186,9 +186,11 @@ describe("renderer UI state IPC", () => {
     expect(setUiStateCall).toBeTruthy();
 
     await setUiStateCall[1]({}, "agent-pet.pet-entry-hint", "completed:v1");
+    await setUiStateCall[1]({}, "agent-pet.control-home-day-records.v1", "{\"2026-07-02\":{\"journal\":\"ok\",\"goals\":[]}}");
 
     expect(rendererUiState.get("agent-pet.pet-entry-hint")).toBe("completed:v1");
-    expect(persistRendererUiState).toHaveBeenCalledTimes(1);
+    expect(rendererUiState.get("agent-pet.control-home-day-records.v1")).toBe("{\"2026-07-02\":{\"journal\":\"ok\",\"goals\":[]}}");
+    expect(persistRendererUiState).toHaveBeenCalledTimes(2);
   });
 });
 

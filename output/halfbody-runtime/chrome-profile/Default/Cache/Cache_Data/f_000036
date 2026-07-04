@@ -1,0 +1,233 @@
+import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/features/settings/GlobalModelCard.tsx");import __vite__cjsImport0_react_jsxDevRuntime from "/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=bc5f1d7c"; const jsxDEV = __vite__cjsImport0_react_jsxDevRuntime["jsxDEV"];
+import * as RefreshRuntime from "/@react-refresh";
+const inWebWorker = typeof WorkerGlobalScope !== "undefined" && self instanceof WorkerGlobalScope;
+let prevRefreshReg;
+let prevRefreshSig;
+if (import.meta.hot && !inWebWorker) {
+  if (!window.$RefreshReg$) {
+    throw new Error(
+      "@vitejs/plugin-react can't detect preamble. Something is wrong."
+    );
+  }
+  prevRefreshReg = window.$RefreshReg$;
+  prevRefreshSig = window.$RefreshSig$;
+  window.$RefreshReg$ = RefreshRuntime.getRefreshReg("E:/agentproject/apps/desktop/src/features/settings/GlobalModelCard.tsx");
+  window.$RefreshSig$ = RefreshRuntime.createSignatureFunctionForTransform;
+}
+import { Bot, Loader2, ShieldCheck } from "/node_modules/.vite/deps/lucide-react.js?v=bc5f1d7c";
+import { isSupportedProviderDraft } from "/src/services/agentModelDrafts.ts";
+import { formatModelTestResult } from "/src/features/settings/settingsFormatters.ts";
+function hasUnsavedGlobalModelDraft(draft) {
+  return draft.provider.trim() !== draft.saved_provider || draft.base_url.trim() !== draft.saved_base_url || draft.model.trim() !== draft.saved_model || Boolean(draft.api_key.trim());
+}
+export function GlobalModelCard({
+  draft,
+  saveStatus,
+  testStatus,
+  testResult,
+  onUpdateDraft,
+  onSave,
+  onTest
+}) {
+  const saving = saveStatus === "loading";
+  const testing = testStatus === "loading";
+  const providerUnsupported = Boolean(draft.provider.trim()) && !isSupportedProviderDraft(draft.provider);
+  const hasUnsavedDraft = hasUnsavedGlobalModelDraft(draft);
+  const statusText = providerUnsupported ? "提供方只支持 openai-compatible。" : hasUnsavedDraft ? "有未保存改动，请先保存后测试。" : testStatus === "success" && testResult ? formatModelTestResult(testResult) : testStatus === "error" && testResult ? formatModelTestResult(testResult) : saveStatus === "success" ? "已保存，可以测试连接。" : saveStatus === "error" ? "保存失败，请检查后重试。" : draft.configured ? "已配置。" : "未配置。";
+  return /* @__PURE__ */ jsxDEV("section", { className: "agent-model-section settings-card", "aria-label": "AI 模型配置", children: [
+    /* @__PURE__ */ jsxDEV("div", { className: "section-heading", children: [
+      /* @__PURE__ */ jsxDEV("strong", { children: "AI 模型" }, void 0, false, {
+        fileName: "E:/agentproject/apps/desktop/src/features/settings/GlobalModelCard.tsx",
+        lineNumber: 78,
+        columnNumber: 9
+      }, this),
+      /* @__PURE__ */ jsxDEV("span", { children: "填写一个 OpenAI 兼容接口，桌宠就能开始对话。" }, void 0, false, {
+        fileName: "E:/agentproject/apps/desktop/src/features/settings/GlobalModelCard.tsx",
+        lineNumber: 79,
+        columnNumber: 9
+      }, this)
+    ] }, void 0, true, {
+      fileName: "E:/agentproject/apps/desktop/src/features/settings/GlobalModelCard.tsx",
+      lineNumber: 77,
+      columnNumber: 7
+    }, this),
+    /* @__PURE__ */ jsxDEV("div", { className: "settings-form-grid", children: [
+      /* @__PURE__ */ jsxDEV("label", { children: [
+        /* @__PURE__ */ jsxDEV("span", { children: "提供方" }, void 0, false, {
+          fileName: "E:/agentproject/apps/desktop/src/features/settings/GlobalModelCard.tsx",
+          lineNumber: 83,
+          columnNumber: 11
+        }, this),
+        /* @__PURE__ */ jsxDEV(
+          "input",
+          {
+            value: draft.provider,
+            onChange: (event) => onUpdateDraft({ provider: event.target.value }),
+            placeholder: "openai-compatible"
+          },
+          void 0,
+          false,
+          {
+            fileName: "E:/agentproject/apps/desktop/src/features/settings/GlobalModelCard.tsx",
+            lineNumber: 84,
+            columnNumber: 11
+          },
+          this
+        )
+      ] }, void 0, true, {
+        fileName: "E:/agentproject/apps/desktop/src/features/settings/GlobalModelCard.tsx",
+        lineNumber: 82,
+        columnNumber: 9
+      }, this),
+      /* @__PURE__ */ jsxDEV("label", { children: [
+        /* @__PURE__ */ jsxDEV("span", { children: "接口地址" }, void 0, false, {
+          fileName: "E:/agentproject/apps/desktop/src/features/settings/GlobalModelCard.tsx",
+          lineNumber: 91,
+          columnNumber: 11
+        }, this),
+        /* @__PURE__ */ jsxDEV("input", { value: draft.base_url, onChange: (event) => onUpdateDraft({ base_url: event.target.value }) }, void 0, false, {
+          fileName: "E:/agentproject/apps/desktop/src/features/settings/GlobalModelCard.tsx",
+          lineNumber: 92,
+          columnNumber: 11
+        }, this)
+      ] }, void 0, true, {
+        fileName: "E:/agentproject/apps/desktop/src/features/settings/GlobalModelCard.tsx",
+        lineNumber: 90,
+        columnNumber: 9
+      }, this),
+      /* @__PURE__ */ jsxDEV("label", { children: [
+        /* @__PURE__ */ jsxDEV("span", { children: "模型" }, void 0, false, {
+          fileName: "E:/agentproject/apps/desktop/src/features/settings/GlobalModelCard.tsx",
+          lineNumber: 95,
+          columnNumber: 11
+        }, this),
+        /* @__PURE__ */ jsxDEV("input", { value: draft.model, onChange: (event) => onUpdateDraft({ model: event.target.value }) }, void 0, false, {
+          fileName: "E:/agentproject/apps/desktop/src/features/settings/GlobalModelCard.tsx",
+          lineNumber: 96,
+          columnNumber: 11
+        }, this)
+      ] }, void 0, true, {
+        fileName: "E:/agentproject/apps/desktop/src/features/settings/GlobalModelCard.tsx",
+        lineNumber: 94,
+        columnNumber: 9
+      }, this),
+      /* @__PURE__ */ jsxDEV("label", { children: [
+        /* @__PURE__ */ jsxDEV("span", { children: "密钥" }, void 0, false, {
+          fileName: "E:/agentproject/apps/desktop/src/features/settings/GlobalModelCard.tsx",
+          lineNumber: 99,
+          columnNumber: 11
+        }, this),
+        /* @__PURE__ */ jsxDEV(
+          "input",
+          {
+            value: draft.api_key,
+            onChange: (event) => onUpdateDraft({ api_key: event.target.value }),
+            placeholder: "密钥",
+            type: "password"
+          },
+          void 0,
+          false,
+          {
+            fileName: "E:/agentproject/apps/desktop/src/features/settings/GlobalModelCard.tsx",
+            lineNumber: 100,
+            columnNumber: 11
+          },
+          this
+        )
+      ] }, void 0, true, {
+        fileName: "E:/agentproject/apps/desktop/src/features/settings/GlobalModelCard.tsx",
+        lineNumber: 98,
+        columnNumber: 9
+      }, this)
+    ] }, void 0, true, {
+      fileName: "E:/agentproject/apps/desktop/src/features/settings/GlobalModelCard.tsx",
+      lineNumber: 81,
+      columnNumber: 7
+    }, this),
+    /* @__PURE__ */ jsxDEV("div", { className: "settings-action-row", children: [
+      /* @__PURE__ */ jsxDEV("div", { className: "button-row", children: [
+        /* @__PURE__ */ jsxDEV("button", { type: "button", onClick: onSave, disabled: saving, children: [
+          saving ? /* @__PURE__ */ jsxDEV(Loader2, { className: "spin", size: 16 }, void 0, false, {
+            fileName: "E:/agentproject/apps/desktop/src/features/settings/GlobalModelCard.tsx",
+            lineNumber: 111,
+            columnNumber: 23
+          }, this) : /* @__PURE__ */ jsxDEV(ShieldCheck, { size: 16 }, void 0, false, {
+            fileName: "E:/agentproject/apps/desktop/src/features/settings/GlobalModelCard.tsx",
+            lineNumber: 111,
+            columnNumber: 64
+          }, this),
+          "保存"
+        ] }, void 0, true, {
+          fileName: "E:/agentproject/apps/desktop/src/features/settings/GlobalModelCard.tsx",
+          lineNumber: 110,
+          columnNumber: 11
+        }, this),
+        /* @__PURE__ */ jsxDEV(
+          "button",
+          {
+            type: "button",
+            className: "secondary",
+            onClick: onTest,
+            disabled: testing || hasUnsavedDraft || providerUnsupported,
+            children: [
+              testing ? /* @__PURE__ */ jsxDEV(Loader2, { className: "spin", size: 16 }, void 0, false, {
+                fileName: "E:/agentproject/apps/desktop/src/features/settings/GlobalModelCard.tsx",
+                lineNumber: 120,
+                columnNumber: 24
+              }, this) : /* @__PURE__ */ jsxDEV(Bot, { size: 16 }, void 0, false, {
+                fileName: "E:/agentproject/apps/desktop/src/features/settings/GlobalModelCard.tsx",
+                lineNumber: 120,
+                columnNumber: 65
+              }, this),
+              "测试连接"
+            ]
+          },
+          void 0,
+          true,
+          {
+            fileName: "E:/agentproject/apps/desktop/src/features/settings/GlobalModelCard.tsx",
+            lineNumber: 114,
+            columnNumber: 11
+          },
+          this
+        )
+      ] }, void 0, true, {
+        fileName: "E:/agentproject/apps/desktop/src/features/settings/GlobalModelCard.tsx",
+        lineNumber: 109,
+        columnNumber: 9
+      }, this),
+      /* @__PURE__ */ jsxDEV("p", { className: `field-note ${saveStatus === "error" || testStatus === "error" || providerUnsupported ? "error" : ""}`, children: statusText }, void 0, false, {
+        fileName: "E:/agentproject/apps/desktop/src/features/settings/GlobalModelCard.tsx",
+        lineNumber: 124,
+        columnNumber: 9
+      }, this)
+    ] }, void 0, true, {
+      fileName: "E:/agentproject/apps/desktop/src/features/settings/GlobalModelCard.tsx",
+      lineNumber: 108,
+      columnNumber: 7
+    }, this)
+  ] }, void 0, true, {
+    fileName: "E:/agentproject/apps/desktop/src/features/settings/GlobalModelCard.tsx",
+    lineNumber: 76,
+    columnNumber: 5
+  }, this);
+}
+_c = GlobalModelCard;
+var _c;
+$RefreshReg$(_c, "GlobalModelCard");
+if (import.meta.hot && !inWebWorker) {
+  window.$RefreshReg$ = prevRefreshReg;
+  window.$RefreshSig$ = prevRefreshSig;
+}
+if (import.meta.hot && !inWebWorker) {
+  RefreshRuntime.__hmr_import(import.meta.url).then((currentExports) => {
+    RefreshRuntime.registerExportsForReactRefresh("E:/agentproject/apps/desktop/src/features/settings/GlobalModelCard.tsx", currentExports);
+    import.meta.hot.accept((nextExports) => {
+      if (!nextExports) return;
+      const invalidateMessage = RefreshRuntime.validateRefreshBoundaryAndEnqueueUpdate("E:/agentproject/apps/desktop/src/features/settings/GlobalModelCard.tsx", currentExports, nextExports);
+      if (invalidateMessage) import.meta.hot.invalidate(invalidateMessage);
+    });
+  });
+}
+
+//# sourceMappingURL=data:application/json;base64,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QTtBQUFBO0FBQUEsYUFjQTtBQUFBLE1BQ0EsdUJBQUMsT0FBRSxXQUFXLGNBQWNQLGVBQWUsV0FBV0MsZUFBZSxXQUFXTyxzQkFBc0IsVUFBVSxFQUFFLElBQy9HRSx3QkFESDtBQUFBO0FBQUE7QUFBQTtBQUFBLGFBRUE7QUFBQSxTQWxCRjtBQUFBO0FBQUE7QUFBQTtBQUFBLFdBbUJBO0FBQUEsT0FuREY7QUFBQTtBQUFBO0FBQUE7QUFBQSxTQW9EQTtBQUVKO0FBQUNLLEtBckZlaEI7QUFBZSxJQUFBZ0I7QUFBQSxhQUFBQSxJQUFBIiwibmFtZXMiOlsiQm90IiwiTG9hZGVyMiIsIlNoaWVsZENoZWNrIiwiaXNTdXBwb3J0ZWRQcm92aWRlckRyYWZ0IiwiZm9ybWF0TW9kZWxUZXN0UmVzdWx0IiwiaGFzVW5zYXZlZEdsb2JhbE1vZGVsRHJhZnQiLCJkcmFmdCIsInByb3ZpZGVyIiwidHJpbSIsInNhdmVkX3Byb3ZpZGVyIiwiYmFzZV91cmwiLCJzYXZlZF9iYXNlX3VybCIsIm1vZGVsIiwic2F2ZWRfbW9kZWwiLCJCb29sZWFuIiwiYXBpX2tleSIsIkdsb2JhbE1vZGVsQ2FyZCIsInNhdmVTdGF0dXMiLCJ0ZXN0U3RhdHVzIiwidGVzdFJlc3VsdCIsIm9uVXBkYXRlRHJhZnQiLCJvblNhdmUiLCJvblRlc3QiLCJzYXZpbmciLCJ0ZXN0aW5nIiwicHJvdmlkZXJVbnN1cHBvcnRlZCIsImhhc1Vuc2F2ZWREcmFmdCIsInN0YXR1c1RleHQiLCJjb25maWd1cmVkIiwiZXZlbnQiLCJ0YXJnZXQiLCJ2YWx1ZSIsIl9jIl0sImlnbm9yZUxpc3QiOltdLCJzb3VyY2VzIjpbIkdsb2JhbE1vZGVsQ2FyZC50c3giXSwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0IHsgQm90LCBMb2FkZXIyLCBTaGllbGRDaGVjayB9IGZyb20gXCJsdWNpZGUtcmVhY3RcIjtcclxuaW1wb3J0IHR5cGUgeyBNb2RlbFRlc3RSZXNwb25zZSB9IGZyb20gXCIuLi8uLi90eXBlc1wiO1xyXG5pbXBvcnQgeyBpc1N1cHBvcnRlZFByb3ZpZGVyRHJhZnQgfSBmcm9tIFwiLi4vLi4vc2VydmljZXMvYWdlbnRNb2RlbERyYWZ0c1wiO1xyXG5pbXBvcnQgeyBmb3JtYXRNb2RlbFRlc3RSZXN1bHQgfSBmcm9tIFwiLi9zZXR0aW5nc0Zvcm1hdHRlcnNcIjtcclxuaW1wb3J0IHR5cGUgeyBBc3luY1N0YXR1cywgR2xvYmFsTW9kZWxEcmFmdCB9IGZyb20gXCIuL3NldHRpbmdzVHlwZXNcIjtcclxuXHJcbnR5cGUgR2xvYmFsTW9kZWxDYXJkUHJvcHMgPSB7XHJcbiAgZHJhZnQ6IEdsb2JhbE1vZGVsRHJhZnQ7XHJcbiAgc2F2ZVN0YXR1czogQXN5bmNTdGF0dXM7XHJcbiAgdGVzdFN0YXR1czogQXN5bmNTdGF0dXM7XHJcbiAgdGVzdFJlc3VsdD86IE1vZGVsVGVzdFJlc3BvbnNlO1xyXG4gIG9uVXBkYXRlRHJhZnQ6IChwYXRjaDogUGFydGlhbDxHbG9iYWxNb2RlbERyYWZ0PikgPT4gdm9pZDtcclxuICBvblNhdmU6ICgpID0+IHZvaWQ7XHJcbiAgb25UZXN0OiAoKSA9PiB2b2lkO1xyXG59O1xyXG5cclxuZnVuY3Rpb24gaGFzVW5zYXZlZEdsb2JhbE1vZGVsRHJhZnQoZHJhZnQ6IEdsb2JhbE1vZGVsRHJhZnQpOiBib29sZWFuIHtcclxuICByZXR1cm4gKFxyXG4gICAgZHJhZnQucHJvdmlkZXIudHJpbSgpICE9PSBkcmFmdC5zYXZlZF9wcm92aWRlciB8fFxyXG4gICAgZHJhZnQuYmFzZV91cmwudHJpbSgpICE9PSBkcmFmdC5zYXZlZF9iYXNlX3VybCB8fFxyXG4gICAgZHJhZnQubW9kZWwudHJpbSgpICE9PSBkcmFmdC5zYXZlZF9tb2RlbCB8fFxyXG4gICAgQm9vbGVhbihkcmFmdC5hcGlfa2V5LnRyaW0oKSlcclxuICApO1xyXG59XHJcblxyXG5leHBvcnQgZnVuY3Rpb24gR2xvYmFsTW9kZWxDYXJkKHtcclxuICBkcmFmdCxcclxuICBzYXZlU3RhdHVzLFxyXG4gIHRlc3RTdGF0dXMsXHJcbiAgdGVzdFJlc3VsdCxcclxuICBvblVwZGF0ZURyYWZ0LFxyXG4gIG9uU2F2ZSxcclxuICBvblRlc3QsXHJcbn06IEdsb2JhbE1vZGVsQ2FyZFByb3BzKSB7XHJcbiAgY29uc3Qgc2F2aW5nID0gc2F2ZVN0YXR1cyA9PT0gXCJsb2FkaW5nXCI7XHJcbiAgY29uc3QgdGVzdGluZyA9IHRlc3RTdGF0dXMgPT09IFwibG9hZGluZ1wiO1xyXG4gIGNvbnN0IHByb3ZpZGVyVW5zdXBwb3J0ZWQgPSBCb29sZWFuKGRyYWZ0LnByb3ZpZGVyLnRyaW0oKSkgJiYgIWlzU3VwcG9ydGVkUHJvdmlkZXJEcmFmdChkcmFmdC5wcm92aWRlcik7XHJcbiAgY29uc3QgaGFzVW5zYXZlZERyYWZ0ID0gaGFzVW5zYXZlZEdsb2JhbE1vZGVsRHJhZnQoZHJhZnQpO1xyXG5cclxuICBjb25zdCBzdGF0dXNUZXh0ID0gcHJvdmlkZXJVbnN1cHBvcnRlZFxyXG4gICAgPyBcIuaPkOS+m+aWueWPquaUr+aMgSBvcGVuYWktY29tcGF0aWJsZeOAglwiXHJcbiAgICA6IGhhc1Vuc2F2ZWREcmFmdFxyXG4gICAgICA/IFwi5pyJ5pyq5L+d5a2Y5pS55Yqo77yM6K+35YWI5L+d5a2Y5ZCO5rWL6K+V44CCXCJcclxuICAgICAgOiB0ZXN0U3RhdHVzID09PSBcInN1Y2Nlc3NcIiAmJiB0ZXN0UmVzdWx0XHJcbiAgICAgICAgPyBmb3JtYXRNb2RlbFRlc3RSZXN1bHQodGVzdFJlc3VsdClcclxuICAgICAgICA6IHRlc3RTdGF0dXMgPT09IFwiZXJyb3JcIiAmJiB0ZXN0UmVzdWx0XHJcbiAgICAgICAgICA/IGZvcm1hdE1vZGVsVGVzdFJlc3VsdCh0ZXN0UmVzdWx0KVxyXG4gICAgICAgICAgOiBzYXZlU3RhdHVzID09PSBcInN1Y2Nlc3NcIlxyXG4gICAgICAgICAgICA/IFwi5bey5L+d5a2Y77yM5Y+v5Lul5rWL6K+V6L+e5o6l44CCXCJcclxuICAgICAgICAgICAgOiBzYXZlU3RhdHVzID09PSBcImVycm9yXCJcclxuICAgICAgICAgICAgICA/IFwi5L+d5a2Y5aSx6LSl77yM6K+35qOA5p+l5ZCO6YeN6K+V44CCXCJcclxuICAgICAgICAgICAgICA6IGRyYWZ0LmNvbmZpZ3VyZWRcclxuICAgICAgICAgICAgICAgID8gXCLlt7LphY3nva7jgIJcIlxyXG4gICAgICAgICAgICAgICAgOiBcIuacqumFjee9ruOAglwiO1xyXG5cclxuICByZXR1cm4gKFxyXG4gICAgPHNlY3Rpb24gY2xhc3NOYW1lPVwiYWdlbnQtbW9kZWwtc2VjdGlvbiBzZXR0aW5ncy1jYXJkXCIgYXJpYS1sYWJlbD1cIkFJIOaooeWei+mFjee9rlwiPlxyXG4gICAgICA8ZGl2IGNsYXNzTmFtZT1cInNlY3Rpb24taGVhZGluZ1wiPlxyXG4gICAgICAgIDxzdHJvbmc+QUkg5qih5Z6LPC9zdHJvbmc+XHJcbiAgICAgICAgPHNwYW4+5aGr5YaZ5LiA5LiqIE9wZW5BSSDlhbzlrrnmjqXlj6PvvIzmoYzlrqDlsLHog73lvIDlp4vlr7nor53jgII8L3NwYW4+XHJcbiAgICAgIDwvZGl2PlxyXG4gICAgICA8ZGl2IGNsYXNzTmFtZT1cInNldHRpbmdzLWZvcm0tZ3JpZFwiPlxyXG4gICAgICAgIDxsYWJlbD5cclxuICAgICAgICAgIDxzcGFuPuaPkOS+m+aWuTwvc3Bhbj5cclxuICAgICAgICAgIDxpbnB1dFxyXG4gICAgICAgICAgICB2YWx1ZT17ZHJhZnQucHJvdmlkZXJ9XHJcbiAgICAgICAgICAgIG9uQ2hhbmdlPXsoZXZlbnQpID0+IG9uVXBkYXRlRHJhZnQoeyBwcm92aWRlcjogZXZlbnQudGFyZ2V0LnZhbHVlIH0pfVxyXG4gICAgICAgICAgICBwbGFjZWhvbGRlcj1cIm9wZW5haS1jb21wYXRpYmxlXCJcclxuICAgICAgICAgIC8+XHJcbiAgICAgICAgPC9sYWJlbD5cclxuICAgICAgICA8bGFiZWw+XHJcbiAgICAgICAgICA8c3Bhbj7mjqXlj6PlnLDlnYA8L3NwYW4+XHJcbiAgICAgICAgICA8aW5wdXQgdmFsdWU9e2RyYWZ0LmJhc2VfdXJsfSBvbkNoYW5nZT17KGV2ZW50KSA9PiBvblVwZGF0ZURyYWZ0KHsgYmFzZV91cmw6IGV2ZW50LnRhcmdldC52YWx1ZSB9KX0gLz5cclxuICAgICAgICA8L2xhYmVsPlxyXG4gICAgICAgIDxsYWJlbD5cclxuICAgICAgICAgIDxzcGFuPuaooeWeizwvc3Bhbj5cclxuICAgICAgICAgIDxpbnB1dCB2YWx1ZT17ZHJhZnQubW9kZWx9IG9uQ2hhbmdlPXsoZXZlbnQpID0+IG9uVXBkYXRlRHJhZnQoeyBtb2RlbDogZXZlbnQudGFyZ2V0LnZhbHVlIH0pfSAvPlxyXG4gICAgICAgIDwvbGFiZWw+XHJcbiAgICAgICAgPGxhYmVsPlxyXG4gICAgICAgICAgPHNwYW4+5a+G6ZKlPC9zcGFuPlxyXG4gICAgICAgICAgPGlucHV0XHJcbiAgICAgICAgICAgIHZhbHVlPXtkcmFmdC5hcGlfa2V5fVxyXG4gICAgICAgICAgICBvbkNoYW5nZT17KGV2ZW50KSA9PiBvblVwZGF0ZURyYWZ0KHsgYXBpX2tleTogZXZlbnQudGFyZ2V0LnZhbHVlIH0pfVxyXG4gICAgICAgICAgICBwbGFjZWhvbGRlcj1cIuWvhumSpVwiXHJcbiAgICAgICAgICAgIHR5cGU9XCJwYXNzd29yZFwiXHJcbiAgICAgICAgICAvPlxyXG4gICAgICAgIDwvbGFiZWw+XHJcbiAgICAgIDwvZGl2PlxyXG4gICAgICA8ZGl2IGNsYXNzTmFtZT1cInNldHRpbmdzLWFjdGlvbi1yb3dcIj5cclxuICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cImJ1dHRvbi1yb3dcIj5cclxuICAgICAgICAgIDxidXR0b24gdHlwZT1cImJ1dHRvblwiIG9uQ2xpY2s9e29uU2F2ZX0gZGlzYWJsZWQ9e3NhdmluZ30+XHJcbiAgICAgICAgICAgIHtzYXZpbmcgPyA8TG9hZGVyMiBjbGFzc05hbWU9XCJzcGluXCIgc2l6ZT17MTZ9IC8+IDogPFNoaWVsZENoZWNrIHNpemU9ezE2fSAvPn1cclxuICAgICAgICAgICAg5L+d5a2YXHJcbiAgICAgICAgICA8L2J1dHRvbj5cclxuICAgICAgICAgIDxidXR0b25cclxuICAgICAgICAgICAgdHlwZT1cImJ1dHRvblwiXHJcbiAgICAgICAgICAgIGNsYXNzTmFtZT1cInNlY29uZGFyeVwiXHJcbiAgICAgICAgICAgIG9uQ2xpY2s9e29uVGVzdH1cclxuICAgICAgICAgICAgZGlzYWJsZWQ9e3Rlc3RpbmcgfHwgaGFzVW5zYXZlZERyYWZ0IHx8IHByb3ZpZGVyVW5zdXBwb3J0ZWR9XHJcbiAgICAgICAgICA+XHJcbiAgICAgICAgICAgIHt0ZXN0aW5nID8gPExvYWRlcjIgY2xhc3NOYW1lPVwic3BpblwiIHNpemU9ezE2fSAvPiA6IDxCb3Qgc2l6ZT17MTZ9IC8+fVxyXG4gICAgICAgICAgICDmtYvor5Xov57mjqVcclxuICAgICAgICAgIDwvYnV0dG9uPlxyXG4gICAgICAgIDwvZGl2PlxyXG4gICAgICAgIDxwIGNsYXNzTmFtZT17YGZpZWxkLW5vdGUgJHtzYXZlU3RhdHVzID09PSBcImVycm9yXCIgfHwgdGVzdFN0YXR1cyA9PT0gXCJlcnJvclwiIHx8IHByb3ZpZGVyVW5zdXBwb3J0ZWQgPyBcImVycm9yXCIgOiBcIlwifWB9PlxyXG4gICAgICAgICAge3N0YXR1c1RleHR9XHJcbiAgICAgICAgPC9wPlxyXG4gICAgICA8L2Rpdj5cclxuICAgIDwvc2VjdGlvbj5cclxuICApO1xyXG59XHJcbiJdLCJmaWxlIjoiRTovYWdlbnRwcm9qZWN0L2FwcHMvZGVza3RvcC9zcmMvZmVhdHVyZXMvc2V0dGluZ3MvR2xvYmFsTW9kZWxDYXJkLnRzeCJ9

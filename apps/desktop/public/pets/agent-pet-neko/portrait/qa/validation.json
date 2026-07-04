@@ -1,0 +1,22 @@
+{
+  "ok": true,
+  "errors": [],
+  "outputDir": "E:\\agentproject\\apps\\desktop\\public\\pets\\agent-pet-neko\\portrait",
+  "stateFrameCount": 27,
+  "visemeCount": 7,
+  "mouthRect": [
+    222,
+    256,
+    290,
+    292
+  ],
+  "visemeOutsideMouthDiffBboxes": {
+    "closed": null,
+    "AI": null,
+    "E": null,
+    "O": null,
+    "MBP": null,
+    "FV": null,
+    "smile": null
+  }
+}

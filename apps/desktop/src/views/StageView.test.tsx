@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { createRef } from "react";
+import { createRef, forwardRef } from "react";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -45,6 +45,22 @@ vi.mock("../components/Live2DStage", () => ({
       data-action-trigger={actionTriggerKey || ""}
     />
   ),
+}));
+
+vi.mock("../features/halfbody/HalfbodyPetPortrait", () => ({
+  HalfbodyPetPortrait: forwardRef<HTMLElement, { active?: boolean }>(function MockHalfbodyPetPortrait(
+    { active = true },
+    ref,
+  ) {
+    return (
+      <section
+        ref={ref}
+        aria-label="mock halfbody portrait"
+        className="halfbody-pet-portrait"
+        data-active={active ? "true" : "false"}
+      />
+    );
+  }),
 }));
 
 vi.mock("./BottomNav", () => ({
@@ -103,6 +119,7 @@ function renderStageView(
     api?: object;
     live2dActionKeyOverride?: string | null;
     live2dActionTriggerKey?: string | null;
+    portraitRenderer?: "halfbody" | "live2d";
   } = {},
 ) {
   const onSendChat = vi.fn();
@@ -123,6 +140,7 @@ function renderStageView(
       ttsSpeaking={options.ttsSpeaking}
       live2dActionKeyOverride={options.live2dActionKeyOverride}
       live2dActionTriggerKey={options.live2dActionTriggerKey}
+      portraitRenderer={options.portraitRenderer}
       active={options.active}
       api={options.api as never}
     />,
@@ -283,11 +301,43 @@ describe("StageView", () => {
     expect(screen.getByText("分页舞台回复")).toBeInTheDocument();
   });
 
+  it("renders the halfbody portrait in the stage center by default", () => {
+    const { container } = renderStageView({
+      visible: false,
+      title: "",
+      message: "",
+      tone: "thinking",
+      phase: "idle",
+    });
+
+    const petAnchor = container.querySelector(".stage-pet-anchor");
+    const halfbodyPortrait = screen.getByLabelText("mock halfbody portrait");
+
+    expect(halfbodyPortrait).toHaveClass("halfbody-pet-portrait");
+    expect(screen.queryByLabelText("mock live2d stage")).not.toBeInTheDocument();
+    expect(petAnchor).toContainElement(halfbodyPortrait);
+  });
+
+  it("keeps the Live2D stage available as an explicit portrait fallback", () => {
+    renderStageView({
+      visible: false,
+      title: "",
+      message: "",
+      tone: "thinking",
+      phase: "idle",
+    }, { portraitRenderer: "live2d", ttsSpeaking: true });
+
+    expect(screen.getByLabelText("mock live2d stage")).toHaveAttribute("data-speaking", "true");
+    expect(screen.queryByLabelText("mock halfbody portrait")).not.toBeInTheDocument();
+  });
+
   it("keeps the stage bubble layer above side cards with a safe width", () => {
     expect(styles).toContain("--stage-bubble-safe-max");
     expect(styles).toMatch(/\.stage-live2d-zone\s*\{[\s\S]*?z-index:\s*32;/);
     expect(styles).toMatch(/\.stage-command-panel,\s*\.stage-outcome-panel\s*\{[\s\S]*?z-index:\s*10;/);
     expect(styles).toMatch(/\.stage-pet-anchor \.stage-agent-bubble\.pet-agent-bubble\s*\{[\s\S]*?max-width:\s*max\(212px, var\(--stage-bubble-safe-max\)\);/);
+    expect(styles).toMatch(/\.stage-pet-anchor \.halfbody-pet-portrait\s*\{[\s\S]*?transform:\s*translateX\(var\(--stage-live2d-visual-offset-x\)\);/);
+    expect(styles).toMatch(/@keyframes halfbody-pet-breathe/);
   });
 
   it("does not render a manual TTS stop control in the stage footer", () => {
@@ -297,7 +347,7 @@ describe("StageView", () => {
       message: "",
       tone: "thinking",
       phase: "idle",
-    }, { ttsSpeaking: true });
+    }, { portraitRenderer: "live2d", ttsSpeaking: true });
 
     expect(screen.queryByRole("button", { name: "停止朗读" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "语音未播放" })).not.toBeInTheDocument();
@@ -310,7 +360,7 @@ describe("StageView", () => {
       message: "",
       tone: "thinking",
       phase: "idle",
-    }, { ttsSpeaking: true });
+    }, { portraitRenderer: "live2d", ttsSpeaking: true });
 
     expect(screen.getByLabelText("mock live2d stage")).toHaveAttribute("data-speaking", "true");
   });
@@ -322,7 +372,11 @@ describe("StageView", () => {
       message: "",
       tone: "thinking",
       phase: "idle",
-    }, { live2dActionKeyOverride: "emotion_comfort", live2dActionTriggerKey: "assistant-1:completed" });
+    }, {
+      portraitRenderer: "live2d",
+      live2dActionKeyOverride: "emotion_comfort",
+      live2dActionTriggerKey: "assistant-1:completed",
+    });
 
     expect(screen.getByLabelText("mock live2d stage")).toHaveAttribute("data-action-key", "emotion_comfort");
     expect(screen.getByLabelText("mock live2d stage")).toHaveAttribute("data-action-trigger", "assistant-1:completed");
@@ -335,7 +389,7 @@ describe("StageView", () => {
       message: "",
       tone: "thinking",
       phase: "idle",
-    }, { ttsSpeaking: false });
+    }, { portraitRenderer: "live2d", ttsSpeaking: false });
 
     expect(screen.getByLabelText("mock live2d stage")).toHaveAttribute("data-speaking", "false");
   });
@@ -347,7 +401,7 @@ describe("StageView", () => {
       message: "",
       tone: "thinking",
       phase: "idle",
-    }, { active: false });
+    }, { portraitRenderer: "live2d", active: false });
 
     expect(screen.getByLabelText("mock live2d stage")).toHaveAttribute("data-active", "false");
   });

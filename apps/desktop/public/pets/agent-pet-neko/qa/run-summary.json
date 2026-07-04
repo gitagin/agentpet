@@ -1,0 +1,10 @@
+{
+  "ok": true,
+  "package": "E:\\agentproject\\apps\\desktop\\public\\pets\\agent-pet-neko",
+  "spritesheet": "E:\\agentproject\\apps\\desktop\\public\\pets\\agent-pet-neko\\spritesheet.webp",
+  "spritesheetPng": "E:\\agentproject\\apps\\desktop\\public\\pets\\agent-pet-neko\\spritesheet.png",
+  "petJson": "E:\\agentproject\\apps\\desktop\\public\\pets\\agent-pet-neko\\pet.json",
+  "contactSheet": "E:\\agentproject\\apps\\desktop\\public\\pets\\agent-pet-neko\\qa\\contact-sheet.png",
+  "previews": "E:\\agentproject\\apps\\desktop\\public\\pets\\agent-pet-neko\\qa\\previews",
+  "sourceImagegen": "E:\\agentproject\\apps\\desktop\\public\\pets\\agent-pet-neko\\qa\\source-imagegen.png"
+}

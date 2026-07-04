@@ -632,7 +632,7 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
       focusControlTarget(targetId);
     });
 
-    loadAppWindow(controlWindow, "control");
+    loadAppWindow(controlWindow, "stage");
     return controlWindow;
   }
 

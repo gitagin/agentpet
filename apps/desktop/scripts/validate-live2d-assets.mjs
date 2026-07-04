@@ -364,6 +364,80 @@ function validateModelReferences(scope, modelPath) {
   manifests.push(buildManifestSummary(scope, modelPath, modelJson, references, expressions, motionEntries));
 }
 
+function resolveCatalogReference(scope, assetRoot, model, fieldName, fileName) {
+  if (!isNonEmptyString(fileName)) {
+    record(scope, `models.json ${model.id || "未知模型"} ${fieldName} 引用格式正确`, false, `实际为 ${JSON.stringify(fileName)}`);
+    return null;
+  }
+
+  if (!isNonEmptyString(model.directory)) {
+    record(scope, `models.json ${model.id || "未知模型"} directory 引用格式正确`, false, `实际为 ${JSON.stringify(model.directory)}`);
+    return null;
+  }
+
+  const normalizedDirectory = model.directory.trim().replaceAll("\\", "/").replace(/^\/+/, "");
+  const modelDirectory = path.resolve(desktopRoot, scope, normalizedDirectory);
+  if (!modelDirectory.startsWith(assetRoot)) {
+    record(scope, `models.json ${model.id || "未知模型"} directory 保持在 live2d 目录内`, false, toDisplayPath(modelDirectory));
+    return null;
+  }
+
+  return path.resolve(modelDirectory, fileName);
+}
+
+function validateModelCatalog(scope, assetRoot) {
+  const catalogPath = path.join(assetRoot, "models.json");
+  record(scope, "models.json 存在且非空", fileExistsAndNotEmpty(catalogPath), toDisplayPath(catalogPath));
+  if (!fs.existsSync(catalogPath)) {
+    return;
+  }
+
+  let catalog = null;
+  try {
+    catalog = readJson(catalogPath);
+    record(scope, "models.json 可解析", true, toDisplayPath(catalogPath));
+  } catch (error) {
+    record(scope, "models.json 可解析", false, `${toDisplayPath(catalogPath)}: ${error.message}`);
+    return;
+  }
+
+  const models = Array.isArray(catalog.models) ? catalog.models : [];
+  record(scope, "models.json models 结构正确", models.length > 0, `models=${models.length}`);
+
+  for (const model of models) {
+    const modelId = isNonEmptyString(model?.id) ? model.id : "未知模型";
+    const modelShapeValid =
+      isPlainObject(model) &&
+      isNonEmptyString(model.id) &&
+      isNonEmptyString(model.label) &&
+      isNonEmptyString(model.directory) &&
+      isNonEmptyString(model.model);
+    record(scope, `models.json ${modelId} 条目结构正确`, modelShapeValid, JSON.stringify({ id: model?.id, directory: model?.directory, model: model?.model }));
+    if (!modelShapeValid) {
+      continue;
+    }
+
+    const manifestPath = resolveCatalogReference(scope, assetRoot, model, "model", model.model);
+    if (model.previewOnly === true) {
+      record(scope, `models.json ${model.id} previewOnly manifest 可缺省`, true, manifestPath ? toDisplayPath(manifestPath) : model.model);
+    } else {
+      record(scope, `models.json ${model.id} manifest 存在且非空`, Boolean(manifestPath) && fileExistsAndNotEmpty(manifestPath), manifestPath ? toDisplayPath(manifestPath) : model.model);
+    }
+
+    for (const [fieldName, fileName] of [
+      ["icon", model.icon],
+      ["actions", model.actions],
+      ["design", model.design],
+    ]) {
+      if (!isNonEmptyString(fileName)) {
+        continue;
+      }
+      const referencePath = resolveCatalogReference(scope, assetRoot, model, fieldName, fileName);
+      record(scope, `models.json ${model.id} ${fieldName} 存在且非空`, Boolean(referencePath) && fileExistsAndNotEmpty(referencePath), referencePath ? toDisplayPath(referencePath) : fileName);
+    }
+  }
+}
+
 function validateTarget(target) {
   const assetRoot = path.join(desktopRoot, target, "live2d");
   const modelPath = path.join(desktopRoot, target, options.model);
@@ -384,6 +458,10 @@ function validateTarget(target) {
   );
 
   record(target, "参考 Cubism 模型存在且非空", fileExistsAndNotEmpty(modelPath), toDisplayPath(modelPath));
+
+  if (fs.existsSync(assetRoot)) {
+    validateModelCatalog(target, assetRoot);
+  }
 
   if (fs.existsSync(modelPath)) {
     validateModelReferences(target, modelPath);

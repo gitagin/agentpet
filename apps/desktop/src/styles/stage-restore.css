@@ -325,6 +325,56 @@
   transform: translateX(var(--stage-live2d-visual-offset-x));
 }
 
+.stage-pet-anchor .halfbody-pet-portrait {
+  position: relative;
+  width: min(100%, 780px);
+  height: min(100%, 560px);
+  margin: 0;
+  pointer-events: none;
+  transform: translateX(var(--stage-live2d-visual-offset-x));
+}
+
+.halfbody-pet-portrait-frame,
+.halfbody-pet-portrait-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.halfbody-pet-portrait-frame {
+  transform-origin: 50% 58%;
+}
+
+.halfbody-pet-portrait-frame.is-breathing {
+  animation: halfbody-pet-breathe var(--halfbody-breathe-duration, 3200ms) ease-in-out infinite alternate;
+}
+
+.halfbody-pet-portrait-layer {
+  display: block;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.halfbody-pet-portrait-overlay {
+  z-index: 2;
+}
+
+.halfbody-pet-portrait-viseme {
+  z-index: 3;
+}
+
+@keyframes halfbody-pet-breathe {
+  from {
+    transform: translateY(var(--halfbody-breathe-y-from, 0px)) scale(var(--halfbody-breathe-scale-from, 1));
+  }
+
+  to {
+    transform: translateY(var(--halfbody-breathe-y-to, -2px)) scale(var(--halfbody-breathe-scale-to, 1.006));
+  }
+}
+
 .stage-pet-anchor .stage-agent-bubble.pet-agent-bubble {
   top: clamp(48px, 8vh, 72px);
   left: calc(50% + var(--stage-live2d-visual-offset-x) + clamp(44px, 7vw, 82px));
@@ -553,4 +603,3 @@
     max-width: var(--stage-bubble-safe-max);
   }
 }
-

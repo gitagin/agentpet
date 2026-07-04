@@ -1,0 +1,335 @@
+import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/features/memory/AgentActionActivityCard.tsx");import __vite__cjsImport0_react_jsxDevRuntime from "/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=bc5f1d7c"; const Fragment = __vite__cjsImport0_react_jsxDevRuntime["Fragment"]; const jsxDEV = __vite__cjsImport0_react_jsxDevRuntime["jsxDEV"];
+import * as RefreshRuntime from "/@react-refresh";
+const inWebWorker = typeof WorkerGlobalScope !== "undefined" && self instanceof WorkerGlobalScope;
+let prevRefreshReg;
+let prevRefreshSig;
+if (import.meta.hot && !inWebWorker) {
+  if (!window.$RefreshReg$) {
+    throw new Error(
+      "@vitejs/plugin-react can't detect preamble. Something is wrong."
+    );
+  }
+  prevRefreshReg = window.$RefreshReg$;
+  prevRefreshSig = window.$RefreshSig$;
+  window.$RefreshReg$ = RefreshRuntime.getRefreshReg("E:/agentproject/apps/desktop/src/features/memory/AgentActionActivityCard.tsx");
+  window.$RefreshSig$ = RefreshRuntime.createSignatureFunctionForTransform;
+}
+import { ExternalLink, FolderSearch, Loader2, RotateCcw } from "/node_modules/.vite/deps/lucide-react.js?v=bc5f1d7c";
+import {
+  canRevertAgentAction,
+  getAgentActionDisplayFields,
+  isAttentionAgentAction
+} from "/src/services/agentActivity.ts";
+function isSkippedAction(action) {
+  const actionType = action.action_type.toLocaleLowerCase();
+  return action.status === "skipped" || actionType.endsWith(".skip") || actionType.includes(".skip.");
+}
+export function AgentActionActivityCard({ entry, reverting, onRevert, onRevealTarget }) {
+  const action = entry.action;
+  const display = getAgentActionDisplayFields(action);
+  const attention = isAttentionAgentAction(action);
+  const canRevert = canRevertAgentAction(action);
+  const targetPaths = action.target_paths.filter((targetPath) => targetPath.toLowerCase().endsWith(".md"));
+  const showAuditDetails = !isSkippedAction(action);
+  const auditDetails = [
+    action.title && action.title !== display.actionName ? `原始标题：${action.title}` : "",
+    action.summary && action.summary !== display.summary ? `原始摘要：${action.summary}` : "",
+    action.metadata?.skipped_reason ? `原始跳过原因：${String(action.metadata.skipped_reason)}` : ""
+  ].filter(Boolean);
+  return /* @__PURE__ */ jsxDEV("article", { id: entry.id, className: `proposal agent-activity-item ${attention ? "pending" : "confirmed"}`, children: [
+    /* @__PURE__ */ jsxDEV("div", { className: "continuity-proposal-head agent-action-head", children: [
+      /* @__PURE__ */ jsxDEV("div", { children: [
+        /* @__PURE__ */ jsxDEV("strong", { children: display.actionName }, void 0, false, {
+          fileName: "E:/agentproject/apps/desktop/src/features/memory/AgentActionActivityCard.tsx",
+          lineNumber: 58,
+          columnNumber: 11
+        }, this),
+        /* @__PURE__ */ jsxDEV("small", { children: [
+          display.actionTypeLabel,
+          " / ",
+          display.riskTierLabel,
+          " / ",
+          display.statusLabel
+        ] }, void 0, true, {
+          fileName: "E:/agentproject/apps/desktop/src/features/memory/AgentActionActivityCard.tsx",
+          lineNumber: 59,
+          columnNumber: 11
+        }, this)
+      ] }, void 0, true, {
+        fileName: "E:/agentproject/apps/desktop/src/features/memory/AgentActionActivityCard.tsx",
+        lineNumber: 57,
+        columnNumber: 9
+      }, this),
+      /* @__PURE__ */ jsxDEV("span", { children: display.createdTimeLabel }, void 0, false, {
+        fileName: "E:/agentproject/apps/desktop/src/features/memory/AgentActionActivityCard.tsx",
+        lineNumber: 63,
+        columnNumber: 9
+      }, this)
+    ] }, void 0, true, {
+      fileName: "E:/agentproject/apps/desktop/src/features/memory/AgentActionActivityCard.tsx",
+      lineNumber: 56,
+      columnNumber: 7
+    }, this),
+    /* @__PURE__ */ jsxDEV("div", { className: "agent-action-badges", "aria-label": "整理活动状态", children: [
+      /* @__PURE__ */ jsxDEV("span", { children: display.riskTierLabel }, void 0, false, {
+        fileName: "E:/agentproject/apps/desktop/src/features/memory/AgentActionActivityCard.tsx",
+        lineNumber: 67,
+        columnNumber: 9
+      }, this),
+      /* @__PURE__ */ jsxDEV("span", { children: display.decisionLabel }, void 0, false, {
+        fileName: "E:/agentproject/apps/desktop/src/features/memory/AgentActionActivityCard.tsx",
+        lineNumber: 68,
+        columnNumber: 9
+      }, this),
+      /* @__PURE__ */ jsxDEV("span", { children: display.statusLabel }, void 0, false, {
+        fileName: "E:/agentproject/apps/desktop/src/features/memory/AgentActionActivityCard.tsx",
+        lineNumber: 69,
+        columnNumber: 9
+      }, this),
+      /* @__PURE__ */ jsxDEV("span", { children: display.reversibleLabel }, void 0, false, {
+        fileName: "E:/agentproject/apps/desktop/src/features/memory/AgentActionActivityCard.tsx",
+        lineNumber: 70,
+        columnNumber: 9
+      }, this)
+    ] }, void 0, true, {
+      fileName: "E:/agentproject/apps/desktop/src/features/memory/AgentActionActivityCard.tsx",
+      lineNumber: 66,
+      columnNumber: 7
+    }, this),
+    /* @__PURE__ */ jsxDEV("p", { className: "agent-action-summary", children: display.summary }, void 0, false, {
+      fileName: "E:/agentproject/apps/desktop/src/features/memory/AgentActionActivityCard.tsx",
+      lineNumber: 73,
+      columnNumber: 7
+    }, this),
+    /* @__PURE__ */ jsxDEV("div", { className: "agent-action-fields", children: [
+      /* @__PURE__ */ jsxDEV("small", { children: [
+        "目标文件：",
+        display.targetPathLabel
+      ] }, void 0, true, {
+        fileName: "E:/agentproject/apps/desktop/src/features/memory/AgentActionActivityCard.tsx",
+        lineNumber: 76,
+        columnNumber: 9
+      }, this),
+      /* @__PURE__ */ jsxDEV("small", { children: [
+        "创建时间：",
+        display.createdTimeLabel
+      ] }, void 0, true, {
+        fileName: "E:/agentproject/apps/desktop/src/features/memory/AgentActionActivityCard.tsx",
+        lineNumber: 77,
+        columnNumber: 9
+      }, this),
+      action.diff_summary ? /* @__PURE__ */ jsxDEV("small", { children: [
+        "差异：",
+        action.diff_summary
+      ] }, void 0, true, {
+        fileName: "E:/agentproject/apps/desktop/src/features/memory/AgentActionActivityCard.tsx",
+        lineNumber: 78,
+        columnNumber: 32
+      }, this) : null,
+      display.sourceLabel ? /* @__PURE__ */ jsxDEV("small", { children: [
+        "来源：",
+        display.sourceLabel
+      ] }, void 0, true, {
+        fileName: "E:/agentproject/apps/desktop/src/features/memory/AgentActionActivityCard.tsx",
+        lineNumber: 79,
+        columnNumber: 32
+      }, this) : null
+    ] }, void 0, true, {
+      fileName: "E:/agentproject/apps/desktop/src/features/memory/AgentActionActivityCard.tsx",
+      lineNumber: 75,
+      columnNumber: 7
+    }, this),
+    showAuditDetails && auditDetails.length > 0 ? /* @__PURE__ */ jsxDEV("details", { className: "agent-action-audit-details", children: [
+      /* @__PURE__ */ jsxDEV("summary", { children: "整理详情" }, void 0, false, {
+        fileName: "E:/agentproject/apps/desktop/src/features/memory/AgentActionActivityCard.tsx",
+        lineNumber: 84,
+        columnNumber: 11
+      }, this),
+      auditDetails.map(
+        (detail) => /* @__PURE__ */ jsxDEV("small", { children: detail }, detail, false, {
+          fileName: "E:/agentproject/apps/desktop/src/features/memory/AgentActionActivityCard.tsx",
+          lineNumber: 86,
+          columnNumber: 9
+        }, this)
+      )
+    ] }, void 0, true, {
+      fileName: "E:/agentproject/apps/desktop/src/features/memory/AgentActionActivityCard.tsx",
+      lineNumber: 83,
+      columnNumber: 7
+    }, this) : null,
+    action.error ? /* @__PURE__ */ jsxDEV("p", { className: "field-note error", children: action.error }, void 0, false, {
+      fileName: "E:/agentproject/apps/desktop/src/features/memory/AgentActionActivityCard.tsx",
+      lineNumber: 91,
+      columnNumber: 23
+    }, this) : null,
+    action.reverted_by ? /* @__PURE__ */ jsxDEV("p", { className: "field-note success", children: [
+      "已撤回，并生成新的活动记录：",
+      action.reverted_by,
+      "。"
+    ] }, void 0, true, {
+      fileName: "E:/agentproject/apps/desktop/src/features/memory/AgentActionActivityCard.tsx",
+      lineNumber: 92,
+      columnNumber: 29
+    }, this) : null,
+    action.reverts_action_id ? /* @__PURE__ */ jsxDEV("p", { className: "field-note success", children: [
+      "这是撤回记录，来源活动：",
+      action.reverts_action_id,
+      "。"
+    ] }, void 0, true, {
+      fileName: "E:/agentproject/apps/desktop/src/features/memory/AgentActionActivityCard.tsx",
+      lineNumber: 93,
+      columnNumber: 35
+    }, this) : null,
+    !canRevert && action.reversible && action.status !== "reverted" ? /* @__PURE__ */ jsxDEV("p", { className: "field-note", children: "当前状态不可自动撤回。" }, void 0, false, {
+      fileName: "E:/agentproject/apps/desktop/src/features/memory/AgentActionActivityCard.tsx",
+      lineNumber: 95,
+      columnNumber: 7
+    }, this) : null,
+    action.decision === "ask" && action.status === "pending" ? /* @__PURE__ */ jsxDEV("p", { className: "field-note error", children: "该活动需要人工确认；请处理下方对应的高风险确认项。" }, void 0, false, {
+      fileName: "E:/agentproject/apps/desktop/src/features/memory/AgentActionActivityCard.tsx",
+      lineNumber: 98,
+      columnNumber: 7
+    }, this) : null,
+    onRevealTarget && targetPaths.length > 0 ? /* @__PURE__ */ jsxDEV("div", { className: "agent-action-targets", "aria-label": "本机目标文件", children: targetPaths.map(
+      (targetPath) => /* @__PURE__ */ jsxDEV("div", { className: "agent-action-target-row", children: [
+        /* @__PURE__ */ jsxDEV("span", { children: targetPath }, void 0, false, {
+          fileName: "E:/agentproject/apps/desktop/src/features/memory/AgentActionActivityCard.tsx",
+          lineNumber: 105,
+          columnNumber: 15
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { className: "button-row compact-actions", children: [
+          /* @__PURE__ */ jsxDEV(
+            "button",
+            {
+              type: "button",
+              className: "secondary",
+              onClick: () => onRevealTarget(targetPath, "open"),
+              title: `打开 ${targetPath}`,
+              children: [
+                /* @__PURE__ */ jsxDEV(ExternalLink, { size: 16 }, void 0, false, {
+                  fileName: "E:/agentproject/apps/desktop/src/features/memory/AgentActionActivityCard.tsx",
+                  lineNumber: 113,
+                  columnNumber: 19
+                }, this),
+                "打开文件"
+              ]
+            },
+            void 0,
+            true,
+            {
+              fileName: "E:/agentproject/apps/desktop/src/features/memory/AgentActionActivityCard.tsx",
+              lineNumber: 107,
+              columnNumber: 17
+            },
+            this
+          ),
+          /* @__PURE__ */ jsxDEV(
+            "button",
+            {
+              type: "button",
+              className: "secondary",
+              onClick: () => onRevealTarget(targetPath, "show"),
+              title: `在文件夹中显示 ${targetPath}`,
+              children: [
+                /* @__PURE__ */ jsxDEV(FolderSearch, { size: 16 }, void 0, false, {
+                  fileName: "E:/agentproject/apps/desktop/src/features/memory/AgentActionActivityCard.tsx",
+                  lineNumber: 122,
+                  columnNumber: 19
+                }, this),
+                "显示位置"
+              ]
+            },
+            void 0,
+            true,
+            {
+              fileName: "E:/agentproject/apps/desktop/src/features/memory/AgentActionActivityCard.tsx",
+              lineNumber: 116,
+              columnNumber: 17
+            },
+            this
+          )
+        ] }, void 0, true, {
+          fileName: "E:/agentproject/apps/desktop/src/features/memory/AgentActionActivityCard.tsx",
+          lineNumber: 106,
+          columnNumber: 15
+        }, this)
+      ] }, targetPath, true, {
+        fileName: "E:/agentproject/apps/desktop/src/features/memory/AgentActionActivityCard.tsx",
+        lineNumber: 104,
+        columnNumber: 9
+      }, this)
+    ) }, void 0, false, {
+      fileName: "E:/agentproject/apps/desktop/src/features/memory/AgentActionActivityCard.tsx",
+      lineNumber: 102,
+      columnNumber: 7
+    }, this) : null,
+    canRevert ? /* @__PURE__ */ jsxDEV(Fragment, { children: [
+      /* @__PURE__ */ jsxDEV("p", { className: "field-note", children: "撤回前会再次确认；确认后会按本机快照恢复关联文件，并留下新的活动记录。" }, void 0, false, {
+        fileName: "E:/agentproject/apps/desktop/src/features/memory/AgentActionActivityCard.tsx",
+        lineNumber: 133,
+        columnNumber: 11
+      }, this),
+      /* @__PURE__ */ jsxDEV("div", { className: "button-row compact-actions", children: /* @__PURE__ */ jsxDEV(
+        "button",
+        {
+          type: "button",
+          className: "secondary",
+          onClick: () => onRevert(action),
+          disabled: reverting,
+          title: `撤回 ${display.actionName}`,
+          children: [
+            reverting ? /* @__PURE__ */ jsxDEV(Loader2, { className: "spin", size: 16 }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/memory/AgentActionActivityCard.tsx",
+              lineNumber: 142,
+              columnNumber: 26
+            }, this) : /* @__PURE__ */ jsxDEV(RotateCcw, { size: 16 }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/memory/AgentActionActivityCard.tsx",
+              lineNumber: 142,
+              columnNumber: 67
+            }, this),
+            "撤回"
+          ]
+        },
+        void 0,
+        true,
+        {
+          fileName: "E:/agentproject/apps/desktop/src/features/memory/AgentActionActivityCard.tsx",
+          lineNumber: 135,
+          columnNumber: 11
+        },
+        this
+      ) }, void 0, false, {
+        fileName: "E:/agentproject/apps/desktop/src/features/memory/AgentActionActivityCard.tsx",
+        lineNumber: 134,
+        columnNumber: 9
+      }, this)
+    ] }, void 0, true, {
+      fileName: "E:/agentproject/apps/desktop/src/features/memory/AgentActionActivityCard.tsx",
+      lineNumber: 132,
+      columnNumber: 7
+    }, this) : null
+  ] }, void 0, true, {
+    fileName: "E:/agentproject/apps/desktop/src/features/memory/AgentActionActivityCard.tsx",
+    lineNumber: 55,
+    columnNumber: 5
+  }, this);
+}
+_c = AgentActionActivityCard;
+var _c;
+$RefreshReg$(_c, "AgentActionActivityCard");
+if (import.meta.hot && !inWebWorker) {
+  window.$RefreshReg$ = prevRefreshReg;
+  window.$RefreshSig$ = prevRefreshSig;
+}
+if (import.meta.hot && !inWebWorker) {
+  RefreshRuntime.__hmr_import(import.meta.url).then((currentExports) => {
+    RefreshRuntime.registerExportsForReactRefresh("E:/agentproject/apps/desktop/src/features/memory/AgentActionActivityCard.tsx", currentExports);
+    import.meta.hot.accept((nextExports) => {
+      if (!nextExports) return;
+      const invalidateMessage = RefreshRuntime.validateRefreshBoundaryAndEnqueueUpdate("E:/agentproject/apps/desktop/src/features/memory/AgentActionActivityCard.tsx", currentExports, nextExports);
+      if (invalidateMessage) import.meta.hot.invalidate(invalidateMessage);
+    });
+  });
+}
+
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJtYXBwaW5ncyI6IkFBc0NVLFNBMEVGLFVBMUVFOzs7Ozs7Ozs7Ozs7Ozs7O0FBdENWLFNBQVNBLGNBQWNDLGNBQWNDLFNBQVNDLGlCQUFpQjtBQUUvRDtBQUFBLEVBQ0VDO0FBQUFBLEVBQ0FDO0FBQUFBLEVBQ0FDO0FBQUFBLE9BRUs7QUFTUCxTQUFTQyxnQkFBZ0JDLFFBQThCO0FBQ3JELFFBQU1DLGFBQWFELE9BQU9FLFlBQVlDLGtCQUFrQjtBQUN4RCxTQUFPSCxPQUFPSSxXQUFXLGFBQWFILFdBQVdJLFNBQVMsT0FBTyxLQUFLSixXQUFXSyxTQUFTLFFBQVE7QUFDcEc7QUFFTyxnQkFBU0Msd0JBQXdCLEVBQUVDLE9BQU9DLFdBQVdDLFVBQVVDLGVBQTZDLEdBQUc7QUFDcEgsUUFBTVgsU0FBU1EsTUFBTVI7QUFDckIsUUFBTVksVUFBVWYsNEJBQTRCRyxNQUFNO0FBQ2xELFFBQU1hLFlBQVlmLHVCQUF1QkUsTUFBTTtBQUMvQyxRQUFNYyxZQUFZbEIscUJBQXFCSSxNQUFNO0FBQzdDLFFBQU1lLGNBQWNmLE9BQU9nQixhQUFhQyxPQUFPLENBQUNDLGVBQWVBLFdBQVdDLFlBQVksRUFBRWQsU0FBUyxLQUFLLENBQUM7QUFDdkcsUUFBTWUsbUJBQW1CLENBQUNyQixnQkFBZ0JDLE1BQU07QUFDaEQsUUFBTXFCLGVBQWU7QUFBQSxJQUNuQnJCLE9BQU9zQixTQUFTdEIsT0FBT3NCLFVBQVVWLFFBQVFXLGFBQWEsUUFBUXZCLE9BQU9zQixLQUFLLEtBQUs7QUFBQSxJQUMvRXRCLE9BQU93QixXQUFXeEIsT0FBT3dCLFlBQVlaLFFBQVFZLFVBQVUsUUFBUXhCLE9BQU93QixPQUFPLEtBQUs7QUFBQSxJQUNsRnhCLE9BQU95QixVQUFVQyxpQkFBaUIsVUFBVUMsT0FBTzNCLE9BQU95QixTQUFTQyxjQUFjLENBQUMsS0FBSztBQUFBLEVBQUUsRUFDekZULE9BQU9XLE9BQU87QUFFaEIsU0FDRSx1QkFBQyxhQUFRLElBQUlwQixNQUFNcUIsSUFBSSxXQUFXLGdDQUFnQ2hCLFlBQVksWUFBWSxXQUFXLElBQ25HO0FBQUEsMkJBQUMsU0FBSSxXQUFVLDhDQUNiO0FBQUEsNkJBQUMsU0FDQztBQUFBLCtCQUFDLFlBQVFELGtCQUFRVyxjQUFqQjtBQUFBO0FBQUE7QUFBQTtBQUFBLGVBQTRCO0FBQUEsUUFDNUIsdUJBQUMsV0FDRVg7QUFBQUEsa0JBQVFrQjtBQUFBQSxVQUFnQjtBQUFBLFVBQUlsQixRQUFRbUI7QUFBQUEsVUFBYztBQUFBLFVBQUluQixRQUFRb0I7QUFBQUEsYUFEakU7QUFBQTtBQUFBO0FBQUE7QUFBQSxlQUVBO0FBQUEsV0FKRjtBQUFBO0FBQUE7QUFBQTtBQUFBLGFBS0E7QUFBQSxNQUNBLHVCQUFDLFVBQU1wQixrQkFBUXFCLG9CQUFmO0FBQUE7QUFBQTtBQUFBO0FBQUEsYUFBZ0M7QUFBQSxTQVBsQztBQUFBO0FBQUE7QUFBQTtBQUFBLFdBUUE7QUFBQSxJQUVBLHVCQUFDLFNBQUksV0FBVSx1QkFBc0IsY0FBVyxVQUM5QztBQUFBLDZCQUFDLFVBQU1yQixrQkFBUW1CLGlCQUFmO0FBQUE7QUFBQTtBQUFBO0FBQUEsYUFBNkI7QUFBQSxNQUM3Qix1QkFBQyxVQUFNbkIsa0JBQVFzQixpQkFBZjtBQUFBO0FBQUE7QUFBQTtBQUFBLGFBQTZCO0FBQUEsTUFDN0IsdUJBQUMsVUFBTXRCLGtCQUFRb0IsZUFBZjtBQUFBO0FBQUE7QUFBQTtBQUFBLGFBQTJCO0FBQUEsTUFDM0IsdUJBQUMsVUFBTXBCLGtCQUFRdUIsbUJBQWY7QUFBQTtBQUFBO0FBQUE7QUFBQSxhQUErQjtBQUFBLFNBSmpDO0FBQUE7QUFBQTtBQUFBO0FBQUEsV0FLQTtBQUFBLElBRUEsdUJBQUMsT0FBRSxXQUFVLHdCQUF3QnZCLGtCQUFRWSxXQUE3QztBQUFBO0FBQUE7QUFBQTtBQUFBLFdBQXFEO0FBQUEsSUFFckQsdUJBQUMsU0FBSSxXQUFVLHVCQUNiO0FBQUEsNkJBQUMsV0FBTTtBQUFBO0FBQUEsUUFBTVosUUFBUXdCO0FBQUFBLFdBQXJCO0FBQUE7QUFBQTtBQUFBO0FBQUEsYUFBcUM7QUFBQSxNQUNyQyx1QkFBQyxXQUFNO0FBQUE7QUFBQSxRQUFNeEIsUUFBUXFCO0FBQUFBLFdBQXJCO0FBQUE7QUFBQTtBQUFBO0FBQUEsYUFBc0M7QUFBQSxNQUNyQ2pDLE9BQU9xQyxlQUFlLHVCQUFDLFdBQU07QUFBQTtBQUFBLFFBQUlyQyxPQUFPcUM7QUFBQUEsV0FBbEI7QUFBQTtBQUFBO0FBQUE7QUFBQSxhQUErQixJQUFXO0FBQUEsTUFDaEV6QixRQUFRMEIsY0FBYyx1QkFBQyxXQUFNO0FBQUE7QUFBQSxRQUFJMUIsUUFBUTBCO0FBQUFBLFdBQW5CO0FBQUE7QUFBQTtBQUFBO0FBQUEsYUFBK0IsSUFBVztBQUFBLFNBSm5FO0FBQUE7QUFBQTtBQUFBO0FBQUEsV0FLQTtBQUFBLElBRUNsQixvQkFBb0JDLGFBQWFrQixTQUFTLElBQ3pDLHVCQUFDLGFBQVEsV0FBVSw4QkFDakI7QUFBQSw2QkFBQyxhQUFRLG9CQUFUO0FBQUE7QUFBQTtBQUFBO0FBQUEsYUFBYTtBQUFBLE1BQ1psQixhQUFhbUI7QUFBQUEsUUFBSSxDQUFDQyxXQUNqQix1QkFBQyxXQUFvQkEsb0JBQVRBLFFBQVo7QUFBQTtBQUFBO0FBQUE7QUFBQSxlQUE0QjtBQUFBLE1BQzdCO0FBQUEsU0FKSDtBQUFBO0FBQUE7QUFBQTtBQUFBLFdBS0EsSUFDRTtBQUFBLElBRUh6QyxPQUFPMEMsUUFBUSx1QkFBQyxPQUFFLFdBQVUsb0JBQW9CMUMsaUJBQU8wQyxTQUF4QztBQUFBO0FBQUE7QUFBQTtBQUFBLFdBQThDLElBQU87QUFBQSxJQUNwRTFDLE9BQU8yQyxjQUFjLHVCQUFDLE9BQUUsV0FBVSxzQkFBcUI7QUFBQTtBQUFBLE1BQWUzQyxPQUFPMkM7QUFBQUEsTUFBWTtBQUFBLFNBQXBFO0FBQUE7QUFBQTtBQUFBO0FBQUEsV0FBcUUsSUFBTztBQUFBLElBQ2pHM0MsT0FBTzRDLG9CQUFvQix1QkFBQyxPQUFFLFdBQVUsc0JBQXFCO0FBQUE7QUFBQSxNQUFhNUMsT0FBTzRDO0FBQUFBLE1BQWtCO0FBQUEsU0FBeEU7QUFBQTtBQUFBO0FBQUE7QUFBQSxXQUF5RSxJQUFPO0FBQUEsSUFDM0csQ0FBQzlCLGFBQWFkLE9BQU82QyxjQUFjN0MsT0FBT0ksV0FBVyxhQUNwRCx1QkFBQyxPQUFFLFdBQVUsY0FBYSwyQkFBMUI7QUFBQTtBQUFBO0FBQUE7QUFBQSxXQUFxQyxJQUNuQztBQUFBLElBQ0hKLE9BQU84QyxhQUFhLFNBQVM5QyxPQUFPSSxXQUFXLFlBQzlDLHVCQUFDLE9BQUUsV0FBVSxvQkFBbUIseUNBQWhDO0FBQUE7QUFBQTtBQUFBO0FBQUEsV0FBeUQsSUFDdkQ7QUFBQSxJQUVITyxrQkFBa0JJLFlBQVl3QixTQUFTLElBQ3RDLHVCQUFDLFNBQUksV0FBVSx3QkFBdUIsY0FBVyxVQUM5Q3hCLHNCQUFZeUI7QUFBQUEsTUFBSSxDQUFDdEIsZUFDaEIsdUJBQUMsU0FBcUIsV0FBVSwyQkFDOUI7QUFBQSwrQkFBQyxVQUFNQSx3QkFBUDtBQUFBO0FBQUE7QUFBQTtBQUFBLGVBQWtCO0FBQUEsUUFDbEIsdUJBQUMsU0FBSSxXQUFVLDhCQUNiO0FBQUE7QUFBQSxZQUFDO0FBQUE7QUFBQSxjQUNDLE1BQUs7QUFBQSxjQUNMLFdBQVU7QUFBQSxjQUNWLFNBQVMsTUFBTVAsZUFBZU8sWUFBWSxNQUFNO0FBQUEsY0FDaEQsT0FBTyxNQUFNQSxVQUFVO0FBQUEsY0FFdkI7QUFBQSx1Q0FBQyxnQkFBYSxNQUFNLE1BQXBCO0FBQUE7QUFBQTtBQUFBO0FBQUEsdUJBQXVCO0FBQUEsZ0JBQUc7QUFBQTtBQUFBO0FBQUEsWUFONUI7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBLFVBUUE7QUFBQSxVQUNBO0FBQUEsWUFBQztBQUFBO0FBQUEsY0FDQyxNQUFLO0FBQUEsY0FDTCxXQUFVO0FBQUEsY0FDVixTQUFTLE1BQU1QLGVBQWVPLFlBQVksTUFBTTtBQUFBLGNBQ2hELE9BQU8sV0FBV0EsVUFBVTtBQUFBLGNBRTVCO0FBQUEsdUNBQUMsZ0JBQWEsTUFBTSxNQUFwQjtBQUFBO0FBQUE7QUFBQTtBQUFBLHVCQUF1QjtBQUFBLGdCQUFHO0FBQUE7QUFBQTtBQUFBLFlBTjVCO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQSxVQVFBO0FBQUEsYUFsQkY7QUFBQTtBQUFBO0FBQUE7QUFBQSxlQW1CQTtBQUFBLFdBckJRQSxZQUFWO0FBQUE7QUFBQTtBQUFBO0FBQUEsYUFzQkE7QUFBQSxJQUNELEtBekJIO0FBQUE7QUFBQTtBQUFBO0FBQUEsV0EwQkEsSUFDRTtBQUFBLElBRUhKLFlBQ0MsbUNBQ0U7QUFBQSw2QkFBQyxPQUFFLFdBQVUsY0FBYSxtREFBMUI7QUFBQTtBQUFBO0FBQUE7QUFBQSxhQUE2RDtBQUFBLE1BQy9ELHVCQUFDLFNBQUksV0FBVSw4QkFDYjtBQUFBLFFBQUM7QUFBQTtBQUFBLFVBQ0MsTUFBSztBQUFBLFVBQ0wsV0FBVTtBQUFBLFVBQ1YsU0FBUyxNQUFNSixTQUFTVixNQUFNO0FBQUEsVUFDOUIsVUFBVVM7QUFBQUEsVUFDVixPQUFPLE1BQU1HLFFBQVFXLFVBQVU7QUFBQSxVQUU5QmQ7QUFBQUEsd0JBQVksdUJBQUMsV0FBUSxXQUFVLFFBQU8sTUFBTSxNQUFoQztBQUFBO0FBQUE7QUFBQTtBQUFBLG1CQUFtQyxJQUFNLHVCQUFDLGFBQVUsTUFBTSxNQUFqQjtBQUFBO0FBQUE7QUFBQTtBQUFBLG1CQUFvQjtBQUFBLFlBQUc7QUFBQTtBQUFBO0FBQUEsUUFQL0U7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBLE1BU0EsS0FWRjtBQUFBO0FBQUE7QUFBQTtBQUFBLGFBV0E7QUFBQSxTQWJBO0FBQUE7QUFBQTtBQUFBO0FBQUEsV0FjQSxJQUNFO0FBQUEsT0E1Rk47QUFBQTtBQUFBO0FBQUE7QUFBQSxTQTZGQTtBQUVKO0FBQUNzQyxLQTdHZXhDO0FBQXVCLElBQUF3QztBQUFBLGFBQUFBLElBQUEiLCJuYW1lcyI6WyJFeHRlcm5hbExpbmsiLCJGb2xkZXJTZWFyY2giLCJMb2FkZXIyIiwiUm90YXRlQ2N3IiwiY2FuUmV2ZXJ0QWdlbnRBY3Rpb24iLCJnZXRBZ2VudEFjdGlvbkRpc3BsYXlGaWVsZHMiLCJpc0F0dGVudGlvbkFnZW50QWN0aW9uIiwiaXNTa2lwcGVkQWN0aW9uIiwiYWN0aW9uIiwiYWN0aW9uVHlwZSIsImFjdGlvbl90eXBlIiwidG9Mb2NhbGVMb3dlckNhc2UiLCJzdGF0dXMiLCJlbmRzV2l0aCIsImluY2x1ZGVzIiwiQWdlbnRBY3Rpb25BY3Rpdml0eUNhcmQiLCJlbnRyeSIsInJldmVydGluZyIsIm9uUmV2ZXJ0Iiwib25SZXZlYWxUYXJnZXQiLCJkaXNwbGF5IiwiYXR0ZW50aW9uIiwiY2FuUmV2ZXJ0IiwidGFyZ2V0UGF0aHMiLCJ0YXJnZXRfcGF0aHMiLCJmaWx0ZXIiLCJ0YXJnZXRQYXRoIiwidG9Mb3dlckNhc2UiLCJzaG93QXVkaXREZXRhaWxzIiwiYXVkaXREZXRhaWxzIiwidGl0bGUiLCJhY3Rpb25OYW1lIiwic3VtbWFyeSIsIm1ldGFkYXRhIiwic2tpcHBlZF9yZWFzb24iLCJTdHJpbmciLCJCb29sZWFuIiwiaWQiLCJhY3Rpb25UeXBlTGFiZWwiLCJyaXNrVGllckxhYmVsIiwic3RhdHVzTGFiZWwiLCJjcmVhdGVkVGltZUxhYmVsIiwiZGVjaXNpb25MYWJlbCIsInJldmVyc2libGVMYWJlbCIsInRhcmdldFBhdGhMYWJlbCIsImRpZmZfc3VtbWFyeSIsInNvdXJjZUxhYmVsIiwibGVuZ3RoIiwibWFwIiwiZGV0YWlsIiwiZXJyb3IiLCJyZXZlcnRlZF9ieSIsInJldmVydHNfYWN0aW9uX2lkIiwicmV2ZXJzaWJsZSIsImRlY2lzaW9uIiwiX2MiXSwiaWdub3JlTGlzdCI6W10sInNvdXJjZXMiOlsiQWdlbnRBY3Rpb25BY3Rpdml0eUNhcmQudHN4Il0sInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB7IEV4dGVybmFsTGluaywgRm9sZGVyU2VhcmNoLCBMb2FkZXIyLCBSb3RhdGVDY3cgfSBmcm9tIFwibHVjaWRlLXJlYWN0XCI7XHJcbmltcG9ydCB0eXBlIHsgQWdlbnRBY3Rpb24gfSBmcm9tIFwiLi4vLi4vdHlwZXNcIjtcclxuaW1wb3J0IHtcclxuICBjYW5SZXZlcnRBZ2VudEFjdGlvbixcclxuICBnZXRBZ2VudEFjdGlvbkRpc3BsYXlGaWVsZHMsXHJcbiAgaXNBdHRlbnRpb25BZ2VudEFjdGlvbixcclxuICB0eXBlIEFnZW50QWN0aXZpdHlMb2dFbnRyeSxcclxufSBmcm9tIFwiLi4vLi4vc2VydmljZXMvYWdlbnRBY3Rpdml0eVwiO1xyXG5cclxudHlwZSBBZ2VudEFjdGlvbkFjdGl2aXR5Q2FyZFByb3BzID0ge1xyXG4gIGVudHJ5OiBFeHRyYWN0PEFnZW50QWN0aXZpdHlMb2dFbnRyeSwgeyBraW5kOiBcImFnZW50X2FjdGlvblwiIH0+O1xyXG4gIHJldmVydGluZzogYm9vbGVhbjtcclxuICBvblJldmVydDogKGFjdGlvbjogQWdlbnRBY3Rpb24pID0+IHZvaWQ7XHJcbiAgb25SZXZlYWxUYXJnZXQ/OiAocmVsYXRpdmVQYXRoOiBzdHJpbmcsIG1vZGU6IFwib3BlblwiIHwgXCJzaG93XCIpID0+IHZvaWQ7XHJcbn07XHJcblxyXG5mdW5jdGlvbiBpc1NraXBwZWRBY3Rpb24oYWN0aW9uOiBBZ2VudEFjdGlvbik6IGJvb2xlYW4ge1xyXG4gIGNvbnN0IGFjdGlvblR5cGUgPSBhY3Rpb24uYWN0aW9uX3R5cGUudG9Mb2NhbGVMb3dlckNhc2UoKTtcclxuICByZXR1cm4gYWN0aW9uLnN0YXR1cyA9PT0gXCJza2lwcGVkXCIgfHwgYWN0aW9uVHlwZS5lbmRzV2l0aChcIi5za2lwXCIpIHx8IGFjdGlvblR5cGUuaW5jbHVkZXMoXCIuc2tpcC5cIik7XHJcbn1cclxuXHJcbmV4cG9ydCBmdW5jdGlvbiBBZ2VudEFjdGlvbkFjdGl2aXR5Q2FyZCh7IGVudHJ5LCByZXZlcnRpbmcsIG9uUmV2ZXJ0LCBvblJldmVhbFRhcmdldCB9OiBBZ2VudEFjdGlvbkFjdGl2aXR5Q2FyZFByb3BzKSB7XHJcbiAgY29uc3QgYWN0aW9uID0gZW50cnkuYWN0aW9uO1xyXG4gIGNvbnN0IGRpc3BsYXkgPSBnZXRBZ2VudEFjdGlvbkRpc3BsYXlGaWVsZHMoYWN0aW9uKTtcclxuICBjb25zdCBhdHRlbnRpb24gPSBpc0F0dGVudGlvbkFnZW50QWN0aW9uKGFjdGlvbik7XHJcbiAgY29uc3QgY2FuUmV2ZXJ0ID0gY2FuUmV2ZXJ0QWdlbnRBY3Rpb24oYWN0aW9uKTtcclxuICBjb25zdCB0YXJnZXRQYXRocyA9IGFjdGlvbi50YXJnZXRfcGF0aHMuZmlsdGVyKCh0YXJnZXRQYXRoKSA9PiB0YXJnZXRQYXRoLnRvTG93ZXJDYXNlKCkuZW5kc1dpdGgoXCIubWRcIikpO1xyXG4gIGNvbnN0IHNob3dBdWRpdERldGFpbHMgPSAhaXNTa2lwcGVkQWN0aW9uKGFjdGlvbik7XHJcbiAgY29uc3QgYXVkaXREZXRhaWxzID0gW1xyXG4gICAgYWN0aW9uLnRpdGxlICYmIGFjdGlvbi50aXRsZSAhPT0gZGlzcGxheS5hY3Rpb25OYW1lID8gYOWOn+Wni+agh+mimO+8miR7YWN0aW9uLnRpdGxlfWAgOiBcIlwiLFxyXG4gICAgYWN0aW9uLnN1bW1hcnkgJiYgYWN0aW9uLnN1bW1hcnkgIT09IGRpc3BsYXkuc3VtbWFyeSA/IGDljp/lp4vmkZjopoHvvJoke2FjdGlvbi5zdW1tYXJ5fWAgOiBcIlwiLFxyXG4gICAgYWN0aW9uLm1ldGFkYXRhPy5za2lwcGVkX3JlYXNvbiA/IGDljp/lp4vot7Pov4fljp/lm6DvvJoke1N0cmluZyhhY3Rpb24ubWV0YWRhdGEuc2tpcHBlZF9yZWFzb24pfWAgOiBcIlwiLFxyXG4gIF0uZmlsdGVyKEJvb2xlYW4pO1xyXG5cclxuICByZXR1cm4gKFxyXG4gICAgPGFydGljbGUgaWQ9e2VudHJ5LmlkfSBjbGFzc05hbWU9e2Bwcm9wb3NhbCBhZ2VudC1hY3Rpdml0eS1pdGVtICR7YXR0ZW50aW9uID8gXCJwZW5kaW5nXCIgOiBcImNvbmZpcm1lZFwifWB9PlxuICAgICAgPGRpdiBjbGFzc05hbWU9XCJjb250aW51aXR5LXByb3Bvc2FsLWhlYWQgYWdlbnQtYWN0aW9uLWhlYWRcIj5cclxuICAgICAgICA8ZGl2PlxyXG4gICAgICAgICAgPHN0cm9uZz57ZGlzcGxheS5hY3Rpb25OYW1lfTwvc3Ryb25nPlxyXG4gICAgICAgICAgPHNtYWxsPlxyXG4gICAgICAgICAgICB7ZGlzcGxheS5hY3Rpb25UeXBlTGFiZWx9IC8ge2Rpc3BsYXkucmlza1RpZXJMYWJlbH0gLyB7ZGlzcGxheS5zdGF0dXNMYWJlbH1cclxuICAgICAgICAgIDwvc21hbGw+XHJcbiAgICAgICAgPC9kaXY+XHJcbiAgICAgICAgPHNwYW4+e2Rpc3BsYXkuY3JlYXRlZFRpbWVMYWJlbH08L3NwYW4+XHJcbiAgICAgIDwvZGl2PlxyXG5cclxuICAgICAgPGRpdiBjbGFzc05hbWU9XCJhZ2VudC1hY3Rpb24tYmFkZ2VzXCIgYXJpYS1sYWJlbD1cIuaVtOeQhua0u+WKqOeKtuaAgVwiPlxyXG4gICAgICAgIDxzcGFuPntkaXNwbGF5LnJpc2tUaWVyTGFiZWx9PC9zcGFuPlxyXG4gICAgICAgIDxzcGFuPntkaXNwbGF5LmRlY2lzaW9uTGFiZWx9PC9zcGFuPlxyXG4gICAgICAgIDxzcGFuPntkaXNwbGF5LnN0YXR1c0xhYmVsfTwvc3Bhbj5cclxuICAgICAgICA8c3Bhbj57ZGlzcGxheS5yZXZlcnNpYmxlTGFiZWx9PC9zcGFuPlxyXG4gICAgICA8L2Rpdj5cclxuXHJcbiAgICAgIDxwIGNsYXNzTmFtZT1cImFnZW50LWFjdGlvbi1zdW1tYXJ5XCI+e2Rpc3BsYXkuc3VtbWFyeX08L3A+XHJcblxyXG4gICAgICA8ZGl2IGNsYXNzTmFtZT1cImFnZW50LWFjdGlvbi1maWVsZHNcIj5cclxuICAgICAgICA8c21hbGw+55uu5qCH5paH5Lu277yae2Rpc3BsYXkudGFyZ2V0UGF0aExhYmVsfTwvc21hbGw+XHJcbiAgICAgICAgPHNtYWxsPuWIm+W7uuaXtumXtO+8mntkaXNwbGF5LmNyZWF0ZWRUaW1lTGFiZWx9PC9zbWFsbD5cclxuICAgICAgICB7YWN0aW9uLmRpZmZfc3VtbWFyeSA/IDxzbWFsbD7lt67lvILvvJp7YWN0aW9uLmRpZmZfc3VtbWFyeX08L3NtYWxsPiA6IG51bGx9XHJcbiAgICAgICAge2Rpc3BsYXkuc291cmNlTGFiZWwgPyA8c21hbGw+5p2l5rqQ77yae2Rpc3BsYXkuc291cmNlTGFiZWx9PC9zbWFsbD4gOiBudWxsfVxyXG4gICAgICA8L2Rpdj5cclxuXHJcbiAgICAgIHtzaG93QXVkaXREZXRhaWxzICYmIGF1ZGl0RGV0YWlscy5sZW5ndGggPiAwID8gKFxyXG4gICAgICAgIDxkZXRhaWxzIGNsYXNzTmFtZT1cImFnZW50LWFjdGlvbi1hdWRpdC1kZXRhaWxzXCI+XHJcbiAgICAgICAgICA8c3VtbWFyeT7mlbTnkIbor6bmg4U8L3N1bW1hcnk+XHJcbiAgICAgICAgICB7YXVkaXREZXRhaWxzLm1hcCgoZGV0YWlsKSA9PiAoXHJcbiAgICAgICAgICAgIDxzbWFsbCBrZXk9e2RldGFpbH0+e2RldGFpbH08L3NtYWxsPlxyXG4gICAgICAgICAgKSl9XHJcbiAgICAgICAgPC9kZXRhaWxzPlxyXG4gICAgICApIDogbnVsbH1cclxuXHJcbiAgICAgIHthY3Rpb24uZXJyb3IgPyA8cCBjbGFzc05hbWU9XCJmaWVsZC1ub3RlIGVycm9yXCI+e2FjdGlvbi5lcnJvcn08L3A+IDogbnVsbH1cclxuICAgICAge2FjdGlvbi5yZXZlcnRlZF9ieSA/IDxwIGNsYXNzTmFtZT1cImZpZWxkLW5vdGUgc3VjY2Vzc1wiPuW3suaSpOWbnu+8jOW5tueUn+aIkOaWsOeahOa0u+WKqOiusOW9le+8mnthY3Rpb24ucmV2ZXJ0ZWRfYnl944CCPC9wPiA6IG51bGx9XG4gICAgICB7YWN0aW9uLnJldmVydHNfYWN0aW9uX2lkID8gPHAgY2xhc3NOYW1lPVwiZmllbGQtbm90ZSBzdWNjZXNzXCI+6L+Z5piv5pKk5Zue6K6w5b2V77yM5p2l5rqQ5rS75Yqo77yae2FjdGlvbi5yZXZlcnRzX2FjdGlvbl9pZH3jgII8L3A+IDogbnVsbH1cbiAgICAgIHshY2FuUmV2ZXJ0ICYmIGFjdGlvbi5yZXZlcnNpYmxlICYmIGFjdGlvbi5zdGF0dXMgIT09IFwicmV2ZXJ0ZWRcIiA/IChcbiAgICAgICAgPHAgY2xhc3NOYW1lPVwiZmllbGQtbm90ZVwiPuW9k+WJjeeKtuaAgeS4jeWPr+iHquWKqOaSpOWbnuOAgjwvcD5cbiAgICAgICkgOiBudWxsfVxuICAgICAge2FjdGlvbi5kZWNpc2lvbiA9PT0gXCJhc2tcIiAmJiBhY3Rpb24uc3RhdHVzID09PSBcInBlbmRpbmdcIiA/IChcclxuICAgICAgICA8cCBjbGFzc05hbWU9XCJmaWVsZC1ub3RlIGVycm9yXCI+6K+l5rS75Yqo6ZyA6KaB5Lq65bel56Gu6K6k77yb6K+35aSE55CG5LiL5pa55a+55bqU55qE6auY6aOO6Zmp56Gu6K6k6aG544CCPC9wPlxyXG4gICAgICApIDogbnVsbH1cclxuXHJcbiAgICAgIHtvblJldmVhbFRhcmdldCAmJiB0YXJnZXRQYXRocy5sZW5ndGggPiAwID8gKFxyXG4gICAgICAgIDxkaXYgY2xhc3NOYW1lPVwiYWdlbnQtYWN0aW9uLXRhcmdldHNcIiBhcmlhLWxhYmVsPVwi5pys5py655uu5qCH5paH5Lu2XCI+XHJcbiAgICAgICAgICB7dGFyZ2V0UGF0aHMubWFwKCh0YXJnZXRQYXRoKSA9PiAoXHJcbiAgICAgICAgICAgIDxkaXYga2V5PXt0YXJnZXRQYXRofSBjbGFzc05hbWU9XCJhZ2VudC1hY3Rpb24tdGFyZ2V0LXJvd1wiPlxyXG4gICAgICAgICAgICAgIDxzcGFuPnt0YXJnZXRQYXRofTwvc3Bhbj5cclxuICAgICAgICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cImJ1dHRvbi1yb3cgY29tcGFjdC1hY3Rpb25zXCI+XHJcbiAgICAgICAgICAgICAgICA8YnV0dG9uXHJcbiAgICAgICAgICAgICAgICAgIHR5cGU9XCJidXR0b25cIlxyXG4gICAgICAgICAgICAgICAgICBjbGFzc05hbWU9XCJzZWNvbmRhcnlcIlxyXG4gICAgICAgICAgICAgICAgICBvbkNsaWNrPXsoKSA9PiBvblJldmVhbFRhcmdldCh0YXJnZXRQYXRoLCBcIm9wZW5cIil9XHJcbiAgICAgICAgICAgICAgICAgIHRpdGxlPXtg5omT5byAICR7dGFyZ2V0UGF0aH1gfVxyXG4gICAgICAgICAgICAgICAgPlxyXG4gICAgICAgICAgICAgICAgICA8RXh0ZXJuYWxMaW5rIHNpemU9ezE2fSAvPlxyXG4gICAgICAgICAgICAgICAgICDmiZPlvIDmlofku7ZcclxuICAgICAgICAgICAgICAgIDwvYnV0dG9uPlxyXG4gICAgICAgICAgICAgICAgPGJ1dHRvblxyXG4gICAgICAgICAgICAgICAgICB0eXBlPVwiYnV0dG9uXCJcclxuICAgICAgICAgICAgICAgICAgY2xhc3NOYW1lPVwic2Vjb25kYXJ5XCJcclxuICAgICAgICAgICAgICAgICAgb25DbGljaz17KCkgPT4gb25SZXZlYWxUYXJnZXQodGFyZ2V0UGF0aCwgXCJzaG93XCIpfVxyXG4gICAgICAgICAgICAgICAgICB0aXRsZT17YOWcqOaWh+S7tuWkueS4reaYvuekuiAke3RhcmdldFBhdGh9YH1cclxuICAgICAgICAgICAgICAgID5cclxuICAgICAgICAgICAgICAgICAgPEZvbGRlclNlYXJjaCBzaXplPXsxNn0gLz5cclxuICAgICAgICAgICAgICAgICAg5pi+56S65L2N572uXHJcbiAgICAgICAgICAgICAgICA8L2J1dHRvbj5cclxuICAgICAgICAgICAgICA8L2Rpdj5cclxuICAgICAgICAgICAgPC9kaXY+XHJcbiAgICAgICAgICApKX1cclxuICAgICAgICA8L2Rpdj5cclxuICAgICAgKSA6IG51bGx9XHJcblxyXG4gICAgICB7Y2FuUmV2ZXJ0ID8gKFxuICAgICAgICA8PlxuICAgICAgICAgIDxwIGNsYXNzTmFtZT1cImZpZWxkLW5vdGVcIj7mkqTlm57liY3kvJrlho3mrKHnoa7orqTvvJvnoa7orqTlkI7kvJrmjInmnKzmnLrlv6vnhafmgaLlpI3lhbPogZTmlofku7bvvIzlubbnlZnkuIvmlrDnmoTmtLvliqjorrDlvZXjgII8L3A+XG4gICAgICAgIDxkaXYgY2xhc3NOYW1lPVwiYnV0dG9uLXJvdyBjb21wYWN0LWFjdGlvbnNcIj5cbiAgICAgICAgICA8YnV0dG9uXG4gICAgICAgICAgICB0eXBlPVwiYnV0dG9uXCJcbiAgICAgICAgICAgIGNsYXNzTmFtZT1cInNlY29uZGFyeVwiXG4gICAgICAgICAgICBvbkNsaWNrPXsoKSA9PiBvblJldmVydChhY3Rpb24pfVxuICAgICAgICAgICAgZGlzYWJsZWQ9e3JldmVydGluZ31cbiAgICAgICAgICAgIHRpdGxlPXtg5pKk5ZueICR7ZGlzcGxheS5hY3Rpb25OYW1lfWB9XG4gICAgICAgICAgPlxuICAgICAgICAgICAge3JldmVydGluZyA/IDxMb2FkZXIyIGNsYXNzTmFtZT1cInNwaW5cIiBzaXplPXsxNn0gLz4gOiA8Um90YXRlQ2N3IHNpemU9ezE2fSAvPn1cbiAgICAgICAgICAgIOaSpOWbnlxuICAgICAgICAgIDwvYnV0dG9uPlxuICAgICAgICA8L2Rpdj5cbiAgICAgICAgPC8+XG4gICAgICApIDogbnVsbH1cbiAgICA8L2FydGljbGU+XHJcbiAgKTtcclxufVxyXG4iXSwiZmlsZSI6IkU6L2FnZW50cHJvamVjdC9hcHBzL2Rlc2t0b3Avc3JjL2ZlYXR1cmVzL21lbW9yeS9BZ2VudEFjdGlvbkFjdGl2aXR5Q2FyZC50c3gifQ==

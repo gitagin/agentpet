@@ -1,6 +1,5 @@
-import { Bot, FolderOpen, KeyRound, RefreshCw } from "lucide-react";
+import { Bot, FolderOpen, RefreshCw } from "lucide-react";
 import type { FormEvent } from "react";
-import { Panel } from "../../components/layout";
 import type { AgentModelId, ModelTestResponse, TtsSettingsResponse, VaultStatusResponse } from "../../types";
 import type { AgentModelDraft } from "../../services/agentModelDrafts";
 import type { DesktopApi } from "../../services/desktopApi";
@@ -114,7 +113,7 @@ export function SettingsPanel({
   void onSaveNegotiationSettings;
 
   return (
-    <Panel id="settings-panel" icon={<KeyRound size={18} />} title="设置" className="settings-panel-compact">
+    <section id="settings-panel" className="settings-panel-compact settings-panel-grid" aria-label="设置">
       <section className="settings-intro" aria-label="设置引导">
         <div>
           <p className="eyebrow">先能对话，再决定保存</p>
@@ -200,6 +199,6 @@ export function SettingsPanel({
         onLoadVaultStatus={onLoadVaultStatus}
         onRebuildIndex={onRebuildIndex}
       />
-    </Panel>
+    </section>
   );
 }

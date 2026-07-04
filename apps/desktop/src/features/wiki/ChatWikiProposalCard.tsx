@@ -39,7 +39,11 @@ export function ChatWikiProposalCard({
   const resultPaths = formatChatWikiProposalResultPaths(proposal.apply_result);
 
   return (
-    <article key={proposal.id} className={`proposal wiki-chat-proposal ${proposal.state}`}>
+    <article
+      key={proposal.id}
+      id={`wiki-proposal-${message.id}-${proposal.id}`}
+      className={`proposal wiki-chat-proposal ${proposal.state}`}
+    >
       <div className="wiki-chat-proposal-head">
         <div>
           <strong>{proposal.title}</strong>

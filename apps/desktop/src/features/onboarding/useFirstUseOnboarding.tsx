@@ -82,7 +82,7 @@ export function useFirstUseOnboarding({
     onNotice({ tone: "info", message: "已跳过首次引导，可以直接开始聊天。" });
   }
 
-  const show = status === "pending" && (windowMode === "control" || windowMode === "chat");
+  const show = status === "pending" && (windowMode === "control" || windowMode === "stage");
   return show ? (
     <FirstUseOnboardingCard
       currentFocus={draft.currentFocus}

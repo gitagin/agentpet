@@ -99,7 +99,7 @@ export default function GrowthWindowView({ api }: GrowthWindowViewProps) {
       eyebrow="成长"
       title="成长记录"
       description="你留下的日记、记忆、边界操作和资料整理，会变成桌宠可见的成长轨迹。"
-      activeTab={null}
+      activeTab="记忆"
     >
       <div className="feature-page-stack growth-page-stack">
         <Panel title="当前变化" icon={<Sprout size={18} />} className="feature-window-panel growth-summary-panel">

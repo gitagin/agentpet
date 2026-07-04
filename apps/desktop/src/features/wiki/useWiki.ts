@@ -188,7 +188,7 @@ export function useWiki({
   }, []);
 
   useEffect(() => {
-    if (windowMode !== "control" && windowMode !== "world") {
+    if (windowMode !== "control" && windowMode !== "stage" && windowMode !== "world") {
       return;
     }
     void loadArchiveHistory({ silent: true });

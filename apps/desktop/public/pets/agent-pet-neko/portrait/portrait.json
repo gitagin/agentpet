@@ -1,0 +1,138 @@
+{
+  "id": "agent-pet-neko-portrait",
+  "displayName": "Agent Pet Neko Portrait",
+  "description": "Fixed 512x512 half-body portrait frames for Agent Pet Neko, with deterministic mouth-only viseme overlays.",
+  "frameSize": {
+    "width": 512,
+    "height": 512
+  },
+  "background": "transparent",
+  "base": "base.png",
+  "statesSheet": "states-sheet.webp",
+  "mouthRect": {
+    "x": 222,
+    "y": 256,
+    "width": 68,
+    "height": 36
+  },
+  "states": {
+    "idle": {
+      "frames": [
+        "states/idle_00.png",
+        "states/idle_01.png",
+        "states/idle_02.png",
+        "states/idle_03.png"
+      ],
+      "durationsMs": [
+        320,
+        260,
+        260,
+        340
+      ]
+    },
+    "thinking": {
+      "frames": [
+        "states/thinking_00.png",
+        "states/thinking_01.png",
+        "states/thinking_02.png",
+        "states/thinking_03.png"
+      ],
+      "durationsMs": [
+        260,
+        260,
+        260,
+        340
+      ]
+    },
+    "memory": {
+      "frames": [
+        "states/memory_00.png",
+        "states/memory_01.png",
+        "states/memory_02.png"
+      ],
+      "durationsMs": [
+        360,
+        360,
+        420
+      ]
+    },
+    "wiki": {
+      "frames": [
+        "states/wiki_00.png",
+        "states/wiki_01.png",
+        "states/wiki_02.png"
+      ],
+      "durationsMs": [
+        320,
+        320,
+        380
+      ]
+    },
+    "task": {
+      "frames": [
+        "states/task_00.png",
+        "states/task_01.png",
+        "states/task_02.png"
+      ],
+      "durationsMs": [
+        260,
+        260,
+        320
+      ]
+    },
+    "confirm": {
+      "frames": [
+        "states/confirm_00.png",
+        "states/confirm_01.png",
+        "states/confirm_02.png"
+      ],
+      "durationsMs": [
+        260,
+        260,
+        360
+      ]
+    },
+    "error": {
+      "frames": [
+        "states/error_00.png",
+        "states/error_01.png",
+        "states/error_02.png"
+      ],
+      "durationsMs": [
+        320,
+        320,
+        420
+      ]
+    },
+    "offline": {
+      "frames": [
+        "states/offline_00.png",
+        "states/offline_01.png"
+      ],
+      "durationsMs": [
+        600,
+        680
+      ]
+    },
+    "blink": {
+      "frames": [
+        "states/blink_00.png",
+        "states/blink_01.png"
+      ],
+      "durationsMs": [
+        120,
+        140
+      ]
+    }
+  },
+  "visemes": {
+    "closed": "visemes/closed.png",
+    "AI": "visemes/AI.png",
+    "E": "visemes/E.png",
+    "O": "visemes/O.png",
+    "MBP": "visemes/MBP.png",
+    "FV": "visemes/FV.png",
+    "smile": "visemes/smile.png"
+  },
+  "visemesSheet": "visemes-sheet.png"
+}

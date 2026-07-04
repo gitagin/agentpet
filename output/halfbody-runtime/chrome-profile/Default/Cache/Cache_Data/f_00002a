@@ -1,0 +1,319 @@
+import { createHotContext as __vite__createHotContext } from "/@vite/client";import.meta.hot = __vite__createHotContext("/src/features/wiki/ChatWikiProposalCard.tsx");import __vite__cjsImport0_react_jsxDevRuntime from "/node_modules/.vite/deps/react_jsx-dev-runtime.js?v=bc5f1d7c"; const jsxDEV = __vite__cjsImport0_react_jsxDevRuntime["jsxDEV"];
+import * as RefreshRuntime from "/@react-refresh";
+const inWebWorker = typeof WorkerGlobalScope !== "undefined" && self instanceof WorkerGlobalScope;
+let prevRefreshReg;
+let prevRefreshSig;
+if (import.meta.hot && !inWebWorker) {
+  if (!window.$RefreshReg$) {
+    throw new Error(
+      "@vitejs/plugin-react can't detect preamble. Something is wrong."
+    );
+  }
+  prevRefreshReg = window.$RefreshReg$;
+  prevRefreshSig = window.$RefreshSig$;
+  window.$RefreshReg$ = RefreshRuntime.getRefreshReg("E:/agentproject/apps/desktop/src/features/wiki/ChatWikiProposalCard.tsx");
+  window.$RefreshSig$ = RefreshRuntime.createSignatureFunctionForTransform;
+}
+import { Check, FileDown, Loader2, X } from "/node_modules/.vite/deps/lucide-react.js?v=bc5f1d7c";
+import {
+  formatChatWikiProposalState,
+  getWikiProposalTargetOptions,
+  isSupportedChatWikiProposalType
+} from "/src/services/chatWikiProposals.ts";
+import { formatTaskStatus } from "/src/features/tasks/taskReducer.ts";
+import { formatChatWikiProposalResultPaths } from "/src/features/wiki/wikiUtils.ts";
+export function ChatWikiProposalCard({
+  message,
+  proposal,
+  formatIssueSeverity,
+  onConfirm,
+  onReject,
+  onToggleTarget,
+  onApply
+}) {
+  const targetOptions = getWikiProposalTargetOptions(proposal);
+  const selectedTargets = new Set(proposal.selected_targets);
+  const canEditTargets = proposal.state === "pending" || proposal.state === "confirmed" || proposal.state === "failed";
+  const canConfirm = proposal.state === "pending";
+  const canReject = proposal.state !== "rejected" && proposal.state !== "applied" && proposal.state !== "applying";
+  const canApply = isSupportedChatWikiProposalType(proposal.proposal_type) && (proposal.state === "confirmed" || proposal.state === "failed") && (proposal.proposal_type !== "ingest" || Boolean(proposal.run_id && proposal.review_id) && proposal.selected_targets.length > 0);
+  const resultPaths = formatChatWikiProposalResultPaths(proposal.apply_result);
+  return /* @__PURE__ */ jsxDEV(
+    "article",
+    {
+      id: `wiki-proposal-${message.id}-${proposal.id}`,
+      className: `proposal wiki-chat-proposal ${proposal.state}`,
+      children: [
+        /* @__PURE__ */ jsxDEV("div", { className: "wiki-chat-proposal-head", children: [
+          /* @__PURE__ */ jsxDEV("div", { children: [
+            /* @__PURE__ */ jsxDEV("strong", { children: proposal.title }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/ChatWikiProposalCard.tsx",
+              lineNumber: 68,
+              columnNumber: 11
+            }, this),
+            /* @__PURE__ */ jsxDEV("small", { children: [
+              formatChatWikiProposalType(proposal.proposal_type),
+              " / ",
+              formatChatWikiProposalState(proposal.state),
+              proposal.backend_status ? ` / 处理${formatTaskStatus(proposal.backend_status)}` : ""
+            ] }, void 0, true, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/ChatWikiProposalCard.tsx",
+              lineNumber: 69,
+              columnNumber: 11
+            }, this)
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/ChatWikiProposalCard.tsx",
+            lineNumber: 67,
+            columnNumber: 9
+          }, this),
+          /* @__PURE__ */ jsxDEV("span", { children: [
+            proposal.selected_targets.length || targetOptions.length,
+            " 个目标"
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/ChatWikiProposalCard.tsx",
+            lineNumber: 74,
+            columnNumber: 9
+          }, this)
+        ] }, void 0, true, {
+          fileName: "E:/agentproject/apps/desktop/src/features/wiki/ChatWikiProposalCard.tsx",
+          lineNumber: 66,
+          columnNumber: 7
+        }, this),
+        proposal.summary || proposal.review_summary ? /* @__PURE__ */ jsxDEV("p", { children: proposal.review_summary || proposal.summary }, void 0, false, {
+          fileName: "E:/agentproject/apps/desktop/src/features/wiki/ChatWikiProposalCard.tsx",
+          lineNumber: 76,
+          columnNumber: 54
+        }, this) : null,
+        /* @__PURE__ */ jsxDEV("dl", { className: "details wiki-chat-proposal-meta", children: [
+          /* @__PURE__ */ jsxDEV("div", { children: [
+            /* @__PURE__ */ jsxDEV("dt", { children: "处理状态" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/ChatWikiProposalCard.tsx",
+              lineNumber: 79,
+              columnNumber: 11
+            }, this),
+            /* @__PURE__ */ jsxDEV("dd", { children: proposal.review_status ? formatTaskStatus(proposal.review_status) : formatChatWikiProposalState(proposal.state) }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/ChatWikiProposalCard.tsx",
+              lineNumber: 80,
+              columnNumber: 11
+            }, this)
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/ChatWikiProposalCard.tsx",
+            lineNumber: 78,
+            columnNumber: 9
+          }, this),
+          /* @__PURE__ */ jsxDEV("div", { children: [
+            /* @__PURE__ */ jsxDEV("dt", { children: "来源" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/ChatWikiProposalCard.tsx",
+              lineNumber: 83,
+              columnNumber: 11
+            }, this),
+            /* @__PURE__ */ jsxDEV("dd", { children: proposal.source_hash || proposal.source_id ? "已识别本次来源" : "未知" }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/ChatWikiProposalCard.tsx",
+              lineNumber: 84,
+              columnNumber: 11
+            }, this)
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/ChatWikiProposalCard.tsx",
+            lineNumber: 82,
+            columnNumber: 9
+          }, this)
+        ] }, void 0, true, {
+          fileName: "E:/agentproject/apps/desktop/src/features/wiki/ChatWikiProposalCard.tsx",
+          lineNumber: 77,
+          columnNumber: 7
+        }, this),
+        /* @__PURE__ */ jsxDEV("div", { className: "wiki-chat-proposal-targets", "aria-label": "资料整理确认目标", children: [
+          /* @__PURE__ */ jsxDEV("strong", { children: "目标页面" }, void 0, false, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/ChatWikiProposalCard.tsx",
+            lineNumber: 88,
+            columnNumber: 9
+          }, this),
+          targetOptions.length > 0 ? targetOptions.map(
+            (targetPath) => /* @__PURE__ */ jsxDEV("label", { className: "wiki-chat-proposal-target", children: [
+              /* @__PURE__ */ jsxDEV(
+                "input",
+                {
+                  type: "checkbox",
+                  checked: selectedTargets.has(targetPath),
+                  disabled: !canEditTargets,
+                  onChange: (event) => onToggleTarget(message.id, proposal.id, targetPath, event.target.checked)
+                },
+                void 0,
+                false,
+                {
+                  fileName: "E:/agentproject/apps/desktop/src/features/wiki/ChatWikiProposalCard.tsx",
+                  lineNumber: 92,
+                  columnNumber: 15
+                },
+                this
+              ),
+              /* @__PURE__ */ jsxDEV("span", { children: targetPath }, void 0, false, {
+                fileName: "E:/agentproject/apps/desktop/src/features/wiki/ChatWikiProposalCard.tsx",
+                lineNumber: 98,
+                columnNumber: 15
+              }, this)
+            ] }, `${proposal.id}-${targetPath}`, true, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/ChatWikiProposalCard.tsx",
+              lineNumber: 91,
+              columnNumber: 9
+            }, this)
+          ) : /* @__PURE__ */ jsxDEV("span", { children: "该确认项没有包含目标页面。" }, void 0, false, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/ChatWikiProposalCard.tsx",
+            lineNumber: 102,
+            columnNumber: 9
+          }, this)
+        ] }, void 0, true, {
+          fileName: "E:/agentproject/apps/desktop/src/features/wiki/ChatWikiProposalCard.tsx",
+          lineNumber: 87,
+          columnNumber: 7
+        }, this),
+        proposal.findings.length > 0 ? /* @__PURE__ */ jsxDEV("div", { className: "message-events", children: proposal.findings.slice(0, 4).map(
+          (finding, index) => /* @__PURE__ */ jsxDEV(
+            "span",
+            {
+              className: finding.severity === "error" ? "error" : void 0,
+              children: [
+                /* @__PURE__ */ jsxDEV("strong", { children: [
+                  formatIssueSeverity(finding.severity),
+                  " / ",
+                  finding.code
+                ] }, void 0, true, {
+                  fileName: "E:/agentproject/apps/desktop/src/features/wiki/ChatWikiProposalCard.tsx",
+                  lineNumber: 112,
+                  columnNumber: 15
+                }, this),
+                finding.target_path ? `${finding.target_path}: ` : "",
+                finding.message
+              ]
+            },
+            `${proposal.id}-${finding.code}-${finding.target_path || index}`,
+            true,
+            {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/ChatWikiProposalCard.tsx",
+              lineNumber: 108,
+              columnNumber: 9
+            },
+            this
+          )
+        ) }, void 0, false, {
+          fileName: "E:/agentproject/apps/desktop/src/features/wiki/ChatWikiProposalCard.tsx",
+          lineNumber: 106,
+          columnNumber: 7
+        }, this) : null,
+        proposal.markdown_preview ? /* @__PURE__ */ jsxDEV("pre", { className: "diff-preview", children: proposal.markdown_preview }, void 0, false, {
+          fileName: "E:/agentproject/apps/desktop/src/features/wiki/ChatWikiProposalCard.tsx",
+          lineNumber: 119,
+          columnNumber: 36
+        }, this) : null,
+        proposal.error ? /* @__PURE__ */ jsxDEV("p", { className: "field-note error", children: proposal.error }, void 0, false, {
+          fileName: "E:/agentproject/apps/desktop/src/features/wiki/ChatWikiProposalCard.tsx",
+          lineNumber: 120,
+          columnNumber: 25
+        }, this) : null,
+        resultPaths ? /* @__PURE__ */ jsxDEV("p", { className: "field-note", children: [
+          "已应用页面：",
+          resultPaths
+        ] }, void 0, true, {
+          fileName: "E:/agentproject/apps/desktop/src/features/wiki/ChatWikiProposalCard.tsx",
+          lineNumber: 121,
+          columnNumber: 22
+        }, this) : null,
+        /* @__PURE__ */ jsxDEV("div", { className: "button-row", children: [
+          /* @__PURE__ */ jsxDEV("button", { type: "button", className: "secondary", onClick: () => onConfirm(message.id, proposal.id), disabled: !canConfirm, children: [
+            /* @__PURE__ */ jsxDEV(Check, { size: 16 }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/ChatWikiProposalCard.tsx",
+              lineNumber: 124,
+              columnNumber: 11
+            }, this),
+            "确认"
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/ChatWikiProposalCard.tsx",
+            lineNumber: 123,
+            columnNumber: 9
+          }, this),
+          /* @__PURE__ */ jsxDEV("button", { type: "button", className: "secondary", onClick: () => onReject(message.id, proposal.id), disabled: !canReject, children: [
+            /* @__PURE__ */ jsxDEV(X, { size: 16 }, void 0, false, {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/ChatWikiProposalCard.tsx",
+              lineNumber: 128,
+              columnNumber: 11
+            }, this),
+            "拒绝"
+          ] }, void 0, true, {
+            fileName: "E:/agentproject/apps/desktop/src/features/wiki/ChatWikiProposalCard.tsx",
+            lineNumber: 127,
+            columnNumber: 9
+          }, this),
+          /* @__PURE__ */ jsxDEV(
+            "button",
+            {
+              type: "button",
+              onClick: () => onApply(message.id, proposal.id),
+              disabled: !canApply,
+              title: canApply ? "将已选择目标写入本机资料页" : "需要先确认，并选择至少一个带必要校验信息的目标",
+              children: [
+                proposal.state === "applying" ? /* @__PURE__ */ jsxDEV(Loader2, { className: "spin", size: 16 }, void 0, false, {
+                  fileName: "E:/agentproject/apps/desktop/src/features/wiki/ChatWikiProposalCard.tsx",
+                  lineNumber: 137,
+                  columnNumber: 44
+                }, this) : /* @__PURE__ */ jsxDEV(FileDown, { size: 16 }, void 0, false, {
+                  fileName: "E:/agentproject/apps/desktop/src/features/wiki/ChatWikiProposalCard.tsx",
+                  lineNumber: 137,
+                  columnNumber: 85
+                }, this),
+                "确认写入"
+              ]
+            },
+            void 0,
+            true,
+            {
+              fileName: "E:/agentproject/apps/desktop/src/features/wiki/ChatWikiProposalCard.tsx",
+              lineNumber: 131,
+              columnNumber: 9
+            },
+            this
+          )
+        ] }, void 0, true, {
+          fileName: "E:/agentproject/apps/desktop/src/features/wiki/ChatWikiProposalCard.tsx",
+          lineNumber: 122,
+          columnNumber: 7
+        }, this)
+      ]
+    },
+    proposal.id,
+    true,
+    {
+      fileName: "E:/agentproject/apps/desktop/src/features/wiki/ChatWikiProposalCard.tsx",
+      lineNumber: 61,
+      columnNumber: 5
+    },
+    this
+  );
+}
+_c = ChatWikiProposalCard;
+function formatChatWikiProposalType(type) {
+  const labels = {
+    ingest: "资料整理",
+    query_archive: "查询整理",
+    synthesize: "综合整理",
+    lint: "检查修复"
+  };
+  return labels[type] || "资料整理";
+}
+var _c;
+$RefreshReg$(_c, "ChatWikiProposalCard");
+if (import.meta.hot && !inWebWorker) {
+  window.$RefreshReg$ = prevRefreshReg;
+  window.$RefreshSig$ = prevRefreshSig;
+}
+if (import.meta.hot && !inWebWorker) {
+  RefreshRuntime.__hmr_import(import.meta.url).then((currentExports) => {
+    RefreshRuntime.registerExportsForReactRefresh("E:/agentproject/apps/desktop/src/features/wiki/ChatWikiProposalCard.tsx", currentExports);
+    import.meta.hot.accept((nextExports) => {
+      if (!nextExports) return;
+      const invalidateMessage = RefreshRuntime.validateRefreshBoundaryAndEnqueueUpdate("E:/agentproject/apps/desktop/src/features/wiki/ChatWikiProposalCard.tsx", currentExports, nextExports);
+      if (invalidateMessage) import.meta.hot.invalidate(invalidateMessage);
+    });
+  });
+}
+
+//# sourceMappingURL=data:application/json;base64,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QyxJQUFBRDtBQUFBLGFBQUFBLElBQUEiLCJuYW1lcyI6WyJDaGVjayIsIkZpbGVEb3duIiwiTG9hZGVyMiIsIlgiLCJmb3JtYXRDaGF0V2lraVByb3Bvc2FsU3RhdGUiLCJnZXRXaWtpUHJvcG9zYWxUYXJnZXRPcHRpb25zIiwiaXNTdXBwb3J0ZWRDaGF0V2lraVByb3Bvc2FsVHlwZSIsImZvcm1hdFRhc2tTdGF0dXMiLCJmb3JtYXRDaGF0V2lraVByb3Bvc2FsUmVzdWx0UGF0aHMiLCJDaGF0V2lraVByb3Bvc2FsQ2FyZCIsIm1lc3NhZ2UiLCJwcm9wb3NhbCIsImZvcm1hdElzc3VlU2V2ZXJpdHkiLCJvbkNvbmZpcm0iLCJvblJlamVjdCIsIm9uVG9nZ2xlVGFyZ2V0Iiwib25BcHBseSIsInRhcmdldE9wdGlvbnMiLCJzZWxlY3RlZFRhcmdldHMiLCJTZXQiLCJzZWxlY3RlZF90YXJnZXRzIiwiY2FuRWRpdFRhcmdldHMiLCJzdGF0ZSIsImNhbkNvbmZpcm0iLCJjYW5SZWplY3QiLCJjYW5BcHBseSIsInByb3Bvc2FsX3R5cGUiLCJCb29sZWFuIiwicnVuX2lkIiwicmV2aWV3X2lkIiwibGVuZ3RoIiwicmVzdWx0UGF0aHMiLCJhcHBseV9yZXN1bHQiLCJpZCIsInRpdGxlIiwiZm9ybWF0Q2hhdFdpa2lQcm9wb3NhbFR5cGUiLCJiYWNrZW5kX3N0YXR1cyIsInN1bW1hcnkiLCJyZXZpZXdfc3VtbWFyeSIsInJldmlld19zdGF0dXMiLCJzb3VyY2VfaGFzaCIsInNvdXJjZV9pZCIsIm1hcCIsInRhcmdldFBhdGgiLCJoYXMiLCJldmVudCIsInRhcmdldCIsImNoZWNrZWQiLCJmaW5kaW5ncyIsInNsaWNlIiwiZmluZGluZyIsImluZGV4Iiwic2V2ZXJpdHkiLCJ1bmRlZmluZWQiLCJjb2RlIiwidGFyZ2V0X3BhdGgiLCJtYXJrZG93bl9wcmV2aWV3IiwiZXJyb3IiLCJfYyIsInR5cGUiLCJsYWJlbHMiLCJpbmdlc3QiLCJxdWVyeV9hcmNoaXZlIiwic3ludGhlc2l6ZSIsImxpbnQiXSwiaWdub3JlTGlzdCI6W10sInNvdXJjZXMiOlsiQ2hhdFdpa2lQcm9wb3NhbENhcmQudHN4Il0sInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB7IENoZWNrLCBGaWxlRG93biwgTG9hZGVyMiwgWCB9IGZyb20gXCJsdWNpZGUtcmVhY3RcIjtcclxuaW1wb3J0IHR5cGUgeyBDaGF0TWVzc2FnZSwgQ2hhdFdpa2lQcm9wb3NhbCB9IGZyb20gXCIuLi8uLi90eXBlc1wiO1xyXG5pbXBvcnQge1xyXG4gIGZvcm1hdENoYXRXaWtpUHJvcG9zYWxTdGF0ZSxcclxuICBnZXRXaWtpUHJvcG9zYWxUYXJnZXRPcHRpb25zLFxyXG4gIGlzU3VwcG9ydGVkQ2hhdFdpa2lQcm9wb3NhbFR5cGUsXHJcbn0gZnJvbSBcIi4uLy4uL3NlcnZpY2VzL2NoYXRXaWtpUHJvcG9zYWxzXCI7XHJcbmltcG9ydCB7IGZvcm1hdFRhc2tTdGF0dXMgfSBmcm9tIFwiLi4vdGFza3MvdGFza1JlZHVjZXJcIjtcclxuaW1wb3J0IHsgZm9ybWF0Q2hhdFdpa2lQcm9wb3NhbFJlc3VsdFBhdGhzIH0gZnJvbSBcIi4vd2lraVV0aWxzXCI7XHJcblxyXG50eXBlIENoYXRXaWtpUHJvcG9zYWxDYXJkUHJvcHMgPSB7XHJcbiAgbWVzc2FnZTogQ2hhdE1lc3NhZ2U7XHJcbiAgcHJvcG9zYWw6IENoYXRXaWtpUHJvcG9zYWw7XHJcbiAgZm9ybWF0SXNzdWVTZXZlcml0eTogKHNldmVyaXR5OiBzdHJpbmcpID0+IHN0cmluZztcclxuICBvbkNvbmZpcm06IChtZXNzYWdlSWQ6IHN0cmluZywgcHJvcG9zYWxJZDogc3RyaW5nKSA9PiB2b2lkO1xyXG4gIG9uUmVqZWN0OiAobWVzc2FnZUlkOiBzdHJpbmcsIHByb3Bvc2FsSWQ6IHN0cmluZykgPT4gdm9pZDtcclxuICBvblRvZ2dsZVRhcmdldDogKG1lc3NhZ2VJZDogc3RyaW5nLCBwcm9wb3NhbElkOiBzdHJpbmcsIHRhcmdldFBhdGg6IHN0cmluZywgc2VsZWN0ZWQ6IGJvb2xlYW4pID0+IHZvaWQ7XHJcbiAgb25BcHBseTogKG1lc3NhZ2VJZDogc3RyaW5nLCBwcm9wb3NhbElkOiBzdHJpbmcpID0+IHZvaWQ7XHJcbn07XHJcblxyXG5leHBvcnQgZnVuY3Rpb24gQ2hhdFdpa2lQcm9wb3NhbENhcmQoe1xyXG4gIG1lc3NhZ2UsXHJcbiAgcHJvcG9zYWwsXHJcbiAgZm9ybWF0SXNzdWVTZXZlcml0eSxcclxuICBvbkNvbmZpcm0sXHJcbiAgb25SZWplY3QsXHJcbiAgb25Ub2dnbGVUYXJnZXQsXHJcbiAgb25BcHBseSxcclxufTogQ2hhdFdpa2lQcm9wb3NhbENhcmRQcm9wcykge1xyXG4gIGNvbnN0IHRhcmdldE9wdGlvbnMgPSBnZXRXaWtpUHJvcG9zYWxUYXJnZXRPcHRpb25zKHByb3Bvc2FsKTtcclxuICBjb25zdCBzZWxlY3RlZFRhcmdldHMgPSBuZXcgU2V0KHByb3Bvc2FsLnNlbGVjdGVkX3RhcmdldHMpO1xyXG4gIGNvbnN0IGNhbkVkaXRUYXJnZXRzID0gcHJvcG9zYWwuc3RhdGUgPT09IFwicGVuZGluZ1wiIHx8IHByb3Bvc2FsLnN0YXRlID09PSBcImNvbmZpcm1lZFwiIHx8IHByb3Bvc2FsLnN0YXRlID09PSBcImZhaWxlZFwiO1xyXG4gIGNvbnN0IGNhbkNvbmZpcm0gPSBwcm9wb3NhbC5zdGF0ZSA9PT0gXCJwZW5kaW5nXCI7XHJcbiAgY29uc3QgY2FuUmVqZWN0ID0gcHJvcG9zYWwuc3RhdGUgIT09IFwicmVqZWN0ZWRcIiAmJiBwcm9wb3NhbC5zdGF0ZSAhPT0gXCJhcHBsaWVkXCIgJiYgcHJvcG9zYWwuc3RhdGUgIT09IFwiYXBwbHlpbmdcIjtcclxuICBjb25zdCBjYW5BcHBseSA9XHJcbiAgICBpc1N1cHBvcnRlZENoYXRXaWtpUHJvcG9zYWxUeXBlKHByb3Bvc2FsLnByb3Bvc2FsX3R5cGUpICYmXHJcbiAgICAocHJvcG9zYWwuc3RhdGUgPT09IFwiY29uZmlybWVkXCIgfHwgcHJvcG9zYWwuc3RhdGUgPT09IFwiZmFpbGVkXCIpICYmXHJcbiAgICAocHJvcG9zYWwucHJvcG9zYWxfdHlwZSAhPT0gXCJpbmdlc3RcIiB8fCAoQm9vbGVhbihwcm9wb3NhbC5ydW5faWQgJiYgcHJvcG9zYWwucmV2aWV3X2lkKSAmJiBwcm9wb3NhbC5zZWxlY3RlZF90YXJnZXRzLmxlbmd0aCA+IDApKTtcclxuICBjb25zdCByZXN1bHRQYXRocyA9IGZvcm1hdENoYXRXaWtpUHJvcG9zYWxSZXN1bHRQYXRocyhwcm9wb3NhbC5hcHBseV9yZXN1bHQpO1xyXG5cclxuICByZXR1cm4gKFxyXG4gICAgPGFydGljbGVcbiAgICAgIGtleT17cHJvcG9zYWwuaWR9XG4gICAgICBpZD17YHdpa2ktcHJvcG9zYWwtJHttZXNzYWdlLmlkfS0ke3Byb3Bvc2FsLmlkfWB9XG4gICAgICBjbGFzc05hbWU9e2Bwcm9wb3NhbCB3aWtpLWNoYXQtcHJvcG9zYWwgJHtwcm9wb3NhbC5zdGF0ZX1gfVxuICAgID5cbiAgICAgIDxkaXYgY2xhc3NOYW1lPVwid2lraS1jaGF0LXByb3Bvc2FsLWhlYWRcIj5cclxuICAgICAgICA8ZGl2PlxyXG4gICAgICAgICAgPHN0cm9uZz57cHJvcG9zYWwudGl0bGV9PC9zdHJvbmc+XG4gICAgICAgICAgPHNtYWxsPlxuICAgICAgICAgICAge2Zvcm1hdENoYXRXaWtpUHJvcG9zYWxUeXBlKHByb3Bvc2FsLnByb3Bvc2FsX3R5cGUpfSAvIHtmb3JtYXRDaGF0V2lraVByb3Bvc2FsU3RhdGUocHJvcG9zYWwuc3RhdGUpfVxuICAgICAgICAgICAge3Byb3Bvc2FsLmJhY2tlbmRfc3RhdHVzID8gYCAvIOWkhOeQhiR7Zm9ybWF0VGFza1N0YXR1cyhwcm9wb3NhbC5iYWNrZW5kX3N0YXR1cyl9YCA6IFwiXCJ9XG4gICAgICAgICAgPC9zbWFsbD5cbiAgICAgICAgPC9kaXY+XG4gICAgICAgIDxzcGFuPntwcm9wb3NhbC5zZWxlY3RlZF90YXJnZXRzLmxlbmd0aCB8fCB0YXJnZXRPcHRpb25zLmxlbmd0aH0g5Liq55uu5qCHPC9zcGFuPlxuICAgICAgPC9kaXY+XG4gICAgICB7cHJvcG9zYWwuc3VtbWFyeSB8fCBwcm9wb3NhbC5yZXZpZXdfc3VtbWFyeSA/IDxwPntwcm9wb3NhbC5yZXZpZXdfc3VtbWFyeSB8fCBwcm9wb3NhbC5zdW1tYXJ5fTwvcD4gOiBudWxsfVxuICAgICAgPGRsIGNsYXNzTmFtZT1cImRldGFpbHMgd2lraS1jaGF0LXByb3Bvc2FsLW1ldGFcIj5cbiAgICAgICAgPGRpdj5cbiAgICAgICAgICA8ZHQ+5aSE55CG54q25oCBPC9kdD5cbiAgICAgICAgICA8ZGQ+e3Byb3Bvc2FsLnJldmlld19zdGF0dXMgPyBmb3JtYXRUYXNrU3RhdHVzKHByb3Bvc2FsLnJldmlld19zdGF0dXMpIDogZm9ybWF0Q2hhdFdpa2lQcm9wb3NhbFN0YXRlKHByb3Bvc2FsLnN0YXRlKX08L2RkPlxuICAgICAgICA8L2Rpdj5cbiAgICAgICAgPGRpdj5cbiAgICAgICAgICA8ZHQ+5p2l5rqQPC9kdD5cbiAgICAgICAgICA8ZGQ+e3Byb3Bvc2FsLnNvdXJjZV9oYXNoIHx8IHByb3Bvc2FsLnNvdXJjZV9pZCA/IFwi5bey6K+G5Yir5pys5qyh5p2l5rqQXCIgOiBcIuacquefpVwifTwvZGQ+XG4gICAgICAgIDwvZGl2PlxuICAgICAgPC9kbD5cbiAgICAgIDxkaXYgY2xhc3NOYW1lPVwid2lraS1jaGF0LXByb3Bvc2FsLXRhcmdldHNcIiBhcmlhLWxhYmVsPVwi6LWE5paZ5pW055CG56Gu6K6k55uu5qCHXCI+XG4gICAgICAgIDxzdHJvbmc+55uu5qCH6aG16Z2iPC9zdHJvbmc+XHJcbiAgICAgICAge3RhcmdldE9wdGlvbnMubGVuZ3RoID4gMCA/IChcclxuICAgICAgICAgIHRhcmdldE9wdGlvbnMubWFwKCh0YXJnZXRQYXRoKSA9PiAoXHJcbiAgICAgICAgICAgIDxsYWJlbCBrZXk9e2Ake3Byb3Bvc2FsLmlkfS0ke3RhcmdldFBhdGh9YH0gY2xhc3NOYW1lPVwid2lraS1jaGF0LXByb3Bvc2FsLXRhcmdldFwiPlxyXG4gICAgICAgICAgICAgIDxpbnB1dFxyXG4gICAgICAgICAgICAgICAgdHlwZT1cImNoZWNrYm94XCJcclxuICAgICAgICAgICAgICAgIGNoZWNrZWQ9e3NlbGVjdGVkVGFyZ2V0cy5oYXModGFyZ2V0UGF0aCl9XHJcbiAgICAgICAgICAgICAgICBkaXNhYmxlZD17IWNhbkVkaXRUYXJnZXRzfVxyXG4gICAgICAgICAgICAgICAgb25DaGFuZ2U9eyhldmVudCkgPT4gb25Ub2dnbGVUYXJnZXQobWVzc2FnZS5pZCwgcHJvcG9zYWwuaWQsIHRhcmdldFBhdGgsIGV2ZW50LnRhcmdldC5jaGVja2VkKX1cclxuICAgICAgICAgICAgICAvPlxyXG4gICAgICAgICAgICAgIDxzcGFuPnt0YXJnZXRQYXRofTwvc3Bhbj5cclxuICAgICAgICAgICAgPC9sYWJlbD5cclxuICAgICAgICAgICkpXHJcbiAgICAgICAgKSA6IChcclxuICAgICAgICAgIDxzcGFuPuivpeehruiupOmhueayoeacieWMheWQq+ebruagh+mhtemdouOAgjwvc3Bhbj5cclxuICAgICAgICApfVxyXG4gICAgICA8L2Rpdj5cclxuICAgICAge3Byb3Bvc2FsLmZpbmRpbmdzLmxlbmd0aCA+IDAgPyAoXHJcbiAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJtZXNzYWdlLWV2ZW50c1wiPlxyXG4gICAgICAgICAge3Byb3Bvc2FsLmZpbmRpbmdzLnNsaWNlKDAsIDQpLm1hcCgoZmluZGluZywgaW5kZXgpID0+IChcclxuICAgICAgICAgICAgPHNwYW5cclxuICAgICAgICAgICAgICBrZXk9e2Ake3Byb3Bvc2FsLmlkfS0ke2ZpbmRpbmcuY29kZX0tJHtmaW5kaW5nLnRhcmdldF9wYXRoIHx8IGluZGV4fWB9XHJcbiAgICAgICAgICAgICAgY2xhc3NOYW1lPXtmaW5kaW5nLnNldmVyaXR5ID09PSBcImVycm9yXCIgPyBcImVycm9yXCIgOiB1bmRlZmluZWR9XHJcbiAgICAgICAgICAgID5cclxuICAgICAgICAgICAgICA8c3Ryb25nPntmb3JtYXRJc3N1ZVNldmVyaXR5KGZpbmRpbmcuc2V2ZXJpdHkpfSAvIHtmaW5kaW5nLmNvZGV9PC9zdHJvbmc+XHJcbiAgICAgICAgICAgICAge2ZpbmRpbmcudGFyZ2V0X3BhdGggPyBgJHtmaW5kaW5nLnRhcmdldF9wYXRofTogYCA6IFwiXCJ9XHJcbiAgICAgICAgICAgICAge2ZpbmRpbmcubWVzc2FnZX1cclxuICAgICAgICAgICAgPC9zcGFuPlxyXG4gICAgICAgICAgKSl9XHJcbiAgICAgICAgPC9kaXY+XHJcbiAgICAgICkgOiBudWxsfVxyXG4gICAgICB7cHJvcG9zYWwubWFya2Rvd25fcHJldmlldyA/IDxwcmUgY2xhc3NOYW1lPVwiZGlmZi1wcmV2aWV3XCI+e3Byb3Bvc2FsLm1hcmtkb3duX3ByZXZpZXd9PC9wcmU+IDogbnVsbH1cclxuICAgICAge3Byb3Bvc2FsLmVycm9yID8gPHAgY2xhc3NOYW1lPVwiZmllbGQtbm90ZSBlcnJvclwiPntwcm9wb3NhbC5lcnJvcn08L3A+IDogbnVsbH1cclxuICAgICAge3Jlc3VsdFBhdGhzID8gPHAgY2xhc3NOYW1lPVwiZmllbGQtbm90ZVwiPuW3suW6lOeUqOmhtemdou+8mntyZXN1bHRQYXRoc308L3A+IDogbnVsbH1cclxuICAgICAgPGRpdiBjbGFzc05hbWU9XCJidXR0b24tcm93XCI+XHJcbiAgICAgICAgPGJ1dHRvbiB0eXBlPVwiYnV0dG9uXCIgY2xhc3NOYW1lPVwic2Vjb25kYXJ5XCIgb25DbGljaz17KCkgPT4gb25Db25maXJtKG1lc3NhZ2UuaWQsIHByb3Bvc2FsLmlkKX0gZGlzYWJsZWQ9eyFjYW5Db25maXJtfT5cclxuICAgICAgICAgIDxDaGVjayBzaXplPXsxNn0gLz5cclxuICAgICAgICAgIOehruiupFxyXG4gICAgICAgIDwvYnV0dG9uPlxyXG4gICAgICAgIDxidXR0b24gdHlwZT1cImJ1dHRvblwiIGNsYXNzTmFtZT1cInNlY29uZGFyeVwiIG9uQ2xpY2s9eygpID0+IG9uUmVqZWN0KG1lc3NhZ2UuaWQsIHByb3Bvc2FsLmlkKX0gZGlzYWJsZWQ9eyFjYW5SZWplY3R9PlxyXG4gICAgICAgICAgPFggc2l6ZT17MTZ9IC8+XHJcbiAgICAgICAgICDmi5Lnu51cclxuICAgICAgICA8L2J1dHRvbj5cclxuICAgICAgICA8YnV0dG9uXHJcbiAgICAgICAgICB0eXBlPVwiYnV0dG9uXCJcclxuICAgICAgICAgIG9uQ2xpY2s9eygpID0+IG9uQXBwbHkobWVzc2FnZS5pZCwgcHJvcG9zYWwuaWQpfVxyXG4gICAgICAgICAgZGlzYWJsZWQ9eyFjYW5BcHBseX1cclxuICAgICAgICAgIHRpdGxlPXtjYW5BcHBseSA/IFwi5bCG5bey6YCJ5oup55uu5qCH5YaZ5YWl5pys5py66LWE5paZ6aG1XCIgOiBcIumcgOimgeWFiOehruiupO+8jOW5tumAieaLqeiHs+WwkeS4gOS4quW4puW/heimgeagoemqjOS/oeaBr+eahOebruagh1wifVxuICAgICAgICA+XHJcbiAgICAgICAgICB7cHJvcG9zYWwuc3RhdGUgPT09IFwiYXBwbHlpbmdcIiA/IDxMb2FkZXIyIGNsYXNzTmFtZT1cInNwaW5cIiBzaXplPXsxNn0gLz4gOiA8RmlsZURvd24gc2l6ZT17MTZ9IC8+fVxyXG4gICAgICAgICAg56Gu6K6k5YaZ5YWlXHJcbiAgICAgICAgPC9idXR0b24+XHJcbiAgICAgIDwvZGl2PlxyXG4gICAgPC9hcnRpY2xlPlxyXG4gICk7XG59XG5cbmZ1bmN0aW9uIGZvcm1hdENoYXRXaWtpUHJvcG9zYWxUeXBlKHR5cGU6IHN0cmluZyk6IHN0cmluZyB7XG4gIGNvbnN0IGxhYmVsczogUmVjb3JkPHN0cmluZywgc3RyaW5nPiA9IHtcbiAgICBpbmdlc3Q6IFwi6LWE5paZ5pW055CGXCIsXG4gICAgcXVlcnlfYXJjaGl2ZTogXCLmn6Xor6LmlbTnkIZcIixcbiAgICBzeW50aGVzaXplOiBcIue7vOWQiOaVtOeQhlwiLFxuICAgIGxpbnQ6IFwi5qOA5p+l5L+u5aSNXCIsXG4gIH07XG4gIHJldHVybiBsYWJlbHNbdHlwZV0gfHwgXCLotYTmlpnmlbTnkIZcIjtcbn1cbiJdLCJmaWxlIjoiRTovYWdlbnRwcm9qZWN0L2FwcHMvZGVza3RvcC9zcmMvZmVhdHVyZXMvd2lraS9DaGF0V2lraVByb3Bvc2FsQ2FyZC50c3gifQ==

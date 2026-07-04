@@ -11,6 +11,9 @@ describe("BottomNav", () => {
 
     expect(screen.getAllByRole("button")).toHaveLength(primaryNavigationTabs.length);
     expect(container.querySelectorAll(".bottom-nav-icon")).toHaveLength(primaryNavigationTabs.length);
+    expect(container.querySelector(".bottom-nav-center-avatar img")?.getAttribute("src")).toMatch(
+      /^\/images\/character\.png\?v=\d+$/,
+    );
 
     primaryNavigationTabs.forEach((tab) => {
       const button = screen.getByRole("button", { name: tab });
@@ -41,5 +44,11 @@ describe("BottomNav", () => {
 
     expect(screen.getAllByRole("button")).toHaveLength(primaryNavigationTabs.length);
     expect(screen.queryByRole("button", { current: "page" })).not.toBeInTheDocument();
+  });
+
+  it("does not render when the host route marks the nav inactive", () => {
+    render(<BottomNav activeTab={primaryNavigationTabs[0]} visible={false} />);
+
+    expect(screen.queryByLabelText("主导航")).not.toBeInTheDocument();
   });
 });

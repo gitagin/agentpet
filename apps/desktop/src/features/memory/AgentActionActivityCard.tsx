@@ -33,7 +33,7 @@ export function AgentActionActivityCard({ entry, reverting, onRevert, onRevealTa
   ].filter(Boolean);
 
   return (
-    <article className={`proposal agent-activity-item ${attention ? "pending" : "confirmed"}`}>
+    <article id={entry.id} className={`proposal agent-activity-item ${attention ? "pending" : "confirmed"}`}>
       <div className="continuity-proposal-head agent-action-head">
         <div>
           <strong>{display.actionName}</strong>

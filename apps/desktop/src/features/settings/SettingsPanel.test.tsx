@@ -145,6 +145,24 @@ function renderSettingsPanel(
 }
 
 describe("SettingsPanel", () => {
+  it("lays out settings sections as sibling cards instead of one nested panel", () => {
+    const { container } = renderSettingsPanel();
+    const settingsPanel = container.querySelector("#settings-panel");
+
+    expect(settingsPanel).toHaveClass("settings-panel-grid");
+
+    const directChildren = Array.from(settingsPanel?.children ?? []);
+    expect(directChildren.some((child) => child.classList.contains("settings-intro"))).toBe(true);
+    expect(directChildren.some((child) => child.classList.contains("advanced-agent-model-settings"))).toBe(true);
+    expect(directChildren.some((child) => child.classList.contains("automation-settings-card"))).toBe(true);
+    expect(directChildren.some((child) => child.classList.contains("tts-settings-card"))).toBe(true);
+    expect(directChildren.some((child) => child.classList.contains("separated"))).toBe(true);
+
+    const directSettingsCards = directChildren.filter((child) => child.classList.contains("settings-card"));
+    expect(directSettingsCards.length).toBeGreaterThanOrEqual(4);
+    directSettingsCards.forEach((card) => expect(card.parentElement).toBe(settingsPanel));
+  });
+
   it("shows action-first settings trials without binding or saving automatically", () => {
     const { onRefreshSettings, onTestGlobalModel, onSelectVaultDirectory } = renderSettingsPanel();
     const guidedActions = within(screen.getByRole("region", { name: "设置引导" }));

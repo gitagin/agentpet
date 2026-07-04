@@ -498,7 +498,7 @@ export default function AgentWorkspaceView({ api }: AgentWorkspaceViewProps) {
       eyebrow="更多和高级"
       title="提醒和待办"
       description="创建提醒、查看待办，并把执行步骤和日志收在辅助细节里。"
-      activeTab={null}
+      activeTab="计划"
     >
       <div className="task-workspace-grid" aria-label="提醒和待办区">
         <Panel icon={<PlusCircle size={18} />} title="创建任务" className="feature-window-panel task-create-panel">

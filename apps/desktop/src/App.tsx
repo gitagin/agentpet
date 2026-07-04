@@ -1,4 +1,4 @@
-﻿import { lazy, Suspense, useEffect, useRef, useState } from "react";
+﻿import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import type {
   AgentAction,
@@ -65,16 +65,9 @@ import { AgentActivityEntryRenderer } from "./features/desktop/AgentActivityEntr
 import { DesktopFeatureRoutes } from "./features/desktop/DesktopFeatureRoutes";
 import { buildControlWorkflowItems } from "./features/desktop/controlWorkflowItems";
 import { useDesktopWindowRouting } from "./features/desktop/useDesktopWindowRouting";
-
-const ConnectionManagementPanel = lazy(() =>
-  import("./features/desktop/ConnectionManagementPanel").then((module) => ({ default: module.ConnectionManagementPanel })),
-);
-const SettingsPanel = lazy(() =>
-  import("./features/settings/SettingsPanel").then((module) => ({ default: module.SettingsPanel })),
-);
-const WikiManagementPanels = lazy(() =>
-  import("./features/desktop/WikiManagementPanels").then((module) => ({ default: module.WikiManagementPanels })),
-);
+import { ConnectionManagementPanel } from "./features/desktop/ConnectionManagementPanel";
+import { SettingsPanel } from "./features/settings/SettingsPanel";
+import { WikiManagementPanels } from "./features/desktop/WikiManagementPanels";
 
 type Notice = {
   tone: "info" | "error" | "success";
@@ -85,6 +78,9 @@ type AsyncStatus = "idle" | "loading" | "success" | "empty" | "error";
 type SendChatTextOptions = {
   displayText?: string;
 };
+
+const agentActionMemoryReviewLimit = 200;
+const localAgentActionCacheLimit = 200;
 
 function displayTextForInputMode(mode: PetInputMode, rawText: string): string {
   const text = rawText.trim();
@@ -123,7 +119,7 @@ function App() {
   const conversationIdRef = useRef<string | null>(conversationId);
   const live2dTaskStageRef = useRef<() => void>(() => undefined);
   const live2dStageCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const live2dPetCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const petCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const live2dPanelCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const isElectronRuntime = Boolean(window.agentDesktop);
   const canSelectVaultDirectory = Boolean(window.agentDesktop?.selectKnowledgeBaseFolder);
@@ -214,7 +210,10 @@ function App() {
 
   applySettingsStatusRef.current = applySettingsStatus;
 
-  const taskReminderPollingEnabled = (desktopHostMode === "pet" && windowMode === "pet") || windowMode === "control";
+  const taskReminderPollingEnabled =
+    (desktopHostMode === "pet" && windowMode === "pet") ||
+    windowMode === "control" ||
+    windowMode === "stage";
   const {
     addTaskFromChat,
     clearTasks,
@@ -352,7 +351,7 @@ function App() {
   const petWindow = usePetWindowController({
     windowMode,
     petChat,
-    live2dPetCanvasRef,
+    petCanvasRef,
     onPetInputModeChange: setPetInputMode,
     onStopTts: () => tts.queue.stop("pet_shortcut_stop_tts"),
   });
@@ -657,7 +656,7 @@ function App() {
           agentActivitySortKey(right.updated_at || right.created_at) -
           agentActivitySortKey(left.updated_at || left.created_at),
         )
-        .slice(0, 50);
+        .slice(0, localAgentActionCacheLimit);
     });
   }
 
@@ -668,7 +667,7 @@ function App() {
       setNotice(null);
     }
     try {
-      const response = await api.listAgentActions(30, null, options.signal);
+      const response = await api.listAgentActions(agentActionMemoryReviewLimit, null, options.signal);
       setAgentActions(response.actions);
       setAgentActionsStatus(response.actions.length > 0 ? "success" : "empty");
       if (!options.silent) {
@@ -711,7 +710,7 @@ function App() {
             agentActivitySortKey(right.updated_at || right.created_at) -
             agentActivitySortKey(left.updated_at || left.created_at),
           )
-          .slice(0, 50);
+          .slice(0, localAgentActionCacheLimit);
       });
       setMessages((current) =>
         current.map((message) => {
@@ -1025,7 +1024,7 @@ function App() {
   const latestCitationTargetId = latestCitation ? findCitationTargetId(latestCitation, searchResults) : undefined;
   const recentControlMessages = messages.slice(-6);
   const agentActivityEntries = buildAgentActivityEntries(agentActions, proposals, continuityProposals, messages);
-  const recentAgentActivityEntries = agentActivityEntries.slice(0, 8);
+  const allAgentActivityEntries = agentActivityEntries;
   const pendingManualActivityCount = agentActivityEntries.filter((entry) => entry.kind !== "agent_action").length;
   const automaticActivityCount = agentActivityEntries.filter(
     (entry) => entry.kind === "agent_action" && !isAttentionAgentAction(entry.action),
@@ -1092,25 +1091,22 @@ function App() {
     onSendMessage: (message, options) => sendChatText(message, () => undefined, options),
   });
   const connectionPanel = (
-    <Suspense fallback={null}>
-      <ConnectionManagementPanel
-        settings={settings}
-        onSettingsChange={setSettings}
-        onSaveSettings={persistSettings}
-        onCheckHealth={() => void checkHealth()}
-        checkingHealth={checkingHealth}
-        isElectronRuntime={isElectronRuntime}
-        health={health}
-        businessAuthStatus={businessAuthStatus}
-        businessAuthMessage={businessAuthMessage}
-        resettingLocalState={resettingLocalState}
-        onResetLocalState={() => void resetLocalState()}
-      />
-    </Suspense>
+    <ConnectionManagementPanel
+      settings={settings}
+      onSettingsChange={setSettings}
+      onSaveSettings={persistSettings}
+      onCheckHealth={() => void checkHealth()}
+      checkingHealth={checkingHealth}
+      isElectronRuntime={isElectronRuntime}
+      health={health}
+      businessAuthStatus={businessAuthStatus}
+      businessAuthMessage={businessAuthMessage}
+      resettingLocalState={resettingLocalState}
+      onResetLocalState={() => void resetLocalState()}
+    />
   );
   const wikiWorkflowPanel = (
-    <Suspense fallback={null}>
-      <WikiManagementPanels
+    <WikiManagementPanels
         workflow={{
           draft: wikiDraft,
           tagInput: wikiTagInput,
@@ -1183,12 +1179,10 @@ function App() {
           onOpenArchive: (archiveId) => void openWikiQueryArchive(archiveId),
           onTryKnowledgeSnippet: fillKnowledgeSnippetTrial,
         }}
-      />
-    </Suspense>
+    />
   );
   const settingsPanel = (
-    <Suspense fallback={null}>
-      <SettingsPanel
+    <SettingsPanel
         api={api}
         agentModelDrafts={agentModelDrafts}
         agentModelTestResults={agentModelTestResults}
@@ -1231,8 +1225,7 @@ function App() {
         onBindVault={bindVault}
         onLoadVaultStatus={() => void loadVaultStatus()}
         onRebuildIndex={() => void rebuildIndex()}
-      />
-    </Suspense>
+    />
   );
 
   const petHitboxDebug =
@@ -1261,7 +1254,7 @@ function App() {
     />
   );
 
-  if (windowMode !== "pet" && windowMode !== "control") {
+  if (windowMode !== "pet" && windowMode !== "control" && windowMode !== "stage") {
     return (
       <DesktopFeatureRoutes
         windowMode={windowMode}
@@ -1290,8 +1283,6 @@ function App() {
           onOpenMemory: () => setWindowMode("memory"),
           onOpenWiki: (path) => openArtifactTarget("world", path),
           onOpenReport: (path) => openArtifactTarget("memory", path),
-          onboardingPanel: firstUseOnboardingPanel,
-          hasVaultInitialized,
         }}
         memoryWindowProps={{
           api,
@@ -1332,16 +1323,15 @@ function App() {
         hitboxDebug={petHitboxDebug}
         petChat={petChat}
         petDragging={petWindow.petDragging}
+        petDragDirection={petWindow.petDragDirection}
         petDragSnapshot={petWindow.petDragSnapshot}
         showPetEntryHint={petWindow.showPetEntryHint}
-        live2dStage={live2dStage}
-        live2dAsset={live2dAsset}
-        live2dRuntime={live2dRuntime}
-        live2dCanvasRef={live2dPetCanvasRef}
+        petStage={live2dStage}
+        petCanvasRef={petCanvasRef}
         ttsSpeaking={tts.speaking}
         ttsActive={tts.active}
-        live2dActionKeyOverride={live2dReplyActionKey}
-        live2dActionTriggerKey={live2dReplyActionTriggerKey}
+        actionKeyOverride={live2dReplyActionKey}
+        actionTriggerKey={live2dReplyActionTriggerKey}
         petInputMode={petInputMode}
         petInputModes={petInputModes}
         connected={hasConnection}
@@ -1395,12 +1385,15 @@ function App() {
       pendingManualActivityCount={pendingManualActivityCount}
       agentActionsStatus={agentActionsStatus}
       hasAgentActivity={hasAgentActivity}
-      recentAgentActivityCount={recentAgentActivityEntries.length}
+      recentAgentActivityCount={allAgentActivityEntries.length}
       loadingProposals={loadingProposals}
       loadingContinuity={loadingContinuity}
       agentActionsError={agentActionsError}
-      activityItems={recentAgentActivityEntries.map((entry) => renderAgentActivityEntry(entry))}
+      activityItems={allAgentActivityEntries.map((entry) => renderAgentActivityEntry(entry))}
       onRefreshActivity={refreshActivity}
+      messages={messages}
+      agentActivityEntries={agentActivityEntries}
+      tasks={tasks}
       chatMessageListProps={{
         messages: recentControlMessages,
         revertingActionIds: revertingAgentActionIds,
@@ -1420,6 +1413,14 @@ function App() {
       pendingContinuityCount={pendingContinuityCount}
       onLoadContinuity={() => void loadContinuity()}
       onLocateWorkflowTarget={scrollToWorkflowTarget}
+      modelStatusLabel={
+        settingsStatus?.model_configured
+          ? settingsStatus.chat_model || "已配置"
+          : hasConnection
+            ? "待配置"
+            : "连接中"
+      }
+      knowledgeStatusLabel={hasVaultInitialized ? (hasIndexSignal ? "已就绪" : "待索引") : "未绑定"}
       advancedTools={{
         models: live2dModels,
         selectedModelId: selectedLive2dModelId,

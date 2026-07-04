@@ -1,0 +1,102 @@
+- main [ref=f1e3]:
+  - generic [ref=f1e4]:
+    - generic [ref=f1e5]:
+      - img [ref=f1e7]
+      - generic [ref=f1e10]:
+        - strong [ref=f1e11]: Agent Pet
+        - generic [ref=f1e12]: 本地模式 · 连接中
+    - button "打开新窗口" [ref=f1e13] [cursor=pointer]:
+      - img [ref=f1e14]
+  - region "Agent Pet 首页" [ref=f1e18]:
+    - complementary "今日随行" [ref=f1e19]:
+      - generic [ref=f1e20]:
+        - strong [ref=f1e21]: 7月4日 星期六
+        - generic [ref=f1e22]:
+          - button "查看前一天" [ref=f1e23] [cursor=pointer]:
+            - img [ref=f1e24]
+          - button "回到今天" [disabled] [ref=f1e26]:
+            - img [ref=f1e27]
+      - generic [ref=f1e29]:
+        - generic [ref=f1e30]:
+          - strong [ref=f1e31]: 今日随记
+          - button "编辑随记" [ref=f1e32] [cursor=pointer]:
+            - img [ref=f1e33]
+        - textbox "今天想记录些什么呢？" [ref=f1e36]
+        - generic [ref=f1e37]: 这条随记只属于今天。
+        - generic [ref=f1e38]: 0/200
+      - generic [ref=f1e39]:
+        - generic [ref=f1e40]:
+          - strong [ref=f1e41]: 今日目标
+          - generic [ref=f1e42]: 0/0
+          - button "添加目标" [disabled] [ref=f1e43]:
+            - img [ref=f1e44]
+        - textbox "创建今天的目标..." [ref=f1e46]
+        - paragraph [ref=f1e48]: 还没有创建目标。
+      - generic [ref=f1e49]:
+        - strong [ref=f1e50]: 宠物状态
+        - img [ref=f1e52]
+        - generic [ref=f1e54]:
+          - generic [ref=f1e55]:
+            - term [ref=f1e56]: 心情
+            - definition [ref=f1e57]: 等待
+          - generic [ref=f1e58]:
+            - term [ref=f1e59]: 精力
+            - definition [ref=f1e60]: 待连接
+          - generic [ref=f1e61]:
+            - term [ref=f1e62]: 亲密度
+            - definition [ref=f1e63]: Lv.1
+        - button "与宠物互动" [ref=f1e64] [cursor=pointer]
+    - region "Agent Pet 观测台" [ref=f1e65]:
+      - img
+      - status [ref=f1e66]:
+        - strong [ref=f1e67]: 我在等本地助手连接。
+        - generic [ref=f1e68]: 连接完成后就可以继续聊天和整理记忆。
+      - figure:
+        - img "温柔少女 角色形象"
+      - form "和 Agent Pet 聊天" [ref=f1e75]:
+        - textbox "正在等待本地助手连接..." [ref=f1e76]
+        - generic "输入工具" [ref=f1e77]:
+          - button "添加附件" [ref=f1e78] [cursor=pointer]:
+            - img [ref=f1e79]
+          - button "添加图片" [ref=f1e82] [cursor=pointer]:
+            - img [ref=f1e83]
+          - button "快捷表情" [ref=f1e87] [cursor=pointer]:
+            - img [ref=f1e88]
+        - button "Choose File"
+        - button "Choose File"
+        - button "发送消息" [disabled] [ref=f1e90]:
+          - img [ref=f1e91]
+    - complementary "记忆回顾" [ref=f1e94]:
+      - generic [ref=f1e95]:
+        - generic [ref=f1e96]:
+          - strong [ref=f1e97]: 记忆回顾
+          - generic "记忆工具" [ref=f1e98]:
+            - button "搜索记忆" [ref=f1e99] [cursor=pointer]:
+              - img [ref=f1e100]
+            - button "筛选记忆：全部" [ref=f1e103] [cursor=pointer]:
+              - img [ref=f1e104]
+            - button "更多记忆" [ref=f1e105] [cursor=pointer]:
+              - img [ref=f1e106]
+        - generic "按日期排列的记忆记录" [ref=f1e110]:
+          - paragraph [ref=f1e111]: 开始聊天或创建任务后，实时记忆会出现在这里。
+        - button "查看全部记忆" [ref=f1e112] [cursor=pointer]
+    - navigation "主导航" [ref=f1e114]:
+      - generic [ref=f1e115]:
+        - button "首页" [ref=f1e117] [cursor=pointer]:
+          - img [ref=f1e118]
+          - generic [ref=f1e121]: 首页
+        - button "对话" [ref=f1e122] [cursor=pointer]:
+          - img [ref=f1e123]
+          - generic [ref=f1e125]: 对话
+        - button "记忆" [ref=f1e126] [cursor=pointer]:
+          - img [ref=f1e127]
+          - generic [ref=f1e129]: 记忆
+        - button "计划" [ref=f1e130] [cursor=pointer]:
+          - img [ref=f1e131]
+          - generic [ref=f1e133]: 计划
+        - button "工具" [ref=f1e134] [cursor=pointer]:
+          - img [ref=f1e135]
+          - generic [ref=f1e139]: 工具
+        - button "设置" [ref=f1e140] [cursor=pointer]:
+          - img [ref=f1e141]
+          - generic [ref=f1e144]: 设置

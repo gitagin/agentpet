@@ -6,6 +6,7 @@ import {
   canRevertAgentAction,
   formatAgentActionDecision,
   formatAgentActionRiskTier,
+  formatAgentActionSource,
   formatAgentActionSkippedReason,
   formatAgentActionStatus,
   formatAgentActionType,
@@ -88,6 +89,27 @@ describe("agentActivity", () => {
     expect(display.summary).toContain("自动整理策略当前关闭");
     expect(display.summary).not.toContain("Skipped");
     expect(formatAgentActionSkippedReason(skipped)).not.toContain("automation_disabled");
+  });
+
+  it("shows readable source text without exposing technical ids", () => {
+    const action = buildAction({
+      source_agent_run_id: "4379f293-ed73-48b7-b61a-3626e5a820c6",
+      source_conversation_id: "cb043107-f07b-4d8e-b971-5b1fef35b260",
+      source_message_id: "27e134ec-b30b-441f-a080-d1eef19cdf95",
+      source: {
+        label: "聊天日记归档",
+        source_agent_run_id: "4379f293-ed73-48b7-b61a-3626e5a820c6",
+        source_conversation_id: "cb043107-f07b-4d8e-b971-5b1fef35b260",
+        source_message_id: "27e134ec-b30b-441f-a080-d1eef19cdf95",
+      },
+    });
+
+    const source = formatAgentActionSource(action);
+
+    expect(source).toBe("聊天日记归档 / 来自一条聊天消息 / 关联当前对话 / 由自动整理流程生成");
+    expect(source).not.toContain("source_");
+    expect(source).not.toContain("4379f293");
+    expect(getAgentActionDisplayFields(action).sourceLabel).toBe(source);
   });
 
   it("distinguishes skipped reasons without exposing raw status codes", () => {

@@ -5,6 +5,7 @@ import type { PetChatBubbleController } from "../chat/usePetChatBubble";
 import { normalizePetInputMode, type PetInputMode } from "../chat/petInputModes";
 import type { DesktopStageRouteMode, DesktopWindowMode } from "../desktop/desktopWindowModes";
 import { readRendererUiState, writeRendererUiState } from "../../services/rendererUiState";
+import type { SpritePetDragDirection } from "./spritePetState";
 
 type PetShortcutMotion = "idle" | "opening" | "closing";
 type PetEntryHintStatus = "unknown" | "pending" | "completed";
@@ -25,7 +26,7 @@ type PetDragState = {
 type UsePetWindowControllerOptions = {
   windowMode: DesktopWindowMode;
   petChat: PetChatBubbleController;
-  live2dPetCanvasRef: RefObject<HTMLCanvasElement>;
+  petCanvasRef: RefObject<HTMLCanvasElement>;
   onPetInputModeChange: (mode: PetInputMode) => void;
   onStopTts: () => void;
 };
@@ -36,13 +37,14 @@ const petEntryHintCompletedValue = "completed:v1";
 export function usePetWindowController({
   windowMode,
   petChat,
-  live2dPetCanvasRef,
+  petCanvasRef,
   onPetInputModeChange,
   onStopTts,
 }: UsePetWindowControllerOptions) {
   const [petShortcutsVisible, setPetShortcutsVisible] = useState(false);
   const [petShortcutMotion, setPetShortcutMotion] = useState<PetShortcutMotion>("idle");
   const [petDragging, setPetDragging] = useState(false);
+  const [petDragDirection, setPetDragDirection] = useState<SpritePetDragDirection>("none");
   const [petDragSnapshot, setPetDragSnapshot] = useState<PetDragSnapshot>(null);
   const [petEntryHintStatus, setPetEntryHintStatus] = useState<PetEntryHintStatus>("unknown");
   const petShellRef = useRef<HTMLElement | null>(null);
@@ -98,7 +100,7 @@ export function usePetWindowController({
       petDragSnapshotClearTimerRef.current = null;
     }
 
-    const canvas = live2dPetCanvasRef.current;
+    const canvas = petCanvasRef.current;
     const shell = petShellRef.current;
     if (!canvas || !shell || canvas.width <= 1 || canvas.height <= 1) {
       setPetDragSnapshot(null);
@@ -136,6 +138,7 @@ export function usePetWindowController({
 
   function finishPetDragVisualState() {
     setPetDragging(false);
+    setPetDragDirection("none");
     clearPetDragSnapshot(0);
   }
 
@@ -185,6 +188,9 @@ export function usePetWindowController({
 
     const movedX = event.screenX - dragState.startX;
     const movedY = event.screenY - dragState.startY;
+    if (Math.abs(movedX) >= 2) {
+      setPetDragDirection(movedX < 0 ? "left" : "right");
+    }
     if (!dragState.dragging && Math.hypot(movedX, movedY) < 6) {
       return;
     }
@@ -341,6 +347,7 @@ export function usePetWindowController({
     petShortcutsVisible,
     petShortcutMotion,
     petDragging,
+    petDragDirection,
     petDragSnapshot,
     showPetEntryHint:
       windowMode === "pet" &&

@@ -64,7 +64,7 @@ export function ChatMessageList({
           const hasContent = displayContent.trim().length > 0;
           const isPending = message.status === "partial" && !hasContent;
           return (
-            <article key={message.id} className={`message-row ${message.role}`}>
+            <article key={message.id} id={`message-${message.id}`} className={`message-row ${message.role}`}>
               {message.role === "assistant" ? <span className="message-avatar" aria-hidden="true">AI</span> : null}
               <div className={`message message-bubble ${message.role}`}>
               {showMeta ? (

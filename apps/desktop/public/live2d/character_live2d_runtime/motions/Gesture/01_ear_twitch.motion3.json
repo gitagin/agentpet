@@ -1,0 +1,79 @@
+{
+  "Version": 3,
+  "Meta": {
+    "Duration": 1.35,
+    "Fps": 30.0,
+    "Loop": false,
+    "AreBeziersRestricted": true,
+    "CurveCount": 3,
+    "TotalSegmentCount": 13,
+    "TotalPointCount": 16,
+    "UserDataCount": 0,
+    "TotalUserDataSize": 0
+  },
+  "Curves": [
+    {
+      "Target": "Parameter",
+      "Id": "ParamEarLAngle",
+      "Segments": [
+        0,
+        0,
+        0,
+        0.18,
+        0.55,
+        0,
+        0.32,
+        -0.25,
+        0,
+        0.48,
+        0.2,
+        0,
+        0.8,
+        0,
+        0,
+        1.35,
+        0
+      ]
+    },
+    {
+      "Target": "Parameter",
+      "Id": "ParamEarRAngle",
+      "Segments": [
+        0,
+        0,
+        0,
+        0.16,
+        -0.45,
+        0,
+        0.34,
+        0.25,
+        0,
+        0.52,
+        -0.16,
+        0,
+        0.8,
+        0,
+        0,
+        1.35,
+        0
+      ]
+    },
+    {
+      "Target": "Parameter",
+      "Id": "ParamAngleZ",
+      "Segments": [
+        0,
+        0,
+        0,
+        0.24,
+        1.1,
+        0,
+        0.55,
+        -0.7,
+        0,
+        1.35,
+        0
+      ]
+    }
+  ]
+}

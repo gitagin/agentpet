@@ -1,0 +1,89 @@
+[    1243ms] [INFO] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold @ http://127.0.0.1:5173/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=bc5f1d7c:21548
+[    1659ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:8765/api/wiki/query-archives?limit=20:0
+[    1694ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:8765/api/wiki/index:0
+[    1700ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:8765/api/wiki/log?limit=20:0
+[    1700ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:8765/api/wiki/schema:0
+[    1701ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:8765/api/settings:0
+[    1702ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:8765/api/continuity/state:0
+[    1702ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:8765/api/continuity/proposals:0
+[    1702ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:8765/api/memory/proposals:0
+[    1703ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:8765/api/agent/actions?limit=200:0
+[    1756ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:5173/favicon.ico:0
+[   65038ms] [INFO] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold @ http://127.0.0.1:5173/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=bc5f1d7c:21548
+[   65134ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:8765/api/wiki/query-archives?limit=20:0
+[   65141ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:8765/api/wiki/schema:0
+[   65142ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:8765/api/wiki/index:0
+[   65142ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:8765/api/wiki/log?limit=20:0
+[   65142ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:8765/api/settings:0
+[   65142ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:8765/api/continuity/proposals:0
+[   65142ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:8765/api/continuity/state:0
+[   65143ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:8765/api/memory/proposals:0
+[   65143ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:8765/api/agent/actions?limit=200:0
+[  216566ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:8765/api/wiki/query-archives?limit=20:0
+[  216566ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:8765/api/wiki/schema:0
+[  216583ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:8765/api/settings:0
+[  216596ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:8765/api/wiki/log?limit=20:0
+[  216597ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:8765/api/wiki/index:0
+[  216598ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:8765/api/continuity/proposals:0
+[  216600ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:8765/api/continuity/state:0
+[  216618ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:8765/api/memory/proposals:0
+[  216618ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:8765/api/agent/actions?limit=200:0
+[  227811ms] ReferenceError: characterImageSrc is not defined
+    at ControlDashboard (http://127.0.0.1:5173/src/features/desktop/ControlDashboard.tsx?t=1783100189433:840:18)
+    at renderWithHooks (http://127.0.0.1:5173/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=bc5f1d7c:11546:26)
+    at mountIndeterminateComponent (http://127.0.0.1:5173/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=bc5f1d7c:14924:21)
+    at beginWork (http://127.0.0.1:5173/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=bc5f1d7c:15912:22)
+    at HTMLUnknownElement.callCallback2 (http://127.0.0.1:5173/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=bc5f1d7c:3672:22)
+    at Object.invokeGuardedCallbackDev (http://127.0.0.1:5173/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=bc5f1d7c:3697:24)
+    at invokeGuardedCallback (http://127.0.0.1:5173/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=bc5f1d7c:3731:39)
+    at beginWork$1 (http://127.0.0.1:5173/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=bc5f1d7c:19763:15)
+    at performUnitOfWork (http://127.0.0.1:5173/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=bc5f1d7c:19196:20)
+    at workLoopSync (http://127.0.0.1:5173/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=bc5f1d7c:19135:13)
+[  227817ms] ReferenceError: characterImageSrc is not defined
+    at ControlDashboard (http://127.0.0.1:5173/src/features/desktop/ControlDashboard.tsx?t=1783100189433:840:18)
+    at renderWithHooks (http://127.0.0.1:5173/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=bc5f1d7c:11546:26)
+    at mountIndeterminateComponent (http://127.0.0.1:5173/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=bc5f1d7c:14924:21)
+    at beginWork (http://127.0.0.1:5173/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=bc5f1d7c:15912:22)
+    at HTMLUnknownElement.callCallback2 (http://127.0.0.1:5173/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=bc5f1d7c:3672:22)
+    at Object.invokeGuardedCallbackDev (http://127.0.0.1:5173/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=bc5f1d7c:3697:24)
+    at invokeGuardedCallback (http://127.0.0.1:5173/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=bc5f1d7c:3731:39)
+    at beginWork$1 (http://127.0.0.1:5173/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=bc5f1d7c:19763:15)
+    at performUnitOfWork (http://127.0.0.1:5173/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=bc5f1d7c:19196:20)
+    at workLoopSync (http://127.0.0.1:5173/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=bc5f1d7c:19135:13)
+[  227818ms] [ERROR] The above error occurred in the <ControlDashboard> component:
+
+    at ControlDashboard (http://127.0.0.1:5173/src/features/desktop/ControlDashboard.tsx?t=1783100189433:82:3)
+    at App (http://127.0.0.1:5173/src/App.tsx?t=1783100189433:83:31)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries. @ http://127.0.0.1:5173/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=bc5f1d7c:14029
+[  227821ms] ReferenceError: characterImageSrc is not defined
+    at ControlDashboard (http://127.0.0.1:5173/src/features/desktop/ControlDashboard.tsx?t=1783100189433:840:18)
+    at renderWithHooks (http://127.0.0.1:5173/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=bc5f1d7c:11546:26)
+    at mountIndeterminateComponent (http://127.0.0.1:5173/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=bc5f1d7c:14924:21)
+    at beginWork (http://127.0.0.1:5173/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=bc5f1d7c:15912:22)
+    at beginWork$1 (http://127.0.0.1:5173/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=bc5f1d7c:19751:22)
+    at performUnitOfWork (http://127.0.0.1:5173/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=bc5f1d7c:19196:20)
+    at workLoopSync (http://127.0.0.1:5173/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=bc5f1d7c:19135:13)
+    at renderRootSync (http://127.0.0.1:5173/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=bc5f1d7c:19114:15)
+    at recoverFromConcurrentError (http://127.0.0.1:5173/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=bc5f1d7c:18734:28)
+    at performSyncWorkOnRoot (http://127.0.0.1:5173/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=bc5f1d7c:18877:28)
+[  250799ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:8765/api/wiki/query-archives?limit=20:0
+[  250822ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:8765/api/wiki/schema:0
+[  250824ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:8765/api/wiki/index:0
+[  250835ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:8765/api/wiki/log?limit=20:0
+[  250850ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:8765/api/settings:0
+[  250861ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:8765/api/continuity/state:0
+[  250870ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:8765/api/continuity/proposals:0
+[  250870ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:8765/api/memory/proposals:0
+[  250878ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:8765/api/agent/actions?limit=200:0
+[  327394ms] [INFO] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold @ http://127.0.0.1:5173/node_modules/.vite/deps/chunk-BCXODTBQ.js?v=bc5f1d7c:21548
+[  327492ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:8765/api/wiki/query-archives?limit=20:0
+[  327493ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:8765/api/wiki/schema:0
+[  327543ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:8765/api/wiki/log?limit=20:0
+[  327543ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:8765/api/wiki/index:0
+[  327543ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:8765/api/settings:0
+[  327543ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:8765/api/continuity/proposals:0
+[  327543ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:8765/api/continuity/state:0
+[  327543ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:8765/api/memory/proposals:0
+[  327543ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:8765/api/agent/actions?limit=200:0
