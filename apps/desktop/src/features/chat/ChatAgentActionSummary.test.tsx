@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import type { AgentAction, ChatWikiProposal, MemoryProposal, TaskItem } from "../../types";
+import type { AgentAction, ChatWikiProposal, MemoryProposal, MemoryReceiptItem, TaskItem } from "../../types";
 import { ChatAgentActionSummary } from "./ChatAgentActionSummary";
 
 function action(overrides: Partial<AgentAction>): AgentAction {
@@ -59,6 +59,19 @@ function wikiProposal(overrides: Partial<ChatWikiProposal> = {}): ChatWikiPropos
     findings: overrides.findings || [],
     updated_at: overrides.updated_at || "2026-06-02T00:00:00.000Z",
     ...overrides,
+  };
+}
+
+function receipt(overrides: Partial<MemoryReceiptItem> = {}): MemoryReceiptItem {
+  return {
+    id: overrides.id || "receipt-1",
+    kind: overrides.kind || "remembered",
+    title: overrides.title || "已记住一条偏好",
+    detail: overrides.detail || "我会在以后回答时优先保持简洁。",
+    safety_note: overrides.safety_note,
+    action_label: overrides.action_label,
+    related_memory_id: overrides.related_memory_id,
+    created_at: overrides.created_at || "2026-06-02T00:00:00.000Z",
   };
 }
 
@@ -157,6 +170,115 @@ describe("ChatAgentActionSummary", () => {
     expect(screen.getByText("资料未保存")).toBeInTheDocument();
     expect(screen.getByText("这次整理没有完成，暂时没有保存新内容。")).toBeInTheDocument();
     expect(container.textContent).not.toMatch(/agent_actions|proposal|vault|FTS|sidecar|runtime|Wiki\/A\.md|Skipped|saveable|automation_disabled/i);
+  });
+
+  it("renders Chinese memory receipt items before raw action fallback", () => {
+    const { container } = render(
+      <ChatAgentActionSummary
+        receipts={[receipt({ action_label: "查看详情" })]}
+        actions={[
+          action({
+            action_id: "memory-action",
+            action_type: "memory.long_term.write",
+            title: "memory_candidates internal action",
+            summary: "source_text should not render",
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("已记住一条偏好")).toBeInTheDocument();
+    expect(screen.getByText("我会在以后回答时优先保持简洁。")).toBeInTheDocument();
+    expect(screen.getByText("本机记忆回执")).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/memory_candidates|source_text|agent_run_id|lifecycle_status|vector|Authorization/i);
+  });
+
+  it("does not hide failed or pending memory actions when receipts only describe answer usage", () => {
+    const { container } = render(
+      <ChatAgentActionSummary
+        receipts={[
+          receipt({
+            id: "mr_answer_context",
+            kind: "used_for_answer",
+            title: "本次回答参考了相关记忆",
+            detail: "我只参考了已允许用于回答的记忆摘要。",
+            related_memory_id: "mem_opaque",
+          }),
+        ]}
+        actions={[
+          action({
+            action_id: "failed-memory",
+            action_type: "memory.long_term.write",
+            status: "failed",
+            title: "偏好未保存",
+            summary: "偏好未保存",
+            error: "保存时遇到问题",
+          }),
+          action({
+            action_id: "pending-memory",
+            action_type: "memory.long_term.write",
+            decision: "ask",
+            status: "pending",
+            title: "待确认偏好",
+            summary: "等待确认后再保存",
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("本次回答参考了相关记忆")).toBeInTheDocument();
+    expect(screen.getByText("偏好未保存")).toBeInTheDocument();
+    expect(screen.getByText("待确认偏好")).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(
+      /agent_run_id|memory_candidates|FTS|vector|lifecycle_status|source_text|source_excerpt|Authorization|receipt:used:run-secret|[A-Za-z]:\\/i,
+    );
+  });
+
+  it("sanitizes incomplete receipt text and keeps the action fallback visible", () => {
+    const { container } = render(
+      <ChatAgentActionSummary
+        receipts={[
+          receipt({
+            id: "receipt:used:run-secret",
+            kind: "used_for_answer",
+            title: "agent_run_id receipt:used:run-secret",
+            detail: "source_text Authorization C:\\Users\\Alice\\Vault\\Secret.md",
+            safety_note: "related_memory_id vector",
+            related_memory_id: "memory_candidates:raw-id",
+          }),
+        ]}
+        actions={[
+          action({
+            action_id: "memory-action",
+            action_type: "memory.long_term.write",
+            title: "正常记忆动作",
+            summary: "已完成记忆整理",
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("正常记忆动作")).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(
+      /agent_run_id|memory_candidates|FTS|vector|lifecycle_status|source_text|source_excerpt|Authorization|receipt:used:run-secret|C:\\Users\\Alice/i,
+    );
+  });
+
+  it("falls back to existing action summary when receipts are unavailable", () => {
+    render(
+      <ChatAgentActionSummary
+        actions={[
+          action({
+            action_id: "memory-action",
+            action_type: "memory.long_term.write",
+            title: "已保存偏好",
+            summary: "已更新长期记忆。",
+          }),
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("已保存偏好")).toBeInTheDocument();
   });
 
   it("keeps pending memory explicit about not writing yet", () => {

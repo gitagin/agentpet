@@ -8,7 +8,7 @@ import {
   Loader2,
   RotateCcw,
 } from "lucide-react";
-import type { AgentAction, ChatWikiProposal, MemoryProposal, TaskItem } from "../../types";
+import type { AgentAction, ChatWikiProposal, MemoryProposal, MemoryReceiptItem, TaskItem } from "../../types";
 import {
   buildAgentOutcomeActivities,
   canRevertAgentAction,
@@ -26,6 +26,7 @@ type ChatAgentActionSummaryProps = {
   tasks?: TaskItem[];
   memoryProposals?: MemoryProposal[];
   wikiProposals?: ChatWikiProposal[];
+  receipts?: MemoryReceiptItem[];
   showEmpty?: boolean;
   revertingActionIds?: Set<string>;
   onRevertAgentAction?: (action: AgentAction) => void;
@@ -56,6 +57,7 @@ export function ChatAgentActionSummary({
   tasks = [],
   memoryProposals = [],
   wikiProposals = [],
+  receipts = [],
   showEmpty = false,
   revertingActionIds,
   onRevertAgentAction,
@@ -64,7 +66,7 @@ export function ChatAgentActionSummary({
   onOpenWiki,
   onOpenReport,
 }: ChatAgentActionSummaryProps) {
-  const artifacts = buildArtifactCards(actions, tasks, memoryProposals, wikiProposals);
+  const artifacts = buildArtifactCards(actions, tasks, memoryProposals, wikiProposals, receipts);
   const teamActivities = buildAgentOutcomeActivities(actions, tasks, memoryProposals, wikiProposals);
   if (artifacts.length === 0 && !showEmpty) {
     return null;
@@ -205,8 +207,25 @@ function buildArtifactCards(
   tasks: TaskItem[],
   memoryProposals: MemoryProposal[],
   wikiProposals: ChatWikiProposal[],
+  receipts: MemoryReceiptItem[],
 ): ArtifactCard[] {
   const cards: ArtifactCard[] = [];
+
+  receipts.forEach((receipt) => {
+    const kind: ArtifactKind = receipt.kind === "skipped" ? "skip" : "memory";
+    cards.push({
+      id: `memory-receipt-${receipt.id}`,
+      kind,
+      tone: receiptTone(receipt),
+      eyebrow: receiptEyebrow(receipt),
+      title: userSafeText(receipt.title, "记忆回执"),
+      summary: userSafeText(
+        [receipt.detail, receipt.safety_note].filter(Boolean).join(" "),
+        "我已经整理了这轮聊天的记忆状态。",
+      ),
+      meta: receiptMeta(receipt),
+    });
+  });
 
   tasks.forEach((task) => {
     const taskFailed = task.status === "failed";
@@ -271,6 +290,9 @@ function buildArtifactCards(
     if (!kind) {
       return;
     }
+    if (isReceiptCoveredAction(action, kind, receipts)) {
+      return;
+    }
     if (kind === "task" && tasks.length > 0) {
       return;
     }
@@ -291,6 +313,64 @@ function buildArtifactCards(
   });
 
   return cards;
+}
+
+function receiptTone(receipt: MemoryReceiptItem): ArtifactTone {
+  if (receipt.kind === "needs_confirmation") {
+    return "pending";
+  }
+  if (receipt.kind === "filtered" || receipt.kind === "skipped") {
+    return "skipped";
+  }
+  if (receipt.kind === "forgotten") {
+    return "reverted";
+  }
+  return "success";
+}
+
+function receiptEyebrow(receipt: MemoryReceiptItem): string {
+  const labels: Record<string, string> = {
+    remembered: "已记住",
+    skipped: "未保存",
+    needs_confirmation: "需要确认",
+    updated: "已更新",
+    forgotten: "已忘记",
+    filtered: "已过滤",
+    used_for_answer: "本次参考",
+  };
+  return labels[receipt.kind] || "记忆回执";
+}
+
+function receiptMeta(receipt: MemoryReceiptItem): string[] {
+  const meta = ["本机记忆回执"];
+  if (receipt.safety_note) {
+    meta.push(receipt.safety_note);
+  }
+  if (receipt.action_label) {
+    meta.push(receipt.action_label);
+  }
+  return meta.map((item) => userSafeText(item, "安全摘要"));
+}
+
+function isReceiptCoveredAction(action: AgentAction, kind: ArtifactKind, receipts: MemoryReceiptItem[]): boolean {
+  if (receipts.length === 0) {
+    return false;
+  }
+  const actionType = action.action_type.toLocaleLowerCase();
+  const memoryLike =
+    kind === "memory" || actionType.startsWith("memory.") || actionType.startsWith("continuity.") || actionType.includes("memory");
+  if (!memoryLike && kind !== "skip") {
+    return false;
+  }
+  const tone = actionTone(action);
+  if (tone === "failed" || tone === "pending" || tone === "reverted") {
+    return false;
+  }
+  const receiptKinds = new Set(receipts.map((receipt) => receipt.kind));
+  if (kind === "skip" || isSkippedAgentAction(action)) {
+    return receiptKinds.has("skipped");
+  }
+  return ["remembered", "updated", "forgotten", "filtered"].some((receiptKind) => receiptKinds.has(receiptKind));
 }
 
 function primaryArtifactAction(
@@ -448,7 +528,7 @@ function userSafeText(value: string | undefined | null, fallback: string): strin
     return fallback;
   }
   const internalPattern =
-    /\b(agent_actions?|agent|proposal|vault|wiki|fts|sidecar|runtime|skipped|saveable|confirmation-only|automation_disabled)\b|[A-Za-z]:\\|\.md\b|[\\/]/i;
+    /receipt:used:[^\s]+|\b(agent_actions?|agent_run_id|memory_candidates?|lifecycle_status|related_memory_id|source_text|source_excerpt|agent|proposal|vault|wiki|fts|vector|sidecar|runtime|authorization|token|skipped|saveable|confirmation-only|automation_disabled)\b|[A-Za-z]:\\|\.md\b|[\\/]/i;
   return internalPattern.test(text) ? fallback : text;
 }
 

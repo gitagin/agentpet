@@ -29,6 +29,11 @@ import type {
   MemoryGraphFactActionResponse,
   MemoryGraphFactListResponse,
   MemoryFeedbackResponse,
+  MemoryProfileActionRequest,
+  MemoryProfileActionResponse,
+  MemoryProfileDetail,
+  MemoryProfileProjectionResponse,
+  MemoryReceiptResponse,
   MemorySearchResponse,
   MemoryReviewActionRequest,
   MemoryReviewResponse,
@@ -121,6 +126,41 @@ export class DesktopApi {
 
   getLocalAssetStats(signal?: AbortSignal): Promise<LocalAssetStatsResponse> {
     return this.client.get<LocalAssetStatsResponse>("/api/memory/local-assets", signal);
+  }
+
+  getMemoryProfileProjection(signal?: AbortSignal): Promise<MemoryProfileProjectionResponse> {
+    return this.client.get<MemoryProfileProjectionResponse>("/api/memory/profile-projection", signal);
+  }
+
+  getMemoryProfileDetail(itemId: string, signal?: AbortSignal): Promise<MemoryProfileDetail> {
+    return this.client.get<MemoryProfileDetail>(
+      `/api/memory/profile-projection/items/${encodeURIComponent(itemId)}`,
+      signal,
+    );
+  }
+
+  submitMemoryProfileAction(
+    itemId: string,
+    request: MemoryProfileActionRequest,
+    signal?: AbortSignal,
+  ): Promise<MemoryProfileActionResponse> {
+    return this.client.post<MemoryProfileActionResponse>(
+      `/api/memory/profile-projection/items/${encodeURIComponent(itemId)}/actions`,
+      request,
+      signal,
+    );
+  }
+
+  getMemoryReceipts(
+    agentRunId?: string | null,
+    signal?: AbortSignal,
+  ): Promise<MemoryReceiptResponse> {
+    const params = new URLSearchParams();
+    if (agentRunId?.trim()) {
+      params.set("agent_run_id", agentRunId.trim());
+    }
+    const query = params.toString();
+    return this.client.get<MemoryReceiptResponse>(`/api/memory/receipts${query ? `?${query}` : ""}`, signal);
   }
 
   getGrowthSnapshot(signal?: AbortSignal): Promise<GrowthSnapshotResponse> {

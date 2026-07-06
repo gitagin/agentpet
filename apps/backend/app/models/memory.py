@@ -229,6 +229,97 @@ class MemoryReviewResponse(BaseModel):
     redaction_note: str = "Sensitive text, credentials, raw evidence, and full Authorization headers are not included."
 
 
+class MemoryProfileProjectionItemResponse(BaseModel):
+    id: str
+    category: str
+    summary: str
+    confidence: float
+    importance: float
+    status_label: str
+    risk_label: str
+    source_label: str
+    updated_at: str
+    permissions_summary: str
+    can_revoke: bool = False
+    available_actions: list[str] = Field(default_factory=list)
+
+
+class MemoryProfileProjectionResponse(BaseModel):
+    generated_at: str
+    identity: list[MemoryProfileProjectionItemResponse] = Field(default_factory=list)
+    preferences: list[MemoryProfileProjectionItemResponse] = Field(default_factory=list)
+    boundaries: list[MemoryProfileProjectionItemResponse] = Field(default_factory=list)
+    projects: list[MemoryProfileProjectionItemResponse] = Field(default_factory=list)
+    relationships: list[MemoryProfileProjectionItemResponse] = Field(default_factory=list)
+    recent_state: list[MemoryProfileProjectionItemResponse] = Field(default_factory=list)
+    conflicts: list[MemoryProfileProjectionItemResponse] = Field(default_factory=list)
+    needs_confirmation: list[MemoryProfileProjectionItemResponse] = Field(default_factory=list)
+    filtered: list[MemoryProfileProjectionItemResponse] = Field(default_factory=list)
+    redaction_note: str = "敏感内容、原始证据、凭据、完整授权信息和本机绝对路径不会显示在画像里。"
+
+
+MemoryProfileAction = Literal["forget", "mark_inaccurate", "keep", "make_temporary", "mark_stale"]
+
+
+class MemoryProfileAvailableActionResponse(BaseModel):
+    action: MemoryProfileAction
+    label: str
+    requires_confirmation: bool = True
+
+
+class MemoryProfileSourceSummaryResponse(BaseModel):
+    label: str
+    description: str
+    evidence_count_label: str | None = None
+    last_seen_label: str | None = None
+    safety_note: str | None = None
+
+
+class MemoryProfileDetailResponse(BaseModel):
+    id: str
+    summary: str
+    category_label: str
+    status_label: str
+    confidence_label: str
+    importance_label: str
+    source_label: str
+    permissions: list[str] = Field(default_factory=list)
+    safety_note: str | None = None
+    updated_at: str
+    source_summary: MemoryProfileSourceSummaryResponse | None = None
+    available_actions: list[MemoryProfileAvailableActionResponse] = Field(default_factory=list)
+
+
+class MemoryProfileActionRequest(BaseModel):
+    action: MemoryProfileAction
+    confirmed: bool = False
+    expires_at: str | None = None
+    feedback_text: str = ""
+
+
+class MemoryProfileActionResponse(BaseModel):
+    ok: bool
+    message: str
+    item_id: str
+
+
+class MemoryReceiptItemResponse(BaseModel):
+    id: str
+    kind: str
+    title: str
+    detail: str
+    safety_note: str | None = None
+    action_label: str | None = None
+    related_memory_id: str | None = None
+    created_at: str
+
+
+class MemoryReceiptResponse(BaseModel):
+    generated_at: str
+    items: list[MemoryReceiptItemResponse] = Field(default_factory=list)
+    redaction_note: str = "回执只显示安全摘要，不显示原始证据、内部编号、凭据或本机绝对路径。"
+
+
 class MemoryReviewActionRequest(BaseModel):
     target_type: MemoryFeedbackTargetType
     target_id: str = Field(min_length=1)

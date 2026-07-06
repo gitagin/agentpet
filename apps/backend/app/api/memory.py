@@ -26,10 +26,19 @@ from ..models.api import (
     MemoryProposalCreateRequest,
     MemoryProposalListResponse,
     MemoryProposalResponse,
+    MemoryProfileActionRequest,
+    MemoryProfileActionResponse,
+    MemoryProfileAvailableActionResponse,
+    MemoryProfileDetailResponse,
+    MemoryProfileProjectionItemResponse,
+    MemoryProfileProjectionResponse,
+    MemoryProfileSourceSummaryResponse,
     MemoryReviewActionRequest,
     MemoryReviewItemResponse,
     MemoryReviewResponse,
     MemoryReviewSummaryResponse,
+    MemoryReceiptItemResponse,
+    MemoryReceiptResponse,
     MemorySearchRequest,
     MemorySearchResponse,
     RejectProposalRequest,
@@ -48,6 +57,16 @@ from ..services.diary_memory import (
 from ..services.memory import MemoryService
 from ..services.memory_lifecycle import MemoryLifecycleTransitionError
 from ..services.memory_policy import evaluate_memory_content
+from ..services.memory_profile_projection import (
+    MemoryProfileProjection,
+    MemoryProfileProjectionAction,
+    MemoryProfileProjectionDetail,
+    MemoryProfileProjectionItem,
+    MemoryProfileProjectionSourceSummary,
+    MemoryProfileProjectionTarget,
+    MemoryProfileProjectionService,
+)
+from ..services.memory_receipts import MemoryReceipt, MemoryReceiptItem, MemoryReceiptService
 from ..services.local_assets import LocalAssetStatsService
 from .wiring import (
     active_vault_id,
@@ -182,6 +201,86 @@ async def get_local_asset_stats(request: Request) -> LocalAssetStatsResponse:
         latest_organization_at=stats.latest_organization_at,
         reversible_operation_count=stats.reversible_operation_count,
     )
+
+
+@router.get("/profile-projection", response_model=MemoryProfileProjectionResponse)
+async def get_memory_profile_projection(request: Request, limit: int = 120) -> MemoryProfileProjectionResponse:
+    capped_limit = max(1, min(limit, 300))
+    with database(request).connect() as conn:
+        projection = MemoryProfileProjectionService(conn).build(limit=capped_limit)
+    return _memory_profile_projection_response(projection)
+
+
+@router.get("/profile-projection/items/{item_id}", response_model=MemoryProfileDetailResponse)
+async def get_memory_profile_projection_item(item_id: str, request: Request) -> MemoryProfileDetailResponse:
+    with database(request).connect() as conn:
+        detail = MemoryProfileProjectionService(conn).get_detail(item_id)
+    if detail is None:
+        raise AppError(
+            code="memory_profile_item_not_found",
+            message="没有找到这条记忆详情，请刷新后重试。",
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    return _memory_profile_detail_response(detail)
+
+
+@router.post("/profile-projection/items/{item_id}/actions", response_model=MemoryProfileActionResponse)
+async def apply_memory_profile_projection_action(
+    item_id: str,
+    action_request: MemoryProfileActionRequest,
+    request: Request,
+) -> MemoryProfileActionResponse:
+    if action_request.confirmed is not True:
+        raise AppError(
+            code="memory_profile_action_confirmation_required",
+            message="需要你确认后，才会改动这条记忆。",
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    with database(request).connect() as conn:
+        projection_service = MemoryProfileProjectionService(conn)
+        target = projection_service.resolve_target(item_id)
+        detail = projection_service.get_detail(item_id)
+    if target is None or detail is None or target.target_id is None:
+        raise AppError(
+            code="memory_profile_item_not_found",
+            message="这条记忆已经不可操作，请刷新后重试。",
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+
+    available_actions = {action.action for action in detail.available_actions}
+    if action_request.action not in available_actions:
+        raise AppError(
+            code="memory_profile_action_not_available",
+            message="这条记忆当前不能执行这个操作。",
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        )
+    expires_at = _validated_profile_action_expiry(action_request)
+    _apply_profile_action_to_target(
+        request=request,
+        target=target,
+        detail=detail,
+        action_request=action_request,
+        expires_at=expires_at,
+    )
+
+    return MemoryProfileActionResponse(
+        ok=True,
+        message=_profile_action_message(action_request.action),
+        item_id=item_id,
+    )
+
+
+@router.get("/receipts", response_model=MemoryReceiptResponse)
+async def list_memory_receipts(
+    request: Request,
+    agent_run_id: str | None = None,
+    limit: int = 50,
+) -> MemoryReceiptResponse:
+    capped_limit = max(1, min(limit, 100))
+    with database(request).connect() as conn:
+        receipt = MemoryReceiptService(conn).build(agent_run_id=agent_run_id, limit=capped_limit)
+    return _memory_receipt_response(receipt)
 
 
 @router.get("/graph/facts", response_model=MemoryGraphFactListResponse)
@@ -816,6 +915,244 @@ def _graph_fact_response(fact) -> MemoryGraphFactResponse:
         importance=fact.importance,
         created_at=fact.created_at,
         updated_at=fact.updated_at,
+    )
+
+
+def _memory_profile_projection_response(projection: MemoryProfileProjection) -> MemoryProfileProjectionResponse:
+    return MemoryProfileProjectionResponse(
+        generated_at=projection.generated_at,
+        identity=[_memory_profile_projection_item_response(item) for item in projection.identity],
+        preferences=[_memory_profile_projection_item_response(item) for item in projection.preferences],
+        boundaries=[_memory_profile_projection_item_response(item) for item in projection.boundaries],
+        projects=[_memory_profile_projection_item_response(item) for item in projection.projects],
+        relationships=[_memory_profile_projection_item_response(item) for item in projection.relationships],
+        recent_state=[_memory_profile_projection_item_response(item) for item in projection.recent_state],
+        conflicts=[_memory_profile_projection_item_response(item) for item in projection.conflicts],
+        needs_confirmation=[_memory_profile_projection_item_response(item) for item in projection.needs_confirmation],
+        filtered=[_memory_profile_projection_item_response(item) for item in projection.filtered],
+    )
+
+
+def _memory_profile_projection_item_response(item: MemoryProfileProjectionItem) -> MemoryProfileProjectionItemResponse:
+    return MemoryProfileProjectionItemResponse(
+        id=item.id,
+        category=item.category,
+        summary=item.summary,
+        confidence=item.confidence,
+        importance=item.importance,
+        status_label=item.status_label,
+        risk_label=item.risk_label,
+        source_label=item.source_label,
+        updated_at=item.updated_at,
+        permissions_summary=item.permissions_summary,
+        can_revoke=item.can_revoke,
+        available_actions=item.available_actions,
+    )
+
+
+def _memory_profile_detail_response(detail: MemoryProfileProjectionDetail) -> MemoryProfileDetailResponse:
+    return MemoryProfileDetailResponse(
+        id=detail.id,
+        summary=detail.summary,
+        category_label=detail.category_label,
+        status_label=detail.status_label,
+        confidence_label=detail.confidence_label,
+        importance_label=detail.importance_label,
+        source_label=detail.source_label,
+        permissions=detail.permissions,
+        safety_note=detail.safety_note,
+        updated_at=detail.updated_at,
+        source_summary=_memory_profile_source_summary_response(detail.source_summary),
+        available_actions=[_memory_profile_action_response(action) for action in detail.available_actions],
+    )
+
+
+def _memory_profile_source_summary_response(
+    summary: MemoryProfileProjectionSourceSummary | None,
+) -> MemoryProfileSourceSummaryResponse | None:
+    if summary is None:
+        return None
+    return MemoryProfileSourceSummaryResponse(
+        label=summary.label,
+        description=summary.description,
+        evidence_count_label=summary.evidence_count_label,
+        last_seen_label=summary.last_seen_label,
+        safety_note=summary.safety_note,
+    )
+
+
+def _memory_profile_action_response(action: MemoryProfileProjectionAction) -> MemoryProfileAvailableActionResponse:
+    return MemoryProfileAvailableActionResponse(
+        action=action.action,  # type: ignore[arg-type]
+        label=action.label,
+        requires_confirmation=action.requires_confirmation,
+    )
+
+
+def _profile_feedback_operation(action: str) -> str:
+    mapping = {
+        "forget": "forget",
+        "keep": "keep",
+        "make_temporary": "make_temporary",
+        "mark_stale": "mark_stale",
+        "mark_inaccurate": "reject_candidate",
+    }
+    return mapping[action]
+
+
+def _validated_profile_action_expiry(action_request: MemoryProfileActionRequest) -> str | None:
+    if action_request.action != "make_temporary":
+        return None
+    value = (action_request.expires_at or "").strip()
+    if not value:
+        raise AppError(
+            code="memory_profile_action_expiry_required",
+            message="暂时保留需要设置一个有效的到期时间。",
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise AppError(
+            code="memory_profile_action_expiry_invalid",
+            message="暂时保留的到期时间格式不正确。",
+            status_code=status.HTTP_400_BAD_REQUEST,
+        ) from exc
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    if parsed <= datetime.now(timezone.utc):
+        raise AppError(
+            code="memory_profile_action_expiry_in_past",
+            message="暂时保留的到期时间需要晚于现在。",
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+    return value
+
+
+def _apply_profile_action_to_target(
+    *,
+    request: Request,
+    target: MemoryProfileProjectionTarget,
+    detail: MemoryProfileProjectionDetail,
+    action_request: MemoryProfileActionRequest,
+    expires_at: str | None,
+) -> None:
+    action_id = new_id()
+    try:
+        if target.target_type == "fact" and action_request.action == "mark_inaccurate":
+            store = memory_graph_store(request)
+            try:
+                store.update_status(target.target_id, MemoryFactStatus.WRONG, reason="user_marked_wrong")
+            finally:
+                store.close()
+            feedback_event_id = None
+        else:
+            operation = _profile_feedback_operation(action_request.action)
+            service = memory_lifecycle_service(request)
+            try:
+                result = service.apply_feedback(
+                    target_type=target.target_type,  # type: ignore[arg-type]
+                    target_id=target.target_id or "",
+                    operation=operation,  # type: ignore[arg-type]
+                    feedback_text=_profile_action_feedback_text(action_request.action),
+                    expires_at=expires_at,
+                )
+            finally:
+                service.close()
+            feedback_event_id = result.feedback_event_id
+    except (KeyError, MemoryLifecycleTransitionError, ValueError) as exc:
+        record_audit(
+            request,
+            action="memory.profile.action",
+            result="failed",
+            reason=audit_reason(request, profile_action=action_request.action, code="memory_profile_action_failed"),
+        )
+        raise AppError(
+            code="memory_profile_action_failed",
+            message="这次没有改动记忆，请稍后重试。",
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        ) from exc
+
+    action = record_agent_action(
+        request,
+        AgentActionCreate(
+            action_id=action_id,
+            action_type="memory.profile.action",
+            title="画像记忆已更新",
+            summary=_profile_action_agent_summary(action_request.action),
+            risk_tier="low",
+            decision="auto",
+            status="completed",
+            target_paths=(),
+            metadata={
+                "profile_item_id": target.item.id,
+                "profile_action": action_request.action,
+                "category_label": detail.category_label,
+                "status_label": detail.status_label,
+            },
+            reversible=False,
+        ),
+    )
+    if feedback_event_id:
+        _link_memory_feedback_event_to_action(request, feedback_event_id=feedback_event_id, action_id=action.action_id)
+    record_audit(
+        request,
+        action="memory.profile.action",
+        result="success",
+        reason=audit_reason(request, profile_action=action_request.action),
+    )
+
+
+def _profile_action_feedback_text(action: str) -> str:
+    labels = {
+        "forget": "用户从画像详情中撤回",
+        "mark_inaccurate": "用户从画像详情中标记不准确",
+        "keep": "用户从画像详情中确认记住",
+        "make_temporary": "用户从画像详情中设为临时",
+        "mark_stale": "用户从画像详情中标记过期",
+    }
+    return labels.get(action, "用户从画像详情中管理记忆")
+
+
+def _profile_action_agent_summary(action: str) -> str:
+    labels = {
+        "forget": "已撤回一条画像记忆",
+        "mark_inaccurate": "已标记一条画像记忆不准确",
+        "keep": "已确认一条画像记忆",
+        "make_temporary": "已将一条画像记忆设为临时",
+        "mark_stale": "已标记一条画像记忆可能过期",
+    }
+    return labels.get(action, "已更新一条画像记忆")
+
+
+def _profile_action_message(action: str) -> str:
+    messages = {
+        "forget": "已撤回这条记忆，我不会再把它作为当前画像使用。",
+        "mark_inaccurate": "已标记为不准确，我不会再把它作为当前画像使用。",
+        "keep": "已确认记住，之后我会在合适时参考它。",
+        "make_temporary": "已改为暂时保留，我只会在近期参考它。",
+        "mark_stale": "已标记为可能过时，我会减少使用并等待你再次确认。",
+    }
+    return messages.get(action, "已更新这条记忆。")
+
+
+def _memory_receipt_response(receipt: MemoryReceipt) -> MemoryReceiptResponse:
+    return MemoryReceiptResponse(
+        generated_at=receipt.generated_at,
+        items=[_memory_receipt_item_response(item) for item in receipt.items],
+    )
+
+
+def _memory_receipt_item_response(item: MemoryReceiptItem) -> MemoryReceiptItemResponse:
+    return MemoryReceiptItemResponse(
+        id=item.id,
+        kind=item.kind,
+        title=item.title,
+        detail=item.detail,
+        safety_note=item.safety_note,
+        action_label=item.action_label,
+        related_memory_id=item.related_memory_id,
+        created_at=item.created_at,
     )
 
 

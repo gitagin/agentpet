@@ -104,6 +104,19 @@
   .memory-priority-grid {
     grid-template-columns: 1fr;
   }
+
+  .memory-profile-grid,
+  .memory-profile-filtered-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .memory-profile-detail-list {
+    grid-template-columns: 1fr;
+  }
+
+  .memory-profile-detail-head {
+    align-items: stretch;
+  }
 }
 
 @media (max-width: 760px) {

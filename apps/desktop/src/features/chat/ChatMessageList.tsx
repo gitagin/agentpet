@@ -184,6 +184,7 @@ function buildProgressCards(message: ChatMessage): ProgressCard[] {
 function countArtifacts(message: ChatMessage): number {
   return (
     (message.agent_actions?.length || 0) +
+    (message.memory_receipts?.length || 0) +
     (message.task_actions?.length || 0) +
     (message.memory_proposals?.length || 0) +
     (message.wiki_proposals?.length || 0)
@@ -218,6 +219,7 @@ function renderAssistantArtifacts(
 ) {
   const hasArtifacts = Boolean(
     message.agent_actions?.length ||
+      message.memory_receipts?.length ||
       message.task_actions?.length ||
       message.memory_proposals?.length ||
       message.wiki_proposals?.length,
@@ -230,6 +232,7 @@ function renderAssistantArtifacts(
   return (
     <ChatAgentActionSummary
       actions={message.agent_actions || []}
+      receipts={message.memory_receipts || []}
       tasks={message.task_actions || []}
       memoryProposals={message.memory_proposals || []}
       wikiProposals={message.wiki_proposals || []}

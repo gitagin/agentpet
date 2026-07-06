@@ -15,6 +15,10 @@ import type {
   LocalAssetStatsResponse,
   MemoryGraphExportPreviewResponse,
   MemoryGraphFact,
+  MemoryProfileActionKind,
+  MemoryProfileDetail,
+  MemoryProfileProjectionItem,
+  MemoryProfileProjectionResponse,
   MemoryProposal,
   MemoryProposalDraft,
   MemoryProposalType,
@@ -40,6 +44,14 @@ type MemoryGraphStatusFilter = "all" | "active" | "candidate" | "quarantined" | 
 type MemoryExportFormat = "json" | "markdown";
 type RetrospectiveReportTarget = number | RetrospectiveReportPeriod;
 type ReviewCoachKind = "today" | "seven_day" | "monthly";
+type MemoryProfileProjectionGroupKey =
+  | "identity"
+  | "preferences"
+  | "boundaries"
+  | "projects"
+  | "relationships"
+  | "recent_state"
+  | "needs_confirmation";
 
 type ReviewCoachCardConfig = {
   kind: ReviewCoachKind;
@@ -99,6 +111,20 @@ const graphStatusFilters: Array<{ key: MemoryGraphStatusFilter; label: string }>
   { key: "rejected", label: "拒绝" },
   { key: "wrong", label: "不准确" },
   { key: "sensitive_blocked", label: "敏感封存" },
+];
+
+const profileProjectionGroups: Array<{
+  key: MemoryProfileProjectionGroupKey;
+  title: string;
+  empty: string;
+}> = [
+  { key: "identity", title: "身份和背景", empty: "还没有形成稳定身份画像。" },
+  { key: "preferences", title: "偏好", empty: "还没有确认过的偏好。" },
+  { key: "boundaries", title: "边界", empty: "还没有明确边界。" },
+  { key: "projects", title: "长期项目", empty: "还没有正在跟进的长期项目。" },
+  { key: "relationships", title: "关系和称呼", empty: "还没有关系相关画像。" },
+  { key: "recent_state", title: "近期状态", empty: "暂无只用于近期上下文的状态。" },
+  { key: "needs_confirmation", title: "需要确认", empty: "没有等待确认的记忆。" },
 ];
 
 const reviewCoachCards: ReviewCoachCardConfig[] = [
@@ -294,6 +320,21 @@ function memoryExportFileName(format: MemoryExportFormat): string {
   return `agent-pet-memory-${day}.${format === "json" ? "json" : "md"}`;
 }
 
+function temporaryProfileExpiry(): string {
+  return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+}
+
+function profileActionConfirmText(action: MemoryProfileActionKind): string {
+  const messages: Record<MemoryProfileActionKind, string> = {
+    forget: "撤回后，我不会再把这条作为当前画像使用。确定继续吗？",
+    mark_inaccurate: "我会把它标为不准确，并从当前画像移除。确定继续吗？",
+    keep: "确认后，我之后可以在合适时参考它。确定继续吗？",
+    make_temporary: "我会只在近期使用这条记忆，到期后不再当长期事实。确定继续吗？",
+    mark_stale: "这条会被标记为可能过时，我会减少使用。确定继续吗？",
+  };
+  return messages[action];
+}
+
 function downloadTextFile(fileName: string, text: string, mimeType: string) {
   const blob = new Blob([text], { type: mimeType });
   const url = URL.createObjectURL(blob);
@@ -305,6 +346,21 @@ function downloadTextFile(fileName: string, text: string, mimeType: string) {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+}
+
+function safeMemoryNotice(value: string | undefined | null): string {
+  const text = value?.trim();
+  if (!text) {
+    return "";
+  }
+  if (
+    /agent_run_id|memory_candidates|target_id|candidate:|fact:|FTS|vector|lifecycle_status|source_text|source_excerpt|Authorization|Bearer|token|[A-Za-z]:[\\/]|\\\\|\.md\b/i.test(
+      text,
+    )
+  ) {
+    return "敏感细节、原始证据和本机安全信息已隐藏。";
+  }
+  return text;
 }
 
 function formatReviewCategory(category: MemoryReviewItem["category"]): string {
@@ -385,6 +441,302 @@ function hasLocalAssets(stats: LocalAssetStatsResponse): boolean {
       stats.completed_task_count +
       stats.reversible_operation_count >
     0
+  );
+}
+
+function countProfileProjectionItems(projection: MemoryProfileProjectionResponse | null): number {
+  if (!projection) {
+    return 0;
+  }
+  return profileProjectionGroups.reduce((total, group) => total + projection[group.key].length, 0);
+}
+
+function MemoryProfileProjectionPanel({
+  projection,
+  loading,
+  error,
+  detail,
+  detailLoading,
+  detailError,
+  actionBusy,
+  actionMessage,
+  onRefresh,
+  onOpenItem,
+  onCloseDetail,
+  onAction,
+}: {
+  projection: MemoryProfileProjectionResponse | null;
+  loading: boolean;
+  error: string;
+  detail: MemoryProfileDetail | null;
+  detailLoading: boolean;
+  detailError: string;
+  actionBusy: MemoryProfileActionKind | null;
+  actionMessage: string;
+  onRefresh: () => void;
+  onOpenItem: (item: MemoryProfileProjectionItem) => void;
+  onCloseDetail: () => void;
+  onAction: (action: MemoryProfileActionKind) => void;
+}) {
+  const visibleCount = countProfileProjectionItems(projection);
+  const filteredCount = (projection?.filtered.length || 0) + (projection?.conflicts.length || 0);
+  return (
+    <section className="panel feature-window-panel memory-profile-panel" aria-label="我现在记得什么">
+      <div className="section-heading">
+        <strong>我现在记得什么</strong>
+        <span>
+          {visibleCount > 0
+            ? `正在展示 ${visibleCount} 条可解释画像。`
+            : "我还没有形成稳定画像，继续聊天后会在你确认下逐步整理。"}
+        </span>
+      </div>
+      <div className="memory-profile-toolbar">
+        <span>
+          <ShieldAlert size={15} />
+          只读展示，不写入文件
+        </span>
+        <button type="button" className="secondary" onClick={onRefresh} disabled={loading}>
+          {loading ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />}
+          刷新画像
+        </button>
+      </div>
+      {error ? <p className="field-note error">{error}</p> : null}
+      {loading && !projection ? (
+        <EmptyState text="正在整理我可以安全展示的画像。" />
+      ) : projection && visibleCount > 0 ? (
+        <>
+          <div className="memory-profile-grid">
+            {profileProjectionGroups.map((group) => (
+              <MemoryProfileProjectionGroup
+                key={group.key}
+                title={group.title}
+                empty={group.empty}
+                items={projection[group.key]}
+                onOpenItem={onOpenItem}
+              />
+            ))}
+          </div>
+          {filteredCount > 0 ? (
+            <details className="memory-profile-filtered">
+              <summary>
+                <strong>已过滤或已替换</strong>
+                <span>{filteredCount} 条不会作为当前画像使用</span>
+              </summary>
+              <div className="memory-profile-filtered-grid">
+                <MemoryProfileProjectionGroup
+                  title="已替换"
+                  empty="没有已替换的旧记忆。"
+                  items={projection.conflicts}
+                  onOpenItem={onOpenItem}
+                  compact
+                />
+                <MemoryProfileProjectionGroup
+                  title="已隐藏"
+                  empty="没有被隐藏的记忆。"
+                  items={projection.filtered}
+                  onOpenItem={onOpenItem}
+                  compact
+                />
+              </div>
+            </details>
+          ) : null}
+          <p className="field-note">{safeMemoryNotice(projection.redaction_note)}</p>
+        </>
+      ) : (
+        <EmptyState text="我还没有形成稳定画像，继续聊天后会在你确认下逐步整理。" />
+      )}
+      {detail || detailLoading || detailError ? (
+        <MemoryProfileDetailDrawer
+          detail={detail}
+          loading={detailLoading}
+          error={detailError}
+          actionBusy={actionBusy}
+          actionMessage={actionMessage}
+          onClose={onCloseDetail}
+          onAction={onAction}
+        />
+      ) : null}
+    </section>
+  );
+}
+
+function MemoryProfileProjectionGroup({
+  title,
+  empty,
+  items,
+  onOpenItem,
+  compact = false,
+}: {
+  title: string;
+  empty: string;
+  items: MemoryProfileProjectionItem[];
+  onOpenItem: (item: MemoryProfileProjectionItem) => void;
+  compact?: boolean;
+}) {
+  return (
+    <section className={`memory-profile-group ${compact ? "compact" : ""}`} aria-label={title}>
+      <div className="memory-profile-group-head">
+        <strong>{title}</strong>
+        <span>{items.length} 条</span>
+      </div>
+      {items.length > 0 ? (
+        <div className="memory-profile-item-list">
+          {items.slice(0, compact ? 4 : 6).map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className="memory-profile-item"
+              onClick={() => onOpenItem(item)}
+              aria-label={`查看记忆详情：${item.summary}`}
+            >
+              <strong>{item.summary}</strong>
+              <div>
+                <span>{item.status_label}</span>
+                <span>{item.risk_label}</span>
+                <span>{item.permissions_summary}</span>
+              </div>
+              <p>
+                {item.source_label} / 置信度 {Math.round(item.confidence * 100)}% / 重要度{" "}
+                {Math.round(item.importance * 100)}%
+              </p>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <p className="memory-profile-empty">{empty}</p>
+      )}
+    </section>
+  );
+}
+
+function MemoryProfileDetailDrawer({
+  detail,
+  loading,
+  error,
+  actionBusy,
+  actionMessage,
+  onClose,
+  onAction,
+}: {
+  detail: MemoryProfileDetail | null;
+  loading: boolean;
+  error: string;
+  actionBusy: MemoryProfileActionKind | null;
+  actionMessage: string;
+  onClose: () => void;
+  onAction: (action: MemoryProfileActionKind) => void;
+}) {
+  return (
+    <aside className="memory-profile-detail-drawer" role="dialog" aria-label="记忆详情">
+      <div className="memory-profile-detail-head">
+        <div>
+          <strong>记忆详情</strong>
+          <span>只显示安全摘要，不展示原始证据</span>
+        </div>
+        <button type="button" className="secondary" onClick={onClose} aria-label="关闭记忆详情">
+          <XCircle size={16} />
+          关闭
+        </button>
+      </div>
+      {loading ? (
+        <EmptyState text="正在整理这条记忆的详情…" />
+      ) : error ? (
+        <p className="field-note error">{error}</p>
+      ) : detail ? (
+        <div className="memory-profile-detail-body">
+          <strong className="memory-profile-detail-summary">{detail.summary}</strong>
+          <dl className="memory-profile-detail-list">
+            <div>
+              <dt>分类</dt>
+              <dd>{detail.category_label}</dd>
+            </div>
+            <div>
+              <dt>状态</dt>
+              <dd>{detail.status_label}</dd>
+            </div>
+            <div>
+              <dt>可信度</dt>
+              <dd>{detail.confidence_label}</dd>
+            </div>
+            <div>
+              <dt>重要性</dt>
+              <dd>{detail.importance_label}</dd>
+            </div>
+            <div>
+              <dt>来源</dt>
+              <dd>{detail.source_label}</dd>
+            </div>
+            <div>
+              <dt>更新时间</dt>
+              <dd>{formatDate(detail.updated_at)}</dd>
+            </div>
+          </dl>
+          <div className="memory-profile-detail-tags" aria-label="使用权限">
+            {detail.permissions.map((permission) => (
+              <span key={permission}>{permission}</span>
+            ))}
+          </div>
+          <MemoryProfileSourceSummaryBlock detail={detail} />
+          {detail.safety_note ? <p className="field-note">{detail.safety_note}</p> : null}
+          {actionMessage ? <p className="field-note success">{actionMessage}</p> : null}
+          <div className="memory-profile-detail-actions" aria-label="可用操作">
+            {detail.available_actions.length > 0 ? (
+              detail.available_actions.map((action) => (
+                <button
+                  key={action.action}
+                  type="button"
+                  className="secondary"
+                  disabled={actionBusy !== null}
+                  onClick={() => onAction(action.action)}
+                >
+                  {actionBusy === action.action ? <Loader2 className="spin" size={15} /> : <Check size={15} />}
+                  {action.label}
+                </button>
+              ))
+            ) : (
+              <span>这条记忆当前没有可用操作。</span>
+            )}
+          </div>
+        </div>
+      ) : (
+        <EmptyState text="这条记忆暂无可展示详情。" />
+      )}
+    </aside>
+  );
+}
+
+function MemoryProfileSourceSummaryBlock({ detail }: { detail: MemoryProfileDetail }) {
+  const sourceSummary = detail.source_summary;
+  if (!sourceSummary) {
+    return (
+      <section className="memory-profile-source-summary" aria-label="来源说明">
+        <strong>来源说明</strong>
+        <p>暂时没有可安全展示的来源说明。</p>
+      </section>
+    );
+  }
+
+  const label = safeMemoryNotice(sourceSummary.label) || "来源说明";
+  const description = safeMemoryNotice(sourceSummary.description) || "暂时没有可安全展示的来源说明。";
+  const evidenceCount = safeMemoryNotice(sourceSummary.evidence_count_label);
+  const lastSeen = safeMemoryNotice(sourceSummary.last_seen_label);
+  const safetyNote = safeMemoryNotice(sourceSummary.safety_note);
+
+  return (
+    <section className="memory-profile-source-summary" aria-label="来源说明">
+      <div>
+        <strong>来源说明</strong>
+        <span>{label}</span>
+      </div>
+      <p>{description}</p>
+      {evidenceCount || lastSeen ? (
+        <div className="memory-profile-source-meta">
+          {evidenceCount ? <span>{evidenceCount}</span> : null}
+          {lastSeen ? <span>{lastSeen}</span> : null}
+        </div>
+      ) : null}
+      {safetyNote ? <p className="field-note">{safetyNote}</p> : null}
+    </section>
   );
 }
 
@@ -1166,7 +1518,7 @@ function WeeklyMemoryReviewPanel({
         </button>
       </div>
       {error ? <p className="field-note error">{error}</p> : null}
-      {review?.redaction_note ? <p className="field-note">{review.redaction_note}</p> : null}
+      {review?.redaction_note ? <p className="field-note">{safeMemoryNotice(review.redaction_note)}</p> : null}
       <div className="proposal-list memory-proposal-review-list">
         {review && review.items.length > 0 ? (
           review.items.map((item) => (
@@ -1238,6 +1590,14 @@ export default function MemoryWindowView({
   const [localAssets, setLocalAssets] = useState<LocalAssetStatsResponse | null>(null);
   const [localAssetsLoading, setLocalAssetsLoading] = useState(true);
   const [localAssetsError, setLocalAssetsError] = useState("");
+  const [memoryProfileProjection, setMemoryProfileProjection] = useState<MemoryProfileProjectionResponse | null>(null);
+  const [memoryProfileLoading, setMemoryProfileLoading] = useState(true);
+  const [memoryProfileError, setMemoryProfileError] = useState("");
+  const [memoryProfileDetail, setMemoryProfileDetail] = useState<MemoryProfileDetail | null>(null);
+  const [memoryProfileDetailLoading, setMemoryProfileDetailLoading] = useState(false);
+  const [memoryProfileDetailError, setMemoryProfileDetailError] = useState("");
+  const [memoryProfileActionBusy, setMemoryProfileActionBusy] = useState<MemoryProfileActionKind | null>(null);
+  const [memoryProfileActionMessage, setMemoryProfileActionMessage] = useState("");
   const [activeRetrospectiveDays, setActiveRetrospectiveDays] = useState(7);
   const [retrospectives, setRetrospectives] = useState<RetrospectiveResponse | null>(null);
   const [retrospectiveLoading, setRetrospectiveLoading] = useState(true);
@@ -1321,6 +1681,51 @@ export default function MemoryWindowView({
     }
   }
 
+  async function loadMemoryProfileProjection(signal?: AbortSignal) {
+    setMemoryProfileLoading(true);
+    setMemoryProfileError("");
+    try {
+      setMemoryProfileProjection(await api.getMemoryProfileProjection(signal));
+    } catch (requestError) {
+      if (requestError instanceof DOMException && requestError.name === "AbortError") {
+        return;
+      }
+      setMemoryProfileError(describeError(requestError, "画像加载失败"));
+    } finally {
+      setMemoryProfileLoading(false);
+    }
+  }
+
+  async function loadMemoryProfileDetail(itemId: string, signal?: AbortSignal) {
+    setMemoryProfileDetailLoading(true);
+    setMemoryProfileDetailError("");
+    try {
+      setMemoryProfileDetail(await api.getMemoryProfileDetail(itemId, signal));
+    } catch (requestError) {
+      if (requestError instanceof DOMException && requestError.name === "AbortError") {
+        return;
+      }
+      setMemoryProfileDetail(null);
+      setMemoryProfileDetailError("这次没能打开详情，请稍后重试。");
+    } finally {
+      setMemoryProfileDetailLoading(false);
+    }
+  }
+
+  function openMemoryProfileDetail(item: MemoryProfileProjectionItem) {
+    setMemoryProfileDetail(null);
+    setMemoryProfileDetailError("");
+    setMemoryProfileActionMessage("");
+    void loadMemoryProfileDetail(item.id);
+  }
+
+  function closeMemoryProfileDetail() {
+    setMemoryProfileDetail(null);
+    setMemoryProfileDetailError("");
+    setMemoryProfileActionMessage("");
+    setMemoryProfileActionBusy(null);
+  }
+
   async function loadRetrospectives(signal?: AbortSignal) {
     setRetrospectiveLoading(true);
     setRetrospectiveError("");
@@ -1371,6 +1776,7 @@ export default function MemoryWindowView({
   useEffect(() => {
     const abort = new AbortController();
     void loadLocalAssets(abort.signal);
+    void loadMemoryProfileProjection(abort.signal);
     void loadRetrospectives(abort.signal);
     void loadWeeklyMemoryReview(abort.signal);
     return () => abort.abort();
@@ -1485,12 +1891,43 @@ export default function MemoryWindowView({
         await api.confirmMemoryGraphFact(factId);
       }
       await loadMemoryFacts();
+      await loadMemoryProfileProjection();
       await loadLocalAssets();
       onRefresh();
     } catch (requestError) {
       setMemoryFactsError(describeError(requestError, "长期记忆状态更新失败"));
     } finally {
       setMemoryFactBusyId(null);
+    }
+  }
+
+  async function submitMemoryProfileAction(action: MemoryProfileActionKind) {
+    if (!memoryProfileDetail) {
+      return;
+    }
+    const confirmed = window.confirm(profileActionConfirmText(action));
+    if (!confirmed) {
+      return;
+    }
+    setMemoryProfileActionBusy(action);
+    setMemoryProfileDetailError("");
+    setMemoryProfileActionMessage("");
+    try {
+      const response = await api.submitMemoryProfileAction(memoryProfileDetail.id, {
+        action,
+        confirmed: true,
+        expires_at: action === "make_temporary" ? temporaryProfileExpiry() : null,
+        feedback_text: `memory_profile_drawer:${action}`,
+      });
+      setMemoryProfileActionMessage(response.message || "已更新这条记忆。");
+      await loadMemoryProfileProjection();
+      await loadMemoryProfileDetail(memoryProfileDetail.id);
+      await loadLocalAssets();
+      onRefresh();
+    } catch (requestError) {
+      setMemoryProfileDetailError("这次没有改动记忆，请稍后重试。");
+    } finally {
+      setMemoryProfileActionBusy(null);
     }
   }
 
@@ -1514,6 +1951,7 @@ export default function MemoryWindowView({
       });
       await loadWeeklyMemoryReview();
       await loadMemoryFacts();
+      await loadMemoryProfileProjection();
       await loadLocalAssets();
       onRefresh();
     } catch (requestError) {
@@ -1586,6 +2024,21 @@ export default function MemoryWindowView({
         onMemoryProposalAct={onActOnMemoryProposal}
         onLoadMemoryProposals={onLoadMemoryProposals}
         renderEntry={renderEntry}
+      />
+
+      <MemoryProfileProjectionPanel
+        projection={memoryProfileProjection}
+        loading={memoryProfileLoading}
+        error={memoryProfileError}
+        detail={memoryProfileDetail}
+        detailLoading={memoryProfileDetailLoading}
+        detailError={memoryProfileDetailError}
+        actionBusy={memoryProfileActionBusy}
+        actionMessage={memoryProfileActionMessage}
+        onRefresh={() => void loadMemoryProfileProjection()}
+        onOpenItem={openMemoryProfileDetail}
+        onCloseDetail={closeMemoryProfileDetail}
+        onAction={(action) => void submitMemoryProfileAction(action)}
       />
 
       <details className="memory-advanced-tools memory-review-tools">
@@ -1785,7 +2238,7 @@ export default function MemoryWindowView({
           <div className="memory-export-preview" aria-label="长期记忆导出预览">
             <div className="section-heading compact">
               <strong>导出预览</strong>
-              <span>{exportPreview.redaction_note}</span>
+              <span>{safeMemoryNotice(exportPreview.redaction_note)}</span>
             </div>
             <textarea readOnly value={memoryExportText(exportPreview, exportPreview.format)} />
           </div>

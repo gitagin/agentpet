@@ -151,6 +151,7 @@ export type ChatMessage = {
   continuity_proposals?: ChatContinuityProposal[];
   continuity_signal?: ChatContinuitySignal;
   agent_actions?: AgentAction[];
+  memory_receipts?: MemoryReceiptItem[];
   task_actions?: TaskItem[];
   agent_run_id?: string;
   retrieval_attempted?: boolean;
@@ -787,6 +788,106 @@ export type MemoryReviewResponse = {
   window_days: number;
   summary: Record<MemoryReviewCategory, number>;
   items: MemoryReviewItem[];
+  redaction_note: string;
+};
+
+export type MemoryProfileProjectionItem = {
+  id: string;
+  category: string;
+  summary: string;
+  confidence: number;
+  importance: number;
+  status_label: string;
+  risk_label: string;
+  source_label: string;
+  updated_at: string;
+  permissions_summary: string;
+  can_revoke: boolean;
+  available_actions: string[];
+};
+
+export type MemoryProfileProjectionResponse = {
+  generated_at: string;
+  identity: MemoryProfileProjectionItem[];
+  preferences: MemoryProfileProjectionItem[];
+  boundaries: MemoryProfileProjectionItem[];
+  projects: MemoryProfileProjectionItem[];
+  relationships: MemoryProfileProjectionItem[];
+  recent_state: MemoryProfileProjectionItem[];
+  conflicts: MemoryProfileProjectionItem[];
+  needs_confirmation: MemoryProfileProjectionItem[];
+  filtered: MemoryProfileProjectionItem[];
+  redaction_note: string;
+};
+
+export type MemoryProfileActionKind = "forget" | "mark_inaccurate" | "keep" | "make_temporary" | "mark_stale";
+
+export type MemoryProfileAvailableAction = {
+  action: MemoryProfileActionKind;
+  label: string;
+  requires_confirmation: boolean;
+};
+
+export type MemoryProfileSourceSummary = {
+  label: string;
+  description: string;
+  evidence_count_label?: string | null;
+  last_seen_label?: string | null;
+  safety_note?: string | null;
+};
+
+export type MemoryProfileDetail = {
+  id: string;
+  summary: string;
+  category_label: string;
+  status_label: string;
+  confidence_label: string;
+  importance_label: string;
+  source_label: string;
+  permissions: string[];
+  safety_note?: string | null;
+  updated_at: string;
+  source_summary?: MemoryProfileSourceSummary | null;
+  available_actions: MemoryProfileAvailableAction[];
+};
+
+export type MemoryProfileActionRequest = {
+  action: MemoryProfileActionKind;
+  confirmed: boolean;
+  expires_at?: string | null;
+  feedback_text?: string;
+};
+
+export type MemoryProfileActionResponse = {
+  ok: boolean;
+  message: string;
+  item_id: string;
+};
+
+export type MemoryReceiptKind =
+  | "remembered"
+  | "skipped"
+  | "needs_confirmation"
+  | "updated"
+  | "forgotten"
+  | "filtered"
+  | "used_for_answer"
+  | string;
+
+export type MemoryReceiptItem = {
+  id: string;
+  kind: MemoryReceiptKind;
+  title: string;
+  detail: string;
+  safety_note?: string | null;
+  action_label?: string | null;
+  related_memory_id?: string | null;
+  created_at: string;
+};
+
+export type MemoryReceiptResponse = {
+  generated_at: string;
+  items: MemoryReceiptItem[];
   redaction_note: string;
 };
 

@@ -121,6 +121,301 @@
   overflow: auto;
 }
 
+.memory-profile-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.memory-profile-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.memory-profile-toolbar span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #52656f;
+  font-size: 12px;
+}
+
+.memory-profile-toolbar button {
+  min-height: 34px;
+}
+
+.memory-profile-grid,
+.memory-profile-filtered-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.memory-profile-group {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  border: 1px solid rgba(84, 102, 112, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.62);
+  padding: 12px;
+}
+
+.memory-profile-group.compact {
+  background: rgba(249, 252, 252, 0.72);
+}
+
+.memory-profile-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.memory-profile-group-head strong {
+  color: #17242a;
+  font-size: 13px;
+}
+
+.memory-profile-group-head span {
+  border-radius: 999px;
+  background: rgba(124, 91, 107, 0.12);
+  color: #4c3d4b;
+  padding: 2px 7px;
+  font-size: 11px;
+}
+
+.memory-profile-item-list {
+  display: grid;
+  gap: 8px;
+}
+
+.memory-profile-item {
+  display: grid;
+  gap: 7px;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid rgba(35, 72, 84, 0.1);
+  border-radius: 8px;
+  background: rgba(249, 252, 252, 0.86);
+  padding: 10px;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  transition: border-color 0.16s ease, background 0.16s ease;
+}
+
+.memory-profile-item:hover,
+.memory-profile-item:focus-visible {
+  border-color: rgba(35, 72, 84, 0.28);
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.memory-profile-item strong,
+.memory-profile-item p,
+.memory-profile-item span {
+  overflow-wrap: anywhere;
+}
+
+.memory-profile-item strong {
+  color: #17242a;
+  font-size: 13px;
+}
+
+.memory-profile-item div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.memory-profile-item span {
+  border-radius: 999px;
+  background: rgba(35, 72, 84, 0.08);
+  color: #52656f;
+  padding: 2px 7px;
+  font-size: 11px;
+}
+
+.memory-profile-item p,
+.memory-profile-empty {
+  margin: 0;
+  color: #52656f;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.memory-profile-filtered {
+  border: 1px solid rgba(84, 102, 112, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.5);
+  padding: 10px 12px;
+}
+
+.memory-profile-filtered > summary {
+  cursor: pointer;
+  color: #17242a;
+}
+
+.memory-profile-filtered > summary span {
+  margin-left: 8px;
+  color: #52656f;
+  font-size: 12px;
+}
+
+.memory-profile-filtered[open] > summary {
+  margin-bottom: 10px;
+}
+
+.memory-profile-detail-drawer {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  border: 1px solid rgba(35, 72, 84, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 16px 38px rgba(21, 38, 48, 0.12);
+  padding: 14px;
+}
+
+.memory-profile-detail-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.memory-profile-detail-head > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.memory-profile-detail-head strong {
+  color: #17242a;
+  font-size: 15px;
+}
+
+.memory-profile-detail-head span,
+.memory-profile-detail-actions > span {
+  color: #52656f;
+  font-size: 12px;
+}
+
+.memory-profile-detail-head button {
+  flex: 0 0 auto;
+}
+
+.memory-profile-detail-body {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.memory-profile-detail-summary {
+  color: #17242a;
+  font-size: 15px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.memory-profile-detail-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  margin: 0;
+}
+
+.memory-profile-detail-list div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.memory-profile-detail-list dt,
+.memory-profile-detail-list dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.memory-profile-detail-list dt {
+  color: #52656f;
+  font-size: 11px;
+}
+
+.memory-profile-detail-list dd {
+  color: #17242a;
+  font-size: 13px;
+}
+
+.memory-profile-detail-tags,
+.memory-profile-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.memory-profile-detail-tags span {
+  border-radius: 999px;
+  background: rgba(35, 72, 84, 0.08);
+  color: #52656f;
+  padding: 3px 8px;
+  font-size: 12px;
+}
+
+.memory-profile-source-summary {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  border: 1px solid rgba(84, 102, 112, 0.12);
+  border-radius: 8px;
+  background: rgba(35, 72, 84, 0.04);
+  padding: 10px 12px;
+}
+
+.memory-profile-source-summary > div:first-child {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.memory-profile-source-summary strong {
+  color: #17242a;
+  font-size: 13px;
+}
+
+.memory-profile-source-summary span,
+.memory-profile-source-summary p,
+.memory-profile-source-meta span {
+  overflow-wrap: anywhere;
+}
+
+.memory-profile-source-summary > div:first-child span,
+.memory-profile-source-summary p,
+.memory-profile-source-meta span {
+  color: #52656f;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.memory-profile-source-summary p {
+  margin: 0;
+}
+
+.memory-profile-source-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.memory-profile-detail-actions button {
+  min-height: 34px;
+}
+
 .memory-workbench-panel {
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) minmax(300px, 0.85fr);
@@ -798,4 +1093,3 @@
 .continuity-presence-hint small {
   color: #5c6c8f;
 }
-

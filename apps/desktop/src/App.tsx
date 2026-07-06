@@ -586,6 +586,7 @@ function App() {
               streamingRef.current = false;
               setStreaming(false);
               void loadAgentActions({ silent: true });
+              void loadMemoryReceiptsForMessage(assistantId, accepted.agent_run_id, abort.signal);
             }
           },
         },
@@ -609,6 +610,7 @@ function App() {
             ),
         );
         petChat.startReplyPaging(assistantId);
+        void loadMemoryReceiptsForMessage(assistantId, accepted.agent_run_id, abort.signal);
       } else {
         petChat.completeStreamWithoutReply(assistantId);
       }
@@ -715,6 +717,24 @@ function App() {
       setAgentActionsError(message);
       if (!options.silent) {
         setNotice({ tone: "error", message });
+      }
+    }
+  }
+
+  async function loadMemoryReceiptsForMessage(messageId: string, agentRunId: string, signal?: AbortSignal) {
+    try {
+      const response = await api.getMemoryReceipts(agentRunId, signal);
+      if (response.items.length === 0) {
+        return;
+      }
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === messageId ? { ...message, memory_receipts: response.items } : message,
+        ),
+      );
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return;
       }
     }
   }

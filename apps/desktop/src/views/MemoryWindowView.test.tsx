@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import MemoryWindowView from "./MemoryWindowView";
 import type { DesktopApi } from "../services/desktopApi";
-import type { AgentAction, LocalAssetStatsResponse, MemoryGraphFact, MemoryProposalDraft, MemoryReviewResponse, MemorySearchResult, RetrospectiveReportResponse, RetrospectiveResponse } from "../types";
+import type { AgentAction, LocalAssetStatsResponse, MemoryGraphFact, MemoryProfileDetail, MemoryProfileProjectionResponse, MemoryProposalDraft, MemoryReviewResponse, MemorySearchResult, RetrospectiveReportResponse, RetrospectiveResponse } from "../types";
 
 function memoryFact(overrides: Partial<MemoryGraphFact> = {}): MemoryGraphFact {
   return {
@@ -225,7 +225,70 @@ const weeklyMemoryReview: MemoryReviewResponse = {
   ],
 };
 
-function createApi(facts: MemoryGraphFact[], stats: LocalAssetStatsResponse = localAssetStats) {
+const emptyProfileProjection: MemoryProfileProjectionResponse = {
+  generated_at: "2026-06-02T00:00:00Z",
+  identity: [],
+  preferences: [],
+  boundaries: [],
+  projects: [],
+  relationships: [],
+  recent_state: [],
+  conflicts: [],
+  needs_confirmation: [],
+  filtered: [],
+  redaction_note: "敏感内容、原始证据、凭据、完整授权信息和本机绝对路径不会显示在画像里。",
+};
+
+const profilePreference = {
+  id: "profile_safe_item_1",
+  category: "preferences",
+  summary: "回答保持简洁",
+  confidence: 0.91,
+  importance: 0.82,
+  status_label: "已确认",
+  risk_label: "普通",
+  source_label: "来自用户明确要求",
+  updated_at: "2026-06-02T00:00:00Z",
+  permissions_summary: "可用于回答",
+  can_revoke: true,
+  available_actions: ["撤回", "标记不准确"],
+};
+
+const profileWithPreference: MemoryProfileProjectionResponse = {
+  ...emptyProfileProjection,
+  preferences: [profilePreference],
+};
+
+const profilePreferenceDetail: MemoryProfileDetail = {
+  id: "profile_safe_item_1",
+  summary: "回答保持简洁",
+  category_label: "偏好",
+  status_label: "已确认",
+  confidence_label: "可信度较高",
+  importance_label: "比较重要",
+  source_label: "来自用户明确要求",
+  source_summary: {
+    label: "来自多次聊天",
+    description: "这条记忆由几次相关对话整理而来。",
+    evidence_count_label: "有 2 条安全来源",
+    last_seen_label: "最近更新于 2026-06-02",
+    safety_note: "来源内容已做安全摘要，未显示原文。",
+  },
+  permissions: ["可用于回答", "不会主动提及"],
+  safety_note: null,
+  updated_at: "2026-06-02T00:00:00Z",
+  available_actions: [
+    { action: "forget", label: "撤回", requires_confirmation: true },
+    { action: "mark_inaccurate", label: "标记不准确", requires_confirmation: true },
+    { action: "keep", label: "确认记住", requires_confirmation: true },
+  ],
+};
+
+function createApi(
+  facts: MemoryGraphFact[],
+  stats: LocalAssetStatsResponse = localAssetStats,
+  profile: MemoryProfileProjectionResponse = emptyProfileProjection,
+) {
   const exportPreview = (format: "json" | "markdown" = "markdown") => ({
     generated_at: "2026-06-02T00:00:00Z",
     format,
@@ -249,6 +312,13 @@ function createApi(facts: MemoryGraphFact[], stats: LocalAssetStatsResponse = lo
     confirmMemoryProposal: vi.fn().mockResolvedValue({ proposal_id: "proposal-1", status: "confirmed", written_path: "Memories/Profile.md" }),
     rejectMemoryProposal: vi.fn().mockResolvedValue({ proposal_id: "proposal-1", status: "rejected" }),
     getLocalAssetStats: vi.fn().mockResolvedValue(stats),
+    getMemoryProfileProjection: vi.fn().mockResolvedValue(profile),
+    getMemoryProfileDetail: vi.fn().mockResolvedValue(profilePreferenceDetail),
+    submitMemoryProfileAction: vi.fn().mockResolvedValue({
+      ok: true,
+      message: "已撤回这条记忆，我不会再把它作为当前画像使用。",
+      item_id: "profile_safe_item_1",
+    }),
     getRetrospectives: vi.fn().mockResolvedValue(retrospectives),
     writeRetrospectiveReport: vi.fn((days: number) => Promise.resolve(reportResponse(`Wiki/Companion/Reports/2026-06-02-${days}d-review.md`))),
     writeRetrospectivePeriodReport: vi.fn((period: string) => Promise.resolve(reportResponse(`Wiki/Companion/Reports/2026-06-02-${period}-review.md`))),
@@ -291,7 +361,7 @@ function renderView(
     content: "",
     target_path: "Inbox/Pending Memories.md",
   };
-  render(
+  return render(
     <MemoryWindowView
       api={api}
       loading={false}
@@ -376,6 +446,144 @@ describe("MemoryWindowView", () => {
     expect(within(dashboard).getByText("可撤回操作")).toBeInTheDocument();
     expect(within(dashboard).getByText("尚未撤回")).toBeInTheDocument();
     expect(api.getLocalAssetStats).toHaveBeenCalled();
+  });
+
+  it("renders an empty profile projection without internal terms", async () => {
+    const api = createApi([memoryFact()]);
+
+    const { container } = renderView(api);
+
+    const profile = await screen.findByLabelText("我现在记得什么");
+    expect(within(profile).getByText("我现在记得什么")).toBeInTheDocument();
+    expect(within(profile).getAllByText("我还没有形成稳定画像，继续聊天后会在你确认下逐步整理。").length).toBeGreaterThan(0);
+    expect(api.getMemoryProfileProjection).toHaveBeenCalled();
+    expect(container.textContent).not.toMatch(/agent_run_id|memory_candidates|FTS|vector|lifecycle_status|source_text|source_excerpt|Authorization|Bearer/i);
+  });
+
+  it("opens a safe profile detail drawer from a profile item", async () => {
+    const api = createApi([memoryFact()], localAssetStats, profileWithPreference);
+
+    const { container } = renderView(api);
+
+    const profile = await screen.findByLabelText("我现在记得什么");
+    fireEvent.click(within(profile).getByRole("button", { name: "查看记忆详情：回答保持简洁" }));
+
+    const drawer = await screen.findByRole("dialog", { name: "记忆详情" });
+    expect(api.getMemoryProfileDetail).toHaveBeenCalledWith("profile_safe_item_1", undefined);
+    expect(within(drawer).getByText("回答保持简洁")).toBeInTheDocument();
+    expect(within(drawer).getByText("偏好")).toBeInTheDocument();
+    expect(within(drawer).getByText("已确认")).toBeInTheDocument();
+    expect(within(drawer).getByText("可信度较高")).toBeInTheDocument();
+    expect(within(drawer).getByText("比较重要")).toBeInTheDocument();
+    expect(within(drawer).getByText("来自用户明确要求")).toBeInTheDocument();
+    expect(within(drawer).getByText("来源说明")).toBeInTheDocument();
+    expect(within(drawer).getByText("这条记忆由几次相关对话整理而来。")).toBeInTheDocument();
+    expect(within(drawer).getByText("有 2 条安全来源")).toBeInTheDocument();
+    expect(within(drawer).getByText("最近更新于 2026-06-02")).toBeInTheDocument();
+    expect(within(drawer).getByText("来源内容已做安全摘要，未显示原文。")).toBeInTheDocument();
+    expect(within(drawer).getByText("可用于回答")).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(
+      /agent_run_id|memory_candidates|FTS|vector|lifecycle_status|source_text|source_excerpt|Authorization|token|[A-Za-z]:\\/i,
+    );
+  });
+
+  it("shows a safe empty state when profile detail has no source summary", async () => {
+    const api = createApi([memoryFact()], localAssetStats, profileWithPreference);
+    (api.getMemoryProfileDetail as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ...profilePreferenceDetail,
+      source_summary: null,
+    });
+
+    const { container } = renderView(api);
+
+    const profile = await screen.findByLabelText("我现在记得什么");
+    fireEvent.click(within(profile).getByRole("button", { name: "查看记忆详情：回答保持简洁" }));
+
+    const drawer = await screen.findByRole("dialog", { name: "记忆详情" });
+    expect(within(drawer).getByText("来源说明")).toBeInTheDocument();
+    expect(within(drawer).getByText("暂时没有可安全展示的来源说明。")).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(
+      /agent_run_id|memory_candidates|FTS|vector|lifecycle_status|source_text|source_excerpt|Authorization|token|[A-Za-z]:\\/i,
+    );
+  });
+
+  it("filters unsafe source summary text in the profile detail drawer", async () => {
+    const api = createApi([memoryFact()], localAssetStats, profileWithPreference);
+    (api.getMemoryProfileDetail as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ...profilePreferenceDetail,
+      source_summary: {
+        label: "agent_run_id source_text",
+        description: "Authorization C:\\Users\\Alice\\Vault\\Secret.md",
+        evidence_count_label: "memory_candidates target_id",
+        last_seen_label: "vector lifecycle_status",
+        safety_note: "token source_excerpt",
+      },
+    });
+
+    const { container } = renderView(api);
+
+    fireEvent.click(await screen.findByRole("button", { name: "查看记忆详情：回答保持简洁" }));
+
+    expect((await screen.findAllByText("敏感细节、原始证据和本机安全信息已隐藏。")).length).toBeGreaterThan(0);
+    expect(container.textContent).not.toMatch(
+      /agent_run_id|memory_candidates|target_id|FTS|vector|lifecycle_status|source_text|source_excerpt|Authorization|token|C:\\Users\\Alice/i,
+    );
+  });
+
+  it("requires confirmation before profile drawer actions", async () => {
+    const api = createApi([memoryFact()], localAssetStats, profileWithPreference);
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+
+    renderView(api);
+
+    fireEvent.click(await screen.findByRole("button", { name: "查看记忆详情：回答保持简洁" }));
+    const drawer = await screen.findByRole("dialog", { name: "记忆详情" });
+    fireEvent.click(within(drawer).getByRole("button", { name: "撤回" }));
+
+    expect(confirm).toHaveBeenCalledWith("撤回后，我不会再把这条作为当前画像使用。确定继续吗？");
+    expect(api.submitMemoryProfileAction).not.toHaveBeenCalled();
+  });
+
+  it("submits confirmed profile actions and refreshes the profile", async () => {
+    const api = createApi([memoryFact()], localAssetStats, profileWithPreference);
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    renderView(api);
+
+    fireEvent.click(await screen.findByRole("button", { name: "查看记忆详情：回答保持简洁" }));
+    const drawer = await screen.findByRole("dialog", { name: "记忆详情" });
+    fireEvent.click(within(drawer).getByRole("button", { name: "标记不准确" }));
+
+    await waitFor(() =>
+      expect(api.submitMemoryProfileAction).toHaveBeenCalledWith(
+        "profile_safe_item_1",
+        expect.objectContaining({ action: "mark_inaccurate", confirmed: true }),
+      ),
+    );
+    await waitFor(() => expect(api.getMemoryProfileProjection).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText("已撤回这条记忆，我不会再把它作为当前画像使用。")).toBeInTheDocument();
+  });
+
+  it("shows safe errors for profile detail and action failures without optimistic removal", async () => {
+    const api = createApi([memoryFact()], localAssetStats, profileWithPreference);
+    (api.getMemoryProfileDetail as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("source_text Authorization C:\\secret"));
+
+    renderView(api);
+
+    fireEvent.click(await screen.findByRole("button", { name: "查看记忆详情：回答保持简洁" }));
+    expect(await screen.findByText("这次没能打开详情，请稍后重试。")).toBeInTheDocument();
+    expect(screen.queryByText(/source_text|Authorization|C:\\secret/)).not.toBeInTheDocument();
+
+    (api.getMemoryProfileDetail as ReturnType<typeof vi.fn>).mockResolvedValue(profilePreferenceDetail);
+    (api.submitMemoryProfileAction as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("target_id memory_candidates"));
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    fireEvent.click(await screen.findByRole("button", { name: "查看记忆详情：回答保持简洁" }));
+    const drawer = await screen.findByRole("dialog", { name: "记忆详情" });
+    fireEvent.click(within(drawer).getByRole("button", { name: "撤回" }));
+
+    expect(await screen.findByText("这次没有改动记忆，请稍后重试。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "查看记忆详情：回答保持简洁" })).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/target_id|memory_candidates|source_text|Authorization|C:\\secret/i);
   });
 
   it("shows memory control first and keeps direct tools in folded sections", async () => {
