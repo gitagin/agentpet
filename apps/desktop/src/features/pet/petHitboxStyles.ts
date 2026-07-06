@@ -1,10 +1,24 @@
 import type { CSSProperties } from "react";
 import petHitboxConfig from "../../../pet-hitbox.json";
 
-const petShortcutButtonSize = 34;
-const petShortcutButtonGap = 7;
+const petShortcutButtonSize = 30;
+const petShortcutButtonGap = 6;
 const petShortcutButtonCount = 5;
 const petShortcutColumnCount = 1;
+const petShortcutButtonDelayMs = 28;
+
+const petShortcutBarCenterOffset = {
+  x:
+    petHitboxConfig.window.width -
+    petHitboxConfig.hitboxes.shortcutBar.right -
+    petHitboxConfig.hitboxes.shortcutBar.width / 2 -
+    petHitboxConfig.window.width / 2,
+  y:
+    petHitboxConfig.window.height -
+    petHitboxConfig.hitboxes.shortcutBar.bottom -
+    petHitboxConfig.hitboxes.shortcutBar.height / 2 -
+    petHitboxConfig.window.height / 2,
+};
 
 export const petHitboxStyle = {
   "--pet-model-hit-width": `${petHitboxConfig.hitboxes.model.width}px`,
@@ -20,6 +34,10 @@ export const petHitboxStyle = {
   "--pet-shortcut-bar-height": `${petHitboxConfig.hitboxes.shortcutBar.height}px`,
   "--pet-shortcut-bar-right": `${petHitboxConfig.hitboxes.shortcutBar.right}px`,
   "--pet-shortcut-bar-bottom": `${petHitboxConfig.hitboxes.shortcutBar.bottom}px`,
+  "--pet-shortcut-bar-center-offset-x": `${petShortcutBarCenterOffset.x}px`,
+  "--pet-shortcut-bar-center-offset-y": `${petShortcutBarCenterOffset.y}px`,
+  "--pet-shortcut-button-size": `${petShortcutButtonSize}px`,
+  "--pet-shortcut-button-gap": `${petShortcutButtonGap}px`,
 } as CSSProperties;
 
 export const petShortcutButtonStyles = buildPetShortcutButtonStyles();
@@ -60,6 +78,8 @@ function buildPetShortcutButtonStyles(): CSSProperties[] {
     return {
       "--pet-shortcut-origin-x": `${Math.round(modelCenter.x - buttonCenter.x)}px`,
       "--pet-shortcut-origin-y": `${Math.round(modelCenter.y - buttonCenter.y)}px`,
+      "--pet-shortcut-open-delay": `${index * petShortcutButtonDelayMs}ms`,
+      "--pet-shortcut-close-delay": `${index * petShortcutButtonDelayMs}ms`,
     } as CSSProperties;
   });
 }

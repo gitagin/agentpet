@@ -12,7 +12,7 @@
         "translateY": [0, -2]
       },
       "blink": {
-        "triggerIntervalMs": [2500, 6000],
+        "triggerIntervalMs": [3000, 7000],
         "frames": {
           "open": "sprite-pet/halfbody/blink/open.png",
           "half": "sprite-pet/halfbody/blink/half.png",

@@ -38,9 +38,8 @@ import {
   useFirstUseOnboarding,
 } from "./features/onboarding/useFirstUseOnboarding";
 import { useTtsOrchestrator } from "./features/tts/useTtsOrchestrator";
-import { live2dModelSelectionStorageKey } from "./features/live2d/live2dConstants";
-import { resolveLive2DReplyActionKey } from "./features/live2d/live2dReplyActions";
-import { useLive2D } from "./features/live2d/useLive2D";
+import { resolvePetReplyActionKey } from "./features/pet/petReplyActions";
+import { getPetStageView } from "./features/pet/petStageState";
 import {
   formatContinuityKind,
   normalizeContinuityProposal,
@@ -68,6 +67,8 @@ import { useDesktopWindowRouting } from "./features/desktop/useDesktopWindowRout
 import { ConnectionManagementPanel } from "./features/desktop/ConnectionManagementPanel";
 import { SettingsPanel } from "./features/settings/SettingsPanel";
 import { WikiManagementPanels } from "./features/desktop/WikiManagementPanels";
+import type { HalfbodyPetPortraitHandle } from "./features/halfbody/HalfbodyPetPortrait";
+import { buildHalfbodyTtsTimelineFromText } from "./features/halfbody/halfbodyTtsTimeline";
 
 type Notice = {
   tone: "info" | "error" | "success";
@@ -117,10 +118,11 @@ function App() {
   const activeChatRequestIdRef = useRef<string | null>(null);
   const streamingRef = useRef(false);
   const conversationIdRef = useRef<string | null>(conversationId);
-  const live2dTaskStageRef = useRef<() => void>(() => undefined);
-  const live2dStageCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const petTaskStageRef = useRef<() => void>(() => undefined);
+  const petTaskStageTimeoutRef = useRef<number | null>(null);
+  const [recentTaskStageActive, setRecentTaskStageActive] = useState(false);
   const petCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const live2dPanelCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const halfbodyPortraitRef = useRef<HalfbodyPetPortraitHandle | null>(null);
   const isElectronRuntime = Boolean(window.agentDesktop);
   const canSelectVaultDirectory = Boolean(window.agentDesktop?.selectKnowledgeBaseFolder);
 
@@ -210,6 +212,27 @@ function App() {
 
   applySettingsStatusRef.current = applySettingsStatus;
 
+  function triggerPetTaskStage() {
+    setRecentTaskStageActive(true);
+    if (petTaskStageTimeoutRef.current !== null) {
+      window.clearTimeout(petTaskStageTimeoutRef.current);
+    }
+    petTaskStageTimeoutRef.current = window.setTimeout(() => {
+      setRecentTaskStageActive(false);
+      petTaskStageTimeoutRef.current = null;
+    }, 12000);
+  }
+
+  petTaskStageRef.current = triggerPetTaskStage;
+
+  useEffect(() => {
+    return () => {
+      if (petTaskStageTimeoutRef.current !== null) {
+        window.clearTimeout(petTaskStageTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const taskReminderPollingEnabled =
     (desktopHostMode === "pet" && windowMode === "pet") ||
     windowMode === "control" ||
@@ -224,7 +247,7 @@ function App() {
     pollingEnabled: taskReminderPollingEnabled,
     sidecarReady: sidecarStatus?.state === "ready",
     onNotice: setNotice,
-    onTaskStage: () => live2dTaskStageRef.current(),
+    onTaskStage: () => petTaskStageRef.current(),
   });
 
   const {
@@ -345,15 +368,25 @@ function App() {
     onStart: (item) => {
       tts.waitingCue.stop("assistant_tts_started");
       petChat.handleTtsPlaybackStart?.(item);
+      halfbodyPortraitRef.current?.speak(null, buildHalfbodyTtsTimelineFromText(item.text, {
+        targetDurationMs: readTtsPlaybackDurationMs(item),
+      }));
     },
-    onEnd: petChat.handleTtsPlaybackEnd,
+    onEnd: (item, status) => {
+      petChat.handleTtsPlaybackEnd?.(item, status);
+      halfbodyPortraitRef.current?.speak(null);
+    },
   });
+
+  useEffect(() => {
+    if (!tts.speaking) {
+      halfbodyPortraitRef.current?.speak(null);
+    }
+  }, [tts.speaking]);
   const petWindow = usePetWindowController({
     windowMode,
     petChat,
-    petCanvasRef,
     onPetInputModeChange: setPetInputMode,
-    onStopTts: () => tts.queue.stop("pet_shortcut_stop_tts"),
   });
 
   useEffect(() => {
@@ -546,7 +579,7 @@ function App() {
               },
               upsertChatWikiProposal,
               addTaskFromChat,
-              triggerLive2DTaskStage,
+              triggerPetTaskStage,
               onVisibleAssistantReply: () => tts.waitingCue.stop("assistant_visible_reply"),
             });
             if (sseEvent.event === "reply_ready") {
@@ -1049,34 +1082,25 @@ function App() {
     pendingContinuityCount,
     continuityStateItemCount: continuityState?.items.length ?? 0,
   });
-  const {
-    asset: live2dAsset,
-    models: live2dModels,
-    runtime: live2dRuntime,
-    selectedModelId: selectedLive2dModelId,
-    selectModel: selectLive2DModel,
-    stage: live2dStage,
-    triggerTaskStage: triggerLive2DTaskStage,
-  } = useLive2D({
+  const petStage = getPetStageView({
     connected: hasConnection,
     streaming,
     searchResultCount: searchResults.length,
     pendingProposalCount,
-    taskCount: tasks.length,
+    taskCount: recentTaskStageActive ? Math.max(tasks.length, 1) : 0,
     diagnosticsReady: hasDiagnosticsExport,
     continuityState,
     continuitySignal: activeContinuitySignal,
   });
-  const live2dReplyActionKey = hasConnection ? resolveLive2DReplyActionKey(latestAssistantMessage) : null;
-  const live2dReplyActionTriggerKey =
-    live2dReplyActionKey && latestAssistantMessage
+  const petReplyActionKey = hasConnection ? resolvePetReplyActionKey(latestAssistantMessage) : null;
+  const petReplyActionTriggerKey =
+    petReplyActionKey && latestAssistantMessage
       ? [
           latestAssistantMessage.id,
           latestAssistantMessage.status || "",
           (latestAssistantMessage.live2d_action_hints || []).join("|"),
         ].join(":")
       : null;
-  live2dTaskStageRef.current = triggerLive2DTaskStage;
 
   const refreshActivity = () => {
     void loadAgentActions();
@@ -1233,10 +1257,6 @@ function App() {
   const isStageHostWindow = desktopHostMode === "stage";
   const stageView = (
     <StageView
-      live2dStage={live2dStage}
-      live2dAsset={live2dAsset}
-      live2dRuntime={live2dRuntime}
-      live2dCanvasRef={live2dStageCanvasRef}
       connected={hasConnection}
       streaming={streaming}
       bubble={petChat.bubble}
@@ -1247,8 +1267,6 @@ function App() {
       onPausePaging={petChat.pausePaging}
       onResumePaging={petChat.resumePaging}
       ttsSpeaking={tts.speaking}
-      live2dActionKeyOverride={live2dReplyActionKey}
-      live2dActionTriggerKey={live2dReplyActionTriggerKey}
       active={!isStageHostWindow || windowMode === "stage"}
       api={api}
     />
@@ -1324,14 +1342,11 @@ function App() {
         petChat={petChat}
         petDragging={petWindow.petDragging}
         petDragDirection={petWindow.petDragDirection}
-        petDragSnapshot={petWindow.petDragSnapshot}
-        showPetEntryHint={petWindow.showPetEntryHint}
-        petStage={live2dStage}
+        petStage={petStage}
         petCanvasRef={petCanvasRef}
         ttsSpeaking={tts.speaking}
-        ttsActive={tts.active}
-        actionKeyOverride={live2dReplyActionKey}
-        actionTriggerKey={live2dReplyActionTriggerKey}
+        actionKeyOverride={petReplyActionKey}
+        actionTriggerKey={petReplyActionTriggerKey}
         petInputMode={petInputMode}
         petInputModes={petInputModes}
         connected={hasConnection}
@@ -1351,9 +1366,9 @@ function App() {
         }}
         onOpenPetInputMode={petWindow.openPetInputMode}
         onOpenPetShortcutStage={petWindow.openPetShortcutStage}
+        onQuitApp={petWindow.quitAppFromShortcut}
         onSendPetMessage={sendPetMessage}
         onStopStreaming={stopStreaming}
-        onStopTtsFromPetShortcut={petWindow.stopTtsFromPetShortcut}
         onFinishPetShortcutMotion={petWindow.finishPetShortcutMotion}
       />
     );
@@ -1364,14 +1379,9 @@ function App() {
       sidecarStatus={sidecarStatus}
       health={health}
       notice={notice}
-      live2dStage={live2dStage}
-      live2dAsset={live2dAsset}
-      live2dRuntime={live2dRuntime}
-      live2dCanvasRef={live2dPanelCanvasRef}
       ttsActive={tts.active}
-      live2dActionKeyOverride={live2dReplyActionKey}
-      live2dActionTriggerKey={live2dReplyActionTriggerKey}
       api={api}
+      halfbodyPortraitRef={halfbodyPortraitRef}
       firstUseOnboardingPanel={firstUseOnboardingPanel}
       controlInput={controlInput}
       hasConnection={hasConnection}
@@ -1422,10 +1432,6 @@ function App() {
       }
       knowledgeStatusLabel={hasVaultInitialized ? (hasIndexSignal ? "已就绪" : "待索引") : "未绑定"}
       advancedTools={{
-        models: live2dModels,
-        selectedModelId: selectedLive2dModelId,
-        asset: live2dAsset,
-        onSelectModel: selectLive2DModel,
         connectionPanel,
         wikiWorkflowPanel,
         settingsPanel,
@@ -1435,13 +1441,28 @@ function App() {
 }
 
 
+function readTtsPlaybackDurationMs(item: unknown): number | null {
+  const record = item && typeof item === "object" ? (item as Record<string, unknown>) : null;
+  const synthesis = record?.synthesis && typeof record.synthesis === "object"
+    ? (record.synthesis as Record<string, unknown>)
+    : null;
+  const result = record?.result && typeof record.result === "object" ? (record.result as Record<string, unknown>) : null;
+
+  for (const value of [record?.durationMs, synthesis?.durationMs, result?.durationMs]) {
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+      return value;
+    }
+  }
+  return null;
+}
+
+
 
 function clearRendererResettableState(): void {
   for (const key of [
     "agent-pet.base-url",
     firstUseOnboardingStorageKey,
     petEntryHintStorageKey,
-    live2dModelSelectionStorageKey,
     wikiArchiveCandidateStorageKey,
   ]) {
     void writeRendererUiState(key, null);

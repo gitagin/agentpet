@@ -1,0 +1,172 @@
+{
+  "port": 53919,
+  "screenshots": {
+    "idle": "E:\\agentproject\\apps\\desktop\\output\\playwright\\pet-scale-idle.png",
+    "draggingLeft": "E:\\agentproject\\apps\\desktop\\output\\playwright\\pet-scale-dragging-left.png",
+    "draggingRight": "E:\\agentproject\\apps\\desktop\\output\\playwright\\pet-scale-dragging-right.png"
+  },
+  "idleInfo": {
+    "action": "idle",
+    "bodyMode": "pet",
+    "canvasCount": 1,
+    "imageCount": 0,
+    "dragSnapshotCount": 0,
+    "shellRect": {
+      "x": 0,
+      "y": 0,
+      "width": 144,
+      "height": 170
+    },
+    "hostRect": {
+      "x": 24,
+      "y": 42,
+      "width": 96,
+      "height": 104
+    },
+    "canvasRect": {
+      "x": 24,
+      "y": 42,
+      "width": 96,
+      "height": 104
+    },
+    "modelHitRect": {
+      "x": 24,
+      "y": 42,
+      "width": 96,
+      "height": 104
+    },
+    "bodyBackground": "rgba(0, 0, 0, 0)",
+    "shellBackground": "rgba(0, 0, 0, 0)",
+    "beginDragCalls": 0,
+    "activateDragCalls": 0,
+    "endDragCalls": 0,
+    "openStageCalls": 0
+  },
+  "leftInfo": {
+    "action": "pet_drag_left",
+    "bodyMode": "pet",
+    "canvasCount": 1,
+    "imageCount": 0,
+    "dragSnapshotCount": 0,
+    "shellRect": {
+      "x": 0,
+      "y": 0,
+      "width": 144,
+      "height": 170
+    },
+    "hostRect": {
+      "x": 24,
+      "y": 42,
+      "width": 96,
+      "height": 104
+    },
+    "canvasRect": {
+      "x": 24,
+      "y": 42,
+      "width": 96,
+      "height": 104
+    },
+    "modelHitRect": {
+      "x": 24,
+      "y": 42,
+      "width": 96,
+      "height": 104
+    },
+    "bodyBackground": "rgba(0, 0, 0, 0)",
+    "shellBackground": "rgba(0, 0, 0, 0)",
+    "beginDragCalls": 1,
+    "activateDragCalls": 1,
+    "endDragCalls": 0,
+    "openStageCalls": 0
+  },
+  "rightInfo": {
+    "action": "pet_drag_right",
+    "bodyMode": "pet",
+    "canvasCount": 1,
+    "imageCount": 0,
+    "dragSnapshotCount": 0,
+    "shellRect": {
+      "x": 0,
+      "y": 0,
+      "width": 144,
+      "height": 170
+    },
+    "hostRect": {
+      "x": 24,
+      "y": 42,
+      "width": 96,
+      "height": 104
+    },
+    "canvasRect": {
+      "x": 24,
+      "y": 42,
+      "width": 96,
+      "height": 104
+    },
+    "modelHitRect": {
+      "x": 24,
+      "y": 42,
+      "width": 96,
+      "height": 104
+    },
+    "bodyBackground": "rgba(0, 0, 0, 0)",
+    "shellBackground": "rgba(0, 0, 0, 0)",
+    "beginDragCalls": 2,
+    "activateDragCalls": 2,
+    "endDragCalls": 3,
+    "openStageCalls": 0
+  },
+  "doubleClickInfo": {
+    "action": "idle",
+    "bodyMode": "pet",
+    "canvasCount": 1,
+    "imageCount": 0,
+    "dragSnapshotCount": 0,
+    "shellRect": {
+      "x": 0,
+      "y": 0,
+      "width": 144,
+      "height": 170
+    },
+    "hostRect": {
+      "x": 24,
+      "y": 42,
+      "width": 96,
+      "height": 104
+    },
+    "canvasRect": {
+      "x": 24,
+      "y": 42,
+      "width": 96,
+      "height": 104
+    },
+    "modelHitRect": {
+      "x": 24,
+      "y": 42,
+      "width": 96,
+      "height": 104
+    },
+    "bodyBackground": "rgba(0, 0, 0, 0)",
+    "shellBackground": "rgba(0, 0, 0, 0)",
+    "beginDragCalls": 4,
+    "activateDragCalls": 2,
+    "endDragCalls": 13,
+    "openStageCalls": 1
+  },
+  "shortcutInfo": {
+    "visible": true,
+    "rect": {
+      "x": 70,
+      "y": 32,
+      "width": 72,
+      "height": 108
+    }
+  },
+  "errors": [],
+  "consoleErrors": [
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    }
+  ]
+}

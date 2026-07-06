@@ -1,9 +1,0 @@
-{
-  "layer_count": 146,
-  "visible_layers": 48,
-  "hidden_layers": 98,
-  "zero_pixel_layers": [],
-  "all_layers_full_canvas": true,
-  "mean_abs_rgba_diff": 0.02142793571682856,
-  "note": "Diff is only a rough visual QA because hidden areas were redrawn and the package is not expected to pixel-match the flattened source exactly."
-}

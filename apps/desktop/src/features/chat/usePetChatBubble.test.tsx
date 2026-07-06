@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Dispatch, SetStateAction } from "react";
 import type { ChatContinuitySignal, ChatMessage, TtsPlaybackItem } from "../../types";
 import { getPetBubblePageDelay } from "../../services/petBubblePagination";
-import { usePetChatBubble } from "./usePetChatBubble";
+import { ttsNextPagePlaybackDelayMs, usePetChatBubble } from "./usePetChatBubble";
 import { petStreamFinalTimeoutMs } from "./chatTypes";
 import type { TtsPlaybackQueueController } from "../tts";
 
@@ -97,6 +97,10 @@ describe("usePetChatBubble", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it("uses a short handoff delay between TTS reply pages", () => {
+    expect(ttsNextPagePlaybackDelayMs).toBe(80);
   });
 
   it("auto-advances multi-page replies like speech playback", () => {
@@ -323,7 +327,7 @@ describe("usePetChatBubble", () => {
 
     act(() => {
       result.current.handleTtsPlaybackEnd(firstItem, "played");
-      vi.advanceTimersByTime(299);
+      vi.advanceTimersByTime(ttsNextPagePlaybackDelayMs - 1);
     });
 
     expect(tts.play).toHaveBeenCalledTimes(1);
@@ -464,7 +468,7 @@ describe("usePetChatBubble", () => {
 
     act(() => {
       result.current.handleTtsPlaybackEnd(firstItem, "played");
-      vi.advanceTimersByTime(299);
+      vi.advanceTimersByTime(ttsNextPagePlaybackDelayMs - 1);
     });
 
     expect(tts.play).toHaveBeenCalledTimes(1);

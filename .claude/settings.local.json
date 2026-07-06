@@ -20,7 +20,11 @@
       "Bash(python -m pytest apps/backend/tests/unit/agents/nodes/test_memory_reviewer.py apps/backend/tests/unit/agents/nodes/test_memory.py -q)",
       "Bash(python -m pytest apps/backend/tests/unit/agents/test_agent_runner.py apps/backend/tests/unit/agents/nodes/test_orchestrator.py apps/backend/tests/unit/agents/nodes/test_memory_reviewer.py apps/backend/tests/unit/agents/nodes/test_memory.py -q)",
       "Bash(python -m pytest apps/backend/tests/unit/agents/nodes/test_wiki_reviewer.py apps/backend/tests/unit/agents/nodes/test_wiki.py -q)",
-      "Bash(python -)"
+      "Bash(python -)",
+      "Bash(npm --prefix apps/desktop run sprite-pet:check)",
+      "Bash(npm --prefix apps/desktop run test -- petSpriteManifest spritePetState SpritePetStage)",
+      "Bash(npm --prefix apps/desktop run test -- SpritePetStage)",
+      "Bash(npm --prefix apps/desktop run package:check)"
     ]
   }
 }

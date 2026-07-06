@@ -14,10 +14,10 @@ import { useVersionedPublicAsset } from "../../hooks/useVersionedPublicAsset";
 const HALFBODY_STATE_PATH = "/sprite-pet/state.json";
 const BLINK_SEQUENCE: Array<[HalfbodyBlinkFrame, number]> = [
   ["open", 0],
-  ["half", 55],
-  ["closed", 125],
-  ["half", 205],
-  ["open", 280],
+  ["half", 35],
+  ["closed", 80],
+  ["half", 125],
+  ["open", 170],
 ];
 
 const visemeKeys = ["closed", "AI", "E", "O", "MBP", "FV", "smile"] as const;
@@ -82,7 +82,7 @@ const DEFAULT_HALFBODY_CONFIG: HalfbodyConfig = {
     translateY: [0, -2],
   },
   blink: {
-    triggerIntervalMs: [2500, 6000],
+    triggerIntervalMs: [3000, 7000],
     frames: {
       open: "sprite-pet/halfbody/blink/open.png",
       half: "sprite-pet/halfbody/blink/half.png",

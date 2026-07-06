@@ -25,11 +25,11 @@ describe("petBubblePagination", () => {
 
   it("splits long replies into bounded readable pages", () => {
     const pages = paginatePetBubbleReply(
-      "今天先整理长期记忆和 Wiki 提案，确认后再写入 Vault。然后检查 Live2D 资源边界，避免把 release 产物提交进仓库。最后运行桌面端质量检查。",
+      "今天先整理长期记忆和 Wiki 提案，确认后再写入 Vault。然后检查 sprite-pet 资源边界，避免把 release 产物提交进仓库。最后运行桌面端质量检查。",
     );
 
     expect(pages.length).toBeGreaterThan(1);
-    expect(pages.join("")).toBe("今天先整理长期记忆和 Wiki 提案，确认后再写入 Vault。然后检查 Live2D 资源边界，避免把 release 产物提交进仓库。最后运行桌面端质量检查。");
+    expect(pages.join("")).toBe("今天先整理长期记忆和 Wiki 提案，确认后再写入 Vault。然后检查 sprite-pet 资源边界，避免把 release 产物提交进仓库。最后运行桌面端质量检查。");
     expect(pages.every((page) => getPetBubbleVisualWeight(page) <= 36)).toBe(true);
   });
 

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import type { AnimationEvent, CSSProperties, PointerEvent, RefObject } from "react";
+import type { AnimationEvent, PointerEvent } from "react";
 import type { PetChatBubbleController } from "../chat/usePetChatBubble";
 import { normalizePetInputMode, type PetInputMode } from "../chat/petInputModes";
 import type { DesktopStageRouteMode, DesktopWindowMode } from "../desktop/desktopWindowModes";
@@ -9,11 +9,6 @@ import type { SpritePetDragDirection } from "./spritePetState";
 
 type PetShortcutMotion = "idle" | "opening" | "closing";
 type PetEntryHintStatus = "unknown" | "pending" | "completed";
-
-type PetDragSnapshot = {
-  url: string;
-  style: CSSProperties;
-} | null;
 
 type PetDragState = {
   pointerId: number;
@@ -26,9 +21,7 @@ type PetDragState = {
 type UsePetWindowControllerOptions = {
   windowMode: DesktopWindowMode;
   petChat: PetChatBubbleController;
-  petCanvasRef: RefObject<HTMLCanvasElement>;
   onPetInputModeChange: (mode: PetInputMode) => void;
-  onStopTts: () => void;
 };
 
 export const petEntryHintStorageKey = "agent-pet.pet-entry-hint";
@@ -37,18 +30,14 @@ const petEntryHintCompletedValue = "completed:v1";
 export function usePetWindowController({
   windowMode,
   petChat,
-  petCanvasRef,
   onPetInputModeChange,
-  onStopTts,
 }: UsePetWindowControllerOptions) {
   const [petShortcutsVisible, setPetShortcutsVisible] = useState(false);
   const [petShortcutMotion, setPetShortcutMotion] = useState<PetShortcutMotion>("idle");
   const [petDragging, setPetDragging] = useState(false);
   const [petDragDirection, setPetDragDirection] = useState<SpritePetDragDirection>("none");
-  const [petDragSnapshot, setPetDragSnapshot] = useState<PetDragSnapshot>(null);
   const [petEntryHintStatus, setPetEntryHintStatus] = useState<PetEntryHintStatus>("unknown");
   const petShellRef = useRef<HTMLElement | null>(null);
-  const petDragSnapshotClearTimerRef = useRef<number | null>(null);
   const petShortcutMotionTimerRef = useRef<number | null>(null);
   const petDragRef = useRef<PetDragState | null>(null);
   const openPetInputModeRef = useRef<(mode: PetInputMode) => void>(() => undefined);
@@ -73,73 +62,16 @@ export function usePetWindowController({
     }
     petShortcutMotionTimerRef.current = window.setTimeout(() => {
       petShortcutMotionTimerRef.current = null;
-      setPetShortcutMotion("idle");
-    }, nextMotion === "opening" ? 420 : 380);
-  }
-
-  function clearPetDragSnapshot(delayMs = 120) {
-    if (petDragSnapshotClearTimerRef.current !== null) {
-      window.clearTimeout(petDragSnapshotClearTimerRef.current);
-      petDragSnapshotClearTimerRef.current = null;
-    }
-
-    if (delayMs <= 0) {
-      setPetDragSnapshot(null);
-      return;
-    }
-
-    petDragSnapshotClearTimerRef.current = window.setTimeout(() => {
-      petDragSnapshotClearTimerRef.current = null;
-      setPetDragSnapshot(null);
-    }, delayMs);
-  }
-
-  function capturePetDragSnapshot() {
-    if (petDragSnapshotClearTimerRef.current !== null) {
-      window.clearTimeout(petDragSnapshotClearTimerRef.current);
-      petDragSnapshotClearTimerRef.current = null;
-    }
-
-    const canvas = petCanvasRef.current;
-    const shell = petShellRef.current;
-    if (!canvas || !shell || canvas.width <= 1 || canvas.height <= 1) {
-      setPetDragSnapshot(null);
-      return false;
-    }
-
-    const canvasBounds = canvas.getBoundingClientRect();
-    const shellBounds = shell.getBoundingClientRect();
-    if (canvasBounds.width <= 1 || canvasBounds.height <= 1 || shellBounds.width <= 1 || shellBounds.height <= 1) {
-      setPetDragSnapshot(null);
-      return false;
-    }
-
-    try {
-      const url = canvas.toDataURL("image/png");
-      if (!url || url === "data:,") {
-        setPetDragSnapshot(null);
-        return false;
+      if (nextMotion === "closing") {
+        setPetShortcutsVisible(false);
       }
-      setPetDragSnapshot({
-        url,
-        style: {
-          left: `${canvasBounds.left - shellBounds.left}px`,
-          top: `${canvasBounds.top - shellBounds.top}px`,
-          width: `${canvasBounds.width}px`,
-          height: `${canvasBounds.height}px`,
-        },
-      });
-      return true;
-    } catch {
-      setPetDragSnapshot(null);
-      return false;
-    }
+      setPetShortcutMotion("idle");
+    }, nextMotion === "opening" ? 360 : 340);
   }
 
   function finishPetDragVisualState() {
     setPetDragging(false);
     setPetDragDirection("none");
-    clearPetDragSnapshot(0);
   }
 
   function completePetEntryHint() {
@@ -174,7 +106,6 @@ export function usePetWindowController({
       return;
     }
     flushSync(() => {
-      capturePetDragSnapshot();
       setPetDragging(true);
     });
     window.agentDesktop.beginPetWindowDrag();
@@ -231,9 +162,12 @@ export function usePetWindowController({
     petChat.setInputVisible(false);
   }
 
-  function stopTtsFromPetShortcut() {
+  function quitAppFromShortcut() {
     closePetShortcutMenu();
-    onStopTts();
+    const quitApp = window.agentDesktop?.quitApp?.();
+    if (quitApp) {
+      void quitApp.catch(() => undefined);
+    }
   }
 
   function openPetShortcutStage(mode: DesktopStageRouteMode) {
@@ -249,14 +183,27 @@ export function usePetWindowController({
     setPetShortcutsVisible((visible) => {
       if (!visible) {
         petChat.setInputVisible(false);
+        setPetShortcutMotionWithFallback("opening");
+        return true;
       }
-      setPetShortcutMotionWithFallback(visible ? "closing" : "opening");
-      return !visible;
+      setPetShortcutMotionWithFallback("closing");
+      return true;
     });
   }
 
   function finishPetShortcutMotion(event: AnimationEvent<HTMLElement>) {
-    if (event.animationName === "pet-shortcut-roll-out" || event.animationName === "pet-shortcut-roll-in") {
+    if ((event.target as HTMLElement | null)?.dataset?.shortcutFinal !== "true") {
+      return;
+    }
+    if (
+      event.animationName === "pet-shortcut-roll-out" ||
+      event.animationName === "pet-shortcut-roll-in" ||
+      event.animationName === "pet-shortcut-slide-out" ||
+      event.animationName === "pet-shortcut-slide-in"
+    ) {
+      if (petShortcutMotion === "closing") {
+        setPetShortcutsVisible(false);
+      }
       settlePetShortcutMotion();
     }
   }
@@ -335,10 +282,6 @@ export function usePetWindowController({
       window.removeEventListener("blur", cancelPetDrag);
       window.removeEventListener("pointercancel", cancelPetDrag);
       window.removeEventListener("pointerup", cancelPetDrag);
-      if (petDragSnapshotClearTimerRef.current !== null) {
-        window.clearTimeout(petDragSnapshotClearTimerRef.current);
-        petDragSnapshotClearTimerRef.current = null;
-      }
     };
   }, []);
 
@@ -348,7 +291,6 @@ export function usePetWindowController({
     petShortcutMotion,
     petDragging,
     petDragDirection,
-    petDragSnapshot,
     showPetEntryHint:
       windowMode === "pet" &&
       petEntryHintStatus === "pending" &&
@@ -362,7 +304,7 @@ export function usePetWindowController({
     togglePetShortcuts,
     openPetInputMode,
     openPetShortcutStage,
-    stopTtsFromPetShortcut,
+    quitAppFromShortcut,
     finishPetShortcutMotion,
   };
 }

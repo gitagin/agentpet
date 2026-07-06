@@ -1,18 +1,13 @@
-import { AlarmClockPlus, BookOpen, MessageSquareText, NotebookPen, Settings, VolumeX } from "lucide-react";
+import { AlarmClockPlus, BookOpen, MessageSquareText, Settings, X } from "lucide-react";
 import type { AnimationEventHandler, CSSProperties, FormEvent, PointerEvent, PointerEventHandler, RefObject } from "react";
-import type { Live2DStageView } from "../../components/Live2DStage";
 import { PetChatOverlay } from "../chat/PetChatOverlay";
 import type { PetChatBubbleController } from "../chat/usePetChatBubble";
 import type { PetInputMode, PetInputModeOption } from "../chat/petInputModes";
 import { SpritePetStage } from "./SpritePetStage";
+import type { PetStageView } from "./petStageState";
 import type { SpritePetDragDirection } from "./spritePetState";
 
 type PetShortcutMotion = "idle" | "opening" | "closing";
-
-type PetDragSnapshot = {
-  url: string;
-  style: CSSProperties;
-} | null;
 
 export type PetWindowProps = {
   shellRef: RefObject<HTMLElement>;
@@ -22,12 +17,9 @@ export type PetWindowProps = {
   petChat: PetChatBubbleController;
   petDragging: boolean;
   petDragDirection: SpritePetDragDirection;
-  petDragSnapshot: PetDragSnapshot;
-  showPetEntryHint: boolean;
-  petStage: Live2DStageView;
+  petStage: PetStageView;
   petCanvasRef: RefObject<HTMLCanvasElement>;
   ttsSpeaking: boolean;
-  ttsActive: boolean;
   actionKeyOverride: string | null;
   actionTriggerKey: string | null;
   petInputMode: PetInputMode;
@@ -44,9 +36,9 @@ export type PetWindowProps = {
   onOpenStage: () => void;
   onOpenPetInputMode: (mode: PetInputMode) => void;
   onOpenPetShortcutStage: (mode: "memory" | "settings") => void;
+  onQuitApp: () => void;
   onSendPetMessage: (event: FormEvent) => void;
   onStopStreaming: () => void;
-  onStopTtsFromPetShortcut: () => void;
   onFinishPetShortcutMotion: AnimationEventHandler<HTMLElement>;
 };
 
@@ -58,12 +50,9 @@ export function PetWindow({
   petChat,
   petDragging,
   petDragDirection,
-  petDragSnapshot,
-  showPetEntryHint,
   petStage,
   petCanvasRef,
   ttsSpeaking,
-  ttsActive,
   actionKeyOverride,
   actionTriggerKey,
   petInputMode,
@@ -80,11 +69,14 @@ export function PetWindow({
   onOpenStage,
   onOpenPetInputMode,
   onOpenPetShortcutStage,
+  onQuitApp,
   onSendPetMessage,
   onStopStreaming,
-  onStopTtsFromPetShortcut,
   onFinishPetShortcutMotion,
 }: PetWindowProps) {
+  const petShortcutsInteractive = petShortcutsVisible && petShortcutMotion !== "closing";
+  const petShortcutsRendered = petShortcutsVisible || petShortcutMotion === "closing";
+
   return (
     <main
       className={[
@@ -92,7 +84,6 @@ export function PetWindow({
         hitboxDebug ? "pet-debug-hitbox" : "",
         petChat.bubble.visible ? "pet-bubble-visible" : "",
         petDragging ? "pet-dragging" : "",
-        petDragSnapshot ? "pet-drag-snapshot-ready" : "",
       ].filter(Boolean).join(" ")}
       ref={shellRef}
       style={hitboxStyle}
@@ -135,21 +126,6 @@ export function PetWindow({
           },
         }}
       />
-      {petDragSnapshot ? (
-        <img
-          className="pet-drag-frame-cache"
-          src={petDragSnapshot.url}
-          style={petDragSnapshot.style}
-          alt=""
-          aria-hidden="true"
-          draggable={false}
-        />
-      ) : null}
-      {showPetEntryHint ? (
-        <div className="pet-entry-hint" aria-label="桌宠入口提示">
-          右键我快速行动
-        </div>
-      ) : null}
       <PetChatOverlay
         bubble={petChat.bubble}
         input={petChat.input}
@@ -170,34 +146,28 @@ export function PetWindow({
         onStopStreaming={onStopStreaming}
       />
       <nav
-        className={`pet-shortcut-bar${petShortcutsVisible ? " is-visible" : ""}`}
+        className={`pet-shortcut-bar${petShortcutsRendered ? " is-visible" : ""}`}
         data-shortcut-motion={petShortcutMotion}
         aria-label="桌宠快捷操作"
-        aria-hidden={!petShortcutsVisible}
+        aria-hidden={!petShortcutsInteractive}
         onContextMenu={(event) => event.preventDefault()}
         onAnimationEnd={onFinishPetShortcutMotion}
       >
-        <button type="button" className="pet-shortcut-button primary" style={shortcutButtonStyles[0]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="继续聊" title="继续聊" onClick={() => onOpenPetInputMode("chat")}>
+        <button type="button" className="pet-shortcut-button primary" style={shortcutButtonStyles[0]} tabIndex={petShortcutsInteractive ? 0 : -1} aria-label="继续聊" title="继续聊" onClick={() => onOpenPetInputMode("chat")}>
           <MessageSquareText className="pet-shortcut-icon" size={17} strokeWidth={2.3} aria-hidden="true" />
         </button>
-        <button type="button" className="pet-shortcut-button primary" style={shortcutButtonStyles[1]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="记一条" title="记一条" onClick={() => onOpenPetInputMode("note")}>
-          <NotebookPen className="pet-shortcut-icon" size={17} strokeWidth={2.3} aria-hidden="true" />
-        </button>
-        <button type="button" className="pet-shortcut-button primary" style={shortcutButtonStyles[2]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="建提醒" title="建提醒" onClick={() => onOpenPetInputMode("task")}>
+        <button type="button" className="pet-shortcut-button primary" style={shortcutButtonStyles[1]} tabIndex={petShortcutsInteractive ? 0 : -1} aria-label="建提醒" title="建提醒" onClick={() => onOpenPetInputMode("task")}>
           <AlarmClockPlus className="pet-shortcut-icon" size={17} strokeWidth={2.3} aria-hidden="true" />
         </button>
-        <button type="button" className="pet-shortcut-button" style={shortcutButtonStyles[3]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="打开记忆" title="打开记忆" onClick={() => onOpenPetShortcutStage("memory")}>
+        <button type="button" className="pet-shortcut-button" style={shortcutButtonStyles[2]} tabIndex={petShortcutsInteractive ? 0 : -1} aria-label="打开记忆" title="打开记忆" onClick={() => onOpenPetShortcutStage("memory")}>
           <BookOpen className="pet-shortcut-icon" size={17} strokeWidth={2.3} aria-hidden="true" />
         </button>
-        {ttsActive ? (
-          <button type="button" className="pet-shortcut-button voice" style={shortcutButtonStyles[4]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="暂停朗读" title="暂停朗读" onClick={onStopTtsFromPetShortcut}>
-            <VolumeX className="pet-shortcut-icon" size={17} strokeWidth={2.4} aria-hidden="true" />
-          </button>
-        ) : (
-          <button type="button" className="pet-shortcut-button" style={shortcutButtonStyles[4]} tabIndex={petShortcutsVisible ? 0 : -1} aria-label="打开设置" title="打开设置" onClick={() => onOpenPetShortcutStage("settings")}>
-            <Settings className="pet-shortcut-icon" size={17} strokeWidth={2.3} aria-hidden="true" />
-          </button>
-        )}
+        <button type="button" className="pet-shortcut-button" style={shortcutButtonStyles[3]} tabIndex={petShortcutsInteractive ? 0 : -1} aria-label="打开设置" title="打开设置" onClick={() => onOpenPetShortcutStage("settings")}>
+          <Settings className="pet-shortcut-icon" size={17} strokeWidth={2.3} aria-hidden="true" />
+        </button>
+        <button type="button" className="pet-shortcut-button danger pet-shortcut-danger" style={shortcutButtonStyles[4]} data-shortcut-final="true" tabIndex={petShortcutsInteractive ? 0 : -1} aria-label="退出 Agent Pet" title="退出 Agent Pet" onClick={onQuitApp}>
+          <X className="pet-shortcut-icon" size={17} strokeWidth={2.5} aria-hidden="true" />
+        </button>
       </nav>
     </main>
   );

@@ -1,14 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 import type { MouseEvent, PointerEvent, RefObject } from "react";
-import type { Live2DStageView } from "../../components/Live2DStage";
 import { useVersionedPublicAsset } from "../../hooks/useVersionedPublicAsset";
+import type { PetStageView } from "./petStageState";
 import {
-  getSpritePetAtlasRowKey,
+  getSpritePetAnimationKey,
   resolveSpritePetAction,
   type SpritePetAction,
   type SpritePetDragDirection,
-  spritePetAtlasRows,
 } from "./spritePetState";
+import {
+  DEFAULT_PET_SPRITE_MANIFEST,
+  frameForAnimation,
+  normalizePetSpriteManifest,
+  PET_SPRITE_MANIFEST_PATH,
+  type PetSpriteManifest,
+} from "./petSpriteManifest";
 
 export type SpritePetInteractions = {
   onPointerDown: (event: PointerEvent<HTMLElement>) => void;
@@ -22,7 +28,7 @@ export type SpritePetInteractions = {
 };
 
 type SpritePetStageProps = {
-  stage: Live2DStageView;
+  stage: PetStageView;
   canvasRef: RefObject<HTMLCanvasElement>;
   connected: boolean;
   streaming: boolean;
@@ -44,12 +50,6 @@ type CanvasLayout = {
 };
 
 const maxCanvasPixelRatio = 2;
-const petAtlasPath = "/images/pet-codex-actions.png";
-const petImagePath = "/images/pet-chibi-clean.png";
-const petAtlasCellWidth = 220;
-const petAtlasCellHeight = 282;
-const petAtlasFrameCount = 8;
-const petAtlasRows = new Map(spritePetAtlasRows.map((row, index) => [row.key, { ...row, index }]));
 
 export function SpritePetStage({
   stage,
@@ -66,10 +66,45 @@ export function SpritePetStage({
   active = true,
   petInteractions,
 }: SpritePetStageProps) {
-  const petAtlasSrc = useVersionedPublicAsset(petAtlasPath);
-  const petImageSrc = useVersionedPublicAsset(petImagePath);
+  const [manifest, setManifest] = useState<PetSpriteManifest>(DEFAULT_PET_SPRITE_MANIFEST);
+  const [atlasSourcePath, setAtlasSourcePath] = useState(DEFAULT_PET_SPRITE_MANIFEST.spritesheetCleanPath);
+  const petAtlasSrc = useVersionedPublicAsset(atlasSourcePath);
+  const petImageSrc = useVersionedPublicAsset(manifest.fallbackPngPath);
   const [atlasImage, setAtlasImage] = useState<HTMLImageElement | null>(null);
   const [fallbackImage, setFallbackImage] = useState<HTMLImageElement | null>(null);
+  const [cleanedAtlasImage, setCleanedAtlasImage] = useState<HTMLCanvasElement | null>(null);
+  const [cleanedFallbackImage, setCleanedFallbackImage] = useState<HTMLCanvasElement | null>(null);
+  useEffect(() => {
+    let disposed = false;
+
+    if (typeof fetch !== "function") {
+      return () => {
+        disposed = true;
+      };
+    }
+
+    void fetch(PET_SPRITE_MANIFEST_PATH, { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((rawManifest) => {
+        if (disposed) {
+          return;
+        }
+        const nextManifest = normalizePetSpriteManifest(rawManifest, PET_SPRITE_MANIFEST_PATH);
+        setManifest(nextManifest);
+        setAtlasSourcePath(nextManifest.spritesheetCleanPath);
+      })
+      .catch(() => {
+        if (!disposed) {
+          setManifest(DEFAULT_PET_SPRITE_MANIFEST);
+          setAtlasSourcePath(DEFAULT_PET_SPRITE_MANIFEST.spritesheetCleanPath);
+        }
+      });
+
+    return () => {
+      disposed = true;
+    };
+  }, []);
+
   const action = useMemo(
     () =>
       resolveSpritePetAction({
@@ -108,13 +143,17 @@ export function SpritePetStage({
     nextImage.onerror = () => {
       if (!disposed) {
         setAtlasImage(null);
+        const nextPath = getNextAtlasFallbackPath(atlasSourcePath, manifest);
+        if (nextPath) {
+          setAtlasSourcePath(nextPath);
+        }
       }
     };
     nextImage.src = petAtlasSrc;
     return () => {
       disposed = true;
     };
-  }, [petAtlasSrc]);
+  }, [atlasSourcePath, manifest, petAtlasSrc]);
 
   useEffect(() => {
     let disposed = false;
@@ -137,6 +176,44 @@ export function SpritePetStage({
   }, [petImageSrc]);
 
   useEffect(() => {
+    let disposed = false;
+    if (!atlasImage) {
+      setCleanedAtlasImage(null);
+      return () => {
+        disposed = true;
+      };
+    }
+
+    const cleanedImage = createCleanedSpriteAtlasCanvas(atlasImage, manifest);
+    if (!disposed) {
+      setCleanedAtlasImage(cleanedImage);
+    }
+
+    return () => {
+      disposed = true;
+    };
+  }, [atlasImage, manifest]);
+
+  useEffect(() => {
+    let disposed = false;
+    if (!fallbackImage) {
+      setCleanedFallbackImage(null);
+      return () => {
+        disposed = true;
+      };
+    }
+
+    const cleanedImage = createCleanedSpriteAtlasCanvas(fallbackImage, manifest);
+    if (!disposed) {
+      setCleanedFallbackImage(cleanedImage);
+    }
+
+    return () => {
+      disposed = true;
+    };
+  }, [fallbackImage, manifest]);
+
+  useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) {
       return;
@@ -155,26 +232,16 @@ export function SpritePetStage({
       context.setTransform(layout.pixelRatio, 0, 0, layout.pixelRatio, 0, 0);
       context.clearRect(0, 0, layout.width, layout.height);
 
-      if (atlasImage) {
+      const currentAtlasImage = cleanedAtlasImage ?? cleanedFallbackImage ?? atlasImage ?? fallbackImage;
+      if (currentAtlasImage) {
         drawSpritePetAtlasFrame({
           action,
           actionTriggerKey,
-          atlasImage,
+          atlasImage: currentAtlasImage,
           context,
           dragging,
           layout,
-          speaking,
-          timestamp,
-        });
-      } else if (fallbackImage) {
-        drawSpritePetFrame({
-          action,
-          actionTriggerKey,
-          context,
-          dragging,
-          image: fallbackImage,
-          layout,
-          speaking,
+          manifest,
           timestamp,
         });
       }
@@ -205,7 +272,19 @@ export function SpritePetStage({
       }
       resizeObserver?.disconnect();
     };
-  }, [action, actionTriggerKey, active, atlasImage, canvasRef, dragging, fallbackImage, speaking]);
+  }, [
+    action,
+    actionTriggerKey,
+    active,
+    atlasImage,
+    canvasRef,
+    cleanedAtlasImage,
+    cleanedFallbackImage,
+    dragging,
+    fallbackImage,
+    manifest,
+    speaking,
+  ]);
 
   const petModelInteractions = petInteractions
     ? {
@@ -239,7 +318,12 @@ export function SpritePetStage({
     >
       <div className="sprite-pet-stage" role="img" aria-label={`桌宠状态：${action.label}`}>
         <div className="sprite-pet-canvas-host" aria-hidden="true">
-          <canvas ref={canvasRef} className="sprite-pet-canvas" width={220} height={282} />
+          <canvas
+            ref={canvasRef}
+            className="sprite-pet-canvas"
+            width={manifest.cell.width}
+            height={manifest.cell.height}
+          />
         </div>
         <span className="sprite-pet-status" role="status" aria-live="polite">
           {action.label}，{action.detail}
@@ -255,10 +339,25 @@ export function SpritePetStage({
   );
 }
 
+function getSpritePetAtlasLoadOrder(manifest: PetSpriteManifest): string[] {
+  return [manifest.spritesheetCleanPath, manifest.spritesheetPath, manifest.fallbackPngPath].filter(
+    (pathName, index, paths): pathName is string => Boolean(pathName) && paths.indexOf(pathName) === index,
+  );
+}
+
+function getNextAtlasFallbackPath(currentPath: string, manifest: PetSpriteManifest): string | null {
+  const loadOrder = getSpritePetAtlasLoadOrder(manifest);
+  const currentIndex = loadOrder.indexOf(currentPath);
+  if (currentIndex < 0) {
+    return loadOrder[0] ?? null;
+  }
+  return loadOrder[currentIndex + 1] ?? null;
+}
+
 function resizeCanvas(canvas: HTMLCanvasElement): CanvasLayout {
   const bounds = canvas.getBoundingClientRect();
-  const fallbackWidth = canvas.width || 220;
-  const fallbackHeight = canvas.height || 282;
+  const fallbackWidth = canvas.width || 192;
+  const fallbackHeight = canvas.height || 208;
   const width = Math.max(1, bounds.width || fallbackWidth);
   const height = Math.max(1, bounds.height || fallbackHeight);
   const pixelRatio = Math.min(window.devicePixelRatio || 1, maxCanvasPixelRatio);
@@ -281,339 +380,280 @@ function drawSpritePetAtlasFrame({
   context,
   dragging,
   layout,
-  speaking,
+  manifest,
   timestamp,
 }: {
   action: SpritePetAction;
   actionTriggerKey: string | null;
-  atlasImage: HTMLImageElement;
+  atlasImage: CanvasImageSource;
   context: CanvasRenderingContext2D;
   dragging: boolean;
   layout: CanvasLayout;
-  speaking: boolean;
+  manifest: PetSpriteManifest;
   timestamp: number;
 }) {
-  const row = petAtlasRows.get(getSpritePetAtlasRowKey(action.key)) || petAtlasRows.get("idle");
-  const rowIndex = row?.index ?? 0;
-  const frameCount = row?.frameCount ?? petAtlasFrameCount;
-  const t = timestamp / 1000;
+  const animationKey = getSpritePetAnimationKey(action.key);
+  const animation = manifest.animations[animationKey] || manifest.animations.idle;
   const seed = hashString(`${action.key}:${actionTriggerKey || ""}`) / 997;
-  const atlasRowKey = row?.key || "idle";
-  const fps = speaking ? 12 : getSpritePetAtlasFps(atlasRowKey, dragging);
-  const frameIndex = Math.floor((t + seed) * fps) % frameCount;
-  const sourceX = frameIndex * petAtlasCellWidth;
-  const sourceY = rowIndex * petAtlasCellHeight;
+  const frameIndex = frameForAnimation(animation, dragging ? timestamp * 1.18 : timestamp, seed);
+  const column = animation.columns[frameIndex] ?? 0;
+  const sourceX = column * manifest.cell.width;
+  const sourceY = animation.row * manifest.cell.height;
 
   context.save();
-  context.imageSmoothingEnabled = true;
-  context.imageSmoothingQuality = "high";
+  context.imageSmoothingEnabled = false;
   context.drawImage(
     atlasImage,
     sourceX,
     sourceY,
-    petAtlasCellWidth,
-    petAtlasCellHeight,
+    manifest.cell.width,
+    manifest.cell.height,
     0,
     0,
     layout.width,
     layout.height,
   );
-  if (speaking || action.motion.mouth === "talk") {
-    drawAtlasSpeechMouth(context, layout, computeSpeechOpen(t, seed));
-  }
   context.restore();
 }
 
-function getSpritePetAtlasFps(rowKey: string, dragging: boolean): number {
-  if (dragging) {
-    return 10;
+function createCleanedSpriteAtlasCanvas(image: HTMLImageElement, manifest: PetSpriteManifest): HTMLCanvasElement | null {
+  if (typeof document === "undefined") {
+    return null;
   }
-  switch (rowKey) {
-    case "idle":
-      return 4.8;
-    case "waving":
-    case "jumping":
-      return 7.5;
-    case "failed":
-      return 4.5;
-    case "running-right":
-    case "running-left":
-      return 9.5;
-    case "running":
-      return 7;
-    case "review":
-    case "waiting":
-    default:
-      return 5.5;
+
+  const sourceWidth = Math.max(1, Math.round(image.naturalWidth || image.width || manifest.layout.width));
+  const sourceHeight = Math.max(1, Math.round(image.naturalHeight || image.height || manifest.layout.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = sourceWidth;
+  canvas.height = sourceHeight;
+
+  const context = canvas.getContext("2d", { alpha: true, willReadFrequently: true });
+  if (!context) {
+    return null;
+  }
+
+  context.clearRect(0, 0, sourceWidth, sourceHeight);
+  context.drawImage(image, 0, 0, sourceWidth, sourceHeight);
+
+  if (typeof context.getImageData !== "function" || typeof context.putImageData !== "function") {
+    return null;
+  }
+
+  try {
+    const imageData = context.getImageData(0, 0, sourceWidth, sourceHeight);
+    if (!hasChromaKeyPixels(imageData.data)) {
+      return canvas;
+    }
+    cleanSpriteAtlasChromaPixels(imageData.data, sourceWidth, sourceHeight, manifest);
+    context.putImageData(imageData, 0, 0);
+    return canvas;
+  } catch {
+    return null;
   }
 }
 
-function drawAtlasSpeechMouth(context: CanvasRenderingContext2D, layout: CanvasLayout, open: number) {
-  const centerX = layout.width * 0.5;
-  const centerY = layout.height * 0.455;
-  const width = layout.width * (0.022 + open * 0.012);
-  const height = layout.height * (0.006 + open * 0.024);
-  context.save();
-  context.fillStyle = "rgba(48, 18, 30, 0.94)";
-  context.beginPath();
-  context.ellipse(centerX, centerY, width, height, 0.05, 0, Math.PI * 2);
-  context.fill();
-  if (open > 0.55) {
-    context.fillStyle = "rgba(230, 88, 124, 0.62)";
-    context.beginPath();
-    context.ellipse(centerX, centerY + height * 0.25, width * 0.55, height * 0.28, 0, 0, Math.PI * 2);
-    context.fill();
+function hasChromaKeyPixels(data: Uint8ClampedArray): boolean {
+  for (let offset = 0; offset < data.length; offset += 4) {
+    if (readChromaKeyStrength(data, offset) !== null) {
+      return true;
+    }
   }
-  context.restore();
+  return false;
 }
 
-function drawSpritePetFrame({
-  action,
-  actionTriggerKey,
-  context,
-  dragging,
-  image,
-  layout,
-  speaking,
-  timestamp,
-}: {
-  action: SpritePetAction;
-  actionTriggerKey: string | null;
-  context: CanvasRenderingContext2D;
-  dragging: boolean;
-  image: HTMLImageElement;
-  layout: CanvasLayout;
-  speaking: boolean;
-  timestamp: number;
-}) {
-  const t = timestamp / 1000;
-  const motion = action.motion;
-  const phaseSeed = hashString(`${action.key}:${actionTriggerKey || ""}`) / 997;
-  const naturalBob = Math.sin(t * 2.55 + phaseSeed) * motion.bobPx;
-  const breathe = Math.sin(t * 1.82 + phaseSeed * 0.7) * motion.breathe;
-  const sway = Math.sin(t * 1.32 + phaseSeed) * motion.swayDeg;
-  const dragLean = dragging ? Math.sin(t * 7.1) * 0.7 : 0;
-  const tilt = degreesToRadians(motion.tiltDeg + sway + dragLean);
-  const speechOpen = motion.mouth === "talk" || speaking ? computeSpeechOpen(t, phaseSeed) : 0;
-  const blink = computeBlink(t, motion.blinkSeconds, phaseSeed);
-
-  const imageWidth = image.naturalWidth || image.width;
-  const imageHeight = image.naturalHeight || image.height;
-  const drawScale = Math.min((layout.width * 0.98) / imageWidth, (layout.height * 0.985) / imageHeight);
-  const drawWidth = imageWidth * drawScale;
-  const drawHeight = imageHeight * drawScale;
-  const drawX = (layout.width - drawWidth) / 2;
-  const drawY = layout.height - drawHeight - 1;
-  const pivotX = layout.width / 2;
-  const pivotY = drawY + drawHeight * 0.42;
-  const dragOffsetX = dragging ? Math.sin(t * 5.8 + phaseSeed) * 1.2 : 0;
-
-  context.save();
-  context.translate(pivotX + dragOffsetX, pivotY + naturalBob);
-  context.rotate(tilt);
-  context.scale(1 + breathe * 0.18, 1 + breathe);
-  const localX = drawX - pivotX;
-  const localY = drawY - pivotY;
-  context.imageSmoothingEnabled = true;
-  context.imageSmoothingQuality = "high";
-  context.drawImage(image, localX, localY, drawWidth, drawHeight);
-
-  drawAttachedGlow(context, action, localX, localY, drawWidth, drawHeight, t);
-  drawExpressionOverlays(context, action, localX, localY, drawWidth, drawHeight, blink, speechOpen);
-  context.restore();
-}
-
-function computeSpeechOpen(t: number, seed: number): number {
-  const fast = Math.abs(Math.sin(t * 16.2 + seed * 2.1));
-  const mid = Math.abs(Math.sin(t * 9.4 + 1.7 + seed));
-  const pulse = Math.max(fast * 0.72, mid * 0.48);
-  return clamp(0.16 + pulse * 0.84, 0, 1);
-}
-
-function computeBlink(t: number, blinkSeconds: number, seed: number): number {
-  const cycle = Math.max(2.8, blinkSeconds + (seed % 1.4));
-  const phase = (t + seed) % cycle;
-  if (phase > 0.16) {
-    return 0;
-  }
-  const progress = phase / 0.16;
-  return Math.sin(progress * Math.PI);
-}
-
-function drawAttachedGlow(
-  context: CanvasRenderingContext2D,
-  action: SpritePetAction,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  t: number,
+function cleanSpriteAtlasChromaPixels(
+  data: Uint8ClampedArray,
+  sourceWidth: number,
+  sourceHeight: number,
+  manifest: PetSpriteManifest,
 ) {
-  if (action.motion.glow === "none") {
+  const visited = new Uint8Array(sourceWidth * sourceHeight);
+  const columns = Math.max(1, Math.floor(sourceWidth / manifest.cell.width));
+  const rows = Math.max(1, Math.floor(sourceHeight / manifest.cell.height));
+
+  for (let row = 0; row < rows; row += 1) {
+    for (let column = 0; column < columns; column += 1) {
+      cleanSpriteFrameChromaPixels(data, visited, sourceWidth, sourceHeight, manifest, column, row);
+    }
+  }
+
+  softenNearTransparentChromaPixels(data, sourceWidth, sourceHeight, manifest, columns, rows);
+}
+
+function cleanSpriteFrameChromaPixels(
+  data: Uint8ClampedArray,
+  visited: Uint8Array,
+  sourceWidth: number,
+  sourceHeight: number,
+  manifest: PetSpriteManifest,
+  column: number,
+  row: number,
+) {
+  const frameLeft = column * manifest.cell.width;
+  const frameTop = row * manifest.cell.height;
+  const frameRight = Math.min(sourceWidth, frameLeft + manifest.cell.width);
+  const frameBottom = Math.min(sourceHeight, frameTop + manifest.cell.height);
+  if (frameLeft >= frameRight || frameTop >= frameBottom) {
     return;
   }
 
-  const pendantX = x + width * 0.505;
-  const pendantY = y + height * 0.548;
-  const pulse = 0.58 + Math.sin(t * 4.2) * 0.18;
-  const radius = Math.max(5, width * (action.motion.glow === "warm" ? 0.055 : 0.044));
-  const gradient = context.createRadialGradient(pendantX, pendantY, 1, pendantX, pendantY, radius);
-  if (action.motion.glow === "warm") {
-    gradient.addColorStop(0, `rgba(255, 188, 118, ${0.34 * pulse})`);
-    gradient.addColorStop(1, "rgba(255, 188, 118, 0)");
-  } else {
-    gradient.addColorStop(0, `rgba(84, 231, 255, ${0.42 * pulse})`);
-    gradient.addColorStop(1, "rgba(84, 231, 255, 0)");
-  }
-  context.save();
-  context.globalCompositeOperation = "lighter";
-  context.fillStyle = gradient;
-  context.beginPath();
-  context.arc(pendantX, pendantY, radius, 0, Math.PI * 2);
-  context.fill();
-  context.restore();
-}
+  const queue = new Int32Array((frameRight - frameLeft) * (frameBottom - frameTop));
+  let queueStart = 0;
+  let queueEnd = 0;
 
-function drawExpressionOverlays(
-  context: CanvasRenderingContext2D,
-  action: SpritePetAction,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  blink: number,
-  speechOpen: number,
-) {
-  const leftEye = rectFromSource(x, y, width, height, 0.405, 0.386, 0.105, 0.045);
-  const rightEye = rectFromSource(x, y, width, height, 0.566, 0.372, 0.104, 0.045);
-  const mouth = rectFromSource(x, y, width, height, 0.507, 0.392, 0.054, 0.022);
-
-  if (action.motion.expression === "bright" || action.motion.expression === "soft") {
-    drawCheek(context, x + width * 0.378, y + height * 0.412, width * 0.028, action.motion.expression);
-    drawCheek(context, x + width * 0.63, y + height * 0.399, width * 0.026, action.motion.expression);
-  }
-
-  if (action.motion.expression === "worried" || action.motion.expression === "careful") {
-    drawBrow(context, leftEye, -0.5);
-    drawBrow(context, rightEye, 0.5);
-  }
-
-  if (blink > 0) {
-    drawBlink(context, leftEye, blink);
-    drawBlink(context, rightEye, blink);
-  }
-
-  if (speechOpen > 0.04) {
-    drawMouth(context, mouth, speechOpen);
-  }
-}
-
-function rectFromSource(
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  centerX: number,
-  centerY: number,
-  rectWidth: number,
-  rectHeight: number,
-) {
-  return {
-    x: x + width * (centerX - rectWidth / 2),
-    y: y + height * (centerY - rectHeight / 2),
-    width: width * rectWidth,
-    height: height * rectHeight,
+  const enqueue = (x: number, y: number) => {
+    const pixelIndex = y * sourceWidth + x;
+    if (visited[pixelIndex] || !isTransparentOrChromaKey(data, pixelIndex * 4)) {
+      return;
+    }
+    visited[pixelIndex] = 1;
+    queue[queueEnd] = pixelIndex;
+    queueEnd += 1;
   };
+
+  for (let x = frameLeft; x < frameRight; x += 1) {
+    enqueue(x, frameTop);
+    enqueue(x, frameBottom - 1);
+  }
+  for (let y = frameTop; y < frameBottom; y += 1) {
+    enqueue(frameLeft, y);
+    enqueue(frameRight - 1, y);
+  }
+
+  while (queueStart < queueEnd) {
+    const pixelIndex = queue[queueStart];
+    queueStart += 1;
+    const offset = pixelIndex * 4;
+    const strength = readChromaKeyStrength(data, offset);
+    if (strength === "strong") {
+      data[offset + 3] = 0;
+    } else if (strength === "soft") {
+      data[offset + 3] = Math.min(data[offset + 3], 88);
+    }
+
+    const y = Math.floor(pixelIndex / sourceWidth);
+    const x = pixelIndex - y * sourceWidth;
+    if (x > frameLeft) {
+      enqueue(x - 1, y);
+    }
+    if (x < frameRight - 1) {
+      enqueue(x + 1, y);
+    }
+    if (y > frameTop) {
+      enqueue(x, y - 1);
+    }
+    if (y < frameBottom - 1) {
+      enqueue(x, y + 1);
+    }
+  }
 }
 
-function drawCheek(
-  context: CanvasRenderingContext2D,
+function softenNearTransparentChromaPixels(
+  data: Uint8ClampedArray,
+  sourceWidth: number,
+  sourceHeight: number,
+  manifest: PetSpriteManifest,
+  columns: number,
+  rows: number,
+) {
+  for (let row = 0; row < rows; row += 1) {
+    for (let column = 0; column < columns; column += 1) {
+      const frameLeft = column * manifest.cell.width;
+      const frameTop = row * manifest.cell.height;
+      const frameRight = Math.min(sourceWidth, frameLeft + manifest.cell.width);
+      const frameBottom = Math.min(sourceHeight, frameTop + manifest.cell.height);
+      for (let y = frameTop; y < frameBottom; y += 1) {
+        for (let x = frameLeft; x < frameRight; x += 1) {
+          const offset = (y * sourceWidth + x) * 4;
+          const strength = readChromaKeyStrength(data, offset);
+          if (!strength) {
+            continue;
+          }
+          const radius = strength === "strong" ? 4 : 2;
+          if (!isNearTransparentPixel(data, sourceWidth, x, y, frameLeft, frameTop, frameRight, frameBottom, radius)) {
+            continue;
+          }
+          data[offset + 3] = strength === "strong" ? 0 : Math.min(data[offset + 3], 112);
+        }
+      }
+    }
+  }
+}
+
+function isNearTransparentPixel(
+  data: Uint8ClampedArray,
+  sourceWidth: number,
   x: number,
   y: number,
+  frameLeft: number,
+  frameTop: number,
+  frameRight: number,
+  frameBottom: number,
   radius: number,
-  expression: "bright" | "soft",
-) {
-  context.save();
-  context.globalAlpha = expression === "bright" ? 0.22 : 0.14;
-  context.fillStyle = "#f4829e";
-  context.beginPath();
-  context.ellipse(x, y, radius, radius * 0.48, -0.12, 0, Math.PI * 2);
-  context.fill();
-  context.restore();
-}
-
-function drawBrow(context: CanvasRenderingContext2D, rect: { x: number; y: number; width: number; height: number }, slope: number) {
-  context.save();
-  context.strokeStyle = "rgba(42, 22, 28, 0.62)";
-  context.lineWidth = Math.max(1, rect.width * 0.08);
-  context.lineCap = "round";
-  context.beginPath();
-  context.moveTo(rect.x + rect.width * 0.18, rect.y - rect.height * (0.52 + slope * 0.16));
-  context.lineTo(rect.x + rect.width * 0.82, rect.y - rect.height * (0.18 - slope * 0.16));
-  context.stroke();
-  context.restore();
-}
-
-function drawBlink(context: CanvasRenderingContext2D, rect: { x: number; y: number; width: number; height: number }, amount: number) {
-  const coverHeight = rect.height * clamp(amount * 1.18, 0, 1);
-  context.save();
-  context.fillStyle = "rgba(246, 205, 199, 0.9)";
-  context.beginPath();
-  context.ellipse(
-    rect.x + rect.width / 2,
-    rect.y + rect.height * 0.52,
-    rect.width * 0.53,
-    Math.max(1, coverHeight * 0.58),
-    -0.08,
-    0,
-    Math.PI * 2,
-  );
-  context.fill();
-  context.strokeStyle = "rgba(51, 24, 31, 0.88)";
-  context.lineWidth = Math.max(1, rect.width * 0.06);
-  context.lineCap = "round";
-  context.beginPath();
-  context.moveTo(rect.x + rect.width * 0.14, rect.y + rect.height * 0.58);
-  context.quadraticCurveTo(
-    rect.x + rect.width * 0.5,
-    rect.y + rect.height * (0.74 + amount * 0.08),
-    rect.x + rect.width * 0.86,
-    rect.y + rect.height * 0.56,
-  );
-  context.stroke();
-  context.restore();
-}
-
-function drawMouth(context: CanvasRenderingContext2D, rect: { x: number; y: number; width: number; height: number }, open: number) {
-  const mouthHeight = Math.max(1.4, rect.height * (0.35 + open * 1.8));
-  context.save();
-  context.fillStyle = "rgba(55, 24, 32, 0.92)";
-  context.beginPath();
-  context.ellipse(
-    rect.x + rect.width / 2,
-    rect.y + rect.height * 0.5,
-    rect.width * (0.28 + open * 0.22),
-    mouthHeight * 0.5,
-    0.05,
-    0,
-    Math.PI * 2,
-  );
-  context.fill();
-  if (open > 0.5) {
-    context.fillStyle = "rgba(233, 105, 132, 0.58)";
-    context.beginPath();
-    context.ellipse(
-      rect.x + rect.width / 2,
-      rect.y + rect.height * 0.67,
-      rect.width * 0.2,
-      mouthHeight * 0.2,
-      0,
-      0,
-      Math.PI * 2,
-    );
-    context.fill();
+): boolean {
+  for (let offsetY = -radius; offsetY <= radius; offsetY += 1) {
+    const nextY = y + offsetY;
+    if (nextY < frameTop || nextY >= frameBottom) {
+      continue;
+    }
+    for (let offsetX = -radius; offsetX <= radius; offsetX += 1) {
+      if (Math.abs(offsetX) + Math.abs(offsetY) > radius) {
+        continue;
+      }
+      const nextX = x + offsetX;
+      if (nextX < frameLeft || nextX >= frameRight) {
+        continue;
+      }
+      if (data[(nextY * sourceWidth + nextX) * 4 + 3] <= 4) {
+        return true;
+      }
+    }
   }
-  context.restore();
+  return false;
+}
+
+function isTransparentOrChromaKey(data: Uint8ClampedArray, offset: number): boolean {
+  return data[offset + 3] <= 4 || readChromaKeyStrength(data, offset) !== null;
+}
+
+function readChromaKeyStrength(data: Uint8ClampedArray, offset: number): "strong" | "soft" | null {
+  const red = data[offset];
+  const green = data[offset + 1];
+  const blue = data[offset + 2];
+  const alpha = data[offset + 3];
+  if (alpha <= 4) {
+    return null;
+  }
+
+  const redGreenGap = red - green;
+  const blueGreenGap = blue - green;
+  const magentaLift = (red + blue) / 2 - green;
+  const redBlueGap = Math.abs(red - blue);
+  if (
+    red >= 210 &&
+    blue >= 170 &&
+    green <= 120 &&
+    redGreenGap >= 85 &&
+    blueGreenGap >= 45 &&
+    magentaLift >= 70 &&
+    redBlueGap <= 130
+  ) {
+    return "strong";
+  }
+
+  if (
+    red >= 195 &&
+    blue >= 145 &&
+    green <= 130 &&
+    redGreenGap >= 70 &&
+    blueGreenGap >= 25 &&
+    magentaLift >= 55 &&
+    redBlueGap <= 140
+  ) {
+    return "soft";
+  }
+
+  return null;
 }
 
 function hashString(value: string): number {
@@ -622,12 +662,4 @@ function hashString(value: string): number {
     hash = (hash * 31 + value.charCodeAt(index)) % 997;
   }
   return hash;
-}
-
-function degreesToRadians(value: number): number {
-  return (value * Math.PI) / 180;
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
 }

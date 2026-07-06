@@ -12,19 +12,9 @@
   .bottom-nav-icon,
   .bottom-nav-indicator,
   .stage-action-card,
-  .live2d-state-pulse,
-  .live2d-model,
-  .live2d-cover,
-  .live2d-arm,
-  .live2d-mouth,
-  .live2d-scanline,
-  .live2d-meter span,
+  .halfbody-pet-portrait-frame,
   button {
     transform: none !important;
-  }
-
-  .live2d-state-pulse {
-    box-shadow: 0 0 0 4px rgba(91, 139, 120, 0.12) !important;
   }
 }
 
@@ -80,7 +70,7 @@
     min-height: 58px;
   }
 
-  .stage-live2d-zone {
+  .stage-portrait-zone {
     min-height: 360px;
   }
 
@@ -91,7 +81,6 @@
 
   .panel,
   .panel.chat-panel,
-  .panel.live2d-panel,
   .panel.test-guide-panel,
   #settings-panel,
   #wiki-workflow-panel,
@@ -99,7 +88,6 @@
     grid-column: 1 / -1;
   }
 
-  #live2d-panel,
   #connection-panel,
   #continuity-panel {
     grid-column: span 2;
@@ -284,7 +272,7 @@
     display: none !important;
   }
 
-  .stage-live2d-zone {
+  .stage-portrait-zone {
     grid-area: 1 / 1 / 4 / 2;
     min-height: 0;
     height: 100%;
@@ -441,8 +429,6 @@
 
   .panel,
   .panel.chat-panel,
-  .panel.live2d-panel,
-  #live2d-panel,
   #connection-panel,
   #continuity-panel {
     grid-column: 1 / -1;
@@ -503,23 +489,7 @@
     width: fit-content;
   }
 
-  .live2d-resource-list {
-    grid-template-columns: 1fr;
-  }
-
-  .live2d-diagnostic-summary {
-    grid-template-columns: 1fr;
-  }
-
-  .live2d-runtime-card {
-    grid-template-columns: 1fr;
-  }
-
-  .live2d-status-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .message-list {
+.message-list {
     height: 380px;
     padding: 10px;
   }

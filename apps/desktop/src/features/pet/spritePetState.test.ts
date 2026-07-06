@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { Live2DStageView } from "../../components/Live2DStage";
-import { getSpritePetAtlasRowKey, resolveSpritePetAction } from "./spritePetState";
+import type { PetStageView } from "./petStageState";
+import { getSpritePetAnimationKey, getSpritePetAtlasRowKey, resolveSpritePetAction } from "./spritePetState";
 
-const idleStage: Live2DStageView = {
+const idleStage: PetStageView = {
   state: "idle",
   label: "idle",
   mood: "idle",
@@ -45,15 +45,30 @@ describe("resolveSpritePetAction", () => {
     expect(resolve({ connected: false }).key).toBe("system_offline");
   });
 
-  it("maps project states onto the Codex-style atlas rows", () => {
+  it("maps project states onto the Agent Pet Neko atlas rows", () => {
     expect(getSpritePetAtlasRowKey("idle")).toBe("idle");
-    expect(getSpritePetAtlasRowKey("chat_talk")).toBe("idle");
-    expect(getSpritePetAtlasRowKey("chat_think")).toBe("running");
+    expect(getSpritePetAtlasRowKey("chat_talk")).toBe("waving");
+    expect(getSpritePetAtlasRowKey("chat_think")).toBe("thinking");
     expect(getSpritePetAtlasRowKey("pet_drag_right")).toBe("running-right");
     expect(getSpritePetAtlasRowKey("pet_drag_left")).toBe("running-left");
-    expect(getSpritePetAtlasRowKey("task_create")).toBe("jumping");
+    expect(getSpritePetAtlasRowKey("task_create")).toBe("working");
     expect(getSpritePetAtlasRowKey("system_error")).toBe("failed");
-    expect(getSpritePetAtlasRowKey("memory_confirm_needed")).toBe("waiting");
-    expect(getSpritePetAtlasRowKey("pet_review")).toBe("review");
+    expect(getSpritePetAtlasRowKey("system_offline")).toBe("sleeping");
+    expect(getSpritePetAtlasRowKey("memory_confirm_needed")).toBe("done");
+    expect(getSpritePetAtlasRowKey("pet_review")).toBe("working");
+  });
+
+  it("maps project states onto the Agent Pet Neko animation rows", () => {
+    expect(getSpritePetAnimationKey("idle")).toBe("idle");
+    expect(getSpritePetAnimationKey("chat_talk")).toBe("waving");
+    expect(getSpritePetAnimationKey("chat_think")).toBe("thinking");
+    expect(getSpritePetAnimationKey("pet_drag_right")).toBe("running-right");
+    expect(getSpritePetAnimationKey("pet_drag_left")).toBe("running-left");
+    expect(getSpritePetAnimationKey("task_create")).toBe("working");
+    expect(getSpritePetAnimationKey("task_complete")).toBe("done");
+    expect(getSpritePetAnimationKey("system_error")).toBe("failed");
+    expect(getSpritePetAnimationKey("system_offline")).toBe("sleeping");
+    expect(getSpritePetAnimationKey("memory_confirm_needed")).toBe("done");
+    expect(getSpritePetAnimationKey("pet_review")).toBe("working");
   });
 });

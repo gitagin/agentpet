@@ -45,7 +45,7 @@ export type StreamDispatcherContext = {
   upsertChatMemoryProposal: (messageId: string, proposalId: string, payload: Record<string, unknown>) => void;
   upsertChatWikiProposal: (messageId: string, proposal: ChatWikiProposal) => void;
   addTaskFromChat: (task: TaskItem) => void;
-  triggerLive2DTaskStage: () => void;
+  triggerPetTaskStage: () => void;
   onVisibleAssistantReply?: () => void;
 };
 
@@ -201,11 +201,11 @@ function applyTextOrCitationEvent({ messageId, sseEvent, payload, context }: Str
       ? [citation]
       : undefined;
   let visibleReplyText: string | null = null;
-  let live2dActionHints: string[] | null = null;
+  let hiddenActionHints: string[] | null = null;
   if (token) {
     petChat.appendAssistantReplyText(token);
     visibleReplyText = petChat.assistantReplyRef.current;
-    live2dActionHints = petChat.assistantHiddenReplyTextsRef.current;
+    hiddenActionHints = petChat.assistantHiddenReplyTextsRef.current;
     if (visibleReplyText.trim().length > 0) {
       const wasReplyStarted = petChat.replyStartedRef.current;
       petChat.replyStartedRef.current = true;
@@ -231,7 +231,7 @@ function applyTextOrCitationEvent({ messageId, sseEvent, payload, context }: Str
         ...message,
         content: token ? (visibleReplyText ?? message.content) : message.content,
         live2d_action_hints:
-          live2dActionHints && live2dActionHints.length > 0 ? live2dActionHints : message.live2d_action_hints,
+          hiddenActionHints && hiddenActionHints.length > 0 ? hiddenActionHints : message.live2d_action_hints,
         citations: citations ? [...(message.citations || []), ...citations] : message.citations,
       };
     }),

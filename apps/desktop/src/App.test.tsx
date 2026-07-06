@@ -5,7 +5,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import App from "./App";
 import type { AgentAction, DesktopSidecarStatus } from "./types";
-import type { Live2DAssetInfo, Live2DRuntimeBoundary } from "./services/live2dRuntime";
 import { navigationHashForTab, primaryNavigationTabs } from "./views/navigation";
 
 const mockPetShowInput = vi.hoisted(() => vi.fn());
@@ -22,70 +21,36 @@ const mockTtsQueueError = vi.hoisted(() => ({
     recoverable: boolean;
   },
 }));
+const mockTtsPlaybackQueueOptions = vi.hoisted(() => ({
+  current: null as null | {
+    onPlaybackStart?: (item: any) => void;
+    onPlaybackEnd?: (item: any, status: any) => void;
+  },
+}));
 const mockCreateBackendTtsProvider = vi.hoisted(() =>
   vi.fn(({ providerId = "custom-http" }: { providerId?: string } = {}) => ({ id: providerId })),
 );
-const live2dStageRenderProps = vi.hoisted(() => [] as Array<{
-  variant: "panel" | "pet" | "stage";
-  canvasRef: unknown;
-  active: boolean;
-  petInteractions?: {
-    onPointerDown?: (event: PointerEvent<HTMLElement>) => void;
-    onPointerMove?: (event: PointerEvent<HTMLElement>) => void;
-    onPointerUp?: (event: PointerEvent<HTMLElement>) => void;
-  };
-}>);
 const spritePetStageRenderProps = vi.hoisted(() => [] as Array<{
   canvasRef: unknown;
+  dragging?: boolean;
+  dragDirection?: string;
   petInteractions?: {
     onPointerDown?: (event: PointerEvent<HTMLElement>) => void;
     onPointerMove?: (event: PointerEvent<HTMLElement>) => void;
     onPointerUp?: (event: PointerEvent<HTMLElement>) => void;
   };
 }>);
-
-vi.mock("./components/Live2DStage", () => ({
-  Live2DStage: ({
-    active = true,
-    canvasRef,
-    variant = "panel",
-    petInteractions,
-  }: {
-    canvasRef?: unknown;
-    active?: boolean;
-    variant?: "panel" | "pet" | "stage";
-    petInteractions?: {
-      onPointerDown?: (event: PointerEvent<HTMLElement>) => void;
-      onPointerMove?: (event: PointerEvent<HTMLElement>) => void;
-      onPointerUp?: (event: PointerEvent<HTMLElement>) => void;
-      onPointerCancel?: (event: PointerEvent<HTMLElement>) => void;
-      onLostPointerCapture?: (event: PointerEvent<HTMLElement>) => void;
-      onContextMenu?: (event: MouseEvent<HTMLElement>) => void;
-      onDoubleClick?: (event: MouseEvent<HTMLElement>) => void;
-    };
-  }) => {
-    live2dStageRenderProps.push({ variant, canvasRef, active, petInteractions });
-    return (
-      <section
-        aria-label={variant === "pet" ? "mock pet stage" : variant === "stage" ? "mock stage stage" : "mock panel stage"}
-        onPointerDown={petInteractions?.onPointerDown}
-        onPointerMove={petInteractions?.onPointerMove}
-        onPointerUp={petInteractions?.onPointerUp}
-        onPointerCancel={petInteractions?.onPointerCancel}
-        onLostPointerCapture={petInteractions?.onLostPointerCapture}
-        onContextMenu={petInteractions?.onContextMenu}
-        onDoubleClick={petInteractions?.onDoubleClick}
-      />
-    );
-  },
-}));
 
 vi.mock("./features/pet/SpritePetStage", () => ({
   SpritePetStage: ({
     canvasRef,
+    dragging,
+    dragDirection,
     petInteractions,
   }: {
     canvasRef?: unknown;
+    dragging?: boolean;
+    dragDirection?: string;
     petInteractions?: {
       onPointerDown?: (event: PointerEvent<HTMLElement>) => void;
       onPointerMove?: (event: PointerEvent<HTMLElement>) => void;
@@ -96,7 +61,7 @@ vi.mock("./features/pet/SpritePetStage", () => ({
       onDoubleClick?: (event: MouseEvent<HTMLElement>) => void;
     };
   }) => {
-    spritePetStageRenderProps.push({ canvasRef, petInteractions });
+    spritePetStageRenderProps.push({ canvasRef, dragging, dragDirection, petInteractions });
     return (
       <section
         aria-label="mock pet stage"
@@ -125,24 +90,27 @@ vi.mock("./features/tts", () => ({
     stop: mockTtsWaitingCueStop,
     prefetch: vi.fn(),
   }),
-  useTtsPlaybackQueue: () => ({
-    state: {
-      status: mockTtsQueueStatus.current,
-      current: null,
-      queue: [],
-      error: mockTtsQueueError.current,
-      volume: 1,
-      updatedAt: null,
-    },
-    enqueue: vi.fn(),
-    prefetch: vi.fn(),
-    prefetchMany: vi.fn(),
-    play: vi.fn(),
-    stop: mockTtsStop,
-    cancelMessage: vi.fn(),
-    clear: vi.fn(),
-    setVolume: vi.fn(),
-  }),
+  useTtsPlaybackQueue: (options: { onPlaybackStart?: (item: any) => void; onPlaybackEnd?: (item: any, status: any) => void }) => {
+    mockTtsPlaybackQueueOptions.current = options;
+    return {
+      state: {
+        status: mockTtsQueueStatus.current,
+        currentItem: null,
+        queue: [],
+        error: mockTtsQueueError.current,
+        volume: 1,
+        updatedAt: "2026-07-04T00:00:00.000Z",
+      },
+      enqueue: vi.fn(),
+      prefetch: vi.fn(),
+      prefetchMany: vi.fn(),
+      play: vi.fn(),
+      stop: mockTtsStop,
+      cancelMessage: vi.fn(),
+      clear: vi.fn(),
+      setVolume: vi.fn(),
+    };
+  },
 }));
 
 vi.mock("./features/connection/ConnectionPanel", () => ({
@@ -175,10 +143,6 @@ vi.mock("./features/wiki/WikiWorkflowPanel", () => ({
 
 vi.mock("./features/chat/ChatMessageList", () => ({
   ChatMessageList: () => <section aria-label="mock chat message list" />,
-}));
-
-vi.mock("./features/live2d/Live2DModelPanel", () => ({
-  Live2DModelPanel: () => <section aria-label="mock live2d model panel" />,
 }));
 
 vi.mock("./features/continuity", () => ({
@@ -480,53 +444,6 @@ vi.mock("./features/wiki/useWiki", () => ({
   }),
 }));
 
-const live2dAsset: Live2DAssetInfo = {
-  status: "preview",
-  modelId: "agent_pet_companion",
-  modelLabel: "Archivist Companion",
-  modelDirectoryUrl: "/live2d/agent_pet_companion/",
-  modelFileName: "agent_pet_companion.model3.json",
-  manifestPath: "/live2d/agent_pet_companion/agent_pet_companion.model3.json",
-  iconPath: "/live2d/agent_pet_companion/preview.svg",
-  hasIcon: true,
-  textureCount: 0,
-  expressionCount: 18,
-  motionCount: 28,
-  actionCount: 28,
-  previewOnly: true,
-  designPath: "/live2d/agent_pet_companion/character-design.json",
-  hasPhysics: false,
-  hasDisplayInfo: false,
-};
-
-const live2dRuntime: Live2DRuntimeBoundary = {
-  status: "preview-only",
-  title: "角色预览",
-  detail: "项目角色静态预览已启用；导出 Cubism model3 后会接管为真实 Live2D 渲染。",
-  mountTargetId: "live2d-runtime-canvas",
-  rendererName: "Cubism WebGL",
-  canMountRenderer: false,
-};
-
-vi.mock("./features/live2d/useLive2D", () => ({
-  useLive2D: () => ({
-    asset: live2dAsset,
-    canvasRef: createRef<HTMLCanvasElement>(),
-    models: [],
-    runtime: live2dRuntime,
-    selectedModelId: "agent_pet_companion",
-    selectModel: vi.fn(),
-    stage: {
-      state: "idle",
-      label: "待命陪伴",
-      mood: "安静待命",
-      message: "我在这里。",
-      hint: "双击聊天",
-    },
-    triggerTaskStage: vi.fn(),
-  }),
-}));
-
 vi.mock("./features/chat/usePetChatBubble", () => ({
   usePetChatBubble: () => {
     const assistantReplyRef = { current: "" };
@@ -584,7 +501,7 @@ describe("App", () => {
     sessionStorage.clear();
     mockTtsQueueStatus.current = "idle";
     mockTtsQueueError.current = null;
-    live2dStageRenderProps.length = 0;
+    mockTtsPlaybackQueueOptions.current = null;
     spritePetStageRenderProps.length = 0;
     vi.clearAllMocks();
   });
@@ -680,6 +597,45 @@ describe("App", () => {
 
     fireEvent.click(secondaryNavigation!.querySelector("summary")!);
     expect(await screen.findByLabelText("mock connection panel")).toBeInTheDocument();
+  });
+
+  it("drives the home halfbody mouth from TTS playback lifecycle", async () => {
+    window.location.hash = "#control";
+    render(<App />);
+
+    const visemeLayer = () => document.querySelector(".halfbody-pet-portrait-viseme") as HTMLImageElement | null;
+    await waitFor(() => expect(visemeLayer()).toBeInTheDocument());
+    expect(visemeLayer()?.getAttribute("src")).toContain("closed.png");
+
+    const item = {
+      id: "tts:assistant-1:0",
+      messageId: "assistant-1",
+      pageIndex: 0,
+      pageCount: 1,
+      text: "a哦。",
+      synthesis: {
+        requestId: "tts:assistant-1:0",
+        text: "a哦。",
+        provider: "mock",
+        voice: null,
+        speed: 1,
+        volume: 1,
+        cacheEnabled: true,
+      },
+    };
+
+    act(() => {
+      mockTtsPlaybackQueueOptions.current?.onPlaybackStart?.(item);
+    });
+
+    expect(mockTtsWaitingCueStop).toHaveBeenCalledWith("assistant_tts_started");
+    await waitFor(() => expect(visemeLayer()?.getAttribute("src")).toContain("AI.png"));
+
+    act(() => {
+      mockTtsPlaybackQueueOptions.current?.onPlaybackEnd?.(item, "played");
+    });
+
+    await waitFor(() => expect(visemeLayer()?.getAttribute("src")).toContain("closed.png"));
   });
 
   it("presents open-thread continuity as a clear next-time chat decision", async () => {
@@ -928,6 +884,7 @@ describe("App", () => {
       openAgent: vi.fn().mockResolvedValue(undefined),
       openFeatureWindow: vi.fn().mockResolvedValue(undefined),
       openStage: vi.fn().mockResolvedValue(undefined),
+      hidePetWindow: vi.fn().mockResolvedValue(undefined),
       quitApp: vi.fn().mockResolvedValue(undefined),
       getUiState: vi.fn().mockReturnValue(null),
       setUiState: vi.fn(),
@@ -942,13 +899,13 @@ describe("App", () => {
     expect(shortcutBar).toHaveAttribute("aria-hidden", "true");
     expect(shortcutBar).toHaveAttribute("data-shortcut-motion", "idle");
     expect(shortcutBar).not.toHaveClass("is-visible");
-    expect(await screen.findByLabelText("桌宠入口提示")).toHaveTextContent("右键我快速行动");
+    expect(screen.queryByLabelText("桌宠入口提示")).not.toBeInTheDocument();
     expect(screen.getByLabelText("继续聊")).toHaveAttribute("tabindex", "-1");
 
     const finishShortcutAnimation = (animationName: string) => {
       const event = new Event("animationend", { bubbles: true });
       Object.defineProperty(event, "animationName", { value: animationName });
-      fireEvent(shortcutBar, event);
+      fireEvent(screen.getByLabelText("退出 Agent Pet"), event);
     };
 
     fireEvent.contextMenu(petStage);
@@ -968,43 +925,48 @@ describe("App", () => {
 
     expect(shortcutBar).toHaveAttribute("aria-hidden", "true");
     expect(shortcutBar).toHaveAttribute("data-shortcut-motion", "closing");
-    expect(shortcutBar).not.toHaveClass("is-visible");
+    expect(shortcutBar).toHaveClass("is-visible");
     expect(screen.queryByLabelText("桌宠入口提示")).not.toBeInTheDocument();
     expect(screen.getByLabelText("继续聊")).toHaveAttribute("tabindex", "-1");
-    expect(window.agentDesktop.setPetShortcutBarVisible).toHaveBeenLastCalledWith(false);
+    expect(window.agentDesktop.setPetShortcutBarVisible).toHaveBeenLastCalledWith(true);
 
     finishShortcutAnimation("pet-shortcut-roll-in");
     expect(shortcutBar).toHaveAttribute("data-shortcut-motion", "idle");
+    expect(shortcutBar).toHaveAttribute("aria-hidden", "true");
+    expect(shortcutBar).not.toHaveClass("is-visible");
+    expect(window.agentDesktop.setPetShortcutBarVisible).toHaveBeenLastCalledWith(false);
 
     fireEvent.contextMenu(petStage);
     fireEvent.click(screen.getByLabelText("继续聊"));
-    fireEvent.contextMenu(petStage);
-    fireEvent.click(screen.getByLabelText("记一条"));
     fireEvent.contextMenu(petStage);
     fireEvent.click(screen.getByLabelText("建提醒"));
     fireEvent.contextMenu(petStage);
     fireEvent.click(screen.getByLabelText("打开记忆"));
     fireEvent.contextMenu(petStage);
     fireEvent.click(screen.getByLabelText("打开设置"));
+    fireEvent.contextMenu(petStage);
+    fireEvent.click(screen.getByLabelText("退出 Agent Pet"));
 
     expect(window.agentDesktop.openStage).toHaveBeenNthCalledWith(1, "memory");
     expect(window.agentDesktop.openStage).toHaveBeenNthCalledWith(2, "settings");
     expect(window.agentDesktop.openAgent).not.toHaveBeenCalled();
     expect(window.agentDesktop.openFeatureWindow).not.toHaveBeenCalled();
-    expect(window.agentDesktop.quitApp).not.toHaveBeenCalled();
+    expect(window.agentDesktop.hidePetWindow).not.toHaveBeenCalled();
+    expect(window.agentDesktop.quitApp).toHaveBeenCalledTimes(1);
 
-    expect(mockPetShowInput).toHaveBeenCalledTimes(3);
+    expect(mockPetShowInput).toHaveBeenCalledTimes(2);
     expect(shortcutBar).toHaveAttribute("aria-hidden", "true");
     expect(shortcutBar).not.toHaveClass("is-visible");
   });
 
-  it("offers pause speech from the pet shortcut menu while TTS is active", async () => {
+  it("keeps the fixed pet shortcut menu order while TTS is active", async () => {
     mockTtsQueueStatus.current = "playing";
     window.location.hash = "#pet";
     window.agentDesktop = {
       platform: "win32",
       versions: {},
       openStage: vi.fn().mockResolvedValue(undefined),
+      quitApp: vi.fn().mockResolvedValue(undefined),
       getUiState: vi.fn().mockReturnValue("completed:v1"),
       setUiState: vi.fn(),
       setPetShortcutBarVisible: vi.fn().mockResolvedValue({ enabled: false, reason: "test", changed: false }),
@@ -1014,11 +976,14 @@ describe("App", () => {
     render(<App />);
 
     fireEvent.contextMenu(await screen.findByLabelText("mock pet stage"));
-    fireEvent.click(screen.getByLabelText("暂停朗读"));
+    expect(screen.queryByLabelText("暂停朗读")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("退出 Agent Pet")).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("打开设置"));
 
-    expect(mockTtsStop).toHaveBeenCalledWith("pet_shortcut_stop_tts");
+    expect(mockTtsStop).not.toHaveBeenCalledWith("pet_shortcut_stop_tts");
     expect(screen.getByLabelText("桌宠快捷操作")).toHaveAttribute("aria-hidden", "true");
-    expect(window.agentDesktop.openStage).not.toHaveBeenCalled();
+    expect(window.agentDesktop.openStage).toHaveBeenCalledWith("settings");
+    expect(window.agentDesktop.quitApp).not.toHaveBeenCalled();
   });
 
   it("opens the stage window instead of the inline input when double-clicking the pet", async () => {
@@ -1063,33 +1028,6 @@ describe("App", () => {
     const petStageProps = spritePetStageRenderProps[spritePetStageRenderProps.length - 1];
     const petInteractions = petStageProps?.petInteractions;
     expect(petInteractions).toBeTruthy();
-    const canvas = document.createElement("canvas");
-    canvas.width = 300;
-    canvas.height = 390;
-    canvas.toDataURL = vi.fn(() => "data:image/png;base64,pet-drag-frame");
-    canvas.getBoundingClientRect = vi.fn(() => ({
-      x: 20,
-      y: 30,
-      left: 20,
-      top: 30,
-      right: 240,
-      bottom: 312,
-      width: 220,
-      height: 282,
-      toJSON: vi.fn(),
-    }));
-    petShell!.getBoundingClientRect = vi.fn(() => ({
-      x: 5,
-      y: 10,
-      left: 5,
-      top: 10,
-      right: 305,
-      bottom: 400,
-      width: 300,
-      height: 390,
-      toJSON: vi.fn(),
-    }));
-    (petStageProps?.canvasRef as { current: HTMLCanvasElement | null }).current = canvas;
 
     act(() => {
       petInteractions?.onPointerDown?.({
@@ -1104,14 +1042,11 @@ describe("App", () => {
     expect(window.agentDesktop.beginPetWindowDrag).toHaveBeenCalledTimes(1);
     expect(window.agentDesktop.activatePetWindowDrag).not.toHaveBeenCalled();
     expect(petShell).toHaveClass("pet-dragging");
-    expect(petShell).toHaveClass("pet-drag-snapshot-ready");
-    const snapshot = document.querySelector(".pet-drag-frame-cache");
-    expect(snapshot).toHaveAttribute("src", "data:image/png;base64,pet-drag-frame");
-    expect(snapshot).toHaveStyle({
-      left: "15px",
-      top: "20px",
-      width: "220px",
-      height: "282px",
+    expect(petShell).not.toHaveClass("pet-drag-snapshot-ready");
+    expect(document.querySelector(".pet-drag-frame-cache")).not.toBeInTheDocument();
+    expect(spritePetStageRenderProps[spritePetStageRenderProps.length - 1]).toMatchObject({
+      dragging: true,
+      dragDirection: "none",
     });
 
     act(() => {
@@ -1124,7 +1059,12 @@ describe("App", () => {
 
     expect(window.agentDesktop.activatePetWindowDrag).toHaveBeenCalledTimes(1);
     expect(petShell).toHaveClass("pet-dragging");
-    expect(petShell).toHaveClass("pet-drag-snapshot-ready");
+    expect(petShell).not.toHaveClass("pet-drag-snapshot-ready");
+    expect(document.querySelector(".pet-drag-frame-cache")).not.toBeInTheDocument();
+    expect(spritePetStageRenderProps[spritePetStageRenderProps.length - 1]).toMatchObject({
+      dragging: true,
+      dragDirection: "right",
+    });
 
     act(() => {
       petInteractions?.onPointerUp?.({
@@ -1162,16 +1102,13 @@ describe("App", () => {
     expect(document.querySelector(".halfbody-pet-portrait-base")?.getAttribute("src")).toMatch(
       /^\/sprite-pet\/halfbody\/base\.png\?v=\d+$/,
     );
-    expect(live2dStageRenderProps.find((props) => props.variant === "panel")).toBeUndefined();
 
-    live2dStageRenderProps.length = 0;
     spritePetStageRenderProps.length = 0;
     window.location.hash = "#pet";
     render(<App />);
     expect(await screen.findByLabelText("mock pet stage")).toBeInTheDocument();
     const petRef = spritePetStageRenderProps[spritePetStageRenderProps.length - 1]?.canvasRef;
 
-    live2dStageRenderProps.length = 0;
     spritePetStageRenderProps.length = 0;
     window.location.hash = "#stage";
     render(<App />);
@@ -1182,7 +1119,6 @@ describe("App", () => {
     expect(document.querySelector(".halfbody-pet-portrait-base")?.getAttribute("src")).toMatch(
       /^\/sprite-pet\/halfbody\/base\.png\?v=\d+$/,
     );
-    expect(live2dStageRenderProps.find((props) => props.variant === "stage")).toBeUndefined();
 
     expect(petRef).toBeTruthy();
   });

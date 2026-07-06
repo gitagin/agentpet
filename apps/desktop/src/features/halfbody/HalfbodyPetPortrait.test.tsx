@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { HalfbodyPetPortrait } from "./HalfbodyPetPortrait";
 import type { HalfbodyPetPortraitHandle } from "./HalfbodyPetPortrait";
+import { buildHalfbodyTtsTimelineFromText, estimateHalfbodyTtsDurationMs } from "./halfbodyTtsTimeline";
 
 function currentVisemeLayer(container: HTMLElement) {
   return container.querySelector(".halfbody-pet-portrait-viseme") as HTMLImageElement | null;
@@ -58,6 +59,9 @@ describe("HalfbodyPetPortrait", () => {
         { phoneme: "m", startMs: 20, durationMs: 30 },
         { phoneme: "e", startMs: 70, durationMs: 30 },
         { phoneme: "o", startMs: 120, durationMs: 30 },
+        { phoneme: "f", startMs: 170, durationMs: 30 },
+        { phoneme: "u", startMs: 220, durationMs: 30 },
+        { phoneme: "v", startMs: 270, durationMs: 30 },
       ]);
       vi.advanceTimersByTime(20);
     });
@@ -74,8 +78,49 @@ describe("HalfbodyPetPortrait", () => {
     expect(currentVisemeLayer(container)?.src).toContain("O.png");
 
     act(() => {
-      vi.advanceTimersByTime(30);
+      vi.advanceTimersByTime(50);
     });
     expect(currentVisemeLayer(container)?.src).toContain("closed.png");
+
+    act(() => {
+      vi.advanceTimersByTime(50);
+    });
+    expect(currentVisemeLayer(container)?.src).toContain("O.png");
+
+    act(() => {
+      vi.advanceTimersByTime(50);
+    });
+    expect(currentVisemeLayer(container)?.src).toContain("closed.png");
+  });
+
+  it("builds a lightweight text timeline for homepage TTS mouth movement", () => {
+    const timeline = buildHalfbodyTtsTimelineFromText("a e o \u54e6\u3002");
+
+    expect(timeline.map((cue) => cue.viseme)).toEqual(
+      expect.arrayContaining(["AI", "O", "closed"]),
+    );
+    expect(timeline[0]).toMatchObject({ viseme: "AI", startMs: 0 });
+    expect(timeline.some((cue) => cue.viseme === "O")).toBe(true);
+    expect(timeline[timeline.length - 1]).toMatchObject({ viseme: "closed" });
+  });
+
+  it("keeps lightweight speech timelines alive for long TTS items", () => {
+    const longText = "\u6211".repeat(360);
+    const timeline = buildHalfbodyTtsTimelineFromText(longText);
+    const lastCue = timeline[timeline.length - 1];
+
+    expect(timeline.length).toBeGreaterThan(240);
+    expect(lastCue).toMatchObject({
+      viseme: "closed",
+      startMs: estimateHalfbodyTtsDurationMs(longText),
+    });
+  });
+
+  it("can distribute mouth cues across an explicit target duration", () => {
+    const timeline = buildHalfbodyTtsTimelineFromText("agent pet says a o e", { targetDurationMs: 8200 });
+    const lastCue = timeline[timeline.length - 1];
+
+    expect(timeline[0]).toMatchObject({ startMs: 0 });
+    expect(lastCue).toMatchObject({ viseme: "closed", startMs: 8200 });
   });
 });

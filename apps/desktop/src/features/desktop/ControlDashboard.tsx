@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import type { ComponentProps, CSSProperties, FormEvent, ReactNode, RefObject } from "react";
+import type { ComponentProps, CSSProperties, FormEvent, ReactNode, Ref } from "react";
 import {
   BookOpen,
   CalendarDays,
@@ -36,8 +36,6 @@ import type {
   HealthResponse,
   TaskItem,
 } from "../../types";
-import type { Live2DAssetInfo, Live2DRuntimeBoundary } from "../../services/live2dRuntime";
-import type { Live2DStageView } from "../../components/Live2DStage";
 import type { DesktopApi } from "../../services/desktopApi";
 import {
   getAgentActionDisplayFields,
@@ -46,13 +44,14 @@ import {
 import { ConnectionStatusStrip } from "../connection/HealthStatus";
 import { VisibleContinuityPanel } from "../continuity";
 import { ChatMessageList } from "../chat/ChatMessageList";
-import { HalfbodyPetPortrait } from "../halfbody/HalfbodyPetPortrait";
+import { HalfbodyPetPortrait, type HalfbodyPetPortraitHandle } from "../halfbody/HalfbodyPetPortrait";
 import { TaskPanel } from "../tasks/TaskPanel";
 import { formatTaskStatus } from "../tasks/taskReducer";
 import { BottomNav } from "../../views/BottomNav";
 import { navigationHashForTab, type PrimaryNavigationTab } from "../../views/navigation";
 import { readRendererUiState, writeRendererUiState } from "../../services/rendererUiState";
 import { useVersionedPublicAsset } from "../../hooks/useVersionedPublicAsset";
+import { paginatePetBubbleReply } from "../../services/petBubblePagination";
 import type { AdvancedManagementToolsProps } from "./AdvancedManagementTools";
 
 const AdvancedManagementTools = lazy(() =>
@@ -65,6 +64,10 @@ type Notice = {
 };
 
 type AsyncStatus = "idle" | "loading" | "success" | "empty" | "error";
+type SpeechCopy = {
+  title: string;
+  pages: string[];
+};
 
 export type ControlWorkflowItem = {
   label: string;
@@ -77,14 +80,9 @@ type ControlDashboardProps = {
   sidecarStatus: DesktopSidecarStatus | null;
   health: HealthResponse | null;
   notice: Notice | null;
-  live2dStage: Live2DStageView;
-  live2dAsset: Live2DAssetInfo;
-  live2dRuntime: Live2DRuntimeBoundary;
-  live2dCanvasRef: RefObject<HTMLCanvasElement>;
   ttsActive: boolean;
-  live2dActionKeyOverride: string | null;
-  live2dActionTriggerKey: string | null;
   api: DesktopApi;
+  halfbodyPortraitRef?: Ref<HalfbodyPetPortraitHandle>;
   firstUseOnboardingPanel: ReactNode;
   controlInput: string;
   hasConnection: boolean;
@@ -182,9 +180,9 @@ export function ControlDashboard({
   sidecarStatus,
   health,
   notice,
-  live2dAsset,
   ttsActive,
   api,
+  halfbodyPortraitRef,
   firstUseOnboardingPanel,
   controlInput,
   hasConnection,
@@ -229,6 +227,7 @@ export function ControlDashboard({
   const [quickPromptsOpen, setQuickPromptsOpen] = useState(false);
   const [goalDraft, setGoalDraft] = useState("");
   const [homeDayRecords, setHomeDayRecords] = useState<Record<string, HomeDayRecord>>(() => readHomeDayRecords());
+  const [speechPageIndex, setSpeechPageIndex] = useState(0);
   const activityLoading = agentActionsStatus === "loading" || loadingProposals || loadingContinuity;
   const latestAssistantMessage = useMemo(() => findLatestMessage(messages, "assistant"), [messages]);
   const memoryDays = useMemo(
@@ -256,14 +255,31 @@ export function ControlDashboard({
   const energyCopy =
     continuityState?.energy_level?.trim() || (streaming ? "思考中" : hasConnection ? "在线" : "待连接");
   const affinityLabel = buildAffinityLabel(messages, agentActivityEntries, tasks, continuityState);
-  const speechCopy = buildSpeechCopy(streaming, hasConnection, latestAssistantMessage);
+  const speechCopy = useMemo(
+    () => buildSpeechCopy(streaming, hasConnection, latestAssistantMessage),
+    [hasConnection, latestAssistantMessage, streaming],
+  );
+  const speechPageCount = Math.max(1, speechCopy.pages.length);
+  const safeSpeechPageIndex = Math.min(speechPageIndex, speechPageCount - 1);
+  const speechDetail = speechCopy.pages[safeSpeechPageIndex] || "";
   const voiceWaveActive = ttsActive || streaming;
   const homeImageSrc = useVersionedPublicAsset("/images/home.png");
   const detailDrawerOpen = memoriesOpen || supportToolsOpen || secondaryToolsOpen;
+  const speechResetKey = latestAssistantMessage
+    ? `${latestAssistantMessage.id}:${latestAssistantMessage.content}`
+    : `${streaming}:${hasConnection}`;
 
   useEffect(() => {
     setGoalDraft("");
   }, [displayDateKey]);
+
+  useEffect(() => {
+    setSpeechPageIndex(0);
+  }, [speechResetKey]);
+
+  useEffect(() => {
+    setSpeechPageIndex((currentIndex) => Math.min(currentIndex, speechPageCount - 1));
+  }, [speechPageCount]);
 
   useEffect(() => {
     void writeRendererUiState(homeDayRecordsStorageKey, JSON.stringify(homeDayRecords));
@@ -606,7 +622,28 @@ export function ControlDashboard({
 
           <div className="control-speech-bubble" role="status">
             <strong>{speechCopy.title}</strong>
-            <span>{speechCopy.detail}</span>
+            <span className="control-speech-bubble-detail">{speechDetail}</span>
+            {speechPageCount > 1 ? (
+              <div className="control-speech-pager" aria-label="回复分页">
+                <button
+                  type="button"
+                  aria-label="上一页回复"
+                  onClick={() => setSpeechPageIndex((index) => Math.max(0, index - 1))}
+                  disabled={safeSpeechPageIndex === 0}
+                >
+                  <ChevronLeft size={14} />
+                </button>
+                <small>{safeSpeechPageIndex + 1}/{speechPageCount}</small>
+                <button
+                  type="button"
+                  aria-label="下一页回复"
+                  onClick={() => setSpeechPageIndex((index) => Math.min(speechPageCount - 1, index + 1))}
+                  disabled={safeSpeechPageIndex >= speechPageCount - 1}
+                >
+                  <ChevronRight size={14} />
+                </button>
+              </div>
+            ) : null}
             <span
               className={`control-voice-wave${voiceWaveActive ? " is-active" : ""}`}
               aria-hidden="true"
@@ -632,9 +669,10 @@ export function ControlDashboard({
           ) : null}
 
           <HalfbodyPetPortrait
+            ref={halfbodyPortraitRef}
             active
-            ariaLabel={`${live2dAsset.modelLabel} layered portrait`}
-            className="control-live2d-anchor control-stage-halfbody"
+            ariaLabel="Agent Pet Neko layered portrait"
+            className="control-portrait-anchor control-stage-halfbody"
           />
 
           <form className="control-stage-composer" onSubmit={onSubmitControlChat} aria-label="和 Agent Pet 聊天">
@@ -894,21 +932,23 @@ function findLatestMessage(messages: ChatMessage[], role: ChatMessage["role"]): 
   return null;
 }
 
-function buildSpeechCopy(streaming: boolean, hasConnection: boolean, latestAssistantMessage: ChatMessage | null): {
-  title: string;
-  detail: string;
-} {
+function buildSpeechCopy(
+  streaming: boolean,
+  hasConnection: boolean,
+  latestAssistantMessage: ChatMessage | null,
+): SpeechCopy {
   if (streaming) {
-    return { title: "我正在整理线索。", detail: "稍等一下，马上给你回复。" };
+    return { title: "我正在整理线索。", pages: ["稍等一下，马上给你回复。"] };
   }
   if (!hasConnection) {
-    return { title: "我在等本地助手连接。", detail: "连接完成后就可以继续聊天和整理记忆。" };
+    return { title: "我在等本地助手连接。", pages: ["连接完成后就可以继续聊天和整理记忆。"] };
   }
   const latestReply = latestAssistantMessage?.content.trim();
   if (latestReply) {
-    return { title: "我刚整理好回复。", detail: truncateText(latestReply, 42) };
+    const pages = paginatePetBubbleReply(latestReply);
+    return { title: "我刚整理好回复。", pages: pages.length > 0 ? pages : [latestReply] };
   }
-  return { title: "欢迎回来，我一直在这里。", detail: "要和我聊聊今天发生了什么吗？" };
+  return { title: "欢迎回来，我一直在这里。", pages: ["要和我聊聊今天发生了什么吗？"] };
 }
 
 function readHomeDayRecords(): Record<string, HomeDayRecord> {

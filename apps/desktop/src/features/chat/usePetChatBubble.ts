@@ -37,7 +37,7 @@ export type PetChatBubbleController = ReturnType<typeof usePetChatBubble>;
 
 type RenderPageResult = "visible" | "pending" | false;
 
-const ttsNextPagePlaybackDelayMs = 300;
+export const ttsNextPagePlaybackDelayMs = 80;
 const ambientBubbleMaxGraphemes = 28;
 
 function normalizeAmbientBubbleText(text: string) {

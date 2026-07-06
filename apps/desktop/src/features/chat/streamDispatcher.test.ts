@@ -70,7 +70,7 @@ function createHarness() {
     upsertChatMemoryProposal: vi.fn(),
     upsertChatWikiProposal: vi.fn(),
     addTaskFromChat: vi.fn(),
-    triggerLive2DTaskStage: vi.fn(),
+    triggerPetTaskStage: vi.fn(),
     onVisibleAssistantReply: vi.fn(),
   } as unknown as StreamDispatcherContext;
 

@@ -7,12 +7,11 @@ const deniedVaultPathParts = new Set([".git", ".obsidian"]);
 const allowedRendererUiStateKeys = new Set([
   "agent-pet.first-use-onboarding",
   "agent-pet.pet-entry-hint",
-  "agent-pet.live2d-default-model-migration",
-  "agent-pet.live2d-model-id",
   "agent-pet.wiki-archive-candidate",
   "agent-pet.control-home-day-records.v1",
 ]);
 const trustedAppWindowRoles = new Set(["pet", "control", "stage", "agent", "feature"]);
+const petWindowRoles = new Set(["pet"]);
 const vaultPickerWindowRoles = new Set(["control", "stage", "feature"]);
 
 function normalizeRendererUiStateKey(key) {
@@ -248,6 +247,11 @@ function registerIpcHandlers({ baseUrl, rendererUiState, persistRendererUiState,
   ipcMain.handle("window:open-feature", (event, mode) => {
     assertTrustedSender(windows, event.sender, trustedAppWindowRoles, "window:open-feature");
     windows.showFeatureWindow?.(mode);
+  });
+
+  ipcMain.handle("agent-pet:hide-pet-window", async (event) => {
+    assertTrustedSender(windows, event.sender, petWindowRoles, "agent-pet:hide-pet-window");
+    windows.hidePetWindow?.(event.sender);
   });
 
   ipcMain.handle("app:quit", (event) => {

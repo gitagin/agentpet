@@ -1,0 +1,170 @@
+﻿{
+    "menuReport":  {
+                       "canvasCount":  1,
+                       "imageLayerCount":  1,
+                       "petAction":  "pet_waving",
+                       "menuVisible":  true,
+                       "model":  {
+                                     "x":  47,
+                                     "y":  112,
+                                     "width":  96,
+                                     "height":  104,
+                                     "right":  143,
+                                     "bottom":  216
+                                 },
+                       "menu":  {
+                                    "x":  146,
+                                    "y":  6,
+                                    "width":  34,
+                                    "height":  210,
+                                    "right":  180,
+                                    "bottom":  216
+                                },
+                       "buttons":  [
+                                       {
+                                           "label":  "继续聊",
+                                           "className":  "pet-shortcut-button primary",
+                                           "tabIndex":  "0",
+                                           "rect":  {
+                                                        "x":  148,
+                                                        "y":  24,
+                                                        "width":  30,
+                                                        "height":  30,
+                                                        "right":  178,
+                                                        "bottom":  54
+                                                    }
+                                       },
+                                       {
+                                           "label":  "建提醒",
+                                           "className":  "pet-shortcut-button primary",
+                                           "tabIndex":  "0",
+                                           "rect":  {
+                                                        "x":  148,
+                                                        "y":  60,
+                                                        "width":  30,
+                                                        "height":  30,
+                                                        "right":  178,
+                                                        "bottom":  90
+                                                    }
+                                       },
+                                       {
+                                           "label":  "打开记忆",
+                                           "className":  "pet-shortcut-button",
+                                           "tabIndex":  "0",
+                                           "rect":  {
+                                                        "x":  148,
+                                                        "y":  96,
+                                                        "width":  30,
+                                                        "height":  30,
+                                                        "right":  178,
+                                                        "bottom":  126
+                                                    }
+                                       },
+                                       {
+                                           "label":  "打开设置",
+                                           "className":  "pet-shortcut-button",
+                                           "tabIndex":  "0",
+                                           "rect":  {
+                                                        "x":  148,
+                                                        "y":  132,
+                                                        "width":  30,
+                                                        "height":  30,
+                                                        "right":  178,
+                                                        "bottom":  162
+                                                    }
+                                       },
+                                       {
+                                           "label":  "隐藏桌宠",
+                                           "className":  "pet-shortcut-button danger pet-shortcut-danger",
+                                           "tabIndex":  "0",
+                                           "rect":  {
+                                                        "x":  148,
+                                                        "y":  168,
+                                                        "width":  30,
+                                                        "height":  30,
+                                                        "right":  178,
+                                                        "bottom":  198
+                                                    }
+                                       }
+                                   ],
+                       "menuRightOfModel":  true,
+                       "buttonOverlapsModel":  [
+
+                                               ],
+                       "buttonOverlaps":  [
+
+                                          ],
+                       "dangerLast":  true,
+                       "gaps":  [
+                                    6,
+                                    6,
+                                    6,
+                                    6
+                                ]
+                   },
+    "hideReport":  {
+                       "hideCalls":  1,
+                       "quitCalls":  0,
+                       "shortcutVisibleCalls":  [
+                                                    false,
+                                                    true,
+                                                    false,
+                                                    false
+                                                ],
+                       "menuVisibleAfterHide":  false
+                   },
+    "doubleClickReport":  {
+                              "openStageCalls":  [
+                                                     "stage"
+                                                 ]
+                          },
+    "dragDuring":  {
+                       "petAction":  "pet_drag_right",
+                       "shellDragging":  true,
+                       "dragCalls":  [
+                                         "end",
+                                         "end",
+                                         "end",
+                                         "end",
+                                         "begin",
+                                         "end",
+                                         "end",
+                                         "end",
+                                         "begin",
+                                         "end",
+                                         "end",
+                                         "end",
+                                         "end",
+                                         "begin",
+                                         "activate"
+                                     ]
+                   },
+    "dragAfter":  {
+                      "shellDragging":  false,
+                      "dragCalls":  [
+                                        "end",
+                                        "end",
+                                        "end",
+                                        "end",
+                                        "begin",
+                                        "end",
+                                        "end",
+                                        "end",
+                                        "begin",
+                                        "end",
+                                        "end",
+                                        "end",
+                                        "end",
+                                        "begin",
+                                        "activate",
+                                        "end",
+                                        "end",
+                                        "end"
+                                    ]
+                  },
+    "stageReport":  {
+                        "hasHalfbody":  true,
+                        "hasPetShortcutBar":  false,
+                        "hasSpriteCanvas":  false
+                    }
+}

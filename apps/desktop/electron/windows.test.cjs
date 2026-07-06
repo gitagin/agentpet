@@ -1,5 +1,6 @@
 const { EventEmitter } = require("node:events");
 const Module = require("node:module");
+const petHitboxConfig = require("../pet-hitbox.json");
 
 const windowsPath = require.resolve("./windows.js");
 const originalModuleLoad = Module._load;
@@ -277,9 +278,38 @@ describe("createWindowManager stage window lifecycle", () => {
 
     const petWindow = manager.createPetWindow();
 
+    expect(petWindow.options.width).toBe(petHitboxConfig.window.width);
+    expect(petWindow.options.height).toBe(petHitboxConfig.window.height);
+    expect(petWindow.options.frame).toBe(false);
     expect(petWindow.options.transparent).toBe(true);
     expect(petWindow.options.backgroundColor).toBe("#00000000");
+    expect(petWindow.options.alwaysOnTop).toBe(true);
     expect(petWindow.options.webPreferences.backgroundThrottling).toBe(false);
+  });
+
+  it("hides the pet window without destroying it or quitting the app", () => {
+    const electron = createElectronMock();
+    const quitApp = vi.fn();
+    const { createWindowManager } = loadWindowsWithMocks({ electron });
+    const state = { isQuitting: false };
+    const manager = createWindowManager({
+      devServerUrl: "http://127.0.0.1:5173",
+      state,
+      quitApp,
+    });
+
+    const petWindow = manager.createPetWindow();
+    const result = manager.hidePetWindow(petWindow.webContents);
+
+    expect(result).toBe(true);
+    expect(petWindow.hide).toHaveBeenCalledOnce();
+    expect(petWindow.destroy).not.toHaveBeenCalled();
+    expect(petWindow.webContents.send).toHaveBeenCalledWith("agent-pet:cancel-pet-drag");
+    expect(quitApp).not.toHaveBeenCalled();
+
+    const shownAgain = manager.createPetWindow();
+    expect(shownAgain).toBe(petWindow);
+    expect(petWindow.show).toHaveBeenCalled();
   });
 
   it("backs off pet mouse hit testing after the startup capture grace period", async () => {

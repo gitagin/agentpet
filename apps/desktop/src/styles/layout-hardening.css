@@ -14,8 +14,7 @@
   .task-card,
   .wiki-page-card,
   .memory-graph-fact,
-  .local-asset-card,
-  .live2d-runtime-card
+  .local-asset-card
 ) {
   min-width: 0;
   box-sizing: border-box;
@@ -161,7 +160,7 @@
     max-width: none;
   }
 
-  .stage-live2d-zone {
+  .stage-portrait-zone {
     grid-column: 2;
     grid-row: 1 / span 2;
     min-height: min(500px, calc(100dvh - 174px));
@@ -199,7 +198,7 @@
     max-height: none;
   }
 
-  .stage-live2d-zone {
+  .stage-portrait-zone {
     grid-area: 2 / 1;
     height: auto;
     min-height: clamp(260px, 42vh, 380px);
@@ -285,4 +284,3 @@
     grid-template-columns: 1fr auto;
   }
 }
-

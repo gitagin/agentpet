@@ -1,5 +1,5 @@
-import { useCallback, useRef, useState } from "react";
-import type { CSSProperties, FormEvent, RefObject } from "react";
+import { useCallback, useState } from "react";
+import type { CSSProperties, FormEvent } from "react";
 import {
   BookOpen,
   CalendarCheck,
@@ -9,20 +9,15 @@ import {
   Settings,
   type LucideIcon,
 } from "lucide-react";
-import { Live2DStage } from "../components/Live2DStage";
-import type { Live2DStageView } from "../components/Live2DStage";
-import type { Live2DAssetInfo, Live2DRuntimeBoundary } from "../services/live2dRuntime";
 import type { DesktopApi } from "../services/desktopApi";
 import type { PetBubbleState } from "../features/chat/chatTypes";
 import { PetReplyBubble } from "../features/chat/PetReplyBubble";
 import { VisibleContinuityPanel } from "../features/continuity";
 import { HalfbodyPetPortrait } from "../features/halfbody/HalfbodyPetPortrait";
-import type { HalfbodyPetPortraitHandle } from "../features/halfbody/HalfbodyPetPortrait";
 import { productCopy } from "../productCopy";
 import { BottomNav } from "./BottomNav";
 
 type StageRoute = "agent" | "chat" | "growth" | "memory" | "settings" | "world";
-type StagePortraitRenderer = "halfbody" | "live2d";
 
 type StageAction = {
   label: string;
@@ -32,10 +27,6 @@ type StageAction = {
 };
 
 type StageViewProps = {
-  live2dStage: Live2DStageView;
-  live2dAsset: Live2DAssetInfo;
-  live2dRuntime: Live2DRuntimeBoundary;
-  live2dCanvasRef: RefObject<HTMLCanvasElement>;
   connected: boolean;
   streaming: boolean;
   bubble?: PetBubbleState | null;
@@ -46,15 +37,11 @@ type StageViewProps = {
   onPausePaging?: () => void;
   onResumePaging?: () => void;
   ttsSpeaking?: boolean;
-  live2dActionKeyOverride?: string | null;
-  live2dActionTriggerKey?: string | null;
-  portraitRenderer?: StagePortraitRenderer;
   active?: boolean;
   api?: DesktopApi;
 };
 
 const profile = { name: productCopy.displayName, mood: "本地待命" };
-const defaultStagePortraitRenderer: StagePortraitRenderer = "halfbody";
 
 const stageActions: StageAction[] = [
   {
@@ -103,10 +90,6 @@ function openStageRoute(route: StageRoute) {
 }
 
 export default function StageView({
-  live2dStage,
-  live2dAsset,
-  live2dRuntime,
-  live2dCanvasRef,
   connected,
   streaming,
   bubble,
@@ -117,14 +100,10 @@ export default function StageView({
   onPausePaging,
   onResumePaging,
   ttsSpeaking = false,
-  live2dActionKeyOverride = null,
-  live2dActionTriggerKey = null,
-  portraitRenderer = defaultStagePortraitRenderer,
   active = true,
   api,
 }: StageViewProps) {
   const [chatInput, setChatInput] = useState("");
-  const halfbodyPortraitRef = useRef<HalfbodyPetPortraitHandle>(null);
   const now = new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
 
   const handleSubmit = useCallback(
@@ -230,7 +209,7 @@ export default function StageView({
           </details>
         </section>
 
-        <section className="stage-live2d-zone" aria-label="桌宠形象">
+        <section className="stage-portrait-zone" aria-label="桌宠形象">
           <div className="stage-pet-anchor">
             {bubbleVisible ? (
               <PetReplyBubble
@@ -242,22 +221,7 @@ export default function StageView({
                 onResumePaging={() => onResumePaging?.()}
               />
             ) : null}
-            {portraitRenderer === "halfbody" ? (
-              <HalfbodyPetPortrait ref={halfbodyPortraitRef} active={active} />
-            ) : (
-              <Live2DStage
-                key={`stage-${live2dAsset.modelId}`}
-                stage={live2dStage}
-                asset={live2dAsset}
-                runtime={live2dRuntime}
-                canvasRef={live2dCanvasRef}
-                variant="stage"
-                speaking={ttsSpeaking}
-                actionKeyOverride={live2dActionKeyOverride}
-                actionTriggerKey={live2dActionTriggerKey}
-                active={active}
-              />
-            )}
+            <HalfbodyPetPortrait active={active || ttsSpeaking} />
           </div>
         </section>
       </section>

@@ -1,0 +1,67 @@
+﻿{
+    "generatedAt":  "2026-07-06T01:07:29.5189498+08:00",
+    "petWindow":  {
+                      "shortcutBar":  {
+                                          "y":  33,
+                                          "height":  174,
+                                          "overlapsModel":  false,
+                                          "x":  198,
+                                          "buttonRightMargin":  26,
+                                          "offsetFromModelCenterX":  89,
+                                          "centerX":  219,
+                                          "centerY":  120,
+                                          "width":  42,
+                                          "buttonGapFromModel":  26
+                                      },
+                      "width":  260,
+                      "model":  {
+                                    "centerX":  130,
+                                    "centerY":  120,
+                                    "width":  96,
+                                    "y":  68,
+                                    "x":  82,
+                                    "height":  104
+                                },
+                      "height":  240
+                  },
+    "menuOpen":  {
+                     "buttonOrder":  [
+                                         "继续聊",
+                                         "建提醒",
+                                         "打开记忆",
+                                         "打开设置",
+                                         "退出 Agent Pet"
+                                     ],
+                     "rightMargin":  26,
+                     "screenshot":  "apps/desktop/output/playwright/pet-shortcut-clip-menu-open.png",
+                     "allButtonsInside":  true
+                 },
+    "menuClosing":  {
+                        "pointerEvents":  "none",
+                        "screenshot":  "apps/desktop/output/playwright/pet-shortcut-clip-menu-closing.png",
+                        "motion":  "closing",
+                        "visibleClass":  true
+                    },
+    "draggingLeft":  {
+                         "menuAfterDragRightMargin":  26,
+                         "canvasCount":  1,
+                         "menuAfterDragScreenshot":  "apps/desktop/output/playwright/pet-shortcut-clip-menu-open-after-drag-left.png",
+                         "screenshot":  "apps/desktop/output/playwright/pet-shortcut-clip-dragging-left.png",
+                         "menuAfterDragAllButtonsInside":  true,
+                         "status":  "向左拖拽，跟随窗口移动",
+                         "dragSnapshotCount":  0
+                     },
+    "stage":  {
+                  "hasPetShortcutBar":  false,
+                  "screenshot":  "apps/desktop/output/playwright/pet-shortcut-clip-stage.png",
+                  "hasHalfbody":  true
+              },
+    "screenshots":  {
+                        "menuOpen":  "apps/desktop/output/playwright/pet-shortcut-clip-menu-open.png",
+                        "draggingLeft":  "apps/desktop/output/playwright/pet-shortcut-clip-dragging-left.png",
+                        "idle":  "apps/desktop/output/playwright/pet-shortcut-clip-idle.png",
+                        "menuClosing":  "apps/desktop/output/playwright/pet-shortcut-clip-menu-closing.png",
+                        "stage":  "apps/desktop/output/playwright/pet-shortcut-clip-stage.png",
+                        "menuOpenAfterDraggingLeft":  "apps/desktop/output/playwright/pet-shortcut-clip-menu-open-after-drag-left.png"
+                    }
+}

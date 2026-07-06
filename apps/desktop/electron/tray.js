@@ -15,8 +15,8 @@ function createTrayManager({
 
   function findTrayIconPath() {
     const candidates = [
-      path.join(app.getAppPath(), "dist", "live2d", "UG", "icon.png"),
-      path.join(app.getAppPath(), "public", "live2d", "UG", "icon.png"),
+      path.join(app.getAppPath(), "dist", "images", "character.png"),
+      path.join(app.getAppPath(), "public", "images", "character.png"),
     ];
 
     return candidates.find((candidate) => fs.existsSync(candidate)) || null;

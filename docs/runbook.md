@@ -11,7 +11,7 @@ v0.1 is accepted when the local core loop is runnable:
 - The control console supports health check, model configuration test, Vault initialization/status, indexing/search, memory proposal actions, task actions, Chat SSE tool-event visibility, and diagnostics export.
 - `scripts\smoke-backend.ps1` covers `/api/health`, authorization, `/api/vaults/init`, `/api/memory/search`, memory proposal confirm/reject, `/api/tasks`, `/api/chat`, and `/api/diagnostics/export`.
 
-Do not expand the v0.1 gate into desktop-pet visual polish, blank-area mouse passthrough, Live2D animation quality, edge snapping, lip sync, voice, multiple characters, complex action queues, installer delivery, tray notification polish, or auto-update behavior. Record those only as post-v0.1 UI observations unless they prevent opening or using the control console.
+Do not expand the v0.1 gate into desktop-pet visual polish, blank-area mouse passthrough, sprite-pet animation quality, edge snapping, lip sync, voice, multiple characters, complex action queues, installer delivery, tray notification polish, or auto-update behavior. Record those only as post-v0.1 UI observations unless they prevent opening or using the control console.
 
 ## Core Trial Steps
 
@@ -24,11 +24,9 @@ Use this short path for routine QA:
 Push-Location .\apps\desktop
 npm run typecheck
 npm run package:check
-npm run live2d:check:public
-npm run live2d:sdk:check
+npm run sprite-pet:check
 npm run build
-npm run live2d:check:dist
-npm run live2d:sdk:check:dist
+npm run sprite-pet:check:dist
 npm run electron:dev
 Pop-Location
 .\scripts\check-trial-processes.ps1
@@ -338,11 +336,9 @@ Desktop:
 Push-Location .\apps\desktop
 npm run typecheck
 npm run package:check
-npm run live2d:check:public
-npm run live2d:sdk:check
+npm run sprite-pet:check
 npm run build
-npm run live2d:check:dist
-npm run live2d:sdk:check:dist
+npm run sprite-pet:check:dist
 Pop-Location
 ```
 
@@ -352,6 +348,6 @@ Record these separately from the v0.1 gate:
 
 - Desktop-pet blank area blocks underlying apps.
 - Drag sticks to cursor or drifts.
-- Live2D canvas is blank, static fallback appears, or animation stutters.
+- Sprite-pet halfbody is blank, layered overlays are misaligned, or pet-window sprite animation stutters.
 - Hitbox or tray behavior feels rough.
 - Lip sync, voice, multi-character switching, complex action queues, edge snapping, installer UX, notification polish, and auto-update are not v0.1 requirements.

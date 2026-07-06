@@ -1,31 +1,31 @@
 {
   "window": {
-    "width": 280,
-    "height": 380,
-    "minVisibleWidth": 72,
-    "minVisibleHeight": 72
+    "width": 260,
+    "height": 240,
+    "minVisibleWidth": 56,
+    "minVisibleHeight": 48
   },
   "hitboxes": {
     "model": {
-      "width": 220,
-      "height": 282,
-      "bottom": 58
+      "width": 96,
+      "height": 104,
+      "bottom": 68
     },
     "inputDock": {
-      "width": 248,
-      "height": 48,
-      "bottom": 10
+      "width": 218,
+      "height": 44,
+      "bottom": 8
     },
     "chatBubble": {
-      "width": 214,
-      "height": 58,
-      "bottom": 304
+      "width": 218,
+      "height": 48,
+      "bottom": 160
     },
     "shortcutBar": {
-      "width": 50,
-      "height": 210,
-      "right": 8,
-      "bottom": 96
+      "width": 42,
+      "height": 174,
+      "right": 20,
+      "bottom": 33
     }
   }
 }

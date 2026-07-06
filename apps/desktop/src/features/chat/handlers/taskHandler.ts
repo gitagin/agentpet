@@ -2,7 +2,7 @@ import { formatTaskStatus, formatTimezoneForUser } from "../../tasks/taskReducer
 import type { StreamHandlerInput } from "../streamDispatcher";
 
 export function taskHandler({ messageId, payload, context }: StreamHandlerInput, taskId: string) {
-  const { petChat, addTaskFromChat, appendChatEvent, setMessages, triggerLive2DTaskStage } = context;
+  const { petChat, addTaskFromChat, appendChatEvent, setMessages, triggerPetTaskStage } = context;
   const title = typeof payload?.title === "string" ? payload.title : "聊天创建的任务";
   const remindAt = typeof payload?.remind_at === "string" ? payload.remind_at : undefined;
   const timezone = typeof payload?.timezone === "string" ? payload.timezone : undefined;
@@ -32,7 +32,7 @@ export function taskHandler({ messageId, payload, context }: StreamHandlerInput,
       };
     }),
   );
-  triggerLive2DTaskStage();
+  triggerPetTaskStage();
   appendChatEvent(messageId, {
     label: "任务",
     detail: `已创建任务：${title}${remindAt ? `；提醒时间 ${remindAt}` : ""}${timezoneLabel ? `；时区 ${timezoneLabel}` : ""}${reminderStatus ? `；提醒状态 ${formatTaskStatus(reminderStatus)}` : ""}`,

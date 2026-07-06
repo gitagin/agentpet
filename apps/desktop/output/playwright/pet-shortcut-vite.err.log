@@ -1,0 +1,10 @@
+Vite 默认端口 5173 已被占用，改用 5174。
+[23432:0705/233646.106:ERROR:cache_util_win.cc(20)] Unable to move the cache: 拒绝访问。 (0x5)
+[23432:0705/233646.106:ERROR:cache_util_win.cc(20)] Unable to move the cache: 拒绝访问。 (0x5)
+[23432:0705/233646.107:ERROR:cache_util_win.cc(20)] Unable to move the cache: 拒绝访问。 (0x5)
+[23432:0705/233646.125:ERROR:disk_cache.cc(208)] Unable to create cache
+[23432:0705/233646.126:ERROR:gpu_disk_cache.cc(711)] Gpu Cache Creation failed: -2
+[23432:0705/233646.126:ERROR:disk_cache.cc(208)] Unable to create cache
+[23432:0705/233646.127:ERROR:gpu_disk_cache.cc(711)] Gpu Cache Creation failed: -2
+[23432:0705/233646.127:ERROR:disk_cache.cc(208)] Unable to create cache
+[23432:0705/233646.128:ERROR:gpu_disk_cache.cc(711)] Gpu Cache Creation failed: -2

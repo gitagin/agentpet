@@ -1,8 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { createRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { initialLive2DAssetInfo, type Live2DRuntimeBoundary } from "../../services/live2dRuntime";
 import type { AgentActivityLogEntry } from "../../services/agentActivity";
+import { paginatePetBubbleReply } from "../../services/petBubblePagination";
 import type { AgentAction, ChatMessage, ContinuityStateResponse, TaskItem } from "../../types";
 import {
   buildMemoryDayGroups,
@@ -36,15 +35,6 @@ vi.mock("../connection/HealthStatus", () => ({
 vi.mock("./AdvancedManagementTools", () => ({
   AdvancedManagementTools: () => <section aria-label="mock advanced tools" />,
 }));
-
-const runtimeBoundary: Live2DRuntimeBoundary = {
-  status: "mount-ready",
-  title: "ready",
-  detail: "ready",
-  mountTargetId: "live2d-runtime-canvas",
-  rendererName: "test",
-  canMountRenderer: true,
-};
 
 const continuityState: ContinuityStateResponse = {
   current_mood: "安静",
@@ -123,26 +113,14 @@ function richActivityEntries(): AgentActivityLogEntry[] {
   ];
 }
 
-function renderDashboard(
+function createDashboardProps(
   overrides: Partial<React.ComponentProps<typeof ControlDashboard>> = {},
-) {
-  const props: React.ComponentProps<typeof ControlDashboard> = {
+): React.ComponentProps<typeof ControlDashboard> {
+  return {
     sidecarStatus: null,
     health: null,
     notice: null,
-    live2dStage: {
-      state: "idle",
-      label: "在线",
-      mood: "安静",
-      message: "测试",
-      hint: "测试",
-    },
-    live2dAsset: { ...initialLive2DAssetInfo, modelLabel: "测试角色" },
-    live2dRuntime: runtimeBoundary,
-    live2dCanvasRef: createRef<HTMLCanvasElement>(),
     ttsActive: false,
-    live2dActionKeyOverride: null,
-    live2dActionTriggerKey: null,
     api: {} as React.ComponentProps<typeof ControlDashboard>["api"],
     firstUseOnboardingPanel: null,
     controlInput: "",
@@ -177,18 +155,18 @@ function renderDashboard(
     modelStatusLabel: "已配置",
     knowledgeStatusLabel: "已就绪",
     advancedTools: {
-      models: [],
-      selectedModelId: "",
-      asset: initialLive2DAssetInfo,
-      onSelectModel: vi.fn(),
       connectionPanel: null,
       wikiWorkflowPanel: null,
       settingsPanel: null,
     },
     ...overrides,
   };
+}
 
-  return render(<ControlDashboard {...props} />);
+function renderDashboard(
+  overrides: Partial<React.ComponentProps<typeof ControlDashboard>> = {},
+) {
+  return render(<ControlDashboard {...createDashboardProps(overrides)} />);
 }
 
 describe("ControlDashboard memory review", () => {
@@ -374,13 +352,7 @@ describe("ControlDashboard memory review", () => {
         sidecarStatus={null}
         health={null}
         notice={null}
-        live2dStage={{ state: "idle", label: "在线", mood: "安静", message: "测试", hint: "测试" }}
-        live2dAsset={{ ...initialLive2DAssetInfo, modelLabel: "测试角色" }}
-        live2dRuntime={runtimeBoundary}
-        live2dCanvasRef={createRef<HTMLCanvasElement>()}
         ttsActive
-        live2dActionKeyOverride={null}
-        live2dActionTriggerKey={null}
         api={{} as React.ComponentProps<typeof ControlDashboard>["api"]}
         firstUseOnboardingPanel={null}
         controlInput=""
@@ -415,10 +387,6 @@ describe("ControlDashboard memory review", () => {
         modelStatusLabel="已配置"
         knowledgeStatusLabel="已就绪"
         advancedTools={{
-          models: [],
-          selectedModelId: "",
-          asset: initialLive2DAssetInfo,
-          onSelectModel: vi.fn(),
           connectionPanel: null,
           wikiWorkflowPanel: null,
           settingsPanel: null,
@@ -427,6 +395,68 @@ describe("ControlDashboard memory review", () => {
     );
 
     expect(container.querySelector(".control-voice-wave")).toHaveClass("is-active");
+  });
+
+  it("paginates long home speech replies without truncating them with an ellipsis", () => {
+    const longReply = [
+      "First I sorted the note into three practical steps, and the first step is to write down the exact trigger.",
+      "Then I would keep the second step separate so it stays readable in the home bubble.",
+      "Finally I would close with the next action and keep the rest available on the next page.",
+    ].join(" ");
+    const pages = paginatePetBubbleReply(longReply);
+    expect(pages.length).toBeGreaterThan(1);
+
+    const { container } = renderDashboard({
+      messages: [message("assistant-long", "assistant", longReply)],
+    });
+    const bubble = container.querySelector(".control-speech-bubble") as HTMLElement;
+
+    expect(bubble).toHaveTextContent(pages[0]);
+    expect(bubble).toHaveTextContent(`1/${pages.length}`);
+    expect(bubble).not.toHaveTextContent("…");
+
+    fireEvent.click(screen.getByRole("button", { name: "下一页回复" }));
+
+    expect(bubble).toHaveTextContent(pages[1]);
+    expect(bubble).toHaveTextContent(`2/${pages.length}`);
+  });
+
+  it("resets the home speech page when a new assistant reply arrives", () => {
+    const firstReply = [
+      "First reply starts with a long opening sentence that needs more than one page.",
+      "First reply continues with a second sentence so the next-page button can move forward.",
+    ].join(" ");
+    const secondReply = [
+      "Second reply begins from a different first page and should reset the visible page index.",
+      "Second reply continues after the reset so the pager still has another page available.",
+    ].join(" ");
+    const firstPages = paginatePetBubbleReply(firstReply);
+    const secondPages = paginatePetBubbleReply(secondReply);
+    expect(firstPages.length).toBeGreaterThan(1);
+    expect(secondPages.length).toBeGreaterThan(1);
+
+    const { container, rerender } = render(
+      <ControlDashboard
+        {...createDashboardProps({
+          messages: [message("assistant-first", "assistant", firstReply)],
+        })}
+      />,
+    );
+    const bubble = container.querySelector(".control-speech-bubble") as HTMLElement;
+
+    fireEvent.click(screen.getByRole("button", { name: "下一页回复" }));
+    expect(bubble).toHaveTextContent(firstPages[1]);
+
+    rerender(
+      <ControlDashboard
+        {...createDashboardProps({
+          messages: [message("assistant-second", "assistant", secondReply)],
+        })}
+      />,
+    );
+
+    expect(bubble).toHaveTextContent(secondPages[0]);
+    expect(bubble).toHaveTextContent(`1/${secondPages.length}`);
   });
 
   it("builds orbit points from the visible memory entries before clipping extras", () => {

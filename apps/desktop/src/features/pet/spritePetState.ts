@@ -1,4 +1,4 @@
-import type { Live2DStageState, Live2DStageView } from "../../components/Live2DStage";
+import type { PetStageState, PetStageView } from "./petStageState";
 
 export type SpritePetDragDirection = "none" | "left" | "right";
 
@@ -49,16 +49,18 @@ export type SpritePetMotionProfile = {
   expression: SpritePetEmotion;
 };
 
-export type SpritePetAtlasRowKey =
+export type SpritePetAnimationKey =
   | "idle"
   | "running-right"
   | "running-left"
   | "waving"
-  | "jumping"
+  | "thinking"
+  | "working"
+  | "done"
   | "failed"
-  | "waiting"
-  | "running"
-  | "review";
+  | "sleeping";
+
+export type SpritePetAtlasRowKey = SpritePetAnimationKey;
 
 export type SpritePetAtlasRow = {
   key: SpritePetAtlasRowKey;
@@ -69,12 +71,12 @@ export const spritePetAtlasRows: readonly SpritePetAtlasRow[] = [
   { key: "idle", frameCount: 6 },
   { key: "running-right", frameCount: 8 },
   { key: "running-left", frameCount: 8 },
-  { key: "waving", frameCount: 4 },
-  { key: "jumping", frameCount: 5 },
-  { key: "failed", frameCount: 8 },
-  { key: "waiting", frameCount: 6 },
-  { key: "running", frameCount: 6 },
-  { key: "review", frameCount: 6 },
+  { key: "waving", frameCount: 6 },
+  { key: "thinking", frameCount: 6 },
+  { key: "working", frameCount: 6 },
+  { key: "done", frameCount: 5 },
+  { key: "failed", frameCount: 6 },
+  { key: "sleeping", frameCount: 6 },
 ];
 
 export type SpritePetAction = {
@@ -85,7 +87,7 @@ export type SpritePetAction = {
 };
 
 type ResolveSpritePetActionOptions = {
-  stage: Live2DStageView;
+  stage: PetStageView;
   connected: boolean;
   streaming: boolean;
   speaking: boolean;
@@ -294,7 +296,7 @@ export const spritePetActions: Record<SpritePetActionKey, SpritePetAction> = {
   }),
 };
 
-const live2DStageToSpriteAction: Record<Live2DStageState, SpritePetActionKey> = {
+const petStageToSpriteAction: Record<PetStageState, SpritePetActionKey> = {
   disconnected: "system_offline",
   idle: "idle",
   presence: "continuity_remember",
@@ -339,7 +341,7 @@ export function resolveSpritePetAction({
   if (streaming) {
     return spritePetActions.chat_think;
   }
-  return spritePetActions[live2DStageToSpriteAction[stage.state] || "idle"];
+  return spritePetActions[petStageToSpriteAction[stage.state] || "idle"];
 }
 
 export function normalizeSpritePetActionKey(value: string | null | undefined): SpritePetActionKey | null {
@@ -347,52 +349,55 @@ export function normalizeSpritePetActionKey(value: string | null | undefined): S
   return key && key in spritePetActions ? (key as SpritePetActionKey) : null;
 }
 
-export function getSpritePetAtlasRowKey(actionKey: SpritePetActionKey): SpritePetAtlasRowKey {
+export function getSpritePetAnimationKey(actionKey: SpritePetActionKey): SpritePetAnimationKey {
   switch (actionKey) {
     case "pet_drag_right":
       return "running-right";
     case "pet_drag_left":
       return "running-left";
     case "pet_waving":
-    case "celebrate_small":
-    case "task_complete":
-      return "waving";
-    case "task_create":
-    case "task_reminder":
-      return "jumping";
-    case "system_error":
-    case "system_offline":
-    case "memory_revert":
-      return "failed";
     case "chat_listen":
+    case "chat_talk":
+    case "celebrate_small":
+      return "waving";
+    case "task_complete":
+    case "chat_done":
+    case "memory_found":
     case "memory_confirm_needed":
-    case "memory_privacy_guard":
+    case "wiki_archive":
     case "pet_waiting":
-      return "waiting";
+      return "done";
     case "chat_think":
     case "memory_search":
+    case "system_connecting":
+      return "thinking";
+    case "task_create":
+    case "task_reminder":
     case "memory_save_diary":
     case "memory_save_long_term":
     case "wiki_organize":
-    case "system_connecting":
-      return "running";
     case "wiki_check":
-    case "wiki_archive":
     case "system_diagnosed":
     case "pet_review":
-      return "review";
-    case "memory_found":
+      return "working";
+    case "system_error":
+    case "memory_revert":
     case "memory_not_found":
-      return "review";
-    case "chat_talk":
-    case "chat_done":
-    case "continuity_remember":
-    case "emotion_comfort":
+    case "memory_privacy_guard":
+      return "failed";
+    case "system_offline":
     case "sleep_quiet":
+      return "sleeping";
+    case "emotion_comfort":
+    case "continuity_remember":
     case "idle":
     default:
       return "idle";
   }
+}
+
+export function getSpritePetAtlasRowKey(actionKey: SpritePetActionKey): SpritePetAtlasRowKey {
+  return getSpritePetAnimationKey(actionKey);
 }
 
 function action(

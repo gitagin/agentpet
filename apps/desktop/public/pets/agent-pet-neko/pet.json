@@ -2,6 +2,7 @@
   "id": "agent-pet-neko",
   "displayName": "Agent Pet Neko",
   "description": "Q-version pixel sprite desktop pet: black cat-ear gothic girl with pink eyes and simple clear animation states.",
+  "spritesheetCleanPath": "spritesheet-clean.png",
   "spritesheetPath": "spritesheet.webp",
   "fallbackPngPath": "spritesheet.png",
   "cell": {

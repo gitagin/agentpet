@@ -480,8 +480,12 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     destroyStageWindowForCompanionSwitch();
 
     if (petWindow && !petWindow.isDestroyed()) {
+      enforcePetWindowSize();
       petWindow.show();
       petWindow.focus();
+      startPetEntryCapture();
+      updatePetMousePassthroughFromCursor();
+      startPetMouseHitTest();
       return petWindow;
     }
 
@@ -843,6 +847,23 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     agentWindow?.hide();
   }
 
+  function hidePetWindow(sender) {
+    if (!petWindow || petWindow.isDestroyed() || (sender && sender !== petWindow.webContents)) {
+      return false;
+    }
+
+    clearPetWindowDrag();
+    persistPetWindowBounds();
+    stopPetMouseHitTest();
+    clearPetEntryCapture();
+    petShortcutBarVisible = false;
+    petInputDockVisible = false;
+    setPetMousePassthrough(false, "hide_pet_window");
+    petWindow.webContents.send("agent-pet:cancel-pet-drag");
+    petWindow.hide();
+    return true;
+  }
+
   function showStageRouteWindow(mode = "stage") {
     const window = createStageWindow();
     if (window.isMinimized()) {
@@ -988,6 +1009,7 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     showControlWindow,
     showAgentWindow,
     hideAgentWindow,
+    hidePetWindow,
     showStageWindow,
     showFeatureWindow,
     showPetInputMode,

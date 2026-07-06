@@ -115,6 +115,7 @@ declare global {
       closeAgent?: () => Promise<void>;
       openStage?: (mode?: "stage" | "agent" | DesktopFeatureWindowMode) => Promise<void>;
       openFeatureWindow?: (mode: DesktopFeatureWindowMode) => Promise<void>;
+      hidePetWindow?: () => Promise<void>;
       quitApp?: () => Promise<void>;
       getPetMousePassthroughStatus?: () => Promise<DesktopPetMousePassthroughStatus>;
       setPetShortcutBarVisible?: (visible: boolean) => Promise<DesktopPetMousePassthroughStatus>;

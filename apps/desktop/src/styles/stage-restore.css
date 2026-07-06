@@ -299,7 +299,7 @@
   white-space: nowrap;
 }
 
-.stage-live2d-zone {
+.stage-portrait-zone {
   position: absolute;
   inset: 0 0 126px;
   z-index: 4;
@@ -318,11 +318,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  --stage-live2d-visual-offset-x: clamp(-220px, -18vw, -130px);
-}
-
-.stage-pet-anchor .live2d-panel-stage {
-  transform: translateX(var(--stage-live2d-visual-offset-x));
+  --stage-portrait-visual-offset-x: clamp(-220px, -18vw, -130px);
 }
 
 .stage-pet-anchor .halfbody-pet-portrait {
@@ -331,7 +327,7 @@
   height: min(100%, 560px);
   margin: 0;
   pointer-events: none;
-  transform: translateX(var(--stage-live2d-visual-offset-x));
+  transform: translateX(var(--stage-portrait-visual-offset-x));
 }
 
 .halfbody-pet-portrait-frame,
@@ -377,7 +373,7 @@
 
 .stage-pet-anchor .stage-agent-bubble.pet-agent-bubble {
   top: clamp(48px, 8vh, 72px);
-  left: calc(50% + var(--stage-live2d-visual-offset-x) + clamp(44px, 7vw, 82px));
+  left: calc(50% + var(--stage-portrait-visual-offset-x) + clamp(44px, 7vw, 82px));
   right: auto;
   width: fit-content;
   min-width: 164px;
@@ -418,17 +414,17 @@
     grid-row: 1;
   }
 
-  .stage-live2d-zone {
+  .stage-portrait-zone {
     inset: 0 0 126px;
   }
 
   .stage-pet-anchor {
-    --stage-live2d-visual-offset-x: clamp(-150px, -14vw, -88px);
+    --stage-portrait-visual-offset-x: clamp(-150px, -14vw, -88px);
   }
 
   .stage-pet-anchor .stage-agent-bubble.pet-agent-bubble {
     top: clamp(44px, 8vh, 66px);
-    left: calc(50% + var(--stage-live2d-visual-offset-x) + clamp(38px, 7vw, 72px));
+    left: calc(50% + var(--stage-portrait-visual-offset-x) + clamp(38px, 7vw, 72px));
     max-width: min(244px, calc(100% - 48px));
   }
 }
@@ -450,14 +446,14 @@
     display: none;
   }
 
-  .stage-live2d-zone {
+  .stage-portrait-zone {
     inset: 0 0 126px;
     min-height: 0;
     height: auto;
   }
 
   .stage-pet-anchor {
-    --stage-live2d-visual-offset-x: 0px;
+    --stage-portrait-visual-offset-x: 0px;
   }
 
   .stage-pet-anchor .stage-agent-bubble.pet-agent-bubble {
@@ -551,7 +547,7 @@
   --stage-bubble-safe-max: min(272px, calc((100vw - 390px) * 0.5));
 }
 
-.stage-live2d-zone {
+.stage-portrait-zone {
   z-index: 32;
 }
 
@@ -566,7 +562,7 @@
 
 .stage-pet-anchor .stage-agent-bubble.pet-agent-bubble {
   z-index: 72;
-  left: calc(50% + var(--stage-live2d-visual-offset-x) + clamp(28px, 5vw, 58px));
+  left: calc(50% + var(--stage-portrait-visual-offset-x) + clamp(28px, 5vw, 58px));
   max-width: max(212px, var(--stage-bubble-safe-max));
   max-height: none;
 }
@@ -578,7 +574,7 @@
   }
 
   .stage-pet-anchor .stage-agent-bubble.pet-agent-bubble {
-    left: calc(50% + var(--stage-live2d-visual-offset-x) + clamp(24px, 5vw, 50px));
+    left: calc(50% + var(--stage-portrait-visual-offset-x) + clamp(24px, 5vw, 50px));
     max-width: max(204px, var(--stage-bubble-safe-max));
   }
 }
@@ -589,7 +585,7 @@
     --stage-bubble-safe-max: min(292px, calc(100vw - 28px));
   }
 
-  .stage-live2d-zone {
+  .stage-portrait-zone {
     z-index: 4;
   }
 

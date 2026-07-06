@@ -12,10 +12,6 @@
     "module": "ESNext",
     "moduleResolution": "Node",
     "baseUrl": ".",
-    "paths": {
-      "@framework/*": ["src/vendor/cubism/Framework/src/*"],
-      "@cubism-framework/*": ["src/vendor/cubism/Framework/src/*"]
-    },
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,

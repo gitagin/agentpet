@@ -30,9 +30,8 @@ try {
   )
 
   $allowedLargePrefixes = @(
-    'apps/desktop/public/live2d/',
     'apps/desktop/public/images/',
-    'apps/desktop/src/vendor/cubism/'
+    'apps/desktop/public/sprite-pet/'
   )
 
   $failures = New-Object System.Collections.Generic.List[string]

@@ -36,13 +36,14 @@ function createWindowsMock(roleBySender = new Map()) {
   const petSender = { id: "pet" };
   return {
     petSender,
-    getSenderWindowRole: vi.fn((sender) => roleBySender.get(sender) ?? null),
+    getSenderWindowRole: vi.fn((sender) => (sender === petSender ? "pet" : roleBySender.get(sender) ?? null)),
     getFeatureWindowMode: vi.fn(() => "settings"),
     showControlWindow: vi.fn(),
     showAgentWindow: vi.fn(),
     hideAgentWindow: vi.fn(),
     showStageWindow: vi.fn(),
     showFeatureWindow: vi.fn(),
+    hidePetWindow: vi.fn(),
     quitApp: vi.fn(),
     getPetWindow: vi.fn(() => ({ webContents: petSender })),
     getPetMousePassthroughStatus: vi.fn((reason, changed) => ({ enabled: false, reason, changed })),
@@ -246,6 +247,28 @@ describe("IPC sender authorization", () => {
 
     expect(proxy.proxyApiRequest).toHaveBeenCalledWith("/api/health", { method: "GET" });
     expect(windows.showStageWindow).toHaveBeenCalledWith("settings");
+  });
+
+  it("only lets the pet renderer hide the pet window", async () => {
+    const electronMock = createElectronMock();
+    const controlSender = { id: "control" };
+    const roleBySender = new Map([[controlSender, "control"]]);
+    const windows = createWindowsMock(roleBySender);
+
+    registerHandlersForTest({ electronMock, windows });
+
+    const hidePetWindow = getIpcHandle(electronMock, "agent-pet:hide-pet-window");
+    await expect(hidePetWindow({ sender: controlSender })).rejects.toMatchObject({
+      code: "unauthorized_ipc_sender",
+      details: {
+        channel: "agent-pet:hide-pet-window",
+        role: "control",
+      },
+    });
+    await expect(hidePetWindow({ sender: windows.petSender })).resolves.toBeUndefined();
+
+    expect(windows.hidePetWindow).toHaveBeenCalledWith(windows.petSender);
+    expect(windows.quitApp).not.toHaveBeenCalled();
   });
 
   it("limits knowledge-base folder selection to trusted non-pet app windows", async () => {

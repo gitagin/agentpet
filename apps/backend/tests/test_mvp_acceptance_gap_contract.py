@@ -24,7 +24,6 @@ def desktop_text() -> str:
         if (
             "/node_modules/" in normalized
             or "/dist/" in normalized
-            or "/public/live2d/" in normalized
             or "/scripts/" in normalized
         ):
             continue
@@ -55,14 +54,14 @@ def test_mvp_acceptance_matrix_tracks_all_mvp_rows_and_known_gaps() -> None:
     assert_matrix_row_status(content, "MVP-14", "Covered")
     assert_matrix_row_status(content, "MVP-15", "Partial")
     assert_matrix_row_status(content, "MVP-18", "Covered")
-    assert_matrix_row_status(content, "Full Live2D", "Partial / Gap")
+    assert_matrix_row_status(content, "Sprite-pet portrait runtime", "Covered")
     assert_matrix_row_status(content, "Actual signed auto-update", "Out of scope / Gap")
 
     required_gap_text = [
         "Manual Electron validation on 2026-05-15 confirmed near-term reminder triggered and emitted one OS notification",
         "Full natural-language date parsing is not implemented",
         "structured audit/application logging implementation",
-        "lacks lip sync, complex motion sequencing, multi-character resource management",
+        "Q-version sprite sheet pet remains future pet-window work",
         "no `publish`, signing, or `autoUpdater` contract",
     ]
     for text in required_gap_text:
@@ -89,16 +88,17 @@ def test_reminder_runtime_is_documented_as_persistent_apscheduler_runtime() -> N
     assert "test_cancelled_reminder_job_is_not_restored_after_restart" in scheduler_tests
 
 
-def test_desktop_gaps_for_live2d_and_signed_update_remain_explicit() -> None:
+def test_desktop_sprite_pet_runtime_and_signed_update_gap_remain_explicit() -> None:
     text = desktop_text()
     main = electron_runtime_text()
     package_json = read_text(DESKTOP / "package.json")
 
-    assert "桌宠模型" in text
-    assert "girlfriend.model3.json" in text
-    assert "Live2D Cubism WebGL 渲染器已挂载" in text
+    assert "HalfbodyPetPortrait" in text
+    assert "sprite-pet/halfbody/base.png" in text
     assert not re.search(r"(@live2d|pixi-live2d)", package_json, flags=re.IGNORECASE)
-    assert "validate-cubism-sdk.mjs" in package_json
+    assert "validate-sprite-pet-assets.mjs" in package_json
+    assert "validate-cubism-sdk.mjs" not in package_json
+    assert "public/live2d" not in package_json
     assert re.search(r"\bTray\b|new\s+Tray\s*\(", main)
     assert not re.search(r"autoUpdater|electron-updater", main)
     assert "\"electron-builder\"" in package_json
