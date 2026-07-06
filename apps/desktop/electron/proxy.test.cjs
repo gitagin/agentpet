@@ -103,6 +103,53 @@ describe("Electron API proxy allowlist", () => {
     expect(postInit.headers.get("Authorization")).toBe("Bearer test-session-token");
   });
 
+  it("allows safe memory profile and receipt routes through the main-process proxy", async () => {
+    global.fetch = vi.fn(async () => createJsonResponse({ ok: true }));
+    const proxy = createProxyManager({
+      baseUrl: "http://127.0.0.1:8765",
+      sessionToken: "test-session-token",
+    });
+
+    await proxy.proxyApiRequest("/api/memory/profile-projection", { method: "GET" });
+    await proxy.proxyApiRequest("/api/memory/profile-projection/items/profile_abc123", { method: "GET" });
+    await proxy.proxyApiRequest("/api/memory/profile-projection/items/profile_abc123/actions", { method: "POST", body: "{}" });
+    await proxy.proxyApiRequest("/api/memory/receipts?agent_run_id=run-1", { method: "GET" });
+
+    expect(global.fetch).toHaveBeenCalledTimes(4);
+    for (const [, init] of global.fetch.mock.calls) {
+      expect(init.headers.get("Authorization")).toBe("Bearer test-session-token");
+    }
+    await expect(proxy.proxyApiRequest("/api/memory/profile-projection/items/profile_abc123/actions", { method: "GET" })).rejects.toMatchObject({
+      code: "renderer_api_route_not_allowed",
+      details: {
+        method: "GET",
+        path: "/api/memory/profile-projection/items/profile_abc123/actions",
+      },
+    });
+    await expect(proxy.proxyApiRequest("/api/memory/profile-projection/items/profile_abc123/source", { method: "GET" })).rejects.toMatchObject({
+      code: "renderer_api_route_not_allowed",
+      details: {
+        method: "GET",
+        path: "/api/memory/profile-projection/items/profile_abc123/source",
+      },
+    });
+    await expect(proxy.proxyApiRequest("/api/memory/profile-projection/export", { method: "GET" })).rejects.toMatchObject({
+      code: "renderer_api_route_not_allowed",
+      details: {
+        method: "GET",
+        path: "/api/memory/profile-projection/export",
+      },
+    });
+    await expect(proxy.proxyApiRequest("/api/memory/profile-projection/items/candidate-raw-id", { method: "GET" })).rejects.toMatchObject({
+      code: "renderer_api_route_not_allowed",
+      details: {
+        method: "GET",
+        path: "/api/memory/profile-projection/items/candidate-raw-id",
+      },
+    });
+    expect(global.fetch).toHaveBeenCalledTimes(4);
+  });
+
   it("allows only the exact growth snapshot route", async () => {
     global.fetch = vi.fn(async () => createJsonResponse({ ok: true }));
     const proxy = createProxyManager({
