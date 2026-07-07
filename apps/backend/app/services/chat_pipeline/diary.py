@@ -1,12 +1,28 @@
+from __future__ import annotations
+
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from app.agents.events import AgentActionEvent
 from app.agents.state import AgentState
-from app.api.wiring import AppContext, chat_auto_memory_service, record_agent_action
 from app.services.agent_actions import AgentActionCreate, AutomationPolicy
 
+if TYPE_CHECKING:
+    from app.api.wiring import AppContext
+
 logger = logging.getLogger(__name__)
+
+
+def chat_auto_memory_service(context: AppContext) -> Any:
+    from app.api.wiring import chat_auto_memory_service as factory
+
+    return factory(context)
+
+
+def record_agent_action(context: AppContext, payload: AgentActionCreate) -> Any:
+    from app.api.wiring import record_agent_action as recorder
+
+    return recorder(context, payload)
 
 
 def archive_daily_diary(
@@ -17,6 +33,7 @@ def archive_daily_diary(
     assistant_answer: str,
     automation,
     policy: AutomationPolicy,
+    raise_errors: bool = False,
 ) -> tuple[Any | None, list[AgentActionEvent]]:
     from . import AutomationStepSkipped, agent_action_event
 
@@ -62,6 +79,8 @@ def archive_daily_diary(
     except AutomationStepSkipped:
         pass
     except Exception as exc:
+        if raise_errors:
+            raise
         logger.warning(
             "Chat auto memory archive skipped for agent_run_id=%s: %s",
             state.agent_run_id,

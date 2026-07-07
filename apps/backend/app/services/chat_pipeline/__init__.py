@@ -1,14 +1,19 @@
+from __future__ import annotations
+
 import logging
+from typing import TYPE_CHECKING, Any
 
 from app.agents.events import AgentActionEvent
 from app.agents.state import AgentState
-from app.api.wiring import AppContext, record_agent_action, settings_store
 from app.services.agent_actions import AgentActionCreate, AutomationPolicy
 
 from .consolidation import consolidate_slow_memory
 from .diary import archive_daily_diary
 from .diary_memory import archive_structured_diary_memory
 from .wiki_summary import archive_wiki_answer_summary
+
+if TYPE_CHECKING:
+    from app.api.wiring import AppContext
 
 logger = logging.getLogger(__name__)
 
@@ -24,70 +29,26 @@ async def archive_chat_memory(
     assistant_message_id: str,
     assistant_answer: str,
 ) -> list[AgentActionEvent]:
-    actions: list[AgentActionEvent] = []
-    automation = automation_settings(context)
-    policy = AutomationPolicy()
+    from app.services.post_reply_memory_job_runner import PostReplyMemoryJobInput, PostReplyMemoryJobRunner
 
-    if _post_chat_automation_disabled(automation):
-        actions.append(
-            skipped_agent_action_event(
-                context=context,
-                state=state,
-                action_type="chat.auto_memory.skip",
-                title="已跳过自动整理",
-                summary=(
-                    "自动日记、结构化记忆、长期记忆和 Wiki 整理当前都已关闭，"
-                    "因此本轮没有写入本地资产。"
-                ),
-                reason="automation_disabled",
-            )
-        )
-        return actions
-
-    daily_result, daily_actions = archive_daily_diary(
-        context=context,
-        state=state,
-        assistant_message_id=assistant_message_id,
-        assistant_answer=assistant_answer,
-        automation=automation,
-        policy=policy,
-    )
-    actions.extend(daily_actions)
-    diary_object_ids, diary_actions = await archive_structured_diary_memory(
-        context=context,
-        state=state,
-        assistant_message_id=assistant_message_id,
-        assistant_answer=assistant_answer,
-        daily_result=daily_result,
-        automation=automation,
-        policy=policy,
-    )
-    actions.extend(diary_actions)
-    actions.extend(
-        consolidate_slow_memory(
+    run = await PostReplyMemoryJobRunner(
+        automation_provider=automation_settings,
+        daily_diary_stage=archive_daily_diary,
+        structured_diary_stage=archive_structured_diary_memory,
+        slow_consolidation_stage=consolidate_slow_memory,
+        wiki_summary_stage=archive_wiki_answer_summary,
+    ).run_with_actions(
+        PostReplyMemoryJobInput(
             context=context,
             state=state,
             assistant_message_id=assistant_message_id,
             assistant_answer=assistant_answer,
-            daily_result=daily_result,
-            diary_object_ids=diary_object_ids,
-            automation=automation,
-            policy=policy,
+            policy=AutomationPolicy(),
         )
     )
-    actions.extend(
-        archive_wiki_answer_summary(
-            context=context,
-            state=state,
-            assistant_message_id=assistant_message_id,
-            assistant_answer=assistant_answer,
-            daily_result=daily_result,
-            diary_object_ids=diary_object_ids,
-            automation=automation,
-            policy=policy,
-        )
-    )
-    return actions
+    if _job_all_stages_disabled(run.result):
+        return [_disabled_automation_skip_event(context=context, state=state)]
+    return list(run.action_events)
 
 
 def _post_chat_automation_disabled(automation) -> bool:
@@ -101,7 +62,27 @@ def _post_chat_automation_disabled(automation) -> bool:
     )
 
 
+def _job_all_stages_disabled(result) -> bool:
+    return bool(result.stages) and all(
+        stage.status == "skipped" and stage.safe_summary == "Stage skipped: disabled."
+        for stage in result.stages
+    )
+
+
+def _disabled_automation_skip_event(*, context: AppContext, state: AgentState) -> AgentActionEvent:
+    return skipped_agent_action_event(
+        context=context,
+        state=state,
+        action_type="chat.auto_memory.skip",
+        title="Skipped automatic memory organization",
+        summary="Automatic memory organization is disabled; no local assets were written.",
+        reason="automation_disabled",
+    )
+
+
 def automation_settings(context: AppContext):
+    from app.api.wiring import settings_store
+
     store = settings_store(context)
     try:
         return store.get_automation_settings()
@@ -147,6 +128,8 @@ def skipped_agent_action_event(
     reason: str,
     risk_tier: str = "low",
 ) -> AgentActionEvent:
+    from app.api.wiring import record_agent_action
+
     action = record_agent_action(
         context,
         AgentActionCreate(

@@ -1,13 +1,29 @@
+from __future__ import annotations
+
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from app.agents.events import AgentActionEvent
 from app.agents.state import AgentState
-from app.api.wiring import AppContext, diary_memory_service, record_agent_action
 from app.services.agent_actions import AgentActionCreate, AutomationPolicy
 from app.utils.time import utc_now_iso
 
+if TYPE_CHECKING:
+    from app.api.wiring import AppContext
+
 logger = logging.getLogger(__name__)
+
+
+def diary_memory_service(context: AppContext) -> Any:
+    from app.api.wiring import diary_memory_service as factory
+
+    return factory(context)
+
+
+def record_agent_action(context: AppContext, payload: AgentActionCreate) -> Any:
+    from app.api.wiring import record_agent_action as recorder
+
+    return recorder(context, payload)
 
 
 async def archive_structured_diary_memory(
@@ -19,6 +35,7 @@ async def archive_structured_diary_memory(
     daily_result: Any | None,
     automation,
     policy: AutomationPolicy,
+    raise_errors: bool = False,
 ) -> tuple[tuple[str, ...], list[AgentActionEvent]]:
     from . import agent_action_event
 
@@ -72,6 +89,8 @@ async def archive_structured_diary_memory(
             )
             actions.append(agent_action_event(state.agent_run_id, action))
     except Exception as exc:
+        if raise_errors:
+            raise
         logger.warning(
             "Structured diary memory archive skipped for agent_run_id=%s: %s",
             state.agent_run_id,

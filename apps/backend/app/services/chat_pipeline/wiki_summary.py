@@ -1,13 +1,29 @@
+from __future__ import annotations
+
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from app.agents.events import AgentActionEvent
 from app.agents.state import AgentState
-from app.api.wiring import AppContext, record_agent_action, wiki_service
 from app.services.agent_actions import AgentActionCreate, AutomationPolicy
 from app.services.chat_answer_wiki_summary import ChatAnswerWikiSummaryService
 
+if TYPE_CHECKING:
+    from app.api.wiring import AppContext
+
 logger = logging.getLogger(__name__)
+
+
+def wiki_service(context: AppContext) -> Any:
+    from app.api.wiring import wiki_service as factory
+
+    return factory(context)
+
+
+def record_agent_action(context: AppContext, payload: AgentActionCreate) -> Any:
+    from app.api.wiring import record_agent_action as recorder
+
+    return recorder(context, payload)
 
 
 def archive_wiki_answer_summary(
@@ -20,6 +36,7 @@ def archive_wiki_answer_summary(
     diary_object_ids: tuple[str, ...],
     automation,
     policy: AutomationPolicy,
+    raise_errors: bool = False,
 ) -> list[AgentActionEvent]:
     from . import agent_action_event, skipped_agent_action_event
 
@@ -111,6 +128,8 @@ def archive_wiki_answer_summary(
             )
             actions.append(agent_action_event(state.agent_run_id, action))
     except Exception as exc:
+        if raise_errors:
+            raise
         logger.warning(
             "Post-answer Wiki summary skipped for agent_run_id=%s: %s",
             state.agent_run_id,

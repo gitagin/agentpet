@@ -1,13 +1,29 @@
+from __future__ import annotations
+
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from app.agents.events import AgentActionEvent
 from app.agents.state import AgentState
-from app.api.wiring import AppContext, memory_consolidation_service, record_agent_action
 from app.services.agent_actions import AgentActionCreate, AutomationPolicy
 from app.services.memory_consolidation import MemoryConsolidationResult
 
+if TYPE_CHECKING:
+    from app.api.wiring import AppContext
+
 logger = logging.getLogger(__name__)
+
+
+def memory_consolidation_service(context: AppContext) -> Any:
+    from app.api.wiring import memory_consolidation_service as factory
+
+    return factory(context)
+
+
+def record_agent_action(context: AppContext, payload: AgentActionCreate) -> Any:
+    from app.api.wiring import record_agent_action as recorder
+
+    return recorder(context, payload)
 
 
 def consolidate_slow_memory(
@@ -20,6 +36,7 @@ def consolidate_slow_memory(
     diary_object_ids: tuple[str, ...],
     automation,
     policy: AutomationPolicy,
+    raise_errors: bool = False,
 ) -> list[AgentActionEvent]:
     from . import AutomationStepSkipped, agent_action_event, skipped_agent_action_event
 
@@ -85,6 +102,8 @@ def consolidate_slow_memory(
     except AutomationStepSkipped:
         pass
     except Exception as exc:
+        if raise_errors:
+            raise
         logger.warning(
             "Slow memory consolidation skipped for agent_run_id=%s: %s",
             state.agent_run_id,
