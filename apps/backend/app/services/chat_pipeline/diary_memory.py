@@ -5,6 +5,7 @@ from app.agents.events import AgentActionEvent
 from app.agents.state import AgentState
 from app.api.wiring import AppContext, diary_memory_service, record_agent_action
 from app.services.agent_actions import AgentActionCreate, AutomationPolicy
+from app.utils.time import utc_now_iso
 
 logger = logging.getLogger(__name__)
 
@@ -23,8 +24,14 @@ async def archive_structured_diary_memory(
 
     actions: list[AgentActionEvent] = []
     diary_object_ids: tuple[str, ...] = ()
-    if daily_result is None or not automation.auto_structured_memory:
+    if not automation.auto_structured_memory:
         return diary_object_ids, actions
+    if not state.user_message.strip() or not assistant_answer.strip():
+        return diary_object_ids, actions
+
+    daily_entry = getattr(daily_result, "entry", None)
+    occurred_at = getattr(daily_entry, "created_at", None) or utc_now_iso()
+    markdown_path = getattr(daily_entry, "markdown_path", None)
 
     diary_service = None
     try:
@@ -36,8 +43,8 @@ async def archive_structured_diary_memory(
             agent_run_id=state.agent_run_id,
             user_question=state.user_message,
             assistant_answer=assistant_answer,
-            occurred_at=daily_result.entry.created_at,
-            markdown_path=daily_result.entry.markdown_path,
+            occurred_at=occurred_at,
+            markdown_path=markdown_path,
         )
         diary_object_ids = tuple(diary_result.object_ids)
         if diary_result.objects_seen > 0:
