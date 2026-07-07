@@ -791,6 +791,34 @@ export type MemoryReviewResponse = {
   redaction_note: string;
 };
 
+export type MemoryHygieneSuggestionType = "stale_recent_state" | "low_confidence_stale" | "sensitive_candidate";
+
+export type MemoryHygieneSuggestion = {
+  id: string;
+  type: MemoryHygieneSuggestionType;
+  title: string;
+  summary: string;
+  impact: string;
+  risk_tier: string;
+  destructive: boolean;
+  requires_confirmation: boolean;
+  action_label: string;
+};
+
+export type MemoryHygienePreviewResponse = {
+  generated_at: string;
+  suggestions: MemoryHygieneSuggestion[];
+  redaction_note: string;
+};
+
+export type MemoryHygieneActionResponse = {
+  ok: boolean;
+  suggestion_id: string;
+  type: MemoryHygieneSuggestionType;
+  status: string;
+  action_id: string;
+};
+
 export type MemoryProfileProjectionItem = {
   id: string;
   category: string;

@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import MemoryWindowView from "./MemoryWindowView";
 import type { DesktopApi } from "../services/desktopApi";
-import type { AgentAction, LocalAssetStatsResponse, MemoryGraphFact, MemoryProfileDetail, MemoryProfileProjectionResponse, MemoryProposalDraft, MemoryReviewResponse, MemorySearchResult, RetrospectiveReportResponse, RetrospectiveResponse } from "../types";
+import type { AgentAction, LocalAssetStatsResponse, MemoryGraphFact, MemoryHygienePreviewResponse, MemoryProfileDetail, MemoryProfileProjectionResponse, MemoryProposalDraft, MemoryReviewResponse, MemorySearchResult, RetrospectiveReportResponse, RetrospectiveResponse } from "../types";
 
 function memoryFact(overrides: Partial<MemoryGraphFact> = {}): MemoryGraphFact {
   return {
@@ -225,6 +225,30 @@ const weeklyMemoryReview: MemoryReviewResponse = {
   ],
 };
 
+const hygienePreview: MemoryHygienePreviewResponse = {
+  generated_at: "2026-06-02T00:00:00Z",
+  redaction_note: "整理建议不会显示原始证据、内部编号、本地路径、凭据或完整授权信息。",
+  suggestions: [
+    {
+      id: "hyg_safe_1",
+      type: "stale_recent_state",
+      title: "临时状态已过期",
+      summary: "有一条临时状态已经到期，建议归档。",
+      impact: "归档后不会再作为当前记忆使用。",
+      risk_tier: "low",
+      destructive: false,
+      requires_confirmation: true,
+      action_label: "归档",
+    },
+  ],
+};
+
+const emptyHygienePreview: MemoryHygienePreviewResponse = {
+  generated_at: "2026-06-02T00:00:00Z",
+  redaction_note: "整理建议不会显示原始证据、内部编号、本地路径、凭据或完整授权信息。",
+  suggestions: [],
+};
+
 const emptyProfileProjection: MemoryProfileProjectionResponse = {
   generated_at: "2026-06-02T00:00:00Z",
   identity: [],
@@ -288,6 +312,7 @@ function createApi(
   facts: MemoryGraphFact[],
   stats: LocalAssetStatsResponse = localAssetStats,
   profile: MemoryProfileProjectionResponse = emptyProfileProjection,
+  hygiene: MemoryHygienePreviewResponse = emptyHygienePreview,
 ) {
   const exportPreview = (format: "json" | "markdown" = "markdown") => ({
     generated_at: "2026-06-02T00:00:00Z",
@@ -330,6 +355,14 @@ function createApi(
       status: "active",
       feedback_event_id: "feedback-1",
       action_id: "action-feedback-1",
+    }),
+    getMemoryHygienePreview: vi.fn().mockResolvedValue(hygiene),
+    applyMemoryHygieneSuggestion: vi.fn().mockResolvedValue({
+      ok: true,
+      suggestion_id: "hyg_safe_1",
+      type: "stale_recent_state",
+      status: "archived",
+      action_id: "action-hygiene-1",
     }),
     listMemoryGraphFacts: vi.fn().mockResolvedValue({ facts }),
     markMemoryGraphFactWrong: vi.fn().mockResolvedValue({ fact_id: "fact-1", status: "wrong" }),
@@ -843,6 +876,117 @@ describe("MemoryWindowView", () => {
     expect(within(todayCard as HTMLElement).getByText("长期记忆")).toBeInTheDocument();
     expect(within(todayCard as HTMLElement).getByText("资料整理")).toBeInTheDocument();
     expect(within(todayCard as HTMLElement).getByText("使用 1 条日记、1 个任务、1 条记忆事实和 1 次资料整理。")).toBeInTheDocument();
+  });
+
+  it("scans and displays hygiene suggestions safely", async () => {
+    const api = createApi([memoryFact()], localAssetStats, emptyProfileProjection, hygienePreview);
+
+    const { container } = renderView(api);
+    const reviewTools = openReviewTools();
+    fireEvent.click(within(reviewTools).getByRole("button", { name: "扫描整理建议" }));
+
+    const panel = await screen.findByLabelText("整理建议");
+    expect(api.getMemoryHygienePreview).toHaveBeenCalledTimes(1);
+    expect(within(panel).getByText("临时状态已过期")).toBeInTheDocument();
+    expect(within(panel).getByText("有一条临时状态已经到期，建议归档。")).toBeInTheDocument();
+    expect(within(panel).getByText("归档后不会再作为当前记忆使用。")).toBeInTheDocument();
+    expect(within(panel).getByText("低风险")).toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: "归档" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /批量/ })).not.toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/candidate|fact|target_id|evidence|source_text|source_excerpt|agent_run_id|lifecycle_status|Authorization|token|[A-Za-z]:[\\/]|FTS|vector/i);
+  });
+
+  it("shows an empty hygiene suggestion state after scanning", async () => {
+    const api = createApi([memoryFact()], localAssetStats, emptyProfileProjection, emptyHygienePreview);
+
+    renderView(api);
+    const reviewTools = openReviewTools();
+    fireEvent.click(within(reviewTools).getByRole("button", { name: "扫描整理建议" }));
+
+    expect(await screen.findByText("暂时没有需要整理的记忆。")).toBeInTheDocument();
+  });
+
+  it("requires confirmation before applying a hygiene suggestion", async () => {
+    const api = createApi([memoryFact()], localAssetStats, emptyProfileProjection, hygienePreview);
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+
+    renderView(api);
+    const reviewTools = openReviewTools();
+    fireEvent.click(within(reviewTools).getByRole("button", { name: "扫描整理建议" }));
+    const panel = await screen.findByLabelText("整理建议");
+    fireEvent.click(within(panel).getByRole("button", { name: "归档" }));
+
+    expect(confirm).toHaveBeenCalledWith("确定要应用这条整理建议吗？这会更新记忆状态。");
+    expect(api.applyMemoryHygieneSuggestion).not.toHaveBeenCalled();
+  });
+
+  it("applies one hygiene suggestion with confirmed true and refreshes memory views", async () => {
+    const api = createApi([memoryFact()], localAssetStats, profileWithPreference, hygienePreview);
+    const onRefresh = vi.fn();
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    renderView(api, onRefresh);
+    const reviewTools = openReviewTools();
+    fireEvent.click(within(reviewTools).getByRole("button", { name: "扫描整理建议" }));
+    const panel = await screen.findByLabelText("整理建议");
+    fireEvent.click(within(panel).getByRole("button", { name: "归档" }));
+
+    await waitFor(() => expect(api.applyMemoryHygieneSuggestion).toHaveBeenCalledWith("hyg_safe_1", true));
+    await waitFor(() => expect(api.getMemoryHygienePreview).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(api.getMemoryProfileProjection).toHaveBeenCalledTimes(2));
+    expect(api.getWeeklyMemoryReview).toHaveBeenCalledTimes(2);
+    expect(api.getLocalAssetStats).toHaveBeenCalledTimes(2);
+    expect(onRefresh).toHaveBeenCalled();
+  });
+
+  it("keeps hygiene suggestions visible and shows a safe error when apply fails", async () => {
+    const api = createApi([memoryFact()], localAssetStats, emptyProfileProjection, hygienePreview);
+    (api.applyMemoryHygieneSuggestion as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new Error("source_text Authorization token C:\\secret"),
+    );
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    const { container } = renderView(api);
+    const reviewTools = openReviewTools();
+    fireEvent.click(within(reviewTools).getByRole("button", { name: "扫描整理建议" }));
+    const panel = await screen.findByLabelText("整理建议");
+    fireEvent.click(within(panel).getByRole("button", { name: "归档" }));
+
+    expect(await within(panel).findByText("这次没有完成整理，请稍后重试。")).toBeInTheDocument();
+    expect(within(panel).getByText("临时状态已过期")).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/source_text|Authorization|token|C:\\secret/i);
+  });
+
+  it("filters raw-ish hygiene suggestion text before rendering", async () => {
+    const rawishPreview: MemoryHygienePreviewResponse = {
+      generated_at: "2026-06-02T00:00:00Z",
+      redaction_note: "source_text Authorization token C:\\Users\\Ada\\secret.md",
+      suggestions: [
+        {
+          id: "hyg_raw_1",
+          type: "sensitive_candidate",
+          title: "candidate fact target_id",
+          summary: "source_text Authorization Bearer token C:\\Users\\Ada\\secret.md",
+          impact: "evidence agent_run_id lifecycle_status FTS vector",
+          risk_tier: "low",
+          destructive: false,
+          requires_confirmation: true,
+          action_label: "token=secret",
+        },
+      ],
+    };
+    const api = createApi([memoryFact()], localAssetStats, emptyProfileProjection, rawishPreview);
+
+    const { container } = renderView(api);
+    const reviewTools = openReviewTools();
+    fireEvent.click(within(reviewTools).getByRole("button", { name: "扫描整理建议" }));
+
+    const panel = await screen.findByLabelText("整理建议");
+    expect(within(panel).getAllByText("整理建议").length).toBeGreaterThan(0);
+    expect(within(panel).getByText("这条建议的安全摘要暂时不可显示。")).toBeInTheDocument();
+    expect(within(panel).getByText("应用后会更新记忆状态。")).toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: "应用建议" })).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/candidate|fact|target_id|evidence|source_text|source_excerpt|agent_run_id|lifecycle_status|Authorization|Bearer|token|C:\\Users|FTS|vector/i);
   });
 
   it("shows a weekly memory review and applies lightweight review actions", async () => {

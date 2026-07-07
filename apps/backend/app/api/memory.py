@@ -22,6 +22,10 @@ from ..models.api import (
     MemoryGraphExportPreviewResponse,
     MemoryGraphFactListResponse,
     MemoryGraphFactResponse,
+    MemoryHygieneActionRequest,
+    MemoryHygieneActionResponse,
+    MemoryHygienePreviewResponse,
+    MemoryHygieneSuggestionResponse,
     MemoryProposalActionResponse,
     MemoryProposalCreateRequest,
     MemoryProposalListResponse,
@@ -56,6 +60,12 @@ from ..services.diary_memory import (
 )
 from ..services.memory import MemoryService
 from ..services.memory_lifecycle import MemoryLifecycleTransitionError
+from ..services.memory_hygiene_suggestions import (
+    MemoryHygieneSuggestion,
+    MemoryHygieneSuggestionConfirmationRequired,
+    MemoryHygieneSuggestionExpired,
+    MemoryHygieneSuggestionService,
+)
 from ..services.memory_policy import evaluate_memory_content
 from ..services.memory_profile_projection import (
     MemoryProfileProjection,
@@ -657,6 +667,88 @@ async def apply_weekly_memory_review_action(
     return response
 
 
+@router.get("/hygiene/preview", response_model=MemoryHygienePreviewResponse)
+async def preview_memory_hygiene(request: Request, limit: int = 30) -> MemoryHygienePreviewResponse:
+    service = MemoryHygieneSuggestionService(database(request).path)
+    try:
+        suggestions = service.preview(limit=max(1, min(limit, 100)))
+    finally:
+        service.close()
+    return MemoryHygienePreviewResponse(
+        generated_at=datetime.now(timezone.utc).isoformat(),
+        suggestions=[_memory_hygiene_suggestion_response(item) for item in suggestions],
+    )
+
+
+@router.post("/hygiene/actions", response_model=MemoryHygieneActionResponse)
+async def apply_memory_hygiene_action(
+    action_request: MemoryHygieneActionRequest,
+    request: Request,
+) -> MemoryHygieneActionResponse:
+    action_id = new_id()
+    service = MemoryHygieneSuggestionService(database(request).path)
+    try:
+        result = service.apply(
+            action_request.suggestion_id,
+            confirmed=action_request.confirmed,
+            agent_action_id=action_id,
+        )
+    except MemoryHygieneSuggestionConfirmationRequired as exc:
+        raise AppError(
+            code="hygiene_confirmation_required",
+            message="Applying a memory hygiene suggestion requires confirmation.",
+            status_code=status.HTTP_400_BAD_REQUEST,
+        ) from exc
+    except MemoryHygieneSuggestionExpired as exc:
+        raise AppError(
+            code="hygiene_suggestion_expired",
+            message="This memory hygiene suggestion is no longer available.",
+            status_code=status.HTTP_409_CONFLICT,
+        ) from exc
+    except (KeyError, MemoryLifecycleTransitionError, ValueError) as exc:
+        raise AppError(
+            code="hygiene_suggestion_apply_failed",
+            message="The memory hygiene suggestion could not be applied.",
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        ) from exc
+    finally:
+        service.close()
+
+    action = record_agent_action(
+        request,
+        AgentActionCreate(
+            action_id=action_id,
+            action_type="memory.hygiene.apply",
+            title="记忆整理建议已应用",
+            summary=_memory_hygiene_action_summary(result.type),
+            risk_tier="low",
+            decision="notify",
+            status="completed",
+            target_paths=(),
+            metadata={
+                "suggestion_type": result.type,
+                "suggestion_id": result.suggestion_id,
+                "result_status": result.status,
+                "safe_summary": True,
+            },
+            reversible=False,
+        ),
+    )
+    record_audit(
+        request,
+        action="memory.hygiene.apply",
+        result="success",
+        reason=audit_reason(request, suggestion_type=result.type, status=result.status),
+    )
+    return MemoryHygieneActionResponse(
+        ok=True,
+        suggestion_id=result.suggestion_id,
+        type=result.type,
+        status=result.status,
+        action_id=action.action_id,
+    )
+
+
 @router.get("/retrospectives", response_model=RetrospectiveResponse)
 async def get_retrospectives(request: Request) -> RetrospectiveResponse:
     service = retrospective_service(request)
@@ -998,6 +1090,29 @@ def _profile_feedback_operation(action: str) -> str:
         "mark_inaccurate": "reject_candidate",
     }
     return mapping[action]
+
+
+def _memory_hygiene_suggestion_response(item: MemoryHygieneSuggestion) -> MemoryHygieneSuggestionResponse:
+    return MemoryHygieneSuggestionResponse(
+        id=item.id,
+        type=item.type,
+        title=item.title,
+        summary=item.summary,
+        impact=item.impact,
+        risk_tier=item.risk_tier,
+        destructive=item.destructive,
+        requires_confirmation=item.requires_confirmation,
+        action_label=item.action_label,
+    )
+
+
+def _memory_hygiene_action_summary(suggestion_type: str) -> str:
+    labels = {
+        "stale_recent_state": "已归档一条过期的临时状态。",
+        "low_confidence_stale": "已忽略一条长期未确认的低置信候选。",
+        "sensitive_candidate": "已安全拒绝一条不适合保存的候选记忆。",
+    }
+    return labels.get(suggestion_type, "已应用一条记忆整理建议。")
 
 
 def _validated_profile_action_expiry(action_request: MemoryProfileActionRequest) -> str | None:

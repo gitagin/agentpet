@@ -331,6 +331,42 @@ class MemoryReviewActionRequest(BaseModel):
     replacement_object: str | None = None
 
 
+MemoryHygieneSuggestionType = Literal["stale_recent_state", "low_confidence_stale", "sensitive_candidate"]
+
+
+class MemoryHygieneSuggestionResponse(BaseModel):
+    id: str
+    type: MemoryHygieneSuggestionType
+    title: str
+    summary: str
+    impact: str
+    risk_tier: str
+    destructive: bool = False
+    requires_confirmation: bool = True
+    action_label: str
+
+
+class MemoryHygienePreviewResponse(BaseModel):
+    generated_at: str
+    suggestions: list[MemoryHygieneSuggestionResponse] = Field(default_factory=list)
+    redaction_note: str = (
+        "整理建议不会显示原始证据、内部编号、本地路径、凭据或完整授权信息。"
+    )
+
+
+class MemoryHygieneActionRequest(BaseModel):
+    suggestion_id: str = Field(min_length=1)
+    confirmed: bool = False
+
+
+class MemoryHygieneActionResponse(BaseModel):
+    ok: bool
+    suggestion_id: str
+    type: MemoryHygieneSuggestionType
+    status: str
+    action_id: str
+
+
 class CompanionConsolidationRunRequest(BaseModel):
     from_: str | None = Field(default=None, alias="from"); to: str | None = None; limit: int = Field(default=50, ge=1, le=200)
 

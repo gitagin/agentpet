@@ -738,6 +738,20 @@
   white-space: nowrap;
 }
 
+.memory-hygiene-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.memory-hygiene-suggestion-list {
+  display: grid;
+  gap: 10px;
+}
+
+.memory-hygiene-suggestion {
+  background: rgba(249, 252, 250, 0.82);
+}
+
 .memory-export-preview {
   display: grid;
   gap: 10px;

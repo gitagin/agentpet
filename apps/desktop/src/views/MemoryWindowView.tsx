@@ -15,6 +15,8 @@ import type {
   LocalAssetStatsResponse,
   MemoryGraphExportPreviewResponse,
   MemoryGraphFact,
+  MemoryHygienePreviewResponse,
+  MemoryHygieneSuggestion,
   MemoryProfileActionKind,
   MemoryProfileDetail,
   MemoryProfileProjectionItem,
@@ -410,6 +412,30 @@ function safeMemoryNotice(value: string | undefined | null): string {
     return "敏感细节、原始证据和本机安全信息已隐藏。";
   }
   return text;
+}
+
+const hygieneInternalPattern =
+  /\b(candidate|fact|evidence|token|authorization|bearer|fts|vector)\b|target_id|source_text|source_excerpt|agent_run_id|lifecycle_status|[A-Za-z]:[\\/]|\\\\|\/Users\//i;
+
+function safeHygieneText(value: string | undefined | null, fallback: string): string {
+  const text = value?.trim();
+  if (!text || hygieneInternalPattern.test(text)) {
+    return fallback;
+  }
+  return text;
+}
+
+function formatHygieneRisk(value: string): string {
+  switch (value.toLocaleLowerCase()) {
+    case "low":
+      return "低风险";
+    case "medium":
+      return "需要确认";
+    case "high":
+      return "高风险";
+    default:
+      return "需确认";
+  }
 }
 
 function formatReviewCategory(category: MemoryReviewItem["category"]): string {
@@ -1623,6 +1649,74 @@ function WeeklyMemoryReviewPanel({
   );
 }
 
+function MemoryHygieneSuggestionPanel({
+  preview,
+  loading,
+  error,
+  busyId,
+  onScan,
+  onApply,
+}: {
+  preview: MemoryHygienePreviewResponse | null;
+  loading: boolean;
+  error: string;
+  busyId: string | null;
+  onScan: () => void;
+  onApply: (item: MemoryHygieneSuggestion) => void;
+}) {
+  const suggestions = preview?.suggestions || [];
+  return (
+    <section className="weekly-memory-review-panel memory-hygiene-panel" aria-label="整理建议">
+      <div className="section-heading">
+        <strong>整理建议</strong>
+        <span>先扫描，再逐条确认；这里只显示安全摘要。</span>
+      </div>
+      <div className="button-row">
+        <button type="button" className="secondary" onClick={onScan} disabled={loading}>
+          {loading ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />}
+          扫描整理建议
+        </button>
+      </div>
+      {error ? <p className="field-note error">{error}</p> : null}
+      {preview?.redaction_note ? <p className="field-note">{safeMemoryNotice(preview.redaction_note)}</p> : null}
+      <div className="proposal-list memory-hygiene-suggestion-list">
+        {loading ? (
+          <EmptyState text="正在检查可以安全整理的记忆……" />
+        ) : preview && suggestions.length === 0 ? (
+          <EmptyState text="暂时没有需要整理的记忆。" />
+        ) : suggestions.length > 0 ? (
+          suggestions.map((item) => (
+            <article key={item.id} className="memory-graph-fact memory-hygiene-suggestion">
+              <div className="memory-graph-fact-main">
+                <strong>{safeHygieneText(item.title, "整理建议")}</strong>
+                <div className="memory-graph-fact-meta">
+                  <span>{formatHygieneRisk(item.risk_tier)}</span>
+                  <span>{item.requires_confirmation ? "需要确认" : "可直接整理"}</span>
+                </div>
+                <p>{safeHygieneText(item.summary, "这条建议的安全摘要暂时不可显示。")}</p>
+                <p>{safeHygieneText(item.impact, "应用后会更新记忆状态。")}</p>
+              </div>
+              <div className="memory-graph-fact-actions">
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => onApply(item)}
+                  disabled={busyId === item.id}
+                >
+                  {busyId === item.id ? <Loader2 className="spin" size={15} /> : <Check size={15} />}
+                  {safeHygieneText(item.action_label, "应用建议")}
+                </button>
+              </div>
+            </article>
+          ))
+        ) : (
+          <EmptyState text="点击扫描整理建议，我会先检查有没有可以安全处理的记忆。" />
+        )}
+      </div>
+    </section>
+  );
+}
+
 export default function MemoryWindowView({
   api,
   loading,
@@ -1678,6 +1772,10 @@ export default function MemoryWindowView({
   const [weeklyMemoryReviewLoading, setWeeklyMemoryReviewLoading] = useState(true);
   const [weeklyMemoryReviewError, setWeeklyMemoryReviewError] = useState("");
   const [weeklyMemoryReviewBusyId, setWeeklyMemoryReviewBusyId] = useState<string | null>(null);
+  const [memoryHygienePreview, setMemoryHygienePreview] = useState<MemoryHygienePreviewResponse | null>(null);
+  const [memoryHygieneLoading, setMemoryHygieneLoading] = useState(false);
+  const [memoryHygieneError, setMemoryHygieneError] = useState("");
+  const [memoryHygieneBusyId, setMemoryHygieneBusyId] = useState<string | null>(null);
   const normalizedQuery = searchQuery.trim().toLocaleLowerCase();
   const normalizedFactQuery = memoryFactQuery.trim().toLocaleLowerCase();
   const filteredEntries = useMemo(
@@ -1830,6 +1928,21 @@ export default function MemoryWindowView({
       setWeeklyMemoryReviewError(describeError(requestError, "本周记忆复核加载失败"));
     } finally {
       setWeeklyMemoryReviewLoading(false);
+    }
+  }
+
+  async function loadMemoryHygienePreview(signal?: AbortSignal) {
+    setMemoryHygieneLoading(true);
+    setMemoryHygieneError("");
+    try {
+      setMemoryHygienePreview(await api.getMemoryHygienePreview(signal));
+    } catch (requestError) {
+      if (requestError instanceof DOMException && requestError.name === "AbortError") {
+        return;
+      }
+      setMemoryHygieneError("这次没有完成整理，请稍后重试。");
+    } finally {
+      setMemoryHygieneLoading(false);
     }
   }
 
@@ -2021,6 +2134,27 @@ export default function MemoryWindowView({
     }
   }
 
+  async function applyMemoryHygieneSuggestion(item: MemoryHygieneSuggestion) {
+    const confirmed = window.confirm("确定要应用这条整理建议吗？这会更新记忆状态。");
+    if (!confirmed) {
+      return;
+    }
+    setMemoryHygieneBusyId(item.id);
+    setMemoryHygieneError("");
+    try {
+      await api.applyMemoryHygieneSuggestion(item.id, true);
+      await loadMemoryHygienePreview();
+      await loadMemoryProfileProjection();
+      await loadWeeklyMemoryReview();
+      await loadLocalAssets();
+      onRefresh();
+    } catch (requestError) {
+      setMemoryHygieneError("这次没有完成整理，请稍后重试。");
+    } finally {
+      setMemoryHygieneBusyId(null);
+    }
+  }
+
   async function copyExportPreview() {
     setExportLoading(true);
     setExportMessage("");
@@ -2107,6 +2241,15 @@ export default function MemoryWindowView({
           <span>生成回顾报告、查看本机积累和更细的来源详情。</span>
         </summary>
         <div className="memory-advanced-tools-stack">
+          <MemoryHygieneSuggestionPanel
+            preview={memoryHygienePreview}
+            loading={memoryHygieneLoading}
+            error={memoryHygieneError}
+            busyId={memoryHygieneBusyId}
+            onScan={() => void loadMemoryHygienePreview()}
+            onApply={(item) => void applyMemoryHygieneSuggestion(item)}
+          />
+
           <ReviewCoachPanel
             retrospectives={retrospectives}
             loading={retrospectiveLoading}

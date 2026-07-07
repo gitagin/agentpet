@@ -29,6 +29,8 @@ import type {
   MemoryGraphFactActionResponse,
   MemoryGraphFactListResponse,
   MemoryFeedbackResponse,
+  MemoryHygieneActionResponse,
+  MemoryHygienePreviewResponse,
   MemoryProfileActionRequest,
   MemoryProfileActionResponse,
   MemoryProfileDetail,
@@ -285,6 +287,22 @@ export class DesktopApi {
     signal?: AbortSignal,
   ): Promise<MemoryFeedbackResponse> {
     return this.client.post<MemoryFeedbackResponse>("/api/memory/reviews/weekly/actions", request, signal);
+  }
+
+  getMemoryHygienePreview(signal?: AbortSignal): Promise<MemoryHygienePreviewResponse> {
+    return this.client.get<MemoryHygienePreviewResponse>("/api/memory/hygiene/preview", signal);
+  }
+
+  applyMemoryHygieneSuggestion(
+    suggestionId: string,
+    confirmed: boolean,
+    signal?: AbortSignal,
+  ): Promise<MemoryHygieneActionResponse> {
+    return this.client.post<MemoryHygieneActionResponse>(
+      "/api/memory/hygiene/actions",
+      { suggestion_id: suggestionId, confirmed },
+      signal,
+    );
   }
 
   getRetrospectives(signal?: AbortSignal): Promise<RetrospectiveResponse> {
