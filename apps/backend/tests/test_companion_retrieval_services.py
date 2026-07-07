@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 
-from apps.backend.tests._schema import migrate_db
+from apps.backend.tests._schema import migrate_db, migrate_db_with_vault
 from app.agents.memory_router import MemoryRoute
 from app.models.api import MemorySearchResult
 from app.models.enums import MemoryFactStatus
@@ -13,6 +13,8 @@ from app.services.companion_retrieval import (
     CompanionRetrievalService,
     rerank_memory_context,
 )
+from app.services.diary_memory import DiaryMemoryObjectSource, DiaryMemoryStore
+from app.services.diary_memory_extractor import DiaryMemoryObject
 from app.services.memory_graph import MemoryFactCandidate, MemoryGraphStore
 
 
@@ -246,6 +248,66 @@ def test_companion_retrieval_applies_activation_to_graph_facts(tmp_path) -> None
     assert all(item.retrieval_mode == "graph_activation" for item in result.items)
     assert result.telemetry.counts["activation_filtered_items"] >= 4
     assert result.telemetry.counts["raw_items_seen"] >= 6
+
+
+def test_companion_retrieval_finds_typed_diary_qa_and_project_update(tmp_path) -> None:
+    db_path = migrate_db_with_vault(tmp_path / "state.sqlite3")
+    store = DiaryMemoryStore(db_path)
+    service = CompanionRetrievalService(diary_store=store, telemetry_db=store.conn)
+    try:
+        source = DiaryMemoryObjectSource(object_id="", source_type="chat_exchange", source_id="run-qa")
+        store.insert_object(
+            vault_id="vault-1",
+            extracted=DiaryMemoryObject(
+                summary="User asked how to compare parser options.",
+                topic="parser choice",
+                emotion="calm",
+                people=(),
+                keywords=("parser", "qa"),
+                source_text="User asked how to compare parser options.",
+                importance=0.8,
+                confidence=0.9,
+                status=MemoryFactStatus.ACTIVE,
+                type="qa",
+            ),
+            occurred_at="2026-05-13T10:30:00+08:00",
+            timezone="Asia/Shanghai",
+            source=source,
+        )
+        store.insert_object(
+            vault_id="vault-1",
+            extracted=DiaryMemoryObject(
+                summary="Project Atlas decision moved to next week.",
+                topic="Project Atlas",
+                emotion="focused",
+                people=(),
+                keywords=("atlas", "decision"),
+                source_text="Project Atlas decision moved to next week.",
+                importance=0.9,
+                confidence=0.92,
+                status=MemoryFactStatus.ACTIVE,
+                type="project_update",
+            ),
+            occurred_at="2026-05-13T11:30:00+08:00",
+            timezone="Asia/Shanghai",
+            source=DiaryMemoryObjectSource(object_id="", source_type="chat_exchange", source_id="run-project"),
+        )
+
+        result = service.retrieve(
+            vault_id="vault-1",
+            query="parser Atlas decision",
+            route=MemoryRoute(primary_scopes=("diary_objects",), query="parser Atlas decision"),
+            budget=CompanionRetrievalBudget(max_items=4, max_diary_objects=4),
+        )
+    finally:
+        service.close()
+        store.close()
+
+    texts = [item.text for item in result.items]
+    assert any("parser options" in text for text in texts)
+    assert any("Project Atlas decision" in text for text in texts)
+    assert all(item.source_scope == "diary_objects" for item in result.items)
+    assert all(item.retrieval_mode == "diary_object" for item in result.items)
 
 
 def _graph_fact(

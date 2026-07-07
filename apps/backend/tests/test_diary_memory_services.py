@@ -27,6 +27,7 @@ class FakeDiaryExtractor:
 def memory_object(
     *,
     summary: str,
+    type: str = "event",
     topic: str = "work",
     emotion: str = "anxious",
     people: tuple[str, ...] = ("manager",),
@@ -45,6 +46,7 @@ def memory_object(
         importance=importance,
         confidence=confidence,
         status=status,
+        type=type,
     )
 
 
@@ -87,6 +89,7 @@ async def test_diary_memory_service_archives_objects_sources_and_searches_fts(tm
         MemoryFactStatus.QUARANTINED,
     ]
     assert records[0].extraction_model == "reflection_agent"
+    assert records[0].type == "event"
     assert records[0].occurred_at == "2026-05-13T10:30:00+08:00"
     detail = service.get(records[0].id)
     assert detail.sources[0].conversation_id == "conversation-1"
@@ -94,6 +97,53 @@ async def test_diary_memory_service_archives_objects_sources_and_searches_fts(tm
     assert detail.sources[0].assistant_message_id == "assistant-1"
     assert detail.sources[0].agent_run_id == "run-1"
     assert detail.sources[0].markdown_path == "Memories/Daily/2026/05/week/2026-05-13.md"
+    service.close()
+
+
+@pytest.mark.asyncio
+async def test_diary_memory_service_uses_extracted_type_without_writing_vault_files(tmp_path):
+    extractor = FakeDiaryExtractor(
+        [
+            memory_object(
+                summary="User asked how to compare two parser options.",
+                type="qa",
+                topic="parser choice",
+                keywords=("parser", "qa"),
+            ),
+            memory_object(
+                summary="Project Atlas decision moved to next week.",
+                type="project_update",
+                topic="Project Atlas",
+                emotion="focused",
+                keywords=("atlas", "decision"),
+            ),
+        ]
+    )
+    db_path = migrate_db_with_vault(tmp_path / "state.sqlite3")
+    service = DiaryMemoryService(
+        DiaryMemoryStore(db_path),
+        vault_id="vault-1",
+        extractor=extractor,
+        extraction_model="reflection_agent",
+    )
+
+    result = await service.archive_chat_exchange(
+        conversation_id="conversation-1",
+        user_message_id="user-1",
+        assistant_message_id="assistant-1",
+        agent_run_id="run-typed",
+        user_question="Compare parser options.",
+        assistant_answer="We decided to revisit Project Atlas next week.",
+        occurred_at="2026-05-13T10:30:00+08:00",
+        markdown_path="Memories/Daily/2026/05/week/2026-05-13.md",
+    )
+
+    assert result.objects_seen == 2
+    qa_records = service.search(DiaryMemorySearch(query="parser", type="qa", top_k=5))
+    project_records = service.search(DiaryMemorySearch(query="Atlas", type="project_update", top_k=5))
+    assert [record.type for record in qa_records] == ["qa"]
+    assert [record.type for record in project_records] == ["project_update"]
+    assert not (tmp_path / "Vault").exists()
     service.close()
 
 

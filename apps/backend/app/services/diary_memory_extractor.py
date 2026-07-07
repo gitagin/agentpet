@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -12,6 +13,76 @@ from app.services.memory_policy import evaluate_memory_content
 MAX_DIARY_MEMORY_OBJECTS = 5
 MIN_DIARY_MEMORY_CONFIDENCE = 0.4
 QUARANTINE_CONFIDENCE_MAX = 0.6
+DEFAULT_DIARY_MEMORY_TYPE = "event"
+ALLOWED_DIARY_MEMORY_TYPES = frozenset(
+    {
+        "episode",
+        "qa",
+        "event",
+        "mood",
+        "project_update",
+    }
+)
+PROFILEISH_DIARY_MEMORY_TYPES = frozenset(
+    {
+        "preference",
+        "identity",
+        "relationship",
+        "project",
+        "profile",
+        "inference",
+        "recent_state",
+        "fact",
+        "boundary",
+        "personality",
+    }
+)
+PROFILEISH_DIARY_MEMORY_FIELDS = (
+    "category",
+    "kind",
+    "memory_kind",
+    "profile_group",
+    "group",
+    "scope",
+    "entity_type",
+)
+
+_EXCHANGE_BLOCKER_PATTERN = re.compile(
+    r"不要记住|別保存|别保存|不要保存|不要记录|不要紀錄|不要归档|不要歸檔|仅本次|僅本次|只限本次|"
+    r"\bdo\s+not\s+(?:remember|save|store|record|archive)\b|"
+    r"\bdon't\s+(?:remember|save|store|record|archive)\b|"
+    r"\bjust\s+this\s+(?:turn|time|session)\b",
+    re.IGNORECASE,
+)
+_JOKE_PATTERN = re.compile(
+    r"只是开玩笑|只是開玩笑|开个玩笑|開個玩笑|玩笑|"
+    r"\bjoking\s+only\b|\bjust\s+kidding\b|\bjust\s+a\s+joke\b|\bas\s+a\s+joke\b|\bsilly\s+bit\b",
+    re.IGNORECASE,
+)
+_OBJECT_INTERNAL_PATTERN = re.compile(
+    r"source_text|source_excerpt|raw[_\s-]?evidence|evidence_id|agent_run_id|"
+    r"\bauthorization\b|\bbearer\b|\btoken\b|tool_call|<tool_call|</tool_call>|"
+    r"\braw\s+log\b|stack trace|Traceback \(most recent call last\)|\bFile \"[^\"]+\", line \d+",
+    re.IGNORECASE,
+)
+_PROFILEISH_CONTENT_PATTERN = re.compile(
+    r"\buser\s+prefers\b|\bi\s+prefer\b|\bprefers\s+concise\b|\bfavorite\b|"
+    r"\bidentity\b|\brelationship\b|\bboundary\b|\bpersonality\b|"
+    r"用户偏好|我喜欢|我更喜欢|身份|关系|边界|人格",
+    re.IGNORECASE,
+)
+_WINDOWS_ABSOLUTE_PATH_PATTERN = re.compile(r"(?:[A-Za-z]:[\\/]|\\\\)")
+_POSIX_ABSOLUTE_PATH_PATTERN = re.compile(r"(?<!\w)/(?:Users|home|var|etc|tmp|mnt|opt|root)/", re.IGNORECASE)
+_SHORT_TERM_MOOD_PATTERN = re.compile(
+    r"\b(?:today|right now|recently|lately|this week|this morning|this evening)\b|"
+    r"今天|刚才|剛才|最近|这周|這周|现在|現在|心情",
+    re.IGNORECASE,
+)
+_MOOD_WORD_PATTERN = re.compile(
+    r"\b(?:anxious|stressed|tired|frustrated|sad|angry|relieved|excited|overwhelmed|worried)\b|"
+    r"焦虑|焦慮|压力|壓力|疲惫|疲憊|沮丧|沮喪|难过|難過|生气|生氣|开心|開心|低落|烦|煩",
+    re.IGNORECASE,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -32,6 +103,7 @@ class DiaryMemoryObject:
     importance: float
     confidence: float
     status: MemoryFactStatus
+    type: str = DEFAULT_DIARY_MEMORY_TYPE
 
 
 class DiaryMemoryExtractor:
@@ -47,6 +119,8 @@ class DiaryMemoryExtractor:
     ) -> list[DiaryMemoryObject]:
         text = diary_text.strip()
         if not text or self.model_client is None:
+            return []
+        if _should_block_exchange(text):
             return []
 
         try:
@@ -96,6 +170,16 @@ DIARY_EXTRACTION_SYSTEM_PROMPT = (
     "people 和 keywords 必须是短字符串数组。importance 和 confidence 必须是 0 到 1 之间的数字。"
     "source_text 必须是支撑该对象的简短日记摘录。"
     "当日记没有持久化记忆对象时返回 []。不要包含 markdown、散文、注释、密钥、凭据或 JSON 负载之外的字段。"
+)
+
+
+DIARY_EXTRACTION_SYSTEM_PROMPT = DIARY_EXTRACTION_SYSTEM_PROMPT + (
+    " Return the field type for every object. type must be one of episode, qa, event, mood, project_update. "
+    "episode means a contextual experience or conversation fragment. qa means a user question with a safe answer summary. "
+    "event means a low-risk concrete event. mood means a short-term emotional state, not a personality label. "
+    "project_update means a project phase, decision, blocker, or next step. "
+    "Do not write stable preferences, identity, relationships, personality inferences, boundaries, or raw facts as diary episodes. "
+    "Do not treat assistant inference as user fact. Return [] for jokes, do-not-remember requests, credentials, raw logs, tool calls, or raw evidence."
 )
 
 
@@ -174,6 +258,9 @@ def _looks_like_memory_object(payload: dict[str, Any]) -> bool:
 
 
 def _normalize_object(raw: dict[str, Any]) -> DiaryMemoryObject | None:
+    memory_type = _memory_type_from_raw(raw)
+    if memory_type is None:
+        return None
     summary = _coerce_text(raw.get("summary"), limit=500)
     topic = _coerce_text(raw.get("topic"), limit=120)
     emotion = _coerce_text(raw.get("emotion"), limit=120)
@@ -184,6 +271,15 @@ def _normalize_object(raw: dict[str, Any]) -> DiaryMemoryObject | None:
     confidence = _clamp_float(raw.get("confidence"), default=0.0)
 
     if not summary or not source_text:
+        return None
+    if _object_should_block(
+        summary=summary,
+        topic=topic,
+        emotion=emotion,
+        people=people,
+        keywords=keywords,
+        source_text=source_text,
+    ):
         return None
     if confidence < MIN_DIARY_MEMORY_CONFIDENCE:
         return None
@@ -196,6 +292,9 @@ def _normalize_object(raw: dict[str, Any]) -> DiaryMemoryObject | None:
         source_text=source_text,
     ):
         return None
+
+    if _looks_like_short_term_mood(summary=summary, topic=topic, emotion=emotion, source_text=source_text):
+        memory_type = "mood"
 
     if _looks_like_personality_inference(summary=summary, source_text=source_text):
         status = MemoryFactStatus.QUARANTINED
@@ -215,6 +314,63 @@ def _normalize_object(raw: dict[str, Any]) -> DiaryMemoryObject | None:
         importance=importance,
         confidence=confidence,
         status=status,
+        type=memory_type,
+    )
+
+
+def _memory_type_from_raw(raw: dict[str, Any]) -> str | None:
+    if _has_profileish_metadata(raw):
+        return None
+    explicit_type = raw.get("type") or raw.get("memory_type")
+    if explicit_type is not None and str(explicit_type).strip():
+        return _normalize_memory_type(explicit_type)
+    category = _coerce_text(raw.get("category"), limit=80).casefold().replace("-", "_").replace(" ", "_")
+    if category in PROFILEISH_DIARY_MEMORY_TYPES:
+        return None
+    if category in ALLOWED_DIARY_MEMORY_TYPES:
+        return category
+    return DEFAULT_DIARY_MEMORY_TYPE
+
+
+def _normalize_memory_type(value: Any) -> str | None:
+    raw = _coerce_text(value, limit=80).casefold().replace("-", "_").replace(" ", "_")
+    if not raw:
+        return DEFAULT_DIARY_MEMORY_TYPE
+    if raw in PROFILEISH_DIARY_MEMORY_TYPES:
+        return None
+    if raw in ALLOWED_DIARY_MEMORY_TYPES:
+        return raw
+    return None
+
+
+def _has_profileish_metadata(raw: dict[str, Any]) -> bool:
+    for field in PROFILEISH_DIARY_MEMORY_FIELDS:
+        value = _coerce_text(raw.get(field), limit=80).casefold().replace("-", "_").replace(" ", "_")
+        if value in PROFILEISH_DIARY_MEMORY_TYPES:
+            return True
+    return False
+
+
+def _should_block_exchange(text: str) -> bool:
+    return bool(_EXCHANGE_BLOCKER_PATTERN.search(text) or _JOKE_PATTERN.search(text))
+
+
+def _object_should_block(
+    *,
+    summary: str,
+    topic: str,
+    emotion: str,
+    people: tuple[str, ...],
+    keywords: tuple[str, ...],
+    source_text: str,
+) -> bool:
+    text = "\n".join(value for value in (summary, topic, emotion, *people, *keywords, source_text) if value)
+    return bool(
+        _JOKE_PATTERN.search(text)
+        or _PROFILEISH_CONTENT_PATTERN.search(text)
+        or _OBJECT_INTERNAL_PATTERN.search(text)
+        or _WINDOWS_ABSOLUTE_PATH_PATTERN.search(text)
+        or _POSIX_ABSOLUTE_PATH_PATTERN.search(text)
     )
 
 
@@ -233,7 +389,7 @@ def _passes_memory_policy(
 
 def _looks_like_personality_inference(*, summary: str, source_text: str) -> bool:
     text = f"{summary} {source_text}".casefold()
-    if "user is" not in text and "the user is" not in text:
+    if not any(marker in text for marker in ("user is", "the user is", "user seems", "the user seems", "assistant inferred")):
         return False
     labels = (
         "anxious person",
@@ -249,6 +405,11 @@ def _looks_like_personality_inference(*, summary: str, source_text: str) -> bool
         "insecure person",
     )
     return any(label in text for label in labels)
+
+
+def _looks_like_short_term_mood(*, summary: str, topic: str, emotion: str, source_text: str) -> bool:
+    text = f"{summary} {topic} {emotion} {source_text}"
+    return bool(_SHORT_TERM_MOOD_PATTERN.search(text) and _MOOD_WORD_PATTERN.search(text))
 
 
 def _coerce_text(value: Any, *, limit: int) -> str:

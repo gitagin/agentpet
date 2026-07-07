@@ -5,6 +5,8 @@ from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 
 from app.models.enums import MemoryFactStatus
+from app.services.diary_memory import DiaryMemoryObjectSource, DiaryMemoryStore
+from app.services.diary_memory_extractor import DiaryMemoryObject
 from app.services.memory_candidates import MemoryCandidateCreate, MemoryCandidateStore
 from app.services.memory_graph import MemoryFactCandidate, MemoryGraphStore
 from app.services.memory_taxonomy import LifecycleStatus, MemoryKind, MemoryScope, RiskTier, SourceTrack
@@ -56,6 +58,38 @@ def test_graph_fact_preference_and_boundary_are_supported_without_raw_ids() -> N
         assert boundary_id not in payload
         assert "fact:" not in payload
         assert "target_id" not in payload
+    finally:
+        conn.close()
+
+
+def test_diary_mood_objects_do_not_enter_stable_profile() -> None:
+    conn = migrated_connection()
+    try:
+        conn.execute("INSERT INTO vaults(id, root_path, name) VALUES ('vault-1', 'Vault', 'Vault')")
+        store = DiaryMemoryStore(conn)
+        record = store.insert_object(
+            vault_id="vault-1",
+            extracted=DiaryMemoryObject(
+                summary="User felt frustrated today about flaky tests.",
+                topic="work",
+                emotion="frustrated",
+                people=(),
+                keywords=("tests",),
+                source_text="User felt frustrated today about flaky tests.",
+                importance=0.5,
+                confidence=0.9,
+                status=MemoryFactStatus.ACTIVE,
+                type="mood",
+            ),
+            occurred_at="2026-05-13T10:30:00+08:00",
+            timezone="Asia/Shanghai",
+            source=DiaryMemoryObjectSource(object_id="", source_type="chat_exchange", source_id="run-mood"),
+        )
+
+        selection = PromptProfileProvider(conn).select()
+
+        assert record is not None
+        assert selection.items == ()
     finally:
         conn.close()
 

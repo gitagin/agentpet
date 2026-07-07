@@ -9,7 +9,7 @@ from typing import Iterable
 
 from app.models.common import new_id
 from app.models.enums import MemoryFactStatus
-from app.services.diary_memory_extractor import DiaryMemoryExtractor, DiaryMemoryObject
+from app.services.diary_memory_extractor import ALLOWED_DIARY_MEMORY_TYPES, DiaryMemoryExtractor, DiaryMemoryObject
 from app.utils.hash import sha256_hex
 from app.utils.time import utc_now_iso
 
@@ -97,8 +97,11 @@ class DiaryMemoryStore:
         timezone: str,
         source: DiaryMemoryObjectSource,
         extraction_model: str | None = None,
-        memory_type: str = DEFAULT_DIARY_MEMORY_TYPE,
+        memory_type: str | None = None,
     ) -> DiaryMemoryObjectRecord | None:
+        memory_type = _safe_memory_type(memory_type or extracted.type)
+        if memory_type is None:
+            return None
         object_hash = _object_hash(
             vault_id=vault_id,
             memory_type=memory_type,
@@ -368,6 +371,7 @@ class DiaryMemoryService:
                 timezone=self.timezone_name,
                 source=source,
                 extraction_model=self.extraction_model,
+                memory_type=item.type,
             )
             if record is not None:
                 object_ids.append(record.id)
@@ -468,3 +472,10 @@ def _date_part(value: str) -> str | None:
         return datetime.fromisoformat(value.replace("Z", "+00:00")).date().isoformat()
     except ValueError:
         return None
+
+
+def _safe_memory_type(value: str | None) -> str | None:
+    normalized = (value or DEFAULT_DIARY_MEMORY_TYPE).strip().casefold().replace("-", "_").replace(" ", "_")
+    if normalized in ALLOWED_DIARY_MEMORY_TYPES:
+        return normalized
+    return None
