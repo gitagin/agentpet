@@ -120,6 +120,38 @@ describe("AgentActionActivityCard", () => {
     expect(onRevert).toHaveBeenCalledWith(reversible);
   });
 
+  it("sanitizes raw ids and internal fields in activity details", () => {
+    const { container } = render(
+      <AgentActionActivityCard
+        entry={entry(
+          action({
+            action_id: "activity-raw",
+            action_type: "memory.profile.action",
+            title: "target_id candidate:raw-candidate fact:raw-fact",
+            summary: "source_text source_excerpt agent_run_id lifecycle_status Authorization token C:\\Users\\Alice\\Vault\\Secret.md",
+            target_paths: ["C:\\Users\\Alice\\Vault\\Secret.md"],
+            error: "memory_candidates target_id source_text Authorization",
+            diff_summary: "fact:raw-fact source_excerpt",
+            metadata: { skipped_reason: "automation_disabled target_id" },
+            reverted_by: "action-raw-revert",
+            reverts_action_id: "action-raw-source",
+          }),
+        )}
+        reverting={false}
+        onRevert={vi.fn()}
+        onRevealTarget={vi.fn()}
+      />,
+    );
+
+    expect(screen.getAllByText(/细节已隐藏/).length).toBeGreaterThan(0);
+    expect(screen.getByText("这次整理没有完成，请稍后重试。")).toBeInTheDocument();
+    expect(screen.getByText("已撤回，并留下新的活动记录。")).toBeInTheDocument();
+    expect(screen.getByText("这是撤回记录，来源活动细节已隐藏。")).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(
+      /target_id|candidate:|fact:|memory_candidates|source_text|source_excerpt|agent_run_id|lifecycle_status|Authorization|token|action-raw|C:\\Users\\Alice/i,
+    );
+  });
+
   it("shows a clear state after an activity has been reverted", () => {
     render(
       <AgentActionActivityCard
@@ -129,7 +161,7 @@ describe("AgentActionActivityCard", () => {
       />,
     );
 
-    expect(screen.getByText(/已撤回，并生成新的活动记录/)).toBeInTheDocument();
+    expect(screen.getByText(/已撤回，并留下新的活动记录/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "撤回" })).not.toBeInTheDocument();
   });
 });

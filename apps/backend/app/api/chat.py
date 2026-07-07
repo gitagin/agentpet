@@ -1,6 +1,7 @@
 from collections.abc import AsyncIterator
 import asyncio
 import logging
+import re
 
 from fastapi import APIRouter, Request, status
 from fastapi.responses import StreamingResponse
@@ -21,6 +22,7 @@ from ..models.api import ChatAcceptedResponse, ChatRequest
 from ..services.agent_actions import AgentActionCreate, AutomationPolicy
 from ..services.chat_pipeline import agent_action_event, archive_chat_memory, automation_settings
 from ..services.memory_policy import evaluate_memory_content
+from ..services.prompt_context_types import PromptRecentTurn
 from ..models.common import new_id
 from ..models.enums import AgentId, AgentRunStatus, ConversationStatus, MessageRole, MessageStatus
 from ..utils.time import utc_now_iso
@@ -42,6 +44,22 @@ from .wiring import (
 router = APIRouter(prefix="/chat", tags=["chat"])
 logger = logging.getLogger(__name__)
 LOCAL_PRIVACY_REDACTED_USER_MESSAGE = "[local privacy mode redacted sensitive user message]"
+_RECENT_TURNS_FETCH_LIMIT = 12
+_RECENT_TURNS_MAX_SELECTED = 4
+_RECENT_TURN_INTERNAL_PATTERN = re.compile(
+    r"source_text|source_excerpt|raw\s+evidence|agent_run_id|authorization|bearer\s+|"
+    r"message_id|conversation_id|source_message_id|source_conversation_id|"
+    r"raw_evidence|evidence_id|evidence:|source_message|source_conversation|"
+    r"\btoken\b|tool_call|<tool_call|</tool_call>|memory_candidates|target_id|"
+    r"vault\s+write\s+preview|markdown_preview",
+    re.IGNORECASE,
+)
+_RECENT_TURN_WINDOWS_PATH_PATTERN = re.compile(r"(?:[A-Za-z]:[\\/]|\\\\)")
+_RECENT_TURN_POSIX_PATH_PATTERN = re.compile(r"(?<!\w)/(?:Users|home|var|etc|tmp|mnt|opt|root)/", re.IGNORECASE)
+_RECENT_TURN_STACK_TRACE_PATTERN = re.compile(
+    r"Traceback \(most recent call last\)|\bFile \"[^\"]+\", line \d+",
+    re.IGNORECASE,
+)
 
 
 @router.post("", response_model=ChatAcceptedResponse)
@@ -52,6 +70,7 @@ async def create_chat(chat_request: ChatRequest, request: Request) -> ChatAccept
     local_privacy_reason = _local_privacy_sensitive_reason(request, chat_request.message)
     stored_user_message = _stored_user_message(chat_request.message, local_privacy_reason)
     _create_chat_records(request, conversation_id=conversation_id, message_id=message_id, agent_run_id=agent_run_id, user_message=stored_user_message)
+    recent_turns = _load_recent_turns(request, conversation_id=conversation_id, current_message_id=message_id)
     record_audit(request, action="chat.create", result="success", reason=audit_reason(request, agent_run_id=agent_run_id, conversation_id=conversation_id))
     add_chat_run(
         request,
@@ -60,6 +79,7 @@ async def create_chat(chat_request: ChatRequest, request: Request) -> ChatAccept
             message_id=message_id,
             agent_run_id=agent_run_id,
             user_message=chat_request.message,
+            recent_turns=list(recent_turns),
             local_privacy_mode=local_privacy_reason is not None,
             local_privacy_sensitive_reason=local_privacy_reason,
         ),
@@ -83,6 +103,74 @@ def _stored_user_message(user_message: str, local_privacy_reason: str | None) ->
     if local_privacy_reason is None:
         return user_message
     return f"{LOCAL_PRIVACY_REDACTED_USER_MESSAGE}: {local_privacy_reason}"
+
+
+def _load_recent_turns(
+    request: Request,
+    *,
+    conversation_id: str,
+    current_message_id: str,
+) -> tuple[PromptRecentTurn, ...]:
+    try:
+        with database(request).connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, role, content, created_at
+                FROM messages
+                WHERE conversation_id = ?
+                  AND id != ?
+                  AND role IN (?, ?)
+                  AND status = ?
+                  AND TRIM(content) != ''
+                ORDER BY created_at DESC, id DESC
+                LIMIT ?
+                """,
+                (
+                    conversation_id,
+                    current_message_id,
+                    MessageRole.USER.value,
+                    MessageRole.ASSISTANT.value,
+                    MessageStatus.COMPLETED.value,
+                    _RECENT_TURNS_FETCH_LIMIT,
+                ),
+            ).fetchall()
+    except Exception:
+        logger.warning("Recent turns loading failed; continuing without recent conversation context.", exc_info=True)
+        return ()
+
+    selected_newest: list[PromptRecentTurn] = []
+    for row in rows:
+        turn = _safe_recent_turn(row["role"], row["content"], row["created_at"])
+        if turn is None:
+            continue
+        selected_newest.append(turn)
+        if len(selected_newest) >= _RECENT_TURNS_MAX_SELECTED:
+            break
+    return tuple(reversed(selected_newest))
+
+
+def _safe_recent_turn(role: str, content: str, created_at: str | None) -> PromptRecentTurn | None:
+    role_value = str(role).casefold()
+    if role_value not in {MessageRole.USER.value, MessageRole.ASSISTANT.value}:
+        return None
+    text = str(content or "").strip()
+    if not text or _recent_turn_should_exclude(text):
+        return None
+    return PromptRecentTurn(role=role_value, content=text, created_at=created_at)
+
+
+def _recent_turn_should_exclude(content: str) -> bool:
+    if not evaluate_memory_content(content).allowed:
+        return True
+    return any(
+        pattern.search(content)
+        for pattern in (
+            _RECENT_TURN_INTERNAL_PATTERN,
+            _RECENT_TURN_WINDOWS_PATH_PATTERN,
+            _RECENT_TURN_POSIX_PATH_PATTERN,
+            _RECENT_TURN_STACK_TRACE_PATTERN,
+        )
+    )
 
 
 @router.get("/runs/{agent_run_id}/events")

@@ -31,6 +31,7 @@ from app.services.memory_consolidation import MemoryConsolidationService
 from app.services.memory_graph import MemoryGraphStore
 from app.services.memory_lifecycle import MemoryLifecycleService
 from app.services.memory_permissions import MemoryActivationEventRecorder
+from app.services.prompt_profile_provider import PromptProfileProvider
 from app.services.retrieval import RetrievalService
 from app.services.retrieval_factory import build_vector_index
 from app.services.retrospectives import RetrospectiveService
@@ -375,6 +376,10 @@ def memory_consolidation_service(request: Request | AppContext) -> MemoryConsoli
 
 def memory_activation_recorder(request: Request | AppContext) -> MemoryActivationEventRecorder:
     return MemoryActivationEventRecorder(database(request).path)
+
+
+def prompt_profile_provider(request: Request | AppContext) -> PromptProfileProvider:
+    return PromptProfileProvider(database(request).path)
 
 
 def memory_lifecycle_service(request: Request | AppContext) -> MemoryLifecycleService:

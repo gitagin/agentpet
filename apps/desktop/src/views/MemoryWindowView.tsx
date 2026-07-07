@@ -269,8 +269,57 @@ function formatMemoryFactStatus(status: string): string {
     case "sensitive_blocked":
       return "敏感封存";
     default:
-      return status;
+      return "待复核";
   }
+}
+
+function formatMemoryKindLabel(value: string | null | undefined): string {
+  if (!value) {
+    return "记忆";
+  }
+  const normalized = value.toLocaleLowerCase();
+  const labels: Record<string, string> = {
+    boundary: "边界",
+    boundaries: "边界",
+    diary: "日记",
+    event: "事件",
+    fact: "事实",
+    global: "通用",
+    identity: "身份",
+    inference: "推断",
+    preference: "偏好",
+    preferences: "偏好",
+    project: "项目",
+    project_context: "项目",
+    recent_state: "近期状态",
+    relationship: "关系",
+    relationships: "关系",
+    temporary: "临时",
+  };
+  return labels[normalized] || memoryTypeLabels[normalized as MemoryProposalType] || "记忆";
+}
+
+function formatMemorySourceLabel(value: string | null | undefined): string {
+  if (!value) {
+    return "来源已安全摘要";
+  }
+  const normalized = value.toLocaleLowerCase();
+  const labels: Record<string, string> = {
+    chat: "来自一次聊天",
+    chat_diary: "来自聊天日记",
+    chat_message: "来自一次聊天",
+    daily_chat: "来自聊天日记",
+    diary: "来自日记整理",
+    diary_object: "来自日记整理",
+    explicit_user: "来自用户明确要求",
+    immediate: "来自一次聊天",
+    model_extracted: "来自聊天后的整理",
+    slow_consolidation: "来自聊天后的整理",
+    system_summary: "来自系统整理",
+    user_feedback: "来自用户明确要求",
+    user_message: "来自一次聊天",
+  };
+  return labels[normalized] || "来源已安全摘要";
 }
 
 function memoryFactSearchText(fact: MemoryGraphFact): string {
@@ -308,7 +357,7 @@ function formatMemoryFactRisk(fact: MemoryGraphFact): string {
 function formatMemoryFactReason(fact: MemoryGraphFact): string {
   const support = fact.support_count > 0 ? `${fact.support_count} 条支持` : "暂无支持计数";
   const importance = typeof fact.importance === "number" ? `，重要度 ${Math.round(fact.importance * 100)}%` : "";
-  return `来自 ${fact.source_type || "未知来源"}，${support}${importance}`;
+  return `${formatMemorySourceLabel(fact.source_type)}，${support}${importance}`;
 }
 
 function memoryExportText(response: MemoryGraphExportPreviewResponse, format: MemoryExportFormat): string {
@@ -354,7 +403,7 @@ function safeMemoryNotice(value: string | undefined | null): string {
     return "";
   }
   if (
-    /agent_run_id|memory_candidates|target_id|candidate:|fact:|FTS|vector|lifecycle_status|source_text|source_excerpt|Authorization|Bearer|token|[A-Za-z]:[\\/]|\\\\|\.md\b/i.test(
+    /agent_run_id|memory_candidates|target_id|candidate:|fact:|\b(?:candidate|fact)[_-][A-Za-z0-9][\w-]*\b|FTS|vector|lifecycle_status|source_text|source_excerpt|Authorization|Bearer|token|[A-Za-z]:[\\/]|\\\\|\.md\b/i.test(
       text,
     )
   ) {
@@ -387,10 +436,21 @@ function formatSources(sources: RetrospectiveSourceReference[]): string {
   if (!sources.length) {
     return "无来源";
   }
-  return sources
-    .slice(0, 3)
-    .map((source) => source.path || `${source.kind}:${source.id}`)
-    .join(" / ");
+  const labels: Record<string, string> = {
+    action: "整理记录",
+    agent_action: "整理记录",
+    chat: "聊天",
+    chat_diary: "聊天日记",
+    daily_chat: "聊天日记",
+    diary: "日记",
+    diary_object: "日记",
+    memory: "长期记忆",
+    memory_candidate: "长期记忆",
+    memory_fact: "长期记忆",
+    task: "任务",
+    wiki: "资料页",
+  };
+  return Array.from(new Set(sources.slice(0, 3).map((source) => labels[source.kind] || "本地来源"))).join(" / ");
 }
 
 function windowByDays(data: RetrospectiveResponse | null, days: number): RetrospectiveWindow | null {
@@ -853,7 +913,7 @@ function RetrospectiveWindowPanel({
             <strong>新增记忆和资料整理</strong>
             {window.long_term_memories.slice(0, 3).map((item) => (
               <p key={item.id}>
-                {item.summary} <small>{item.category} / {item.status}</small>
+                {item.summary} <small>{formatMemoryKindLabel(item.category)} / {formatMemoryFactStatus(item.status)}</small>
               </p>
             ))}
             {window.wiki_updates.slice(0, 3).map((item) => (
@@ -1244,7 +1304,7 @@ function MemoryFactCard({
         <strong>{memoryFactSentence(fact)}</strong>
         <div className="memory-graph-fact-meta">
           <span>{formatMemoryFactStatus(fact.status)}</span>
-          <span>{fact.category}</span>
+          <span>{formatMemoryKindLabel(fact.category)}</span>
           <span>风险 {formatMemoryFactRisk(fact)}</span>
           <span>置信度 {Math.round(fact.confidence * 100)}%</span>
           <span>支持 {fact.support_count}</span>
@@ -1253,8 +1313,8 @@ function MemoryFactCard({
           <div>
             <dt>来源</dt>
             <dd>
-              {fact.source_type}
-              {fact.memory_type ? ` / ${fact.memory_type}` : ""}
+              {formatMemorySourceLabel(fact.source_type)}
+              {fact.memory_type ? ` / ${formatMemoryKindLabel(fact.memory_type)}` : ""}
             </dd>
           </div>
           <div>
@@ -1271,7 +1331,7 @@ function MemoryFactCard({
           {fact.conflicts_with ? (
             <div>
               <dt>冲突</dt>
-              <dd>{fact.conflicts_with}</dd>
+              <dd>{safeMemoryNotice(fact.conflicts_with) || "存在可能冲突的旧记忆，细节已隐藏。"}</dd>
             </div>
           ) : null}
         </dl>
@@ -1527,14 +1587,14 @@ function WeeklyMemoryReviewPanel({
                 <strong>{item.summary}</strong>
                 <div className="memory-graph-fact-meta">
                   <span>{formatReviewCategory(item.category)}</span>
-                  <span>{item.memory_kind || item.target_type}</span>
-                  <span>{item.lifecycle_status}</span>
+                  <span>{formatMemoryKindLabel(item.memory_kind || item.target_type)}</span>
+                  <span>{formatMemoryFactStatus(item.lifecycle_status)}</span>
                   <span>置信度 {Math.round(item.confidence * 100)}%</span>
                 </div>
                 <p>
-                  {item.source}
-                  {item.expires_at ? ` / expires ${formatDate(item.expires_at)}` : ""}
-                  {item.updated_at ? ` / ${formatDate(item.updated_at)}` : ""}
+                  {formatMemorySourceLabel(item.source)}
+                  {item.expires_at ? ` / 到期时间 ${formatDate(item.expires_at)}` : ""}
+                  {item.updated_at ? ` / 更新于 ${formatDate(item.updated_at)}` : ""}
                 </p>
               </div>
               <div className="memory-graph-fact-actions">

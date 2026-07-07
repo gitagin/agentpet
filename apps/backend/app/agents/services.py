@@ -151,6 +151,15 @@ class MemoryActivationRecorderProtocol(Protocol):
     ) -> None: ...
 
 
+class PromptProfileProviderProtocol(Protocol):
+    def select(
+        self,
+        *,
+        user_message: str = "",
+        semantic_analysis: Any | None = None,
+    ) -> Any: ...
+
+
 @dataclass(slots=True)
 class AgentRuntimeServices:
     retrieval: RetrievalServiceProtocol | None = None
@@ -165,6 +174,7 @@ class AgentRuntimeServices:
     automation_settings: Any | None = None
     agent_action_recorder: AgentActionRecorderProtocol | None = None
     memory_activation_recorder: MemoryActivationRecorderProtocol | None = None
+    prompt_profile_provider: PromptProfileProviderProtocol | None = None
 
 
 class AgentServices(Protocol):

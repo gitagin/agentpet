@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Any, Callable
 
 from app.models.api import MemorySearchResponse, MemorySearchResult
@@ -8,12 +9,16 @@ from app.services.chat_model import AgentModelNotConfiguredError
 from app.services.memory_permissions import (
     MemoryPromptSections,
     record_prompt_section_usage,
-    split_recall_prompt_sections,
+)
+from app.services.prompt_memory_assembler import (
+    PromptMemoryAssembler,
+    PromptMemoryAssemblyInput,
+    format_recall_prompt_sections,
 )
 
 from ..events import AgentTokenEvent
 from ..events_helpers import _agent_state, _append_status, _emit_tool_results, _events, _record_node_error
-from ..prompts.system import _immediate_understanding_context_prompt, _knowledge_not_found_chat_prompt
+from ..prompts.system import _knowledge_not_found_chat_prompt
 from ..retrieval.router import _chat_agent_tool_names
 from ..retrieval.scoping import _source_scope_label
 from ..runtime_helpers import (
@@ -22,13 +27,14 @@ from ..runtime_helpers import (
     _continuity_presence_context_block,
     _continuity_signal,
     _continuity_signal_event,
-    _message_with_continuity_context,
 )
 from ..services import AgentRuntimeServices, ToolCallingChatModelProtocol
 from ..tools import ModelInvocationFailedError
 from ..semantic import _parse_text_search_tool_call
 from ..state import AgentState
 from ..tools import AgentToolResult, AgentToolSet, AgentToolUnavailableError, SensitiveMemoryRejectedError
+
+logger = logging.getLogger(__name__)
 
 # 从 graph_runtime.py 迁移，原函数名：_chat_node, _run_model_chat_with_tools, _fallback_text_search_tool_call, _answer_with_chat_model, _fallback_grounded_search, _grounded_response_from_search, _grounded_response_from_citations, _local_knowledge_not_found_response, _message_with_citation_context
 
@@ -177,30 +183,42 @@ async def _fallback_grounded_search(
 
 
 def _message_with_runtime_context(services: AgentRuntimeServices, state: AgentState) -> str:
-    sections = split_recall_prompt_sections(state.citations, query=state.user_message) if state.citations else None
-    if sections is not None:
-        record_prompt_section_usage(
-            services.memory_activation_recorder,
-            sections=sections,
+    assembly = PromptMemoryAssembler().assemble(
+        PromptMemoryAssemblyInput(
+            user_message=state.user_message,
+            immediate_understanding=state.immediate_understanding,
+            semantic_analysis=state.semantic_analysis,
+            citations=state.citations,
+            action_plan=state.action_plan,
+            continuity_block=_continuity_presence_context_block(services.continuity),
+            recent_turns=state.recent_turns,
+            stable_profile_items=_stable_profile_items(services, state),
             conversation_id=state.conversation_id,
             message_id=state.message_id,
             agent_run_id=state.agent_run_id,
         )
-    user_message = _message_with_citation_context(state, sections=sections)
-    if state.action_plan is not None:
-        user_message = (
-            f"{user_message}\n\n"
-            "Planned local action:\n"
-            f"- type: {state.action_plan.action_type}\n"
-            f"- risk: {state.action_plan.risk_score}\n"
-            f"- decision: {state.action_plan.decision}\n"
-            f"- user-facing draft: {state.action_plan.confirm_text}\n"
-            "Reply naturally using this draft. Do not claim the action has finished yet."
+    )
+    if assembly.recall_sections is not None:
+        record_prompt_section_usage(
+            services.memory_activation_recorder,
+            sections=assembly.recall_sections,
+            conversation_id=state.conversation_id,
+            message_id=state.message_id,
+            agent_run_id=state.agent_run_id,
         )
-    immediate_block = _immediate_understanding_context_prompt(state.immediate_understanding)
-    if immediate_block:
-        user_message = f"{immediate_block}\n\nCurrent user message:\n{user_message}"
-    return _message_with_continuity_context(user_message, _continuity_presence_context_block(services.continuity))
+    return assembly.prompt_text
+
+
+def _stable_profile_items(services: AgentRuntimeServices, state: AgentState) -> tuple[object, ...]:
+    provider = services.prompt_profile_provider
+    if provider is None:
+        return ()
+    try:
+        selection = provider.select(user_message=state.user_message, semantic_analysis=state.semantic_analysis)
+    except Exception:
+        logger.warning("Prompt profile provider failed; continuing without stable profile.", exc_info=True)
+        return ()
+    return tuple(getattr(selection, "items", ()) or ())
 
 
 def _grounded_response_from_search(search_response: MemorySearchResponse) -> str:
@@ -235,55 +253,22 @@ def _local_knowledge_not_found_response() -> str:
 
 
 def _message_with_citation_context(state: AgentState, *, sections: MemoryPromptSections | None = None) -> str:
-    if not state.citations:
-        return state.user_message
-    sections = sections or split_recall_prompt_sections(state.citations, query=state.user_message)
-    prompt_sections = _recall_prompt_sections_text(sections)
-    semantic = state.semantic_analysis
-    answer_style = semantic.answer_style if semantic else "grounded"
-    source_scope = semantic.source_scope if semantic else "all"
-    source_label = _source_scope_label(source_scope)
-    source_instruction = (
-        "这些只是聊天日记里的弱记录，不能称为已经确认的长期记忆；如果据此回答，必须明确说还没沉淀为长期记忆。"
-        if source_scope == "daily_chat"
-        else f"只能概括为我翻到的{source_label}显示，并在不确定时主动说明。"
-    )
-    return (
-        f"用户问题：{state.user_message}\n\n"
-        f"上下文范围：{source_scope}（{source_label}）\n"
-        f"回答风格：{answer_style}\n"
-        f"已检索到的上下文片段：\n{prompt_sections}\n\n"
-        "请以本地长期记忆陪伴体的口吻给出简短自然回答。不要逐条展开引用路径或原始 snippet；"
-        "只在记忆能直接帮助当前问题时自然带入，不要为了证明检索到了而提及路径、状态、分数或原文；"
-        "需要使用记忆时，请改写成温和的一句话背景判断，避免逐字复述；"
-        "不要把候选、待确认、被拒绝、隔离、封存、标错或已撤回内容说成已确认记忆；"
-        f"{source_instruction}"
-    )
+    return PromptMemoryAssembler().assemble(
+        PromptMemoryAssemblyInput(
+            user_message=state.user_message,
+            semantic_analysis=state.semantic_analysis,
+            citations=state.citations,
+            recent_turns=state.recent_turns,
+            conversation_id=state.conversation_id,
+            message_id=state.message_id,
+            agent_run_id=state.agent_run_id,
+            recall_sections=sections,
+        )
+    ).prompt_text
 
 
 def _recall_prompt_sections_text(sections: MemoryPromptSections) -> str:
-    blocks: list[str] = []
-    if sections.style_hints:
-        blocks.append(
-            "Style memory (tone only; do not mention as facts):\n"
-            + "\n".join(f"- {hint}" for hint in sections.style_hints)
-        )
-    if sections.answer_context_lines:
-        blocks.append(
-            "Answer context (may be used as answer evidence):\n"
-            + "\n".join(sections.answer_context_lines)
-        )
-    if sections.proactive_mention_lines:
-        blocks.append(
-            "Proactive mention candidates (may be directly mentioned if useful):\n"
-            + "\n".join(sections.proactive_mention_lines)
-        )
-    if sections.action_suggestion_lines:
-        blocks.append(
-            "Action suggestion support (may support suggestions):\n"
-            + "\n".join(sections.action_suggestion_lines)
-        )
-    return "\n\n".join(blocks) if blocks else "No recalled item has permission to enter the reply prompt."
+    return format_recall_prompt_sections(sections)
 
 
 def _can_use_result_as_answer_context(result: MemorySearchResult) -> bool:

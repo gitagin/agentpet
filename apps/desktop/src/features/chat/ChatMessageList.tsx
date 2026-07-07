@@ -204,7 +204,7 @@ function formatProgressScopes(scopes: string[] | undefined): string {
   };
   return scopes
     .slice(0, 3)
-    .map((scope) => scopeLabels[scope] || scope)
+    .map((scope) => scopeLabels[scope] || "本地资料")
     .join("、");
 }
 

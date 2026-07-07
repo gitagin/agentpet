@@ -160,6 +160,24 @@ describe("ChatMessageList", () => {
     expect(container.querySelector(".message-trace")).not.toHaveAttribute("open");
   });
 
+  it("does not expose internal retrieval scope names in progress cards", () => {
+    const messages: ChatMessage[] = [
+      {
+        id: "assistant-1",
+        role: "assistant",
+        content: "",
+        status: "partial",
+        retrieval_attempted: true,
+        retrieval_scopes: ["vector", "FTS", "agent_run_id"],
+      },
+    ];
+
+    const { container } = render(<ChatMessageList messages={messages} />);
+
+    expect(screen.getByText(/本地资料/)).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/vector|FTS|agent_run_id/i);
+  });
+
   it("keeps streamed answer text before progress details once tokens arrive", () => {
     const messages: ChatMessage[] = [
       {

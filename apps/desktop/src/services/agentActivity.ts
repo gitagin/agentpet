@@ -164,6 +164,7 @@ export function formatAgentActionType(actionType: string): string {
     "markdown.delete": "删除本机文本",
     "markdown.move": "移动本机文本",
     "memory.long_term.write": "已更新长期记忆",
+    "memory.profile.action": "画像记忆管理",
     "memory.promote_conflict": "记忆冲突整理",
     "sqlite.schema_change": "本机数据结构变更",
     "vault.bind": "绑定本机文件夹",

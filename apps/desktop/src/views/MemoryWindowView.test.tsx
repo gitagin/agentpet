@@ -753,6 +753,10 @@ describe("MemoryWindowView", () => {
     expect(within(activeFactCard as HTMLElement).getByText("风险 普通")).toBeInTheDocument();
     expect(within(activeFactCard as HTMLElement).getByText("来源")).toBeInTheDocument();
     expect(within(activeFactCard as HTMLElement).getByText("记住原因")).toBeInTheDocument();
+    expect(activeFactCard).toHaveTextContent("来自一次聊天");
+    expect(diary).toHaveTextContent("来自聊天日记");
+    expect(confirmed.textContent).not.toMatch(/target_id|candidate:|fact:|memory_candidates|source_text|source_excerpt|agent_run_id|lifecycle_status|FTS|vector|Authorization|token|\bactive\b|\bcandidate\b|\bstale\b|\brejected\b|\bforgotten\b|\bsuperseded\b/i);
+    expect(diary.textContent).not.toMatch(/chat_diary|target_id|source_text|source_excerpt|lifecycle_status|FTS|vector|Authorization|token/i);
 
     fireEvent.click(within(candidates).getByRole("button", { name: "确认" }));
     await waitFor(() => expect(api.confirmMemoryGraphFact).toHaveBeenCalledWith("fact-candidate"));
@@ -856,6 +860,11 @@ describe("MemoryWindowView", () => {
     expect(within(review).getByText("Maybe use weekly planning prompts.")).toBeInTheDocument();
     expect(review.textContent).not.toMatch(/Bearer\s+\S+/i);
     expect(review.textContent).not.toContain("token=");
+    expect(review.textContent).not.toMatch(/target_id|candidate:|fact:|memory_candidates|source_text|source_excerpt|agent_run_id|lifecycle_status|FTS|vector|Authorization|expires|\bactive\b|\bcandidate\b|\bstale\b|\brejected\b|\bforgotten\b|\bsuperseded\b/i);
+    expect(within(review).getAllByText("使用中").length).toBeGreaterThan(0);
+    expect(within(review).getAllByText("候选").length).toBeGreaterThan(0);
+    expect(review).toHaveTextContent("来自一次聊天");
+    expect(review).toHaveTextContent("来自聊天后的整理");
 
     const factCard = within(review).getByText("weekly review retained preference").closest("article");
     expect(factCard).not.toBeNull();

@@ -193,6 +193,26 @@ describe("ChatAgentActionSummary", () => {
     expect(container.textContent).not.toMatch(/memory_candidates|source_text|agent_run_id|lifecycle_status|vector|Authorization/i);
   });
 
+  it("sanitizes legacy raw-id memory action text in chat summaries", () => {
+    const { container } = render(
+      <ChatAgentActionSummary
+        actions={[
+          action({
+            action_id: "legacy-memory-action",
+            action_type: "memory.promote_conflict",
+            title: "target_id candidate:raw-candidate fact:raw-fact",
+            summary: "source_text source_excerpt agent_run_id lifecycle_status Authorization token C:\\Users\\Alice\\Vault\\Secret.md",
+          }),
+        ]}
+      />,
+    );
+
+    expect(container.querySelector(".chat-artifact-card.memory")).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(
+      /target_id|candidate:|fact:|memory_candidates|source_text|source_excerpt|agent_run_id|lifecycle_status|Authorization|token|C:\\Users\\Alice/i,
+    );
+  });
+
   it("does not hide failed or pending memory actions when receipts only describe answer usage", () => {
     const { container } = render(
       <ChatAgentActionSummary

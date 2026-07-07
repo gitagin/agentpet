@@ -54,6 +54,7 @@ from .factory import (
     memory_activation_recorder,
     memory_graph_store,
     memory_service,
+    prompt_profile_provider,
     record_agent_action,
     retrieval_service,
     settings_store,
@@ -539,5 +540,6 @@ def agent_runtime(request: Request) -> LangGraphAgentRuntime:
             automation_settings=automation,
             agent_action_recorder=lambda action: record_agent_action(request, action),
             memory_activation_recorder=memory_activation_recorder(request),
+            prompt_profile_provider=prompt_profile_provider(request),
         )
     )

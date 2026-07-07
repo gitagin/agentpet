@@ -528,7 +528,7 @@ function userSafeText(value: string | undefined | null, fallback: string): strin
     return fallback;
   }
   const internalPattern =
-    /receipt:used:[^\s]+|\b(agent_actions?|agent_run_id|memory_candidates?|lifecycle_status|related_memory_id|source_text|source_excerpt|agent|proposal|vault|wiki|fts|vector|sidecar|runtime|authorization|token|skipped|saveable|confirmation-only|automation_disabled)\b|[A-Za-z]:\\|\.md\b|[\\/]/i;
+    /receipt:used:[^\s]+|\b(agent_actions?|agent_run_id|memory_candidates?|lifecycle_status|related_memory_id|target_id|source_text|source_excerpt|agent|proposal|vault|wiki|fts|vector|sidecar|runtime|authorization|token|skipped|saveable|confirmation-only|automation_disabled)\b|candidate:|fact:|\b(?:candidate|fact)[_-][A-Za-z0-9][\w-]*\b|[A-Za-z]:[\\/]|\\\\|\.md\b|[\\/]/i;
   return internalPattern.test(text) ? fallback : text;
 }
 
