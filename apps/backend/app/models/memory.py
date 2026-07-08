@@ -157,6 +157,75 @@ class MemoryGraphFactActionResponse(BaseModel):
     fact_id: str; status: str
 
 
+MemoryGraphProjectionNodeType = Literal[
+    "user",
+    "preference",
+    "boundary",
+    "project",
+    "episode",
+    "mood",
+    "qa",
+    "source",
+    "pending",
+    "archived",
+    "cleanup",
+]
+MemoryGraphProjectionStatus = Literal["active", "pending", "archived", "hidden"]
+MemoryGraphProjectionRiskTier = Literal["low", "hidden"]
+MemoryGraphProjectionEdgeType = Literal[
+    "related_to",
+    "supports",
+    "came_from",
+    "updates",
+    "conflicts_with",
+    "belongs_to",
+]
+
+
+class MemoryGraphProjectionNodeResponse(BaseModel):
+    id: str
+    type: MemoryGraphProjectionNodeType
+    label: str
+    subtitle: str
+    status: MemoryGraphProjectionStatus
+    risk_tier: MemoryGraphProjectionRiskTier
+    size: float = Field(ge=0.0, le=2.0)
+    confidence_label: str
+    source_label: str
+    updated_at: str
+    available_actions: list[str] = Field(default_factory=list)
+
+
+class MemoryGraphProjectionEdgeResponse(BaseModel):
+    id: str
+    from_: str = Field(alias="from")
+    to: str
+    type: MemoryGraphProjectionEdgeType
+    strength: float = Field(ge=0.0, le=1.0)
+
+
+class MemoryGraphProjectionClusterResponse(BaseModel):
+    id: str
+    label: str
+    node_ids: list[str] = Field(default_factory=list)
+
+
+class MemoryGraphProjectionSummaryResponse(BaseModel):
+    total_nodes: int = 0
+    pending_count: int = 0
+    cleanup_count: int = 0
+    hidden_count: int = 0
+
+
+class MemoryGraphProjectionResponse(BaseModel):
+    generated_at: str
+    nodes: list[MemoryGraphProjectionNodeResponse] = Field(default_factory=list)
+    edges: list[MemoryGraphProjectionEdgeResponse] = Field(default_factory=list)
+    clusters: list[MemoryGraphProjectionClusterResponse] = Field(default_factory=list)
+    summary: MemoryGraphProjectionSummaryResponse = Field(default_factory=MemoryGraphProjectionSummaryResponse)
+    redaction_note: str = "敏感内容、原始证据、授权信息和本机路径不会显示。"
+
+
 MemoryFeedbackTargetType = Literal["candidate", "fact"]
 MemoryFeedbackOperation = Literal[
     "keep",

@@ -15,6 +15,7 @@ import type {
   LocalAssetStatsResponse,
   MemoryGraphExportPreviewResponse,
   MemoryGraphFact,
+  MemoryGraphProjectionResponse,
   MemoryHygienePreviewResponse,
   MemoryHygieneSuggestion,
   MemoryProfileActionKind,
@@ -35,6 +36,7 @@ import type {
   RetrospectiveSourceReference,
   RetrospectiveWindow,
 } from "../types";
+import MemoryGraphPanel from "../features/memory/MemoryGraphPanel";
 import { MemoryProposalActivityCard } from "../features/memory/MemoryProposalActivityCard";
 import type { MemoryAsyncStatus } from "../features/memory/memoryReducer";
 import { memoryTypeLabels, memoryTypes } from "../features/memory/memoryConstants";
@@ -107,10 +109,10 @@ const activityFilters: Array<{ key: MemoryActivityFilter; label: string }> = [
 const graphStatusFilters: Array<{ key: MemoryGraphStatusFilter; label: string }> = [
   { key: "all", label: "全部" },
   { key: "active", label: "使用中" },
-  { key: "candidate", label: "候选" },
-  { key: "quarantined", label: "隔离" },
+  { key: "candidate", label: "等你确认" },
+  { key: "quarantined", label: "暂不使用" },
   { key: "archived", label: "归档" },
-  { key: "rejected", label: "拒绝" },
+  { key: "rejected", label: "已忽略" },
   { key: "wrong", label: "不准确" },
   { key: "sensitive_blocked", label: "敏感封存" },
 ];
@@ -259,13 +261,13 @@ function formatMemoryFactStatus(status: string): string {
     case "active":
       return "使用中";
     case "candidate":
-      return "候选";
+      return "等你确认";
     case "quarantined":
-      return "隔离";
+      return "暂不使用";
     case "archived":
       return "归档";
     case "rejected":
-      return "拒绝";
+      return "已忽略";
     case "wrong":
       return "不准确";
     case "sensitive_blocked":
@@ -285,7 +287,7 @@ function formatMemoryKindLabel(value: string | null | undefined): string {
     boundaries: "边界",
     diary: "日记",
     event: "事件",
-    fact: "事实",
+    fact: "记住的事",
     global: "通用",
     identity: "身份",
     inference: "推断",
@@ -358,7 +360,7 @@ function formatMemoryFactRisk(fact: MemoryGraphFact): string {
 
 function formatMemoryFactReason(fact: MemoryGraphFact): string {
   const support = fact.support_count > 0 ? `${fact.support_count} 条支持` : "暂无支持计数";
-  const importance = typeof fact.importance === "number" ? `，重要度 ${Math.round(fact.importance * 100)}%` : "";
+  const importance = typeof fact.importance === "number" ? `，重要性 ${Math.round(fact.importance * 100)}%` : "";
   return `${formatMemorySourceLabel(fact.source_type)}，${support}${importance}`;
 }
 
@@ -567,28 +569,28 @@ function MemoryProfileProjectionPanel({
   const visibleCount = countProfileProjectionItems(projection);
   const filteredCount = (projection?.filtered.length || 0) + (projection?.conflicts.length || 0);
   return (
-    <section className="panel feature-window-panel memory-profile-panel" aria-label="我现在记得什么">
+    <section className="panel feature-window-panel memory-profile-panel" aria-label="只读记忆概览">
       <div className="section-heading">
         <strong>我现在记得什么</strong>
         <span>
           {visibleCount > 0
-            ? `正在展示 ${visibleCount} 条可解释画像。`
+            ? `正在展示 ${visibleCount} 条以后聊天会参考的内容。`
             : "我还没有形成稳定画像，继续聊天后会在你确认下逐步整理。"}
         </span>
       </div>
       <div className="memory-profile-toolbar">
         <span>
           <ShieldAlert size={15} />
-          只读展示，不写入文件
+          只读查看，不会改动记忆
         </span>
         <button type="button" className="secondary" onClick={onRefresh} disabled={loading}>
           {loading ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />}
-          刷新画像
+          刷新记忆
         </button>
       </div>
       {error ? <p className="field-note error">{error}</p> : null}
       {loading && !projection ? (
-        <EmptyState text="正在整理我可以安全展示的画像。" />
+        <EmptyState text="正在整理我可以安全展示的记忆。" />
       ) : projection && visibleCount > 0 ? (
         <>
           <div className="memory-profile-grid">
@@ -629,7 +631,7 @@ function MemoryProfileProjectionPanel({
           <p className="field-note">{safeMemoryNotice(projection.redaction_note)}</p>
         </>
       ) : (
-        <EmptyState text="我还没有形成稳定画像，继续聊天后会在你确认下逐步整理。" />
+        <EmptyState text="我还没有形成稳定记忆，继续聊天后会在你确认下逐步整理。" />
       )}
       {detail || detailLoading || detailError ? (
         <MemoryProfileDetailDrawer
@@ -682,8 +684,7 @@ function MemoryProfileProjectionGroup({
                 <span>{item.permissions_summary}</span>
               </div>
               <p>
-                {item.source_label} / 置信度 {Math.round(item.confidence * 100)}% / 重要度{" "}
-                {Math.round(item.importance * 100)}%
+                来自：{item.source_label}。我会在合适时参考这条记忆。
               </p>
             </button>
           ))}
@@ -1054,7 +1055,7 @@ function ReviewCoachCard({
       <ReviewCoverageList window={window} />
       {window?.has_data ? (
         <p className="field-note">
-          使用 {window.summary.diary_objects || 0} 条日记、{window.tasks.total} 个任务、{window.summary.long_term_memories || 0} 条记忆事实和 {window.summary.wiki_updates || 0} 次资料整理。
+          使用 {window.summary.diary_objects || 0} 条日记、{window.tasks.total} 个任务、{window.summary.long_term_memories || 0} 条长期记忆和 {window.summary.wiki_updates || 0} 次资料整理。
         </p>
       ) : (
         <p className="field-note">这个复盘窗口还没有本地来源数据。</p>
@@ -1216,7 +1217,7 @@ function AddMemoryForm({
     <form className="memory-add-form" aria-label="新增记忆表单" onSubmit={onSubmit}>
       <div className="section-heading compact">
         <strong>新增记忆</strong>
-        <span>不经过聊天也可以创建一条可复核的记忆候选。</span>
+        <span>不经过聊天也可以手动添加一条等你确认的记忆。</span>
       </div>
       {onTryPreference ? (
         <div className="guided-trial-actions" aria-label="记忆快捷操作">
@@ -1280,14 +1281,14 @@ function MemoryProposalReviewList({
 }) {
   const pending = proposals.filter((proposal) => proposal.status === "pending");
   return (
-    <section className="memory-review-list" aria-label="待复核记忆候选">
+    <section className="memory-review-list" aria-label="等你确认的记忆">
       <div className="section-heading compact">
-        <strong>待复核候选</strong>
-        <span>{pending.length} 条待确认 / 共 {proposals.length} 条候选。</span>
+        <strong>等你确认</strong>
+        <span>{pending.length} 条等你确认 / 共 {proposals.length} 条待处理记忆。</span>
       </div>
       <button type="button" className="secondary" onClick={onRefresh} disabled={loading}>
         {loading ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />}
-        刷新候选
+        刷新待确认
       </button>
       <div className="proposal-list memory-proposal-review-list">
         {proposals.length > 0 ? (
@@ -1308,7 +1309,7 @@ function MemoryProposalReviewList({
         ) : loading ? (
           <EmptyState text="正在加载待确认记忆。" />
         ) : (
-          <EmptyState text="没有待确认记忆。上方“新增记忆”会创建新的候选项。" />
+          <EmptyState text="没有待确认记忆。上方可以手动添加一条希望我记住的事。" />
         )}
       </div>
     </section>
@@ -1332,7 +1333,7 @@ function MemoryFactCard({
           <span>{formatMemoryFactStatus(fact.status)}</span>
           <span>{formatMemoryKindLabel(fact.category)}</span>
           <span>风险 {formatMemoryFactRisk(fact)}</span>
-          <span>置信度 {Math.round(fact.confidence * 100)}%</span>
+          <span>我有多确定 {Math.round(fact.confidence * 100)}%</span>
           <span>支持 {fact.support_count}</span>
         </div>
         <dl className="memory-graph-fact-details" aria-label="记忆来源和判断">
@@ -1468,17 +1469,17 @@ function MemoryPriorityPanel({
   const historyPreview = recentHistoryEntries.slice(0, 3);
 
   return (
-    <section className="panel feature-window-panel memory-primary-panel" aria-label="我的记忆控制台">
+    <section className="panel feature-window-panel memory-primary-panel" aria-label="记忆主视图">
       <div className="section-heading">
-        <strong>{productCopy.memoryPage.title}</strong>
-        <span>{productCopy.memoryPage.description}</span>
+        <strong>{productCopy.memoryPage.primaryPanelTitle}</strong>
+        <span>{productCopy.memoryPage.primaryPanelDescription}</span>
       </div>
 
       <div className="memory-priority-grid">
         <section className="memory-priority-block" aria-label={productCopy.memoryPage.activeSectionTitle}>
           <div className="section-heading compact">
             <strong>{productCopy.memoryPage.activeSectionTitle}</strong>
-            <span>{activeFacts.length} 条正在用于陪伴和检索。</span>
+            <span>{activeFacts.length} 条以后聊天会参考。</span>
           </div>
           <div className="memory-graph-list memory-priority-list">
             {activePreview.length > 0 ? (
@@ -1501,7 +1502,7 @@ function MemoryPriorityPanel({
         <section className="memory-priority-block" aria-label={productCopy.memoryPage.pendingSectionTitle}>
           <div className="section-heading compact">
             <strong>{productCopy.memoryPage.pendingSectionTitle}</strong>
-            <span>{pendingProposals.length + candidateFacts.length} 条需要你确认或复核。</span>
+            <span>{pendingProposals.length + candidateFacts.length} 条需要你决定是否留下。</span>
           </div>
           <button type="button" className="secondary memory-priority-refresh" onClick={onLoadMemoryProposals} disabled={loadingMemoryProposals}>
             {loadingMemoryProposals ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />}
@@ -1543,7 +1544,7 @@ function MemoryPriorityPanel({
         <section className="memory-priority-block" aria-label={productCopy.memoryPage.recentHistoryTitle}>
           <div className="section-heading compact">
             <strong>{productCopy.memoryPage.recentHistoryTitle}</strong>
-            <span>显示最近已跳过、已撤回，或仍可撤回的整理记录。</span>
+            <span>看看最近哪些记忆被跳过、撤回，或还能撤回。</span>
           </div>
           <div className="proposal-list agent-activity-log-list feature-activity-list memory-priority-list">
             {historyPreview.length > 0 ? (
@@ -1594,7 +1595,7 @@ function WeeklyMemoryReviewPanel({
         <article className="memory-trust-group-card active">
           <strong>已忽略</strong>
           <span>{summary.ignored}</span>
-          <p>候选、隔离或未进入长期使用的内容。</p>
+          <p>等你确认、暂不使用，或没有进入长期使用的内容。</p>
         </article>
       </div>
       <div className="button-row">
@@ -1615,7 +1616,7 @@ function WeeklyMemoryReviewPanel({
                   <span>{formatReviewCategory(item.category)}</span>
                   <span>{formatMemoryKindLabel(item.memory_kind || item.target_type)}</span>
                   <span>{formatMemoryFactStatus(item.lifecycle_status)}</span>
-                  <span>置信度 {Math.round(item.confidence * 100)}%</span>
+                  <span>我有多确定 {Math.round(item.confidence * 100)}%</span>
                 </div>
                 <p>
                   {formatMemorySourceLabel(item.source)}
@@ -1752,6 +1753,9 @@ export default function MemoryWindowView({
   const [memoryProfileDetailError, setMemoryProfileDetailError] = useState("");
   const [memoryProfileActionBusy, setMemoryProfileActionBusy] = useState<MemoryProfileActionKind | null>(null);
   const [memoryProfileActionMessage, setMemoryProfileActionMessage] = useState("");
+  const [memoryGraphProjection, setMemoryGraphProjection] = useState<MemoryGraphProjectionResponse | null>(null);
+  const [memoryGraphLoading, setMemoryGraphLoading] = useState(true);
+  const [memoryGraphError, setMemoryGraphError] = useState("");
   const [activeRetrospectiveDays, setActiveRetrospectiveDays] = useState(7);
   const [retrospectives, setRetrospectives] = useState<RetrospectiveResponse | null>(null);
   const [retrospectiveLoading, setRetrospectiveLoading] = useState(true);
@@ -1854,6 +1858,21 @@ export default function MemoryWindowView({
     }
   }
 
+  async function loadMemoryGraphProjection(signal?: AbortSignal) {
+    setMemoryGraphLoading(true);
+    setMemoryGraphError("");
+    try {
+      setMemoryGraphProjection(await api.getMemoryGraphProjection(signal));
+    } catch (requestError) {
+      if (requestError instanceof DOMException && requestError.name === "AbortError") {
+        return;
+      }
+      setMemoryGraphError("这次没能打开记忆图谱，请稍后重试。");
+    } finally {
+      setMemoryGraphLoading(false);
+    }
+  }
+
   async function loadMemoryProfileDetail(itemId: string, signal?: AbortSignal) {
     setMemoryProfileDetailLoading(true);
     setMemoryProfileDetailError("");
@@ -1950,6 +1969,7 @@ export default function MemoryWindowView({
     const abort = new AbortController();
     void loadLocalAssets(abort.signal);
     void loadMemoryProfileProjection(abort.signal);
+    void loadMemoryGraphProjection(abort.signal);
     void loadRetrospectives(abort.signal);
     void loadWeeklyMemoryReview(abort.signal);
     return () => abort.abort();
@@ -2065,6 +2085,7 @@ export default function MemoryWindowView({
       }
       await loadMemoryFacts();
       await loadMemoryProfileProjection();
+      await loadMemoryGraphProjection();
       await loadLocalAssets();
       onRefresh();
     } catch (requestError) {
@@ -2094,6 +2115,7 @@ export default function MemoryWindowView({
       });
       setMemoryProfileActionMessage(response.message || "已更新这条记忆。");
       await loadMemoryProfileProjection();
+      await loadMemoryGraphProjection();
       await loadMemoryProfileDetail(memoryProfileDetail.id);
       await loadLocalAssets();
       onRefresh();
@@ -2125,6 +2147,7 @@ export default function MemoryWindowView({
       await loadWeeklyMemoryReview();
       await loadMemoryFacts();
       await loadMemoryProfileProjection();
+      await loadMemoryGraphProjection();
       await loadLocalAssets();
       onRefresh();
     } catch (requestError) {
@@ -2145,6 +2168,7 @@ export default function MemoryWindowView({
       await api.applyMemoryHygieneSuggestion(item.id, true);
       await loadMemoryHygienePreview();
       await loadMemoryProfileProjection();
+      await loadMemoryGraphProjection();
       await loadWeeklyMemoryReview();
       await loadLocalAssets();
       onRefresh();
@@ -2205,6 +2229,13 @@ export default function MemoryWindowView({
       description={productCopy.memoryPage.description}
       activeTab="记忆"
     >
+      <MemoryGraphPanel
+        projection={memoryGraphProjection}
+        loading={memoryGraphLoading}
+        error={memoryGraphError}
+        onRefresh={() => void loadMemoryGraphProjection()}
+      />
+
       <MemoryPriorityPanel
         activeFacts={activePriorityFacts}
         candidateFacts={pendingPriorityFacts}
@@ -2237,8 +2268,8 @@ export default function MemoryWindowView({
 
       <details className="memory-advanced-tools memory-review-tools">
         <summary>
-          <strong>回顾和本机整理</strong>
-          <span>生成回顾报告、查看本机积累和更细的来源详情。</span>
+          <strong>{productCopy.memoryPage.advancedReviewTitle}</strong>
+          <span>{productCopy.memoryPage.advancedReviewDescription}</span>
         </summary>
         <div className="memory-advanced-tools-stack">
           <MemoryHygieneSuggestionPanel
@@ -2306,8 +2337,8 @@ export default function MemoryWindowView({
 
       <details className="memory-advanced-tools">
         <summary>
-          <strong>更多记忆管理</strong>
-          <span>搜索更多记录、复核候选项，并查看后台整理记录。</span>
+          <strong>{productCopy.memoryPage.advancedManagementTitle}</strong>
+          <span>{productCopy.memoryPage.advancedManagementDescription}</span>
         </summary>
         <div className="memory-advanced-tools-stack">
       <section className="panel feature-window-panel memory-workbench-panel" aria-label="更多记忆工作区">
@@ -2334,13 +2365,13 @@ export default function MemoryWindowView({
         </div>
       </section>
 
-      <section className="panel feature-window-panel memory-management-panel" aria-label="更多记忆管理">
+      <section className="panel feature-window-panel memory-management-panel" aria-label="高级记忆管理">
         <div className="section-heading">
-          <strong>复核并管理记忆事实</strong>
+          <strong>检查和备份记忆</strong>
           <span>
             {memoryFacts.length > 0
-              ? `显示 ${filteredMemoryFacts.length} / ${memoryFacts.length} 条结构化长期记忆。`
-              : "还没有结构化长期记忆。"}
+              ? `显示 ${filteredMemoryFacts.length} / ${memoryFacts.length} 条长期会用到的记忆。`
+              : "还没有长期会用到的记忆。"}
           </span>
         </div>
 
@@ -2388,11 +2419,11 @@ export default function MemoryWindowView({
           </button>
           <button type="button" className="secondary" onClick={() => void downloadMemoryExport("markdown")} disabled={exportLoading}>
             {exportLoading ? <Loader2 className="spin" size={16} /> : <Download size={16} />}
-            下载 Markdown
+            下载 Markdown 备份
           </button>
           <button type="button" className="secondary" onClick={() => void downloadMemoryExport("json")} disabled={exportLoading}>
             {exportLoading ? <Loader2 className="spin" size={16} /> : <Download size={16} />}
-            下载 JSON
+            下载 JSON 备份
           </button>
         </div>
         {memoryFactsError ? <p className="field-note error">{memoryFactsError}</p> : null}
@@ -2409,11 +2440,11 @@ export default function MemoryWindowView({
             onAction={(factId, action) => void updateMemoryFactStatus(factId, action)}
           />
           <MemoryFactSection
-            title="待复核候选"
-            description={`${candidateFacts.length} 条记忆事实正在等待置信度或冲突复核。`}
+            title="等你确认"
+            description={`${candidateFacts.length} 条记忆正在等待你确认或处理冲突。`}
             facts={candidateFacts}
             loading={memoryFactsLoading}
-            emptyText="当前筛选下没有匹配的待确认候选。"
+            emptyText="当前筛选下没有匹配的待确认记忆。"
             busyId={memoryFactBusyId}
             onAction={(factId, action) => void updateMemoryFactStatus(factId, action)}
           />
@@ -2422,7 +2453,7 @@ export default function MemoryWindowView({
             description={`${diaryDerivedFacts.length} 条事实来自日记或聊天提取路径。`}
             facts={diaryDerivedFacts}
             loading={memoryFactsLoading}
-            emptyText="当前筛选下没有匹配的日记来源记忆事实。"
+            emptyText="当前筛选下没有匹配的日记来源记忆。"
             busyId={memoryFactBusyId}
             onAction={(factId, action) => void updateMemoryFactStatus(factId, action)}
           />
@@ -2467,7 +2498,7 @@ export default function MemoryWindowView({
         />
       </section>
 
-      <section className="panel feature-window-panel memory-activity-panel" aria-label="后台整理记录">
+      <section className="panel feature-window-panel memory-activity-panel" aria-label="整理记录">
         <div className="section-heading">
           <strong>最近整理活动</strong>
           <span>

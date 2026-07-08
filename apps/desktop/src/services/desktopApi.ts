@@ -28,6 +28,7 @@ import type {
   MemoryGraphExportPreviewResponse,
   MemoryGraphFactActionResponse,
   MemoryGraphFactListResponse,
+  MemoryGraphProjectionResponse,
   MemoryFeedbackResponse,
   MemoryHygieneActionResponse,
   MemoryHygienePreviewResponse,
@@ -132,6 +133,10 @@ export class DesktopApi {
 
   getMemoryProfileProjection(signal?: AbortSignal): Promise<MemoryProfileProjectionResponse> {
     return this.client.get<MemoryProfileProjectionResponse>("/api/memory/profile-projection", signal);
+  }
+
+  getMemoryGraphProjection(signal?: AbortSignal): Promise<MemoryGraphProjectionResponse> {
+    return this.client.get<MemoryGraphProjectionResponse>("/api/memory/graph-projection", signal);
   }
 
   getMemoryProfileDetail(itemId: string, signal?: AbortSignal): Promise<MemoryProfileDetail> {

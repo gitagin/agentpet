@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import MemoryWindowView from "./MemoryWindowView";
 import type { DesktopApi } from "../services/desktopApi";
-import type { AgentAction, LocalAssetStatsResponse, MemoryGraphFact, MemoryHygienePreviewResponse, MemoryProfileDetail, MemoryProfileProjectionResponse, MemoryProposalDraft, MemoryReviewResponse, MemorySearchResult, RetrospectiveReportResponse, RetrospectiveResponse } from "../types";
+import type { AgentAction, LocalAssetStatsResponse, MemoryGraphFact, MemoryGraphProjectionResponse, MemoryHygienePreviewResponse, MemoryProfileDetail, MemoryProfileProjectionResponse, MemoryProposalDraft, MemoryReviewResponse, MemorySearchResult, RetrospectiveReportResponse, RetrospectiveResponse } from "../types";
 
 function memoryFact(overrides: Partial<MemoryGraphFact> = {}): MemoryGraphFact {
   return {
@@ -308,11 +308,116 @@ const profilePreferenceDetail: MemoryProfileDetail = {
   ],
 };
 
+const memoryGraphProjection: MemoryGraphProjectionResponse = {
+  generated_at: "2026-06-02T00:00:00Z",
+  nodes: [
+    {
+      id: "mg_user",
+      type: "user",
+      label: "我",
+      subtitle: "记忆中心",
+      status: "active",
+      risk_tier: "low",
+      size: 1.45,
+      confidence_label: "由你掌控",
+      source_label: "本机记忆图谱",
+      updated_at: "2026-06-02T00:00:00Z",
+      available_actions: [],
+    },
+    {
+      id: "mg_pref",
+      type: "preference",
+      label: "回答保持简洁",
+      subtitle: "偏好",
+      status: "active",
+      risk_tier: "low",
+      size: 1.12,
+      confidence_label: "较确定",
+      source_label: "来自用户明确要求",
+      updated_at: "2026-06-02T00:00:00Z",
+      available_actions: [],
+    },
+    {
+      id: "mg_project",
+      type: "project",
+      label: "Project Atlas 正在推进",
+      subtitle: "项目",
+      status: "active",
+      risk_tier: "low",
+      size: 1,
+      confidence_label: "基本确定",
+      source_label: "来自聊天日记",
+      updated_at: "2026-06-02T00:00:00Z",
+      available_actions: [],
+    },
+    {
+      id: "mg_pending",
+      type: "pending",
+      label: "也许偏好长篇解释",
+      subtitle: "待确认",
+      status: "pending",
+      risk_tier: "low",
+      size: 0.9,
+      confidence_label: "需要确认",
+      source_label: "来自聊天后的整理",
+      updated_at: "2026-06-02T00:00:00Z",
+      available_actions: [],
+    },
+    {
+      id: "mg_cleanup",
+      type: "cleanup",
+      label: "临时状态已过期",
+      subtitle: "需要整理",
+      status: "pending",
+      risk_tier: "low",
+      size: 0.82,
+      confidence_label: "建议检查",
+      source_label: "来自本机整理建议",
+      updated_at: "2026-06-02T00:00:00Z",
+      available_actions: [],
+    },
+    {
+      id: "mg_hidden",
+      type: "archived",
+      label: "有一条已隐藏的记忆",
+      subtitle: "已隐藏",
+      status: "hidden",
+      risk_tier: "hidden",
+      size: 0.78,
+      confidence_label: "细节已隐藏",
+      source_label: "细节已隐藏",
+      updated_at: "2026-06-02T00:00:00Z",
+      available_actions: [],
+    },
+  ],
+  edges: [
+    { id: "mge_1", from: "mg_user", to: "mg_pref", type: "related_to", strength: 0.7 },
+    { id: "mge_2", from: "mg_user", to: "mg_project", type: "related_to", strength: 0.7 },
+  ],
+  clusters: [
+    { id: "cluster_preferences", label: "偏好", node_ids: ["mg_pref"] },
+    { id: "cluster_projects", label: "项目", node_ids: ["mg_project"] },
+    { id: "cluster_pending", label: "待确认", node_ids: ["mg_pending"] },
+    { id: "cluster_cleanup", label: "需要整理", node_ids: ["mg_cleanup"] },
+  ],
+  summary: { total_nodes: 6, pending_count: 2, cleanup_count: 1, hidden_count: 1 },
+  redaction_note: "敏感内容、原始证据、授权信息和本机路径不会显示。",
+};
+
+const emptyMemoryGraphProjection: MemoryGraphProjectionResponse = {
+  ...memoryGraphProjection,
+  nodes: [memoryGraphProjection.nodes[0]],
+  edges: [],
+  clusters: [],
+  summary: { total_nodes: 1, pending_count: 0, cleanup_count: 0, hidden_count: 0 },
+};
+
 function createApi(
   facts: MemoryGraphFact[],
   stats: LocalAssetStatsResponse = localAssetStats,
   profile: MemoryProfileProjectionResponse = emptyProfileProjection,
   hygiene: MemoryHygienePreviewResponse = emptyHygienePreview,
+  graph: MemoryGraphProjectionResponse = memoryGraphProjection,
 ) {
   const exportPreview = (format: "json" | "markdown" = "markdown") => ({
     generated_at: "2026-06-02T00:00:00Z",
@@ -338,6 +443,7 @@ function createApi(
     rejectMemoryProposal: vi.fn().mockResolvedValue({ proposal_id: "proposal-1", status: "rejected" }),
     getLocalAssetStats: vi.fn().mockResolvedValue(stats),
     getMemoryProfileProjection: vi.fn().mockResolvedValue(profile),
+    getMemoryGraphProjection: vi.fn().mockResolvedValue(graph),
     getMemoryProfileDetail: vi.fn().mockResolvedValue(profilePreferenceDetail),
     submitMemoryProfileAction: vi.fn().mockResolvedValue({
       ok: true,
@@ -427,19 +533,19 @@ function renderView(
 }
 
 function openAdvancedMemoryTools() {
-  const advanced = screen.getByText("更多记忆管理").closest("details") as HTMLDetailsElement;
+  const advanced = screen.getByText("高级记忆管理").closest("details") as HTMLDetailsElement;
   expect(advanced).toBeInTheDocument();
   expect(advanced).not.toHaveAttribute("open");
-  fireEvent.click(within(advanced).getByText("更多记忆管理"));
+  fireEvent.click(within(advanced).getByText("高级记忆管理"));
   expect(advanced).toHaveAttribute("open");
   return advanced;
 }
 
 function openReviewTools() {
-  const reviewTools = screen.getByText("回顾和本机整理").closest("details") as HTMLDetailsElement;
+  const reviewTools = screen.getByText("回顾与整理建议").closest("details") as HTMLDetailsElement;
   expect(reviewTools).toBeInTheDocument();
   expect(reviewTools).not.toHaveAttribute("open");
-  fireEvent.click(within(reviewTools).getByText("回顾和本机整理"));
+  fireEvent.click(within(reviewTools).getByText("回顾与整理建议"));
   expect(reviewTools).toHaveAttribute("open");
   return reviewTools;
 }
@@ -461,6 +567,51 @@ describe("MemoryWindowView", () => {
       value: vi.fn(),
     });
     vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+  });
+
+  it("renders the memory graph projection on the first screen", async () => {
+    const api = createApi([memoryFact()]);
+
+    const { container } = renderView(api);
+
+    const graph = await screen.findByLabelText("我的记忆图谱");
+    expect(api.getMemoryGraphProjection).toHaveBeenCalledTimes(1);
+    expect(within(graph).getByText("我的记忆图谱")).toBeInTheDocument();
+    expect(within(graph).getByText("把偏好、项目、事件和资料连成一张你能看懂的记忆地图。")).toBeInTheDocument();
+    expect(within(graph).getByText("记忆节点数")).toBeInTheDocument();
+    expect(within(graph).getByText("6")).toBeInTheDocument();
+    expect(within(graph).getByText("回答保持简洁")).toBeInTheDocument();
+    expect(within(graph).getByText("Project Atlas 正在推进")).toBeInTheDocument();
+    fireEvent.click(within(graph).getByRole("button", { name: "查看记忆节点：回答保持简洁" }));
+    expect(within(graph).getByLabelText("记忆节点详情")).toHaveTextContent("来自用户明确要求");
+    expect(container.textContent).not.toMatch(
+      /candidate|fact|evidence|source_text|source_excerpt|agent_run_id|message_id|conversation_id|lifecycle_status|Authorization|token|FTS|vector|[A-Za-z]:[\\/]/i,
+    );
+  });
+
+  it("renders the memory graph empty state from the projection", async () => {
+    const api = createApi([memoryFact()], localAssetStats, emptyProfileProjection, emptyHygienePreview, emptyMemoryGraphProjection);
+
+    renderView(api);
+
+    const graph = await screen.findByLabelText("我的记忆图谱");
+    expect(within(graph).getByText("还没有形成可展示的记忆星群。")).toBeInTheDocument();
+    expect(within(graph).getByText("告诉我一个偏好")).toBeInTheDocument();
+    expect(within(graph).getByText("告诉我正在做的项目")).toBeInTheDocument();
+    expect(within(graph).getByText("告诉我不希望被记住的边界")).toBeInTheDocument();
+  });
+
+  it("shows a safe graph error if the projection request fails", async () => {
+    const api = createApi([memoryFact()]);
+    (api.getMemoryGraphProjection as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new Error("source_text Authorization token C:\\secret"),
+    );
+
+    const { container } = renderView(api);
+
+    const graph = await screen.findByLabelText("我的记忆图谱");
+    expect(within(graph).getByRole("alert")).toHaveTextContent("这次没能打开记忆图谱，请稍后重试。");
+    expect(container.textContent).not.toMatch(/source_text|Authorization|token|C:\\secret/i);
   });
 
   it("renders local asset stats from the local dashboard", async () => {
@@ -486,7 +637,7 @@ describe("MemoryWindowView", () => {
 
     const { container } = renderView(api);
 
-    const profile = await screen.findByLabelText("我现在记得什么");
+    const profile = await screen.findByLabelText("只读记忆概览");
     expect(within(profile).getByText("我现在记得什么")).toBeInTheDocument();
     expect(within(profile).getAllByText("我还没有形成稳定画像，继续聊天后会在你确认下逐步整理。").length).toBeGreaterThan(0);
     expect(api.getMemoryProfileProjection).toHaveBeenCalled();
@@ -498,7 +649,7 @@ describe("MemoryWindowView", () => {
 
     const { container } = renderView(api);
 
-    const profile = await screen.findByLabelText("我现在记得什么");
+    const profile = await screen.findByLabelText("只读记忆概览");
     fireEvent.click(within(profile).getByRole("button", { name: "查看记忆详情：回答保持简洁" }));
 
     const drawer = await screen.findByRole("dialog", { name: "记忆详情" });
@@ -529,7 +680,7 @@ describe("MemoryWindowView", () => {
 
     const { container } = renderView(api);
 
-    const profile = await screen.findByLabelText("我现在记得什么");
+    const profile = await screen.findByLabelText("只读记忆概览");
     fireEvent.click(within(profile).getByRole("button", { name: "查看记忆详情：回答保持简洁" }));
 
     const drawer = await screen.findByRole("dialog", { name: "记忆详情" });
@@ -659,20 +810,20 @@ describe("MemoryWindowView", () => {
       ),
     });
 
-    expect(screen.getByRole("heading", { name: "我的记忆" })).toBeInTheDocument();
-    const control = await screen.findByLabelText("我的记忆控制台");
+    expect(screen.getByRole("heading", { name: "我会记住重要的事，但由你决定" })).toBeInTheDocument();
+    const control = await screen.findByLabelText("记忆主视图");
     await within(control).findByText("fruit is apple");
     await within(control).findByText("fruit is banana");
-    expect(within(control).getByText("正在使用的记忆")).toBeInTheDocument();
-    expect(within(control).getByText("待确认的记忆")).toBeInTheDocument();
-    expect(within(control).getByText("最近撤回或跳过的记忆")).toBeInTheDocument();
+    expect(within(control).getByText("我现在记得什么")).toBeInTheDocument();
+    expect(within(control).getAllByText("等你确认").length).toBeGreaterThan(0);
+    expect(within(control).getByText("随时改正或忘记")).toBeInTheDocument();
     expect(within(control).getByText("fruit is apple")).toBeInTheDocument();
     expect(within(control).getByText("fruit is banana")).toBeInTheDocument();
     expect(within(control).getByText("可撤回记忆记录")).toBeInTheDocument();
     expect(within(control).getByRole("button", { name: "撤回" })).toBeInTheDocument();
 
-    const reviewTools = screen.getByText("回顾和本机整理").closest("details") as HTMLDetailsElement;
-    const advanced = screen.getByText("更多记忆管理").closest("details") as HTMLDetailsElement;
+    const reviewTools = screen.getByText("回顾与整理建议").closest("details") as HTMLDetailsElement;
+    const advanced = screen.getByText("高级记忆管理").closest("details") as HTMLDetailsElement;
     expect(control.compareDocumentPosition(reviewTools) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(reviewTools.compareDocumentPosition(advanced) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(reviewTools).not.toHaveAttribute("open");
@@ -771,11 +922,11 @@ describe("MemoryWindowView", () => {
     const onRefresh = vi.fn();
 
     renderView(api, onRefresh);
-    openAdvancedMemoryTools();
+    const advanced = openAdvancedMemoryTools();
 
     const confirmed = await screen.findByLabelText("已确认记忆");
     expect(within(confirmed).getByText("fruit is apple")).toBeInTheDocument();
-    const candidates = screen.getByLabelText("待复核候选");
+    const candidates = within(advanced).getByLabelText("等你确认");
     expect(within(candidates).getByText("drink is tea")).toBeInTheDocument();
     const diary = screen.getByLabelText("日记来源记忆");
     expect(within(diary).getByText("topic mentions planning")).toBeInTheDocument();
@@ -844,14 +995,14 @@ describe("MemoryWindowView", () => {
     renderView(api);
     openAdvancedMemoryTools();
 
-    fireEvent.click(await screen.findByRole("button", { name: "下载 Markdown" }));
+    fireEvent.click(await screen.findByRole("button", { name: "下载 Markdown 备份" }));
     await waitFor(() => expect(api.getMemoryGraphExportPreview).toHaveBeenCalledWith("markdown", null, "", 100));
     expect(URL.createObjectURL).toHaveBeenCalledWith(expect.any(Blob));
     expect(HTMLAnchorElement.prototype.click).toHaveBeenCalled();
     expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:memory-export");
     expect(await screen.findByText("已导出 1 条长期记忆为 Markdown。")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "下载 JSON" }));
+    fireEvent.click(screen.getByRole("button", { name: "下载 JSON 备份" }));
     await waitFor(() => expect(api.getMemoryGraphExportPreview).toHaveBeenCalledWith("json", null, "", 100));
     expect(await screen.findByText("已导出 1 条长期记忆为 JSON。")).toBeInTheDocument();
   });
@@ -875,7 +1026,7 @@ describe("MemoryWindowView", () => {
     expect(within(todayCard as HTMLElement).getByText("任务")).toBeInTheDocument();
     expect(within(todayCard as HTMLElement).getByText("长期记忆")).toBeInTheDocument();
     expect(within(todayCard as HTMLElement).getByText("资料整理")).toBeInTheDocument();
-    expect(within(todayCard as HTMLElement).getByText("使用 1 条日记、1 个任务、1 条记忆事实和 1 次资料整理。")).toBeInTheDocument();
+    expect(within(todayCard as HTMLElement).getByText("使用 1 条日记、1 个任务、1 条长期记忆和 1 次资料整理。")).toBeInTheDocument();
   });
 
   it("scans and displays hygiene suggestions safely", async () => {
@@ -1006,7 +1157,7 @@ describe("MemoryWindowView", () => {
     expect(review.textContent).not.toContain("token=");
     expect(review.textContent).not.toMatch(/target_id|candidate:|fact:|memory_candidates|source_text|source_excerpt|agent_run_id|lifecycle_status|FTS|vector|Authorization|expires|\bactive\b|\bcandidate\b|\bstale\b|\brejected\b|\bforgotten\b|\bsuperseded\b/i);
     expect(within(review).getAllByText("使用中").length).toBeGreaterThan(0);
-    expect(within(review).getAllByText("候选").length).toBeGreaterThan(0);
+    expect(within(review).getAllByText("等你确认").length).toBeGreaterThan(0);
     expect(review).toHaveTextContent("来自一次聊天");
     expect(review).toHaveTextContent("来自聊天后的整理");
 
@@ -1081,7 +1232,7 @@ describe("MemoryWindowView", () => {
     renderView(api, onRefresh);
     openReviewTools();
 
-    expect(await screen.findByLabelText("我的记忆控制台")).toBeInTheDocument();
+    expect(await screen.findByLabelText("记忆主视图")).toBeInTheDocument();
     fireEvent.click(within(screen.getByLabelText("复盘助手")).getByRole("button", { name: "生成月度复盘" }));
 
     await waitFor(() => expect(api.writeRetrospectivePeriodReport).toHaveBeenCalledWith("monthly"));

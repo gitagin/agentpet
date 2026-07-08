@@ -892,6 +892,75 @@ export type MemoryProfileActionResponse = {
   item_id: string;
 };
 
+export type MemoryGraphNodeType =
+  | "user"
+  | "preference"
+  | "boundary"
+  | "project"
+  | "episode"
+  | "mood"
+  | "qa"
+  | "source"
+  | "pending"
+  | "archived"
+  | "cleanup";
+
+export type MemoryGraphNodeStatus = "active" | "pending" | "archived" | "hidden";
+
+export type MemoryGraphRiskTier = "low" | "hidden";
+
+export type MemoryGraphEdgeType =
+  | "related_to"
+  | "supports"
+  | "came_from"
+  | "updates"
+  | "conflicts_with"
+  | "belongs_to";
+
+export type MemoryGraphNode = {
+  id: string;
+  type: MemoryGraphNodeType;
+  label: string;
+  subtitle: string;
+  status: MemoryGraphNodeStatus;
+  risk_tier: MemoryGraphRiskTier;
+  size: number;
+  confidence_label: string;
+  source_label: string;
+  updated_at: string;
+  available_actions: string[];
+};
+
+export type MemoryGraphEdge = {
+  id: string;
+  from: string;
+  to: string;
+  type: MemoryGraphEdgeType;
+  strength: number;
+};
+
+export type MemoryGraphCluster = {
+  id: string;
+  label: string;
+  node_ids: string[];
+};
+
+export type MemoryGraphSummary = {
+  total_nodes: number;
+  pending_count: number;
+  cleanup_count: number;
+  hidden_count: number;
+};
+
+export type MemoryGraphProjectionResponse = {
+  generated_at: string;
+  nodes: MemoryGraphNode[];
+  edges: MemoryGraphEdge[];
+  clusters: MemoryGraphCluster[];
+  summary: MemoryGraphSummary;
+  redaction_note: string;
+};
+
 export type MemoryReceiptKind =
   | "remembered"
   | "skipped"

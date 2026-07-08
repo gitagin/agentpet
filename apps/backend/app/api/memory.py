@@ -15,6 +15,8 @@ from ..models.api import (
     DiaryMemorySearchResponse,
     DiaryMemorySourceResponse,
     LocalAssetStatsResponse,
+    MemoryGraphProjectionClusterResponse,
+    MemoryGraphProjectionEdgeResponse,
     MemoryFeedbackRequest,
     MemoryFeedbackResponse,
     MemoryGraphFactActionResponse,
@@ -22,6 +24,9 @@ from ..models.api import (
     MemoryGraphExportPreviewResponse,
     MemoryGraphFactListResponse,
     MemoryGraphFactResponse,
+    MemoryGraphProjectionNodeResponse,
+    MemoryGraphProjectionResponse,
+    MemoryGraphProjectionSummaryResponse,
     MemoryHygieneActionRequest,
     MemoryHygieneActionResponse,
     MemoryHygienePreviewResponse,
@@ -67,6 +72,14 @@ from ..services.memory_hygiene_suggestions import (
     MemoryHygieneSuggestionService,
 )
 from ..services.memory_policy import evaluate_memory_content
+from ..services.memory_graph_projection import (
+    MemoryGraphProjection,
+    MemoryGraphProjectionCluster,
+    MemoryGraphProjectionEdge,
+    MemoryGraphProjectionNode,
+    MemoryGraphProjectionService,
+    MemoryGraphProjectionSummary,
+)
 from ..services.memory_profile_projection import (
     MemoryProfileProjection,
     MemoryProfileProjectionAction,
@@ -291,6 +304,14 @@ async def list_memory_receipts(
     with database(request).connect() as conn:
         receipt = MemoryReceiptService(conn).build(agent_run_id=agent_run_id, limit=capped_limit)
     return _memory_receipt_response(receipt)
+
+
+@router.get("/graph-projection", response_model=MemoryGraphProjectionResponse)
+async def get_memory_graph_projection(request: Request, max_nodes: int = 40) -> MemoryGraphProjectionResponse:
+    capped_nodes = max(5, min(max_nodes, 80))
+    with database(request).connect() as conn:
+        projection = MemoryGraphProjectionService(conn).build(max_nodes=capped_nodes)
+    return _memory_graph_projection_response(projection)
 
 
 @router.get("/graph/facts", response_model=MemoryGraphFactListResponse)
@@ -1007,6 +1028,62 @@ def _graph_fact_response(fact) -> MemoryGraphFactResponse:
         importance=fact.importance,
         created_at=fact.created_at,
         updated_at=fact.updated_at,
+    )
+
+
+def _memory_graph_projection_response(projection: MemoryGraphProjection) -> MemoryGraphProjectionResponse:
+    return MemoryGraphProjectionResponse(
+        generated_at=projection.generated_at,
+        nodes=[_memory_graph_projection_node_response(node) for node in projection.nodes],
+        edges=[_memory_graph_projection_edge_response(edge) for edge in projection.edges],
+        clusters=[_memory_graph_projection_cluster_response(cluster) for cluster in projection.clusters],
+        summary=_memory_graph_projection_summary_response(projection.summary),
+        redaction_note=projection.redaction_note,
+    )
+
+
+def _memory_graph_projection_node_response(node: MemoryGraphProjectionNode) -> MemoryGraphProjectionNodeResponse:
+    return MemoryGraphProjectionNodeResponse(
+        id=node.id,
+        type=node.type,
+        label=node.label,
+        subtitle=node.subtitle,
+        status=node.status,
+        risk_tier=node.risk_tier,
+        size=node.size,
+        confidence_label=node.confidence_label,
+        source_label=node.source_label,
+        updated_at=node.updated_at,
+        available_actions=node.available_actions,
+    )
+
+
+def _memory_graph_projection_edge_response(edge: MemoryGraphProjectionEdge) -> MemoryGraphProjectionEdgeResponse:
+    return MemoryGraphProjectionEdgeResponse(
+        id=edge.id,
+        **{
+            "from": edge.from_node,
+            "to": edge.to_node,
+            "type": edge.type,
+            "strength": edge.strength,
+        },
+    )
+
+
+def _memory_graph_projection_cluster_response(cluster: MemoryGraphProjectionCluster) -> MemoryGraphProjectionClusterResponse:
+    return MemoryGraphProjectionClusterResponse(
+        id=cluster.id,
+        label=cluster.label,
+        node_ids=cluster.node_ids,
+    )
+
+
+def _memory_graph_projection_summary_response(summary: MemoryGraphProjectionSummary) -> MemoryGraphProjectionSummaryResponse:
+    return MemoryGraphProjectionSummaryResponse(
+        total_nodes=summary.total_nodes,
+        pending_count=summary.pending_count,
+        cleanup_count=summary.cleanup_count,
+        hidden_count=summary.hidden_count,
     )
 
 
