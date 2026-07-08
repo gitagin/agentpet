@@ -889,7 +889,7 @@ body[data-window-mode="world"] .feature-page-stack {
 .control-center-stage {
   min-height: 0;
   height: 100%;
-  margin-top: clamp(-54px, -5.7dvh, -32px);
+  margin-top: 0;
   border-radius: 0;
 }
 
@@ -938,7 +938,7 @@ body[data-window-mode="world"] .feature-page-stack {
   }
 
   .control-center-stage {
-    margin-top: -46px;
+    margin-top: 0;
   }
 
   .control-portrait-anchor {
@@ -953,7 +953,7 @@ body[data-window-mode="world"] .feature-page-stack {
   }
 
   .control-center-stage {
-    margin-top: clamp(-36px, -4.4dvh, -18px);
+    margin-top: 0;
   }
 
   .control-portrait-anchor {
@@ -973,7 +973,7 @@ body[data-window-mode="world"] .feature-page-stack {
   }
 
   .control-center-stage {
-    margin-top: -28px;
+    margin-top: 0;
   }
 
   .control-portrait-anchor {
@@ -1019,20 +1019,43 @@ body[data-window-mode="control"] #root {
   overflow: hidden;
 }
 
+/* Product Design stage safety zones: keep the home scene in one viewport without
+   negative offsets. Stage children reserve explicit bands for speech, portrait,
+   composer, orbit points, and the bottom dock. */
 .control-home-shell {
   --home-dock-width: clamp(620px, 67.5vw, 1004px);
   --home-dock-bottom: clamp(18px, 3.6dvh, 38px);
+  --home-dock-height: clamp(58px, 8.2dvh, 78px);
+  --home-stage-safe-top: clamp(12px, 2.2dvh, 28px);
+  --home-stage-safe-bottom: clamp(12px, 2.2dvh, 26px);
+  --home-speech-height: clamp(62px, 10.5dvh, 88px);
+  --home-composer-height: clamp(68px, 10.8dvh, 88px);
+  --home-composer-gap: clamp(14px, 2.1dvh, 24px);
+  --home-stage-top-clearance: calc(var(--home-stage-safe-top) + var(--home-speech-height) + clamp(10px, 1.8dvh, 20px));
+  --home-portrait-bottom: calc(var(--home-stage-safe-bottom) + var(--home-composer-height) + var(--home-composer-gap));
+  --home-rail-gap: clamp(8px, 1.35vw, 20px);
   min-height: 100dvh;
   height: 100dvh;
   overflow: hidden;
-  padding: clamp(8px, 1.4dvh, 16px) clamp(12px, 1.4vw, 20px) calc(96px + env(safe-area-inset-bottom, 0px));
+  padding:
+    clamp(8px, 1.4dvh, 16px)
+    clamp(12px, 1.4vw, 20px)
+    calc(var(--home-dock-bottom) + var(--home-dock-height) + clamp(18px, 3dvh, 30px) + env(safe-area-inset-bottom, 0px));
 }
 
 @media (min-width: 1360px) and (min-height: 820px) {
   .control-home-shell {
     --home-dock-width: min(1004px, calc(100vw - 448px));
     --home-dock-bottom: clamp(30px, 3.8dvh, 46px);
-    padding: clamp(18px, 2.2dvh, 28px) clamp(22px, 2vw, 34px) calc(122px + env(safe-area-inset-bottom, 0px));
+    --home-dock-height: 78px;
+    --home-stage-safe-top: clamp(18px, 2.3dvh, 30px);
+    --home-stage-safe-bottom: clamp(18px, 2.4dvh, 32px);
+    --home-composer-height: clamp(76px, 10.5dvh, 92px);
+    --home-composer-gap: clamp(18px, 2.4dvh, 30px);
+    padding:
+      clamp(18px, 2.2dvh, 28px)
+      clamp(22px, 2vw, 34px)
+      calc(var(--home-dock-bottom) + var(--home-dock-height) + clamp(22px, 3dvh, 34px) + env(safe-area-inset-bottom, 0px));
   }
 
   .control-desktop-grid {
@@ -1041,17 +1064,17 @@ body[data-window-mode="control"] #root {
   }
 
   .control-center-stage {
-    height: calc(100% + 42px);
-    margin-top: -38px;
+    height: 100%;
+    margin-top: 0;
   }
 
   .control-portrait-anchor {
-    bottom: clamp(66px, 8dvh, 96px);
+    bottom: var(--home-portrait-bottom);
     width: min(108%, 980px);
   }
 
   .control-stage-composer {
-    bottom: clamp(22px, 3dvh, 34px);
+    bottom: var(--home-stage-safe-bottom);
   }
 }
 
@@ -1080,7 +1103,7 @@ body[data-window-mode="control"] #root {
   height: 100%;
   grid-template-columns: clamp(190px, 22vw, 300px) minmax(0, 1fr) clamp(210px, 23vw, 326px);
   grid-template-rows: minmax(0, 1fr);
-  gap: clamp(8px, 1.35vw, 20px);
+  gap: var(--home-rail-gap);
   align-items: stretch;
 }
 
@@ -1184,22 +1207,98 @@ body[data-window-mode="control"] #root {
 
 .control-center-stage {
   grid-column: 2;
-  height: calc(100% + clamp(18px, 5.4dvh, 46px));
+  position: relative;
+  height: 100%;
   min-height: 0;
-  margin-top: clamp(-46px, -5.4dvh, -18px);
-  overflow: visible;
+  margin-top: 0;
+  overflow: hidden;
   border-radius: 0;
+  contain: layout paint;
 }
 
 .control-stage-background {
   object-position: center 50%;
 }
 
+.control-orbit-map {
+  inset:
+    var(--home-stage-top-clearance)
+    clamp(20px, 5.2%, 52px)
+    calc(var(--home-stage-safe-bottom) + var(--home-composer-height) + clamp(8px, 1.6dvh, 18px))
+    clamp(20px, 5.2%, 52px);
+  z-index: 4;
+  overflow: hidden;
+}
+
+.control-orbit-map::before {
+  top: 10%;
+  height: 48%;
+}
+
+.control-orbit-map::after {
+  top: 28%;
+  height: 38%;
+}
+
+.orbit-point {
+  width: auto;
+  max-width: min(144px, 32%);
+  grid-template-columns: 13px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--home-soft);
+  font-size: clamp(11px, 1.05vw, 12px);
+  line-height: 1.1;
+  opacity: 0.9;
+}
+
+.orbit-point i {
+  width: 13px;
+  height: 13px;
+}
+
+.orbit-point small {
+  display: block;
+  grid-column: 2;
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--home-muted);
+  font-size: clamp(10px, 0.92vw, 11px);
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.point-one {
+  left: 2%;
+  top: 10%;
+}
+
+.point-two {
+  right: 3%;
+  top: 10%;
+}
+
+.point-three {
+  right: 3%;
+  top: 38%;
+}
+
+.point-four {
+  right: 7%;
+  top: 61%;
+}
+
 .control-speech-bubble {
-  top: clamp(-7px, calc(1.8dvh - 15px), 3px);
-  width: min(450px, calc(100% - 56px));
-  min-height: clamp(62px, 11dvh, 92px);
+  top: var(--home-stage-safe-top);
+  width: min(450px, calc(100% - clamp(44px, 8vw, 96px)));
+  min-height: var(--home-speech-height);
+  max-height: calc(var(--home-stage-top-clearance) - var(--home-stage-safe-top));
   padding: clamp(9px, 1.9dvh, 18px) clamp(12px, 1.8vw, 20px);
+  overflow: hidden;
 }
 
 .control-speech-bubble strong {
@@ -1228,19 +1327,19 @@ body[data-window-mode="control"] #root {
 }
 
 .control-portrait-anchor {
-  bottom: clamp(22px, 5.6dvh, 58px);
-  width: min(112%, 900px);
+  bottom: var(--home-portrait-bottom);
+  width: min(106%, 860px);
 }
 
 .control-portrait-anchor.control-stage-halfbody {
-  height: min(63dvh, 540px);
+  height: min(50dvh, 500px);
 }
 
 .control-stage-composer {
   right: clamp(10px, 6.6%, 64px);
-  bottom: clamp(-20px, calc(1.1dvh - 25px), -13px);
+  bottom: var(--home-stage-safe-bottom);
   left: clamp(10px, 6.6%, 64px);
-  min-height: clamp(68px, 11.4dvh, 90px);
+  min-height: var(--home-composer-height);
   grid-template-columns: minmax(0, 1fr) clamp(44px, 4.9vw, 54px);
   grid-template-rows: minmax(30px, auto) clamp(22px, 3.2dvh, 28px);
   gap: clamp(6px, 1.1dvh, 8px) clamp(8px, 1.1vw, 12px);
@@ -1350,7 +1449,7 @@ body[data-window-mode="control"] #root {
   --bottom-nav-item-height: clamp(46px, 5.5dvh, 58px);
   --bottom-nav-avatar-size: clamp(62px, 7.8dvh, 82px);
   --bottom-nav-avatar-space: clamp(84px, 9.6vw, 154px);
-  min-height: clamp(58px, 8.2dvh, 78px);
+  min-height: var(--home-dock-height, clamp(58px, 8.2dvh, 78px));
 }
 
 .control-home-shell .bottom-nav-track,
@@ -1361,8 +1460,8 @@ body[data-window-mode="control"] #root {
 
 .control-status-left,
 .control-status-right {
-  z-index: 70;
-  bottom: var(--home-dock-bottom);
+  z-index: 44;
+  bottom: calc(var(--home-dock-bottom) + var(--home-dock-height) + clamp(8px, 1.4dvh, 14px));
   width: clamp(132px, 11.7vw, 174px);
   min-height: clamp(58px, 8dvh, 84px);
   padding: clamp(8px, 1.3dvh, 12px) clamp(10px, 1vw, 14px);
@@ -1390,7 +1489,16 @@ body[data-window-mode="control"] #root {
   .control-home-shell {
     --home-dock-width: clamp(620px, 67.5vw, 760px);
     --home-dock-bottom: 18px;
-    padding: 10px 14px calc(98px + env(safe-area-inset-bottom, 0px));
+    --home-dock-height: 62px;
+    --home-stage-safe-top: 10px;
+    --home-stage-safe-bottom: 10px;
+    --home-speech-height: 70px;
+    --home-composer-height: 90px;
+    --home-composer-gap: 14px;
+    padding:
+      10px
+      14px
+      calc(var(--home-dock-bottom) + var(--home-dock-height) + 18px + env(safe-area-inset-bottom, 0px));
   }
 
   .control-desktop-grid {
@@ -1399,21 +1507,59 @@ body[data-window-mode="control"] #root {
   }
 
   .control-center-stage {
-    height: calc(100% + 32px);
-    margin-top: -28px;
+    height: 100%;
+    margin-top: 0;
   }
 
   .control-portrait-anchor {
-    bottom: 34px;
+    bottom: var(--home-portrait-bottom);
     width: min(112%, 600px);
   }
 
   .control-speech-bubble {
-    top: 4px;
+    top: var(--home-stage-safe-top);
   }
 
   .control-stage-composer {
-    bottom: 0;
+    bottom: var(--home-stage-safe-bottom);
+  }
+
+  .orbit-point {
+    max-width: 104px;
+    grid-template-columns: 12px minmax(0, 1fr);
+    gap: 5px;
+    color: var(--home-soft);
+    font-size: 10px;
+  }
+
+  .orbit-point i {
+    width: 12px;
+    height: 12px;
+  }
+
+  .orbit-point small {
+    display: block;
+    font-size: 9px;
+  }
+
+  .point-one {
+    left: 2%;
+    top: 12%;
+  }
+
+  .point-two {
+    right: 3%;
+    top: 12%;
+  }
+
+  .point-three {
+    right: 2%;
+    top: 39%;
+  }
+
+  .point-four {
+    right: 5%;
+    top: 60%;
   }
 }
 
@@ -1421,7 +1567,16 @@ body[data-window-mode="control"] #root {
   .control-home-shell {
     --home-dock-width: min(648px, calc(100vw - 252px));
     --home-dock-bottom: 12px;
-    padding: 8px 14px calc(82px + env(safe-area-inset-bottom, 0px));
+    --home-dock-height: 58px;
+    --home-stage-safe-top: 8px;
+    --home-stage-safe-bottom: 8px;
+    --home-speech-height: 62px;
+    --home-composer-height: 82px;
+    --home-composer-gap: 12px;
+    padding:
+      8px
+      14px
+      calc(var(--home-dock-bottom) + var(--home-dock-height) + 12px + env(safe-area-inset-bottom, 0px));
   }
 
   .control-desktop-grid {
@@ -1435,27 +1590,54 @@ body[data-window-mode="control"] #root {
   }
 
   .control-center-stage {
-    height: calc(100% + 22px);
-    margin-top: -18px;
+    height: 100%;
+    margin-top: 0;
   }
 
   .control-portrait-anchor {
-    bottom: 30px;
+    bottom: var(--home-portrait-bottom);
     width: min(112%, 470px);
   }
 
   .control-speech-bubble {
-    top: 3px;
+    top: var(--home-stage-safe-top);
   }
 
   .control-stage-composer {
-    bottom: 0;
+    bottom: var(--home-stage-safe-bottom);
   }
 
   .control-status-left,
   .control-status-right {
+    display: none;
     width: 126px;
     min-height: 54px;
+  }
+
+  .control-orbit-map {
+    inset:
+      var(--home-stage-top-clearance)
+      16px
+      calc(var(--home-stage-safe-bottom) + var(--home-composer-height) + 8px)
+      16px;
+  }
+
+  .orbit-point {
+    max-width: 74px;
+    grid-template-columns: 10px minmax(0, 1fr);
+    gap: 4px;
+    color: var(--home-soft);
+    font-size: 9px;
+  }
+
+  .orbit-point i {
+    width: 10px;
+    height: 10px;
+  }
+
+  .orbit-point small {
+    display: block;
+    font-size: 8px;
   }
 }
 
@@ -1463,7 +1645,16 @@ body[data-window-mode="control"] #root {
   .control-home-shell {
     --home-dock-width: min(584px, calc(100vw - 260px));
     --home-dock-bottom: 8px;
-    padding: 6px 10px calc(74px + env(safe-area-inset-bottom, 0px));
+    --home-dock-height: 52px;
+    --home-stage-safe-top: 6px;
+    --home-stage-safe-bottom: 6px;
+    --home-speech-height: 54px;
+    --home-composer-height: 64px;
+    --home-composer-gap: 10px;
+    padding:
+      6px
+      10px
+      calc(var(--home-dock-bottom) + var(--home-dock-height) + 8px + env(safe-area-inset-bottom, 0px));
   }
 
   .control-home-header {
@@ -1599,13 +1790,13 @@ body[data-window-mode="control"] #root {
 
   .control-center-stage {
     height: 100%;
-    margin-top: -8px;
+    margin-top: 0;
   }
 
   .control-speech-bubble {
-    top: 4px;
+    top: var(--home-stage-safe-top);
     width: min(340px, calc(100% - 16px));
-    min-height: 54px;
+    min-height: var(--home-speech-height);
     padding: 8px 10px;
   }
 
@@ -1618,15 +1809,15 @@ body[data-window-mode="control"] #root {
   }
 
   .control-portrait-anchor {
-    bottom: 18px;
+    bottom: var(--home-portrait-bottom);
     width: min(112%, 420px);
   }
 
   .control-stage-composer {
     right: 8px;
-    bottom: 4px;
+    bottom: var(--home-stage-safe-bottom);
     left: 8px;
-    min-height: 58px;
+    min-height: var(--home-composer-height);
     grid-template-columns: minmax(0, 1fr) 40px;
     grid-template-rows: minmax(26px, auto) 20px;
     gap: 4px 6px;
@@ -1656,6 +1847,10 @@ body[data-window-mode="control"] #root {
   .control-memory-panel {
     gap: 4px;
     padding: 7px 8px;
+  }
+
+  .control-memory-days {
+    gap: 7px;
   }
 
   .control-memory-head strong,
@@ -1757,6 +1952,7 @@ body[data-window-mode="control"] #root {
 
   .control-status-left,
   .control-status-right {
+    display: none;
     width: 122px;
   }
 }
@@ -3118,7 +3314,8 @@ body[data-window-mode="settings"] .agent-model-status {
   }
 }
 
-/* Product Design memory review motion pass */
+/* Product Design memory review fit pass: the right rail owns one scrollable
+   review list, so date groups never overlap the footer or each other. */
 .control-right-rail {
   grid-template-rows: minmax(0, 1fr);
   align-content: stretch;
@@ -3137,10 +3334,12 @@ body[data-window-mode="settings"] .agent-model-status {
 
 .control-memory-days {
   grid-row: 3;
+  height: 100%;
   min-height: 0;
   display: grid;
   align-content: start;
-  max-height: 100%;
+  grid-auto-flow: row;
+  grid-auto-rows: minmax(min-content, max-content);
   gap: clamp(10px, 1.2dvh, 14px);
   overflow: auto;
   overflow-x: hidden;
@@ -3156,6 +3355,8 @@ body[data-window-mode="settings"] .agent-model-status {
 }
 
 .control-memory-day {
+  display: grid;
+  grid-template-rows: auto minmax(0, auto);
   min-height: 0;
   margin-bottom: 0;
   align-content: start;
@@ -3167,8 +3368,10 @@ body[data-window-mode="settings"] .agent-model-status {
 .control-memory-day.is-expanded {
   position: relative;
   z-index: 1;
-  min-height: var(--memory-expanded-day-min-height, auto);
+  max-height: min(var(--memory-expanded-day-min-height, 420px), 100%);
+  min-height: 0;
   gap: clamp(9px, 1.15dvh, 12px);
+  overflow: hidden;
 }
 
 .control-memory-day h2 {
@@ -3288,7 +3491,11 @@ body[data-window-mode="settings"] .agent-model-status {
 }
 
 .control-memory-day.is-expanded .control-memory-timeline {
-  min-height: var(--memory-visible-timeline-min-height, auto);
+  max-height: min(var(--memory-visible-timeline-min-height, 360px), 100%);
+  min-height: 0;
+  overflow: auto;
+  overflow-x: hidden;
+  padding-right: 2px;
 }
 
 .control-memory-day.is-collapsed .control-memory-timeline {

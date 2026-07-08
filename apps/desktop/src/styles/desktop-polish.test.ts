@@ -33,6 +33,50 @@ describe("desktop polish navigation contract", () => {
 });
 
 describe("desktop polish detail contract", () => {
+  it("keeps the home stage inside explicit safety zones instead of negative offsets", () => {
+    expect(polishStyles).toContain("Product Design stage safety zones");
+    expect(polishStyles).toMatch(
+      /\.control-home-shell\s*\{[^}]*--home-dock-height:\s*clamp\(58px,\s*8\.2dvh,\s*78px\);[^}]*--home-stage-safe-top:\s*clamp\(12px,\s*2\.2dvh,\s*28px\);[^}]*--home-stage-safe-bottom:\s*clamp\(12px,\s*2\.2dvh,\s*26px\);[^}]*--home-composer-height:\s*clamp\(68px,\s*10\.8dvh,\s*88px\);[^}]*--home-portrait-bottom:\s*calc\(var\(--home-stage-safe-bottom\) \+ var\(--home-composer-height\) \+ var\(--home-composer-gap\)\);/,
+    );
+    expect(polishStyles).toMatch(
+      /\.control-center-stage\s*\{[^}]*position:\s*relative;[^}]*height:\s*100%;[^}]*margin-top:\s*0;[^}]*overflow:\s*hidden;[^}]*contain:\s*layout paint;/,
+    );
+    expect(polishStyles).toMatch(
+      /\.control-speech-bubble\s*\{[^}]*top:\s*var\(--home-stage-safe-top\);[^}]*min-height:\s*var\(--home-speech-height\);[^}]*overflow:\s*hidden;/,
+    );
+    expect(polishStyles).toMatch(
+      /\.control-stage-composer\s*\{[^}]*bottom:\s*var\(--home-stage-safe-bottom\);[^}]*min-height:\s*var\(--home-composer-height\);/,
+    );
+    expect(polishStyles).toMatch(
+      /\.control-portrait-anchor\s*\{[^}]*bottom:\s*var\(--home-portrait-bottom\);/,
+    );
+    expect(polishStyles).toMatch(
+      /\.control-orbit-map\s*\{[^}]*inset:[^}]*var\(--home-stage-top-clearance\)[^}]*calc\(var\(--home-stage-safe-bottom\) \+ var\(--home-composer-height\) \+ clamp\(8px,\s*1\.6dvh,\s*18px\)\)[^}]*z-index:\s*4;[^}]*overflow:\s*hidden;/,
+    );
+    expect(polishStyles).toMatch(
+      /\.orbit-point\s*\{[^}]*max-width:\s*min\(144px,\s*32%\);[^}]*grid-template-columns:\s*13px minmax\(0,\s*1fr\);[^}]*color:\s*var\(--home-soft\);[^}]*opacity:\s*0\.9;/,
+    );
+    expect(polishStyles).toMatch(
+      /\.orbit-point small\s*\{[^}]*display:\s*block;[^}]*grid-column:\s*2;[^}]*color:\s*var\(--home-muted\);/,
+    );
+    expect(polishStyles).toMatch(
+      /\.point-one\s*\{[^}]*left:\s*2%;[^}]*top:\s*10%;[^}]*\}[\s\S]*\.point-two\s*\{[^}]*right:\s*3%;[^}]*top:\s*10%;/,
+    );
+    expect(polishStyles).toMatch(
+      /@media \(max-width:\s*1100px\) and \(max-height:\s*720px\)\s*\{[\s\S]*\.orbit-point\s*\{[^}]*max-width:\s*104px;[^}]*color:\s*var\(--home-soft\);[^}]*font-size:\s*10px;/,
+    );
+    expect(polishStyles).toMatch(
+      /@media \(max-width:\s*960px\) and \(max-height:\s*640px\)\s*\{[\s\S]*\.orbit-point\s*\{[^}]*max-width:\s*74px;[^}]*grid-template-columns:\s*10px minmax\(0,\s*1fr\);[^}]*color:\s*var\(--home-soft\);[^}]*font-size:\s*9px;/,
+    );
+    expect(polishStyles).toMatch(
+      /\.control-status-left,\s*\.control-status-right\s*\{[^}]*bottom:\s*calc\(var\(--home-dock-bottom\) \+ var\(--home-dock-height\) \+ clamp\(8px,\s*1\.4dvh,\s*14px\)\);/,
+    );
+    expect(polishStyles).not.toMatch(/margin-top:\s*-/);
+    expect(polishStyles).not.toMatch(/top:\s*clamp\(-/);
+    expect(polishStyles).not.toMatch(/bottom:\s*clamp\(-/);
+    expect(polishStyles).not.toMatch(/height:\s*calc\(100% \+/);
+  });
+
   it("keeps the goals card readable and tightens the memory timeline gutter", () => {
     expect(polishStyles).toContain("Product Design detail fix");
     expect(polishStyles).toMatch(
@@ -109,7 +153,10 @@ describe("desktop polish detail contract", () => {
       /\.control-memory-panel\s*\{[^}]*height:\s*100%;[^}]*max-height:\s*100%;[^}]*grid-template-rows:\s*auto auto minmax\(0,\s*1fr\) auto;[^}]*overflow:\s*hidden;/,
     );
     expect(polishStyles).toMatch(
-      /\.control-memory-days\s*\{[^}]*display:\s*grid;[^}]*align-content:\s*start;[^}]*max-height:\s*100%;[^}]*overflow:\s*auto;[^}]*overflow-x:\s*hidden;[^}]*scrollbar-gutter:\s*stable;/,
+      /\.control-memory-days\s*\{[^}]*height:\s*100%;[^}]*display:\s*grid;[^}]*align-content:\s*start;[^}]*grid-auto-flow:\s*row;[^}]*grid-auto-rows:\s*minmax\(min-content,\s*max-content\);[^}]*overflow:\s*auto;[^}]*overflow-x:\s*hidden;[^}]*scrollbar-gutter:\s*stable;/,
+    );
+    expect(polishStyles).toMatch(
+      /\.control-memory-day\s*\{[^}]*display:\s*grid;[^}]*grid-template-rows:\s*auto minmax\(0,\s*auto\);[^}]*min-height:\s*0;[^}]*overflow:\s*visible;/,
     );
     expect(polishStyles).toMatch(
       /\.control-memory-day\.is-collapsed \.control-memory-day-toggle\s*\{[^}]*min-height:\s*44px;[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\) 26px 16px;[^}]*border:\s*1px solid rgba\(255,\s*255,\s*255,\s*0\.075\);[^}]*border-radius:\s*10px;/,
@@ -118,10 +165,10 @@ describe("desktop polish detail contract", () => {
       /\.control-memory-day\.is-collapsed \.control-memory-day-label\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*minmax\(58px,\s*auto\) minmax\(0,\s*1fr\);[^}]*align-items:\s*center;[^}]*line-height:\s*1\.08;/,
     );
     expect(polishStyles).toMatch(
-      /\.control-memory-day\.is-expanded\s*\{[^}]*position:\s*relative;[^}]*z-index:\s*1;[^}]*min-height:\s*var\(--memory-expanded-day-min-height,\s*auto\);[^}]*gap:\s*clamp\(9px,\s*1\.15dvh,\s*12px\);/,
+      /\.control-memory-day\.is-expanded\s*\{[^}]*position:\s*relative;[^}]*z-index:\s*1;[^}]*max-height:\s*min\(var\(--memory-expanded-day-min-height,\s*420px\),\s*100%\);[^}]*min-height:\s*0;[^}]*overflow:\s*hidden;/,
     );
     expect(polishStyles).toMatch(
-      /\.control-memory-day\.is-expanded \.control-memory-timeline\s*\{[^}]*min-height:\s*var\(--memory-visible-timeline-min-height,\s*auto\);/,
+      /\.control-memory-day\.is-expanded \.control-memory-timeline\s*\{[^}]*max-height:\s*min\(var\(--memory-visible-timeline-min-height,\s*360px\),\s*100%\);[^}]*min-height:\s*0;[^}]*overflow:\s*auto;[^}]*overflow-x:\s*hidden;/,
     );
     expect(polishStyles).toMatch(
       /\.control-memory-day\.is-collapsed \.control-memory-timeline\s*\{[^}]*max-height:\s*0;[^}]*min-height:\s*0;[^}]*overflow:\s*hidden;[^}]*opacity:\s*0;[^}]*transform:\s*translateY\(-6px\);/,
