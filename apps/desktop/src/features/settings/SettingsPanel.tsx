@@ -17,6 +17,7 @@ import type {
 } from "./settingsTypes";
 import { TtsSettingsCard } from "./TtsSettingsCard";
 import { VaultBindingSection } from "./VaultBindingSection";
+import { productCopy } from "../../productCopy";
 
 type SettingsPanelProps = {
   api: DesktopApi;
@@ -116,17 +117,17 @@ export function SettingsPanel({
     <section id="settings-panel" className="settings-panel-compact settings-panel-grid" aria-label="设置">
       <section className="settings-intro" aria-label="设置引导">
         <div>
-          <p className="eyebrow">先能对话，再决定保存</p>
-          <h3>连接全局模型后就能开始；需要精调时再为 5 个职责模型单独覆盖。</h3>
+          <p className="eyebrow">{productCopy.settingsPage.eyebrow}</p>
+          <h3>{productCopy.settingsPage.title}</h3>
         </div>
         <ol>
-          <li>配置模型</li>
-          <li>选择保存位置</li>
+          <li>{productCopy.settingsPage.stepConnect}</li>
+          <li>{productCopy.settingsPage.stepSave}</li>
         </ol>
         <div className="guided-trial-actions settings-guided-trials" aria-label="设置快捷操作">
           <button type="button" className="secondary" onClick={onTestGlobalModel} disabled={globalModelTestStatus === "loading"}>
             <Bot size={16} />
-            测试模型
+            {productCopy.settingsPage.testConnection}
           </button>
           <button type="button" className="secondary" onClick={onSelectVaultDirectory} disabled={!canSelectVaultDirectory}>
             <FolderOpen size={16} />
@@ -134,7 +135,7 @@ export function SettingsPanel({
           </button>
           <button type="button" className="secondary" onClick={onRefreshSettings} disabled={loadingSettingsStatus}>
             <RefreshCw size={16} />
-            刷新设置
+            {productCopy.settingsPage.refresh}
           </button>
         </div>
       </section>
@@ -150,8 +151,8 @@ export function SettingsPanel({
       />
       <details className="agent-model-section settings-card advanced-agent-model-settings">
         <summary>
-          <strong>高级职责模型路由</strong>
-          <span>可选覆盖 5 个职责模型；大多数情况下保持全局模型即可。</span>
+          <strong>{productCopy.settingsPage.advancedModelTitle}</strong>
+          <span>{productCopy.settingsPage.advancedModelDescription}</span>
         </summary>
         <AgentConfigForm
           drafts={agentModelDrafts}

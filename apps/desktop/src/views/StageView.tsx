@@ -78,8 +78,8 @@ const advancedStageActions: StageAction[] = [
     icon: FolderKanban,
   },
   {
-    label: "资料工具",
-    detail: "维护本地资料整理和归档",
+    label: "我的资料",
+    detail: "整理以后能找回的资料和记录",
     route: "world",
     icon: BookOpen,
   },

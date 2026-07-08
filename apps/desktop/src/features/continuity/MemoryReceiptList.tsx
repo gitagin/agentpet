@@ -182,7 +182,7 @@ function formatReceiptSummary(receipt: VisibleContinuityReceipt): string {
     return "已按安全策略拦截敏感内容。";
   }
   if (normalized.includes("organization are disabled")) {
-    return "自动整理策略当前关闭，因此本轮没有写入本地资产。";
+    return "记忆整理设置当前关闭，因此本轮没有写入本地资料。";
   }
   if (normalized.includes("confirmation-only")) {
     return "这次内容需要先确认，因此没有直接写入长期记忆。";

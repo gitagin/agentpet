@@ -54,10 +54,10 @@ export function GlobalModelCard({
                 : "未配置。";
 
   return (
-    <section className="agent-model-section settings-card" aria-label="AI 模型配置">
+    <section className="agent-model-section settings-card" aria-label="对话能力设置">
       <div className="section-heading">
-        <strong>AI 模型</strong>
-        <span>填写一个 OpenAI 兼容接口，桌宠就能开始对话。</span>
+        <strong>对话能力</strong>
+        <span>连接一个兼容的对话服务，桌宠就能开始聊天。</span>
       </div>
       <div className="settings-form-grid">
         <label>

@@ -18,7 +18,7 @@ export function getModelHealthBannerState(health: ModelHealthResponse): BannerSt
   if (!health.global_configured && health.agents_configured === 0) {
     return {
       tone: "warning",
-      message: "你还没有配置任何模型，请先配置全局模型以开始使用。",
+      message: "还没有连接对话能力，请先填写一个可用服务。",
     };
   }
 
@@ -28,21 +28,21 @@ export function getModelHealthBannerState(health: ModelHealthResponse): BannerSt
   if (health.global_configured && specialistCount === 0) {
     return {
       tone: "info",
-      message: "5 个职责模型正在继承全局模型；聊天、分类、检索、动作和后台整理都会正常工作。",
+      message: "对话能力已连接；聊天、记忆整理和资料整理会使用这套默认设置。",
     };
   }
 
   if (specialistCount >= totalAgents) {
     return {
       tone: "success",
-      message: "5 个职责模型都有独立模型配置；仍会统一按职责路由运行。",
+      message: "高级能力分工已单独设置；日常使用会继续按同一入口运行。",
     };
   }
 
   if (health.global_configured && specialistCount > 0) {
     return {
       tone: "info",
-      message: `${specialistCount}/${totalAgents} 个职责模型有独立模型，其余继续继承全局模型。`,
+      message: `${specialistCount}/${totalAgents} 个高级能力已单独设置，其余继续使用默认对话能力。`,
     };
   }
 

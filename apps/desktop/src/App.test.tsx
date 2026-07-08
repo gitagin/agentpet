@@ -511,7 +511,7 @@ describe("App", () => {
 
     expect(await screen.findByLabelText("Agent Pet 首页")).toBeInTheDocument();
     expect(screen.getByLabelText("今日随行")).toBeInTheDocument();
-    expect(screen.getByLabelText("Agent Pet 观测台")).toBeInTheDocument();
+    expect(screen.getByLabelText("Agent Pet 首页舞台")).toBeInTheDocument();
     expect(screen.getByLabelText("记忆回顾")).toBeInTheDocument();
     expect(document.querySelector(".control-stage-background")?.getAttribute("src")).toMatch(
       /^\/images\/home\.png\?v=\d+$/,
@@ -575,7 +575,7 @@ describe("App", () => {
 
     expect(await screen.findByLabelText("Agent Pet 首页")).toBeInTheDocument();
     expect(screen.getByLabelText("今日随行")).toBeInTheDocument();
-    expect(screen.getByLabelText("Agent Pet 观测台")).toBeInTheDocument();
+    expect(screen.getByLabelText("Agent Pet 首页舞台")).toBeInTheDocument();
     expect(screen.getByLabelText("记忆回顾")).toBeInTheDocument();
     expect(screen.queryByLabelText("mock visible continuity panel")).not.toBeInTheDocument();
     expect(screen.getByText("今日目标")).toBeInTheDocument();
@@ -590,7 +590,7 @@ describe("App", () => {
     expect(await screen.findByLabelText("mock task panel")).toBeInTheDocument();
     expect(await screen.findByLabelText("mock visible continuity panel")).toBeInTheDocument();
 
-    const secondaryNavigation = drawers.find((drawer) => drawer.textContent?.includes("高级管理"));
+    const secondaryNavigation = drawers.find((drawer) => drawer.textContent?.includes("连接与数据"));
     expect(secondaryNavigation).toBeInTheDocument();
     expect(secondaryNavigation).not.toHaveAttribute("open");
     expect(screen.queryByLabelText("mock connection panel")).not.toBeInTheDocument();
@@ -702,7 +702,7 @@ describe("App", () => {
 
     render(<App />);
 
-    fireEvent.click(screen.getByText("高级管理"));
+    fireEvent.click(screen.getByText("连接与数据"));
     const onboarding = await screen.findByLabelText("首次使用引导");
     expect(onboarding).toBeInTheDocument();
     const submitButton = screen.getByRole("button", { name: "开始第一次聊天" });
@@ -762,7 +762,7 @@ describe("App", () => {
 
     render(<App />);
 
-    fireEvent.click(screen.getByText("高级管理"));
+    fireEvent.click(screen.getByText("连接与数据"));
     expect(await screen.findByLabelText("首次使用引导")).toBeInTheDocument();
     expect(screen.queryByText("保存位置")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("保存位置")).not.toBeInTheDocument();
@@ -829,7 +829,7 @@ describe("App", () => {
 
     expect(await screen.findByLabelText("Agent Pet 首页")).toBeInTheDocument();
     expect(screen.getByLabelText("今日随行")).toBeInTheDocument();
-    expect(screen.getByLabelText("Agent Pet 观测台")).toBeInTheDocument();
+    expect(screen.getByLabelText("Agent Pet 首页舞台")).toBeInTheDocument();
     expect(screen.getByLabelText("记忆回顾")).toBeInTheDocument();
   });
 
@@ -861,8 +861,8 @@ describe("App", () => {
   it("renders core product routes as dedicated workspaces instead of chat-only surfaces", async () => {
     const routes = [
       { hash: "#agent", query: () => screen.findByLabelText("提醒和待办区") },
-      { hash: "#memory", query: () => screen.findByRole("heading", { name: "我的记忆" }) },
-      { hash: "#world", query: () => screen.findByRole("heading", { name: "资料工具" }) },
+      { hash: "#memory", query: () => screen.findByRole("heading", { name: "我会记住重要的事，但由你决定" }) },
+      { hash: "#world", query: () => screen.findByRole("heading", { name: "我的资料" }) },
     ];
 
     for (const route of routes) {

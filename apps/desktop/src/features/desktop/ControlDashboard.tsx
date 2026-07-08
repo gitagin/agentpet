@@ -52,6 +52,7 @@ import { navigationHashForTab, type PrimaryNavigationTab } from "../../views/nav
 import { readRendererUiState, writeRendererUiState } from "../../services/rendererUiState";
 import { useVersionedPublicAsset } from "../../hooks/useVersionedPublicAsset";
 import { paginatePetBubbleReply } from "../../services/petBubblePagination";
+import { productCopy } from "../../productCopy";
 import type { AdvancedManagementToolsProps } from "./AdvancedManagementTools";
 
 const AdvancedManagementTools = lazy(() =>
@@ -170,11 +171,7 @@ const maxVisibleCollapsedDaysWhenExpanded = 3;
 const homeDayRecordsStorageKey = "agent-pet.control-home-day-records.v1";
 const emptyHomeDayRecord: HomeDayRecord = { journal: "", goals: [] };
 
-const quickPromptOptions = [
-  "帮我记录今天的重点。",
-  "把这件事整理成任务。",
-  "下次接着提醒我。",
-];
+const quickPromptOptions = [...productCopy.home.quickPrompts];
 
 export function ControlDashboard({
   sidecarStatus,
@@ -617,7 +614,7 @@ export function ControlDashboard({
           </section>
         </aside>
 
-        <section className="control-center-stage" aria-label="Agent Pet 观测台">
+        <section className="control-center-stage" aria-label={productCopy.home.stageLabel}>
           <img className="control-stage-background" src={homeImageSrc} alt="" aria-hidden="true" />
 
           <div className="control-speech-bubble" role="status">
@@ -796,19 +793,19 @@ export function ControlDashboard({
           </section>
         </aside>
 
-        <section className="control-status-left" aria-label="本地模型状态">
+        <section className="control-status-left" aria-label="对话能力状态">
           <Settings size={20} />
           <span>
-            <strong>本地模型</strong>
+            <strong>{productCopy.home.statusModelTitle}</strong>
             <small>{modelStatusLabel}</small>
           </span>
           <i aria-hidden="true" />
         </section>
 
-        <section className="control-status-right" aria-label="知识库状态">
+        <section className="control-status-right" aria-label="记忆保存状态">
           <Database size={20} />
           <span>
-            <strong>知识库</strong>
+            <strong>{productCopy.home.statusKnowledgeTitle}</strong>
             <small>{knowledgeStatusLabel}</small>
           </span>
           <i aria-hidden="true" />
@@ -829,7 +826,7 @@ export function ControlDashboard({
           >
             <span>
               <Star size={18} />
-              最近自动整理活动
+              {productCopy.home.recentActivityTitle}
             </span>
             <ChevronDown size={18} />
           </summary>
@@ -837,10 +834,10 @@ export function ControlDashboard({
             <div className="control-drawer-toolbar">
               <p>
                 {pendingManualActivityCount > 0
-                  ? `${pendingManualActivityCount} 个高风险项目需要确认；普通自动整理会保留为活动记录。`
+                  ? `${pendingManualActivityCount} 件事需要你确认；低风险整理会留下可撤回记录。`
                   : hasAgentActivity
-                    ? `最近 ${recentAgentActivityCount} 条活动；可逆动作会提供撤回入口。`
-                    : "自动整理完成后会出现在这里。"}
+                    ? `最近 ${recentAgentActivityCount} 条整理记录；能撤回的动作会提供入口。`
+                    : "我整理过的内容会出现在这里。"}
               </p>
               <button type="button" className="secondary" onClick={onRefreshActivity} disabled={activityLoading}>
                 {activityLoading ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />}
@@ -849,7 +846,7 @@ export function ControlDashboard({
             </div>
             {agentActionsError ? <p className="field-note error">{agentActionsError}</p> : null}
             <div className="control-activity-list">
-              {activityItems.length > 0 ? activityItems : <p className="empty-state">还没有自动整理活动。</p>}
+              {activityItems.length > 0 ? activityItems : <p className="empty-state">还没有整理记录。</p>}
             </div>
             <ChatMessageList {...chatMessageListProps} />
           </div>
@@ -903,7 +900,7 @@ export function ControlDashboard({
           >
             <span>
               <Settings size={18} />
-              高级管理
+              {productCopy.home.connectionAndDataTitle}
             </span>
             <ChevronDown size={18} />
           </summary>

@@ -35,10 +35,10 @@ export function AgentConfigForm({
   onTestAgentModel,
 }: AgentConfigFormProps) {
   return (
-    <section className="agent-model-section" aria-label="高级职责模型路由">
+    <section className="agent-model-section" aria-label="高级能力分工">
       <div className="section-heading">
-        <strong>5 个职责模型</strong>
-        <span>默认继承全局模型；只有某个职责需要单独优化时再覆盖。</span>
+        <strong>5 类能力</strong>
+        <span>默认使用同一套对话能力；只有某类能力需要单独优化时再覆盖。</span>
       </div>
       <button type="button" className="secondary" onClick={onRefreshSettings} disabled={loadingSettingsStatus}>
         {loadingSettingsStatus ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />}
@@ -65,11 +65,11 @@ export function AgentConfigForm({
                     checked={usingGlobalModel}
                     onChange={(event) => onUpdateDraft(draft.agent_id, { enabled: !event.target.checked })}
                   />
-                  使用全局模型
+                  使用默认对话能力
                 </label>
                 {usingGlobalModel ? (
                   <span className="agent-model-inherited">
-                    继承：{globalModelDraft.provider || "未配置提供方"} / {globalModelDraft.base_url || "未配置接口地址"} / {globalModelDraft.model || "未配置模型"}
+                    继承默认设置：{globalModelDraft.provider || "未配置提供方"} / {globalModelDraft.base_url || "未配置接口地址"} / {globalModelDraft.model || "未配置模型"}
                   </span>
                 ) : null}
               </div>
@@ -126,11 +126,11 @@ export function AgentConfigForm({
               <dl className="agent-model-status">
                 <div>
                   <dt>配置状态</dt>
-                  <dd>{usingGlobalModel ? "使用全局模型" : formatBooleanStatus(draft.configured)}</dd>
+                  <dd>{usingGlobalModel ? "使用默认对话能力" : formatBooleanStatus(draft.configured)}</dd>
                 </div>
                 <div>
                   <dt>密钥状态</dt>
-                  <dd>{usingGlobalModel ? "继承全局密钥" : draft.masked || "未配置"}</dd>
+                  <dd>{usingGlobalModel ? "继承默认密钥" : draft.masked || "未配置"}</dd>
                 </div>
                 <div>
                   <dt>试连结果</dt>

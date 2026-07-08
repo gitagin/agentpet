@@ -86,7 +86,7 @@ describe("agentActivity", () => {
     const display = getAgentActionDisplayFields(skipped);
 
     expect(display.actionName).toBe("已跳过自动整理");
-    expect(display.summary).toContain("自动整理策略当前关闭");
+    expect(display.summary).toContain("记忆整理设置当前关闭");
     expect(display.summary).not.toContain("Skipped");
     expect(formatAgentActionSkippedReason(skipped)).not.toContain("automation_disabled");
   });

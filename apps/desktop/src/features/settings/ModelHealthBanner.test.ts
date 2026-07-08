@@ -14,7 +14,7 @@ function health(details: AgentModelHealth[], globalConfigured = true): ModelHeal
 }
 
 describe("ModelHealthBanner", () => {
-  it("describes model health as five responsibility models", () => {
+  it("describes partial advanced capability overrides without exposing internal agent names", () => {
     const response = health(
       agentModelDefinitions.map((definition) => ({
         agent_id: definition.id,
@@ -25,11 +25,11 @@ describe("ModelHealthBanner", () => {
 
     const banner = getModelHealthBannerState(response);
 
-    expect(banner?.message).toContain("2/5 个职责模型");
+    expect(banner?.message).toContain("2/5 个高级能力");
     expect(banner?.message).not.toMatch(/9 agents|9 个智能体|结果路由|task_agent|wiki_manager_agent/);
   });
 
-  it("explains that global fallback still supports all core agents", () => {
+  it("explains that the default conversation capability supports the product", () => {
     const response = health(
       agentModelDefinitions.map((definition) => ({
         agent_id: definition.id,
@@ -38,6 +38,6 @@ describe("ModelHealthBanner", () => {
       })),
     );
 
-    expect(getModelHealthBannerState(response)?.message).toContain("5 个职责模型正在继承全局模型");
+    expect(getModelHealthBannerState(response)?.message).toContain("对话能力已连接");
   });
 });

@@ -167,11 +167,11 @@ describe("SettingsPanel", () => {
     const { onRefreshSettings, onTestGlobalModel, onSelectVaultDirectory } = renderSettingsPanel();
     const guidedActions = within(screen.getByRole("region", { name: "设置引导" }));
 
-    expect(screen.getByText("先能对话，再决定保存")).toBeInTheDocument();
-    expect(screen.getByText("连接全局模型后就能开始；需要精调时再为 5 个职责模型单独覆盖。")).toBeInTheDocument();
-    fireEvent.click(guidedActions.getByRole("button", { name: "测试模型" }));
+    expect(screen.getByText("基础设置")).toBeInTheDocument();
+    expect(screen.getByText("先连接对话能力，再决定记忆保存在哪里。")).toBeInTheDocument();
+    fireEvent.click(guidedActions.getByRole("button", { name: "测试对话能力" }));
     fireEvent.click(guidedActions.getByRole("button", { name: "选择保存位置" }));
-    fireEvent.click(guidedActions.getByRole("button", { name: "刷新设置" }));
+    fireEvent.click(guidedActions.getByRole("button", { name: "刷新状态" }));
 
     expect(onTestGlobalModel).toHaveBeenCalledTimes(1);
     expect(onSelectVaultDirectory).toHaveBeenCalledTimes(1);
@@ -184,10 +184,10 @@ describe("SettingsPanel", () => {
   it("keeps specialist model configuration behind advanced outcome-oriented settings", () => {
     const { container } = renderSettingsPanel();
 
-    const advanced = screen.getByText("高级职责模型路由").closest("details");
+    const advanced = screen.getByText("高级：能力分工").closest("details");
 
     expect(advanced).not.toHaveAttribute("open");
-    expect(screen.getByText("5 个职责模型")).toBeInTheDocument();
+    expect(screen.getByText("5 类能力")).toBeInTheDocument();
     expect(screen.getByText("回复模型")).toBeInTheDocument();
     expect(screen.getByText("理解模型")).toBeInTheDocument();
     expect(screen.getByText("查找模型")).toBeInTheDocument();
@@ -198,11 +198,11 @@ describe("SettingsPanel", () => {
 
   it("explains the local privacy mode tradeoff in automation settings", () => {
     const { onUpdateAutomationSettingsDraft } = renderSettingsPanel();
-    const automationRegion = within(screen.getByRole("region", { name: "自动整理策略" }));
+    const automationRegion = within(screen.getByRole("region", { name: "记忆整理和主动提醒" }));
 
     expect(automationRegion.getByText("本地隐私模式")).toBeInTheDocument();
     expect(automationRegion.getByText(/敏感输入只做本机关键词检索/)).toBeInTheDocument();
-    expect(automationRegion.getByText(/不发送到模型 API/)).toBeInTheDocument();
+    expect(automationRegion.getByText(/不发送到外部模型服务/)).toBeInTheDocument();
     expect(automationRegion.getByText(/智能程度会下降/)).toBeInTheDocument();
 
     fireEvent.click(automationRegion.getByLabelText(/本地隐私模式/));
@@ -212,7 +212,7 @@ describe("SettingsPanel", () => {
 
   it("lets the user adjust proactive trigger frequency", () => {
     const { onUpdateAutomationSettingsDraft } = renderSettingsPanel();
-    const automationRegion = within(screen.getByRole("region", { name: "自动整理策略" }));
+    const automationRegion = within(screen.getByRole("region", { name: "记忆整理和主动提醒" }));
 
     expect(automationRegion.getByText("日常主动开口")).toBeInTheDocument();
     expect(automationRegion.getByText(/低频每天最多 1 次/)).toBeInTheDocument();

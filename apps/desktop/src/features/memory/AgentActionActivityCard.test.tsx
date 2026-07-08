@@ -90,7 +90,7 @@ describe("AgentActionActivityCard", () => {
     );
 
     expect(screen.getByText("已跳过自动整理")).toBeInTheDocument();
-    expect(screen.getByText(/自动整理策略当前关闭/)).toBeInTheDocument();
+    expect(screen.getByText(/记忆整理设置当前关闭/)).toBeInTheDocument();
     expect(screen.queryByText(/Skipped automatic organization/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Skipped because/)).not.toBeInTheDocument();
     expect(screen.queryByText(/automation_disabled/)).not.toBeInTheDocument();

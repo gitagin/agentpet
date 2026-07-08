@@ -19,8 +19,8 @@ export function MemoryProposalActivityCard({ entry, busy, onAct }: MemoryProposa
     >
       <div className="continuity-proposal-head">
         <div>
-          <strong>长期记忆确认 · {memoryTypeLabels[proposal.type]}</strong>
-          <small>高风险确认 / {formatProposalStatus(proposal.status)}</small>
+          <strong>等你确认 · {memoryTypeLabels[proposal.type]}</strong>
+          <small>需要你决定是否留下 / {formatProposalStatus(proposal.status)}</small>
         </div>
         <span>{formatProposalStatus(proposal.status)}</span>
       </div>
@@ -35,7 +35,7 @@ export function MemoryProposalActivityCard({ entry, busy, onAct }: MemoryProposa
           onClick={() => onAct(proposal.proposal_id, "confirm")}
         >
           {busy ? <Loader2 className="spin" size={16} /> : <Check size={16} />}
-          确认
+          记住
         </button>
         <button
           type="button"
@@ -44,7 +44,7 @@ export function MemoryProposalActivityCard({ entry, busy, onAct }: MemoryProposa
           onClick={() => onAct(proposal.proposal_id, "reject")}
         >
           <X size={16} />
-          拒绝
+          不用记
         </button>
       </div>
     </article>

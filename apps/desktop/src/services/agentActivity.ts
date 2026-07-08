@@ -460,7 +460,7 @@ export function formatAgentActionSkippedReason(action: AgentAction): string {
   const searchable = `${reason} ${summary}`.toLocaleLowerCase();
 
   if (reason === "automation_disabled" || searchable.includes("organization are disabled") || searchable.includes("automation is disabled")) {
-    return "自动整理策略当前关闭，所以这次对话只保留聊天结果，没有写入日记、长期记忆或资料页。可在配置页的“自动整理策略”里开启低风险自动整理。";
+    return "记忆整理设置当前关闭，所以这次对话只保留聊天结果，没有写入日记、长期记忆或资料页。可在设置页开启低风险记忆整理。";
   }
   if (searchable.includes("sensitive")) {
     return "这次内容可能包含敏感信息，已按安全策略跳过写入。";

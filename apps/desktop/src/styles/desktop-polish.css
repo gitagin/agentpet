@@ -538,6 +538,54 @@ body[data-window-mode="world"] .feature-page-stack {
   color: var(--feature-soft);
 }
 
+.feature-shell .memory-priority-block {
+  align-content: start;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.035)),
+    rgba(18, 17, 24, 0.68);
+}
+
+.feature-shell .memory-priority-block > .section-heading.compact strong {
+  color: var(--feature-ink);
+  font-size: 15px;
+  font-weight: 760;
+}
+
+.feature-shell .memory-priority-block > .section-heading.compact span {
+  color: var(--feature-soft);
+  line-height: 1.55;
+}
+
+.feature-shell .memory-priority-list {
+  scrollbar-gutter: stable;
+}
+
+.feature-shell .memory-profile-group,
+.feature-shell .memory-profile-item,
+.feature-shell .memory-profile-filtered {
+  border-color: var(--feature-line);
+  background: rgba(255, 255, 255, 0.055);
+  color: var(--feature-soft);
+}
+
+.feature-shell .memory-profile-group-head strong,
+.feature-shell .memory-profile-item strong,
+.feature-shell .memory-profile-filtered > summary {
+  color: var(--feature-ink);
+}
+
+.feature-shell .memory-profile-group-head span,
+.feature-shell .memory-profile-item span {
+  border-color: rgba(255, 255, 255, 0.11);
+  background: rgba(213, 111, 138, 0.12);
+  color: var(--feature-soft);
+}
+
+.feature-shell .memory-profile-item p,
+.feature-shell .memory-profile-empty {
+  color: var(--feature-soft);
+}
+
 .feature-shell .wiki-target-type-button:hover,
 .feature-shell .wiki-target-type-button.active,
 .feature-shell .memory-activity-filter.active,

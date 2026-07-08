@@ -207,6 +207,18 @@ describe("desktop polish detail contract", () => {
       /\.control-memory-entry-icon\s*\{[^}]*position:\s*static;[^}]*width:\s*30px;[^}]*height:\s*30px;/,
     );
   });
+
+  it("keeps memory product cards readable inside the dark feature shell", () => {
+    expect(polishStyles).toMatch(
+      /\.feature-shell \.memory-priority-block\s*\{[^}]*align-content:\s*start;[^}]*background:[^}]*rgba\(18,\s*17,\s*24,\s*0\.68\);/,
+    );
+    expect(polishStyles).toMatch(
+      /\.feature-shell \.memory-profile-group,\s*\.feature-shell \.memory-profile-item,\s*\.feature-shell \.memory-profile-filtered\s*\{[^}]*border-color:\s*var\(--feature-line\);[^}]*background:\s*rgba\(255,\s*255,\s*255,\s*0\.055\);[^}]*color:\s*var\(--feature-soft\);/,
+    );
+    expect(polishStyles).toMatch(
+      /\.feature-shell \.memory-profile-group-head strong,\s*\.feature-shell \.memory-profile-item strong,\s*\.feature-shell \.memory-profile-filtered > summary\s*\{[^}]*color:\s*var\(--feature-ink\);/,
+    );
+  });
 });
 
 describe("desktop polish single-scroll contract", () => {

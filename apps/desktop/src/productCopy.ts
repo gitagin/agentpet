@@ -1,5 +1,6 @@
 export const productCopy = {
   displayName: "本地陪伴体",
+  positioning: "一个本地优先的陪伴助手，会记住重要的事，帮你接住上下文。",
   promise: "我会长期记住重要的事，陪你把每天接上；记忆留在本机，可查看、可撤回。",
   coreValues: [
     {
@@ -25,13 +26,19 @@ export const productCopy = {
     completedMessage: "我会按规则整理这次内容，你之后可以在记忆里查看和撤回。",
   },
   memoryPage: {
-    title: "我的记忆",
-    description: "这里能看到我记住的内容、来源和状态，也能撤回不想留下的记忆。",
+    title: "我会记住重要的事，但由你决定",
+    description: "这里展示我会在以后聊天中参考的内容；你可以确认、改正或忘记。",
+    primaryPanelTitle: "先看这三件事",
+    primaryPanelDescription: "记忆留在本机，重要内容可见、可确认，也能随时撤回。",
     searchPlaceholder: "搜索我记住的事",
-    activeSectionTitle: "正在使用的记忆",
-    pendingSectionTitle: "待确认的记忆",
-    recentHistoryTitle: "最近撤回或跳过的记忆",
-    emptyState: "还没有留下记忆。和我聊聊，或主动告诉我一件希望记住的事。",
+    activeSectionTitle: "我现在记得什么",
+    pendingSectionTitle: "等你确认",
+    recentHistoryTitle: "随时改正或忘记",
+    emptyState: "还没有值得长期记住的事。你可以先告诉我一个偏好或正在做的项目。",
+    advancedReviewTitle: "回顾与整理建议",
+    advancedReviewDescription: "生成回顾、查看整理建议和本机积累；默认只读，不打扰日常聊天。",
+    advancedManagementTitle: "高级记忆管理",
+    advancedManagementDescription: "用于检查、备份和处理更多记录，默认不打扰日常使用。",
   },
   chatPage: {
     title: "聊天",
@@ -43,5 +50,33 @@ export const productCopy = {
       "明天提醒我继续这件事",
       "帮我回顾今天",
     ],
+  },
+  home: {
+    stageLabel: "Agent Pet 首页舞台",
+    statusModelTitle: "对话能力",
+    statusKnowledgeTitle: "记忆保存",
+    recentActivityTitle: "最近帮你整理",
+    connectionAndDataTitle: "连接与数据",
+    quickPrompts: [
+      "告诉你今天的一件事。",
+      "让你记住一个偏好。",
+      "明天提醒我继续。",
+    ],
+  },
+  worldPage: {
+    tabLabel: "资料",
+    eyebrow: "资料",
+    title: "我的资料",
+    description: "把聊天里提到的文档、想法和链接整理成以后能找回的资料。",
+  },
+  settingsPage: {
+    eyebrow: "基础设置",
+    title: "先连接对话能力，再决定记忆保存在哪里。",
+    stepConnect: "连接对话能力",
+    stepSave: "选择保存位置",
+    testConnection: "测试对话能力",
+    refresh: "刷新状态",
+    advancedModelTitle: "高级：能力分工",
+    advancedModelDescription: "可选给不同能力单独设置模型；大多数用户保持默认即可。",
   },
 } as const;

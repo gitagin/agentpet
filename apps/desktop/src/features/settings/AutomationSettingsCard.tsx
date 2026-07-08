@@ -49,7 +49,7 @@ const automationToggles: AutomationToggle[] = [
   {
     key: "local_privacy_mode",
     title: "本地隐私模式",
-    description: "敏感输入只做本机关键词检索，不发送到模型 API；回复会更保守，智能程度会下降。",
+    description: "敏感输入只做本机关键词检索，不发送到外部模型服务；回复会更保守，智能程度会下降。",
   },
   {
     key: "use_negotiation",
@@ -87,10 +87,10 @@ const proactiveFrequencyOptions: Array<{
 
 function formatAutomationSaveStatus(status: AsyncStatus): string {
   if (status === "loading") {
-    return "正在保存自动整理策略。";
+    return "正在保存记忆整理设置。";
   }
   if (status === "success") {
-    return "自动整理策略已保存。";
+    return "记忆整理设置已保存。";
   }
   if (status === "error") {
     return "保存失败，请检查后重试。";
@@ -110,9 +110,9 @@ export function AutomationSettingsCard({
   const statusText = formatAutomationSaveStatus(saveStatus);
 
   return (
-    <section className="agent-model-section settings-card automation-settings-card" aria-label="自动整理策略">
+    <section className="agent-model-section settings-card automation-settings-card" aria-label="记忆整理和主动提醒">
       <div className="section-heading">
-        <strong>自动整理策略</strong>
+        <strong>记忆整理和主动提醒</strong>
         <span>控制低风险整理和低打扰主动开口；删除、移动、批量改写和保存位置变更仍必须确认。</span>
       </div>
 
@@ -157,7 +157,7 @@ export function AutomationSettingsCard({
       </div>
 
       <label className="automation-number-field">
-        <span>最大协商轮数</span>
+        <span>复杂回答检查轮数</span>
         <input
           type="number"
           min={2}
@@ -177,7 +177,7 @@ export function AutomationSettingsCard({
         <ShieldCheck size={16} />
         <span>
           <strong>高风险操作必须确认</strong>
-          <small>强制开启，不可关闭。包括真实保存位置绑定、删除、移动、批量改写、SQLite schema 和高风险记忆合并。</small>
+          <small>强制开启，不可关闭。包括真实保存位置绑定、删除、移动、批量改写、底层数据结构和高风险记忆合并。</small>
         </span>
         <b>强制开启</b>
       </div>
@@ -186,7 +186,7 @@ export function AutomationSettingsCard({
         <div className="button-row">
           <button type="button" onClick={onSave} disabled={saving}>
             {saving ? <Loader2 className="spin" size={16} /> : <ShieldCheck size={16} />}
-            保存策略
+            保存设置
           </button>
           <button
             type="button"

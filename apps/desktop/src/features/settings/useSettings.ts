@@ -95,7 +95,7 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
   const saveGlobalModel = useCallback(async () => {
     const draft = state.globalModelDraft;
     if (!draft.provider.trim() || !draft.base_url.trim() || !draft.model.trim()) {
-      onNotice({ tone: "error", message: "请填写全局模型的提供方、接口地址和模型。" });
+      onNotice({ tone: "error", message: "请填写默认对话能力的提供方、接口地址和模型。" });
       return;
     }
     const provider = normalizeProviderDraft(draft.provider);
@@ -118,11 +118,11 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
       dispatch({ type: "saveGlobalModelSuccess", config });
       onNotice({
         tone: "success",
-        message: `全局模型已更新，${config.agents_using_global} 个职责模型将使用此配置。`,
+        message: `默认对话能力已更新，${config.agents_using_global} 类高级能力将使用此配置。`,
       });
     } catch (error) {
       dispatch({ type: "setGlobalModelSaveStatus", status: "error" });
-      onNotice({ tone: "error", message: describeError(error, "全局模型配置保存失败") });
+      onNotice({ tone: "error", message: describeError(error, "默认对话能力保存失败") });
     }
   }, [api, onNotice, state.globalModelDraft]);
 
@@ -134,7 +134,7 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
       draft.model.trim() !== draft.saved_model ||
       draft.api_key.trim()
     ) {
-      onNotice({ tone: "error", message: "全局模型有未保存的配置，请先保存后再测试连接。" });
+      onNotice({ tone: "error", message: "默认对话能力有未保存的配置，请先保存后再测试连接。" });
       return;
     }
     if (!isSupportedProviderDraft(draft.saved_provider || draft.provider)) {
@@ -149,11 +149,11 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
       dispatch({ type: "setGlobalModelTestStatus", status: response.status === "ok" ? "success" : "error", result: response });
       onNotice({
         tone: response.status === "ok" ? "success" : "error",
-        message: response.message || `全局模型测试连接${response.status === "ok" ? "成功" : "失败"}。`,
+        message: response.message || `默认对话能力测试连接${response.status === "ok" ? "成功" : "失败"}。`,
       });
     } catch (error) {
       dispatch({ type: "setGlobalModelTestStatus", status: "error" });
-      onNotice({ tone: "error", message: describeError(error, "全局模型测试连接失败") });
+      onNotice({ tone: "error", message: describeError(error, "默认对话能力测试连接失败") });
     }
   }, [api, onNotice, state.globalModelDraft]);
 
@@ -165,7 +165,7 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
     const draft = state.automationSettingsDraft;
     const maxRounds = Math.trunc(draft.max_rounds);
     if (!Number.isFinite(maxRounds) || maxRounds < 2 || maxRounds > 10) {
-      onNotice({ tone: "error", message: "最大协商轮数需在 2 到 10 之间。" });
+      onNotice({ tone: "error", message: "复杂回答检查轮数需在 2 到 10 之间。" });
       return;
     }
 
@@ -273,7 +273,7 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
 
     if (draft.enabled) {
       if (!draft.provider.trim() || !draft.base_url.trim() || !draft.model.trim()) {
-        onNotice({ tone: "error", message: "请填写该职责模型的提供方、接口地址和模型。" });
+        onNotice({ tone: "error", message: "请填写该高级能力的提供方、接口地址和模型。" });
         return;
       }
       if (!isSupportedProviderDraft(provider)) {
@@ -281,7 +281,7 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
         return;
       }
       if (!draft.masked && !draft.api_key.trim()) {
-        onNotice({ tone: "error", message: "请填写该职责模型的密钥后再保存。" });
+        onNotice({ tone: "error", message: "请填写该高级能力的密钥后再保存。" });
         return;
       }
     }
@@ -309,7 +309,7 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
         tone: "success",
         message: draft.enabled
           ? `${agentLabel(agentId)} 模型配置已保存${masked ? `：${masked}` : "，请继续填写密钥"}。`
-          : `${agentLabel(agentId)} 已切换为使用全局模型。`,
+          : `${agentLabel(agentId)} 已切换为使用默认对话能力。`,
       });
     } catch (error) {
       onNotice({ tone: "error", message: describeError(error, `${agentLabel(agentId)} 模型配置保存失败`) });
@@ -349,8 +349,8 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
       onNotice({
         tone: "info",
         message: isElectronRuntime
-          ? "当前桌面端未提供文件夹选择能力，请手动填写知识库路径。"
-          : "浏览器模式无法打开系统文件夹选择器，请手动填写知识库路径。",
+          ? "当前桌面端未提供文件夹选择能力，请手动填写保存位置。"
+          : "浏览器模式无法打开系统文件夹选择器，请手动填写保存位置。",
       });
       return;
     }
@@ -381,8 +381,8 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
         onNotice({
           tone: "success",
           message: response.configured
-            ? `当前知识库：${response.root_path_label || response.active_vault_id || "已配置"}。`
-            : "尚未配置知识库。",
+            ? `当前保存位置：${response.root_path_label || response.active_vault_id || "已配置"}。`
+            : "尚未配置保存位置。",
         });
       }
       await loadSettingsStatus({ silent: true });
@@ -392,7 +392,7 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
         return null;
       }
       if (!options.silent) {
-        onNotice({ tone: "error", message: describeError(error, "知识库状态读取失败") });
+        onNotice({ tone: "error", message: describeError(error, "保存位置状态读取失败") });
       }
       return null;
     }
@@ -428,7 +428,7 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
       } catch (indexError) {
         onNotice({
           tone: "error",
-          message: describeError(indexError, `知识库 ${response.vault_id} 已初始化，但自动索引失败`),
+          message: describeError(indexError, `保存位置 ${response.vault_id} 已初始化，但自动整理失败`),
         });
       }
       await loadVaultStatus({ silent: true });
@@ -441,7 +441,7 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
 
   const rebuildIndex = useCallback(async () => {
     if (!state.vaultId) {
-      onNotice({ tone: "error", message: "请先加载或初始化知识库，再启动索引任务。" });
+      onNotice({ tone: "error", message: "请先加载或初始化保存位置，再启动资料整理。" });
       return;
     }
 
@@ -459,7 +459,7 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
           filesIndexed: response.files_indexed,
         },
       });
-      onNotice({ tone: "success", message: `索引任务 ${response.index_job_id} 状态：${formatTaskStatus(response.status)}。` });
+      onNotice({ tone: "success", message: `资料整理 ${response.index_job_id} 状态：${formatTaskStatus(response.status)}。` });
     } catch (error) {
       onNotice({ tone: "error", message: describeError(error, "重建索引失败") });
     } finally {

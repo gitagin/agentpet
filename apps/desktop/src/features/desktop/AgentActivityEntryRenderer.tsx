@@ -113,7 +113,7 @@ function ContinuityProposalActivityCard({ entry, busy, onAct }: ContinuityPropos
             {" / "}
             {formatContinuityStatus(proposal.status)}
             {" / "}
-            置信度 {formatConfidence(proposal.confidence)}
+            我有多确定 {formatConfidence(proposal.confidence)}
           </small>
         </div>
         <span>{formatContinuityStatus(proposal.status)}</span>
