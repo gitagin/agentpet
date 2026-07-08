@@ -533,21 +533,40 @@ function renderView(
 }
 
 function openAdvancedMemoryTools() {
-  const advanced = screen.getByText("高级记忆管理").closest("details") as HTMLDetailsElement;
+  openMemoryWorkspaceTab("数据");
+  const advanced = screen.getByText("高级备份与检查").closest("details") as HTMLDetailsElement;
   expect(advanced).toBeInTheDocument();
   expect(advanced).not.toHaveAttribute("open");
-  fireEvent.click(within(advanced).getByText("高级记忆管理"));
+  fireEvent.click(within(advanced).getByText("高级备份与检查"));
   expect(advanced).toHaveAttribute("open");
   return advanced;
 }
 
-function openReviewTools() {
-  const reviewTools = screen.getByText("回顾与整理建议").closest("details") as HTMLDetailsElement;
-  expect(reviewTools).toBeInTheDocument();
-  expect(reviewTools).not.toHaveAttribute("open");
-  fireEvent.click(within(reviewTools).getByText("回顾与整理建议"));
-  expect(reviewTools).toHaveAttribute("open");
-  return reviewTools;
+function openMemoryWorkspaceTab(label: string) {
+  const tab = screen.getByRole("tab", { name: new RegExp(label) });
+  fireEvent.click(tab);
+  expect(tab).toHaveAttribute("aria-selected", "true");
+  return screen.getByRole("tabpanel", { name: new RegExp(`记忆工作台：${label}`) });
+}
+
+function openArchiveTab() {
+  return openMemoryWorkspaceTab("档案");
+}
+
+function openDataTab() {
+  return openMemoryWorkspaceTab("数据");
+}
+
+function openSearchTab() {
+  return openMemoryWorkspaceTab("搜索");
+}
+
+function openDecayTab() {
+  return openMemoryWorkspaceTab("衰减图");
+}
+
+function openDiaryTab() {
+  return openMemoryWorkspaceTab("日记");
 }
 
 describe("MemoryWindowView", () => {
@@ -601,6 +620,20 @@ describe("MemoryWindowView", () => {
     expect(within(graph).getByText("告诉我不希望被记住的边界")).toBeInTheDocument();
   });
 
+  it("keeps the material library as an internal memory workspace entry", async () => {
+    const api = createApi([memoryFact()]);
+    window.location.hash = "#memory";
+
+    renderView(api);
+    const importPanel = openMemoryWorkspaceTab("导入");
+
+    expect(within(importPanel).getByLabelText("资料导入入口")).toBeInTheDocument();
+    expect(within(importPanel).getAllByText("资料库").length).toBeGreaterThan(0);
+    expect(within(importPanel).getByText(/记忆工作台/)).toBeInTheDocument();
+    fireEvent.click(within(importPanel).getByRole("button", { name: "打开资料库" }));
+    expect(window.location.hash).toBe("#world");
+  });
+
   it("shows a safe graph error if the projection request fails", async () => {
     const api = createApi([memoryFact()]);
     (api.getMemoryGraphProjection as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
@@ -618,7 +651,7 @@ describe("MemoryWindowView", () => {
     const api = createApi([memoryFact()]);
 
     renderView(api);
-    openReviewTools();
+    openDataTab();
 
     const dashboard = (await screen.findByRole("button", { name: /刷新积累/ })).closest("section") as HTMLElement;
     expect(dashboard).toBeInTheDocument();
@@ -636,6 +669,7 @@ describe("MemoryWindowView", () => {
     const api = createApi([memoryFact()]);
 
     const { container } = renderView(api);
+    openArchiveTab();
 
     const profile = await screen.findByLabelText("只读记忆概览");
     expect(within(profile).getByText("我现在记得什么")).toBeInTheDocument();
@@ -648,6 +682,7 @@ describe("MemoryWindowView", () => {
     const api = createApi([memoryFact()], localAssetStats, profileWithPreference);
 
     const { container } = renderView(api);
+    openArchiveTab();
 
     const profile = await screen.findByLabelText("只读记忆概览");
     fireEvent.click(within(profile).getByRole("button", { name: "查看记忆详情：回答保持简洁" }));
@@ -679,6 +714,7 @@ describe("MemoryWindowView", () => {
     });
 
     const { container } = renderView(api);
+    openArchiveTab();
 
     const profile = await screen.findByLabelText("只读记忆概览");
     fireEvent.click(within(profile).getByRole("button", { name: "查看记忆详情：回答保持简洁" }));
@@ -705,6 +741,7 @@ describe("MemoryWindowView", () => {
     });
 
     const { container } = renderView(api);
+    openArchiveTab();
 
     fireEvent.click(await screen.findByRole("button", { name: "查看记忆详情：回答保持简洁" }));
 
@@ -719,6 +756,7 @@ describe("MemoryWindowView", () => {
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
 
     renderView(api);
+    openArchiveTab();
 
     fireEvent.click(await screen.findByRole("button", { name: "查看记忆详情：回答保持简洁" }));
     const drawer = await screen.findByRole("dialog", { name: "记忆详情" });
@@ -733,6 +771,7 @@ describe("MemoryWindowView", () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
 
     renderView(api);
+    openArchiveTab();
 
     fireEvent.click(await screen.findByRole("button", { name: "查看记忆详情：回答保持简洁" }));
     const drawer = await screen.findByRole("dialog", { name: "记忆详情" });
@@ -753,6 +792,7 @@ describe("MemoryWindowView", () => {
     (api.getMemoryProfileDetail as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("source_text Authorization C:\\secret"));
 
     renderView(api);
+    openArchiveTab();
 
     fireEvent.click(await screen.findByRole("button", { name: "查看记忆详情：回答保持简洁" }));
     expect(await screen.findByText("这次没能打开详情，请稍后重试。")).toBeInTheDocument();
@@ -810,7 +850,14 @@ describe("MemoryWindowView", () => {
       ),
     });
 
-    expect(screen.getByRole("heading", { name: "我会记住重要的事，但由你决定" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "记忆工作台" })).toBeInTheDocument();
+    expect(screen.getByText("档案、图谱、日记和资料都在这里，你可以查看、搜索、整理和改正。")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /图谱/ })).toHaveAttribute("aria-selected", "true");
+    ["档案", "搜索", "数据", "导入", "图谱", "关联", "热力图", "衰减图", "日记"].forEach((label) => {
+      expect(screen.getByRole("tab", { name: new RegExp(label) })).toBeInTheDocument();
+    });
+
+    openArchiveTab();
     const control = await screen.findByLabelText("记忆主视图");
     await within(control).findByText("fruit is apple");
     await within(control).findByText("fruit is banana");
@@ -822,22 +869,11 @@ describe("MemoryWindowView", () => {
     expect(within(control).getByText("可撤回记忆记录")).toBeInTheDocument();
     expect(within(control).getByRole("button", { name: "撤回" })).toBeInTheDocument();
 
-    const reviewTools = screen.getByText("回顾与整理建议").closest("details") as HTMLDetailsElement;
-    const advanced = screen.getByText("高级记忆管理").closest("details") as HTMLDetailsElement;
-    expect(control.compareDocumentPosition(reviewTools) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(reviewTools.compareDocumentPosition(advanced) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(reviewTools).not.toHaveAttribute("open");
-    expect(advanced).not.toHaveAttribute("open");
+    expect(screen.queryByText("高级备份与检查")).not.toBeInTheDocument();
 
     openAdvancedMemoryTools();
-    const workbench = screen.getByLabelText("更多记忆工作区");
-    expect(advanced).toContainElement(workbench);
-    expect(within(workbench).getByLabelText("记忆搜索")).toBeInTheDocument();
-    expect(within(workbench).getByPlaceholderText("搜索我记住的事")).toBeInTheDocument();
-    expect(within(workbench).getByLabelText("新增记忆表单")).toBeInTheDocument();
-    expect(within(workbench).getByText("偏好记忆")).toBeInTheDocument();
-    expect(within(workbench).getByText("用户偏好发布清单。")).toBeInTheDocument();
-    expect(within(advanced).getByLabelText("已确认记忆")).toBeInTheDocument();
+    expect(screen.getByLabelText("高级备份与检查")).toBeInTheDocument();
+    expect(screen.getByLabelText("已确认记忆")).toBeInTheDocument();
     expect(screen.queryByLabelText(/chat/i)).not.toBeInTheDocument();
   });
 
@@ -847,11 +883,12 @@ describe("MemoryWindowView", () => {
     const onMemoryProposalDraftChange = vi.fn();
 
     renderView(api, vi.fn(), { onMemorySearchQueryChange, onMemoryProposalDraftChange });
-    openAdvancedMemoryTools();
+    openSearchTab();
 
     fireEvent.click(screen.getByRole("button", { name: "搜索记忆" }));
     expect(onMemorySearchQueryChange).toHaveBeenCalledWith("发布清单");
 
+    openArchiveTab();
     fireEvent.click(screen.getByRole("button", { name: "保存一个偏好" }));
     expect(onMemoryProposalDraftChange).toHaveBeenCalledWith({
       type: "preference",
@@ -859,7 +896,8 @@ describe("MemoryWindowView", () => {
       target_path: "Inbox/Pending Memories.md",
     });
 
-    fireEvent.click(within(screen.getByLabelText("复盘快捷操作")).getByRole("button", { name: "生成今日复盘" }));
+    openDiaryTab();
+    fireEvent.click(within(await screen.findByLabelText("复盘助手")).getByRole("button", { name: "生成今日复盘" }));
     await waitFor(() => expect(api.writeRetrospectiveReport).toHaveBeenCalledWith(1));
   });
 
@@ -867,7 +905,7 @@ describe("MemoryWindowView", () => {
     const api = createApi([memoryFact()]);
 
     renderView(api, vi.fn(), { memorySearchQuery: "发布清单" });
-    openAdvancedMemoryTools();
+    openSearchTab();
 
     fireEvent.click(screen.getByRole("button", { name: "搜索" }));
 
@@ -883,7 +921,7 @@ describe("MemoryWindowView", () => {
     };
 
     renderView(api, vi.fn(), { memoryProposalDraft: draft });
-    openAdvancedMemoryTools();
+    openArchiveTab();
 
     fireEvent.click(screen.getByRole("button", { name: "新增记忆" }));
 
@@ -905,7 +943,7 @@ describe("MemoryWindowView", () => {
     });
 
     renderView(api);
-    openReviewTools();
+    openDataTab();
 
     const dashboard = await screen.findByText("聊天日记天数");
     expect(dashboard).toBeInTheDocument();
@@ -1011,11 +1049,9 @@ describe("MemoryWindowView", () => {
     const api = createApi([memoryFact()]);
 
     renderView(api);
-    openReviewTools();
+    openDiaryTab();
 
     const coach = await screen.findByLabelText("复盘助手");
-    const localAssets = (await screen.findByRole("button", { name: /刷新积累/ })).closest("section") as HTMLElement;
-    expect(coach.compareDocumentPosition(localAssets) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(within(coach).getByText("今日复盘")).toBeInTheDocument();
     expect(within(coach).getByText("7 天复盘")).toBeInTheDocument();
     expect(within(coach).getByText("月度复盘")).toBeInTheDocument();
@@ -1033,8 +1069,8 @@ describe("MemoryWindowView", () => {
     const api = createApi([memoryFact()], localAssetStats, emptyProfileProjection, hygienePreview);
 
     const { container } = renderView(api);
-    const reviewTools = openReviewTools();
-    fireEvent.click(within(reviewTools).getByRole("button", { name: "扫描整理建议" }));
+    const decayPanel = openDecayTab();
+    fireEvent.click(within(decayPanel).getByRole("button", { name: "扫描整理建议" }));
 
     const panel = await screen.findByLabelText("整理建议");
     expect(api.getMemoryHygienePreview).toHaveBeenCalledTimes(1);
@@ -1051,8 +1087,8 @@ describe("MemoryWindowView", () => {
     const api = createApi([memoryFact()], localAssetStats, emptyProfileProjection, emptyHygienePreview);
 
     renderView(api);
-    const reviewTools = openReviewTools();
-    fireEvent.click(within(reviewTools).getByRole("button", { name: "扫描整理建议" }));
+    const decayPanel = openDecayTab();
+    fireEvent.click(within(decayPanel).getByRole("button", { name: "扫描整理建议" }));
 
     expect(await screen.findByText("暂时没有需要整理的记忆。")).toBeInTheDocument();
   });
@@ -1062,8 +1098,8 @@ describe("MemoryWindowView", () => {
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
 
     renderView(api);
-    const reviewTools = openReviewTools();
-    fireEvent.click(within(reviewTools).getByRole("button", { name: "扫描整理建议" }));
+    const decayPanel = openDecayTab();
+    fireEvent.click(within(decayPanel).getByRole("button", { name: "扫描整理建议" }));
     const panel = await screen.findByLabelText("整理建议");
     fireEvent.click(within(panel).getByRole("button", { name: "归档" }));
 
@@ -1077,8 +1113,8 @@ describe("MemoryWindowView", () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
 
     renderView(api, onRefresh);
-    const reviewTools = openReviewTools();
-    fireEvent.click(within(reviewTools).getByRole("button", { name: "扫描整理建议" }));
+    const decayPanel = openDecayTab();
+    fireEvent.click(within(decayPanel).getByRole("button", { name: "扫描整理建议" }));
     const panel = await screen.findByLabelText("整理建议");
     fireEvent.click(within(panel).getByRole("button", { name: "归档" }));
 
@@ -1098,8 +1134,8 @@ describe("MemoryWindowView", () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
 
     const { container } = renderView(api);
-    const reviewTools = openReviewTools();
-    fireEvent.click(within(reviewTools).getByRole("button", { name: "扫描整理建议" }));
+    const decayPanel = openDecayTab();
+    fireEvent.click(within(decayPanel).getByRole("button", { name: "扫描整理建议" }));
     const panel = await screen.findByLabelText("整理建议");
     fireEvent.click(within(panel).getByRole("button", { name: "归档" }));
 
@@ -1129,8 +1165,8 @@ describe("MemoryWindowView", () => {
     const api = createApi([memoryFact()], localAssetStats, emptyProfileProjection, rawishPreview);
 
     const { container } = renderView(api);
-    const reviewTools = openReviewTools();
-    fireEvent.click(within(reviewTools).getByRole("button", { name: "扫描整理建议" }));
+    const decayPanel = openDecayTab();
+    fireEvent.click(within(decayPanel).getByRole("button", { name: "扫描整理建议" }));
 
     const panel = await screen.findByLabelText("整理建议");
     expect(within(panel).getAllByText("整理建议").length).toBeGreaterThan(0);
@@ -1145,7 +1181,7 @@ describe("MemoryWindowView", () => {
     const onRefresh = vi.fn();
 
     renderView(api, onRefresh);
-    openAdvancedMemoryTools();
+    openDecayTab();
 
     const review = await screen.findByLabelText("本周记忆复核");
     expect(within(review).getAllByText("已保留").length).toBeGreaterThan(0);
@@ -1181,7 +1217,7 @@ describe("MemoryWindowView", () => {
     const api = createApi([memoryFact()]);
 
     renderView(api);
-    openReviewTools();
+    openDiaryTab();
 
     const coach = await screen.findByLabelText("复盘助手");
     fireEvent.click(within(coach).getByRole("button", { name: "生成今日复盘" }));
@@ -1208,7 +1244,7 @@ describe("MemoryWindowView", () => {
 
     try {
       renderView(api);
-      openReviewTools();
+      openDiaryTab();
 
       const coach = await screen.findByLabelText("复盘助手");
       fireEvent.click(within(coach).getByRole("button", { name: "生成今日复盘" }));
@@ -1230,9 +1266,8 @@ describe("MemoryWindowView", () => {
     const onRefresh = vi.fn();
 
     renderView(api, onRefresh);
-    openReviewTools();
+    openDiaryTab();
 
-    expect(await screen.findByLabelText("记忆主视图")).toBeInTheDocument();
     fireEvent.click(within(screen.getByLabelText("复盘助手")).getByRole("button", { name: "生成月度复盘" }));
 
     await waitFor(() => expect(api.writeRetrospectivePeriodReport).toHaveBeenCalledWith("monthly"));

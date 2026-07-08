@@ -9,7 +9,9 @@ describe("BottomNav", () => {
     const activeTab = primaryNavigationTabs[2];
     const { container } = render(<BottomNav activeTab={activeTab} />);
 
+    expect(primaryNavigationTabs).toEqual(["首页", "对话", "记忆", "计划", "设置"]);
     expect(screen.getAllByRole("button")).toHaveLength(primaryNavigationTabs.length);
+    expect(screen.queryByRole("button", { name: "资料" })).not.toBeInTheDocument();
     expect(container.querySelectorAll(".bottom-nav-icon")).toHaveLength(primaryNavigationTabs.length);
     expect(container.querySelector(".bottom-nav-center-avatar img")?.getAttribute("src")).toMatch(
       /^\/images\/character\.png\?v=\d+$/,

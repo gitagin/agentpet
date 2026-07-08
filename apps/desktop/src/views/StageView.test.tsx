@@ -109,7 +109,7 @@ describe("StageView", () => {
     expect(advanced).not.toHaveAttribute("open");
     expect(screen.getByRole("button", { name: /提醒和待办/ })).toHaveAttribute("data-stage-route", "agent");
     expect(screen.getByRole("button", { name: /成长记录/ })).toHaveAttribute("data-stage-route", "growth");
-    expect(screen.getByRole("button", { name: /我的资料/ })).toHaveAttribute("data-stage-route", "world");
+    expect(screen.getByRole("button", { name: /记忆资料库/ })).toHaveAttribute("data-stage-route", "world");
     expect(screen.getByLabelText("聊天输入")).toBeInTheDocument();
   });
 
@@ -184,7 +184,7 @@ describe("StageView", () => {
     fireEvent.click(screen.getByRole("button", { name: /成长记录/ }));
     expect(window.location.hash).toBe("#growth");
 
-    fireEvent.click(screen.getByRole("button", { name: /我的资料/ }));
+    fireEvent.click(screen.getByRole("button", { name: /记忆资料库/ }));
     expect(window.location.hash).toBe("#world");
   });
 

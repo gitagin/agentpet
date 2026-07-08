@@ -1,6 +1,6 @@
 import type { DesktopFeatureWindowMode } from "../types";
 
-export const primaryNavigationTabs = ["首页", "对话", "记忆", "计划", "资料", "设置"] as const;
+export const primaryNavigationTabs = ["首页", "对话", "记忆", "计划", "设置"] as const;
 
 export type PrimaryNavigationTab = (typeof primaryNavigationTabs)[number];
 
@@ -9,7 +9,6 @@ const routeByTab: Record<PrimaryNavigationTab, "stage" | "agent" | DesktopFeatur
   对话: "chat",
   记忆: "memory",
   计划: "agent",
-  资料: "world",
   设置: "settings",
 };
 

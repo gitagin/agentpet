@@ -861,8 +861,8 @@ describe("App", () => {
   it("renders core product routes as dedicated workspaces instead of chat-only surfaces", async () => {
     const routes = [
       { hash: "#agent", query: () => screen.findByLabelText("提醒和待办区") },
-      { hash: "#memory", query: () => screen.findByRole("heading", { name: "我会记住重要的事，但由你决定" }) },
-      { hash: "#world", query: () => screen.findByRole("heading", { name: "我的资料" }) },
+      { hash: "#memory", query: () => screen.findByRole("heading", { name: "记忆工作台" }) },
+      { hash: "#world", query: () => screen.findByRole("heading", { name: "资料库" }) },
     ];
 
     for (const route of routes) {

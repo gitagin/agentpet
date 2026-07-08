@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { BookOpen, CalendarDays, Home, MessageCircle, Settings, Star } from "lucide-react";
+import { CalendarDays, Home, MessageCircle, Settings, Star } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useVersionedPublicAsset } from "../hooks/useVersionedPublicAsset";
 import { openPrimaryNavigationTab, primaryNavigationTabs, type PrimaryNavigationTab } from "./navigation";
@@ -10,7 +10,6 @@ const bottomNavIcons: Record<PrimaryNavigationTab, LucideIcon> = {
   对话: MessageCircle,
   记忆: Star,
   计划: CalendarDays,
-  资料: BookOpen,
   设置: Settings,
 };
 

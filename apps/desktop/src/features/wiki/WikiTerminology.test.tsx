@@ -132,8 +132,8 @@ describe("wiki terminology", () => {
       </WorldWindowView>,
     );
 
-    expect(screen.getByRole("heading", { name: "我的资料" })).toBeInTheDocument();
-    expect(screen.getByText(/以后能找回的资料/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "资料库" })).toBeInTheDocument();
+    expect(screen.getByText(/记忆工作台的一部分/)).toBeInTheDocument();
     expect(screen.queryByText(/Vault \/ Wiki|VAULT \/ WIKI/i)).not.toBeInTheDocument();
   });
 

@@ -56,6 +56,16 @@ type MemoryProfileProjectionGroupKey =
   | "relationships"
   | "recent_state"
   | "needs_confirmation";
+type MemoryWorkspaceTabKey =
+  | "archive"
+  | "search"
+  | "data"
+  | "import"
+  | "graph"
+  | "related"
+  | "heatmap"
+  | "decay"
+  | "diary";
 
 type ReviewCoachCardConfig = {
   kind: ReviewCoachKind;
@@ -74,6 +84,18 @@ type ReviewReportArtifact = {
   actionId?: string | null;
   generatedAt?: string | null;
 };
+
+const memoryWorkspaceTabs: Array<{ key: MemoryWorkspaceTabKey; label: string; description: string }> = [
+  { key: "archive", label: "档案", description: "稳定记忆、待确认和可改正记录。" },
+  { key: "search", label: "搜索", description: "按关键词找回记忆和资料线索。" },
+  { key: "data", label: "数据", description: "本机积累、状态和高级备份。" },
+  { key: "import", label: "导入", description: "整理文档、链接和想法到资料库。" },
+  { key: "graph", label: "图谱", description: "查看记忆之间的大致关联。" },
+  { key: "related", label: "关联", description: "把项目、资料和回忆串起来。" },
+  { key: "heatmap", label: "热力图", description: "观察近期高频主题和回忆密度。" },
+  { key: "decay", label: "衰减图", description: "处理过期、冲突和需要整理的记忆。" },
+  { key: "diary", label: "日记", description: "回顾每日情景和阶段复盘。" },
+];
 
 type MemoryWindowViewProps = {
   api: DesktopApi;
@@ -1393,6 +1415,93 @@ function MemoryFactCard({
   );
 }
 
+function MemoryWorkspaceTabs({
+  activeTab,
+  onChange,
+}: {
+  activeTab: MemoryWorkspaceTabKey;
+  onChange: (tab: MemoryWorkspaceTabKey) => void;
+}) {
+  return (
+    <section className="panel feature-window-panel memory-workspace-shell" aria-label="记忆工作台入口">
+      <div className="section-heading">
+        <strong>记忆工作台</strong>
+        <span>把个人记忆、日记情景和资料库收在同一个本机工作区。</span>
+      </div>
+      <div className="memory-workspace-tabs" role="tablist" aria-label="记忆工作台分区">
+        {memoryWorkspaceTabs.map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            id={`memory-workspace-tab-${tab.key}`}
+            className={`memory-workspace-tab ${activeTab === tab.key ? "active" : ""}`}
+            role="tab"
+            aria-label={tab.label}
+            aria-selected={activeTab === tab.key}
+            aria-controls={`memory-workspace-panel-${tab.key}`}
+            onClick={() => onChange(tab.key)}
+          >
+            <strong>{tab.label}</strong>
+            <span>{tab.description}</span>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function MemoryWorkspacePlaceholder({
+  title,
+  description,
+  helper,
+}: {
+  title: string;
+  description: string;
+  helper: string;
+}) {
+  return (
+    <section className="panel feature-window-panel memory-workspace-placeholder" aria-label={title}>
+      <div className="section-heading">
+        <strong>{title}</strong>
+        <span>{description}</span>
+      </div>
+      <EmptyState text={helper} />
+    </section>
+  );
+}
+
+function MemoryImportPanel() {
+  return (
+    <section className="panel feature-window-panel memory-import-panel" aria-label="资料导入入口">
+      <div className="section-heading">
+        <strong>资料库</strong>
+        <span>把文档、链接和想法整理成以后能找回的资料；它现在属于记忆工作台。</span>
+      </div>
+      <div className="memory-import-grid">
+        <article>
+          <BookOpen size={18} aria-hidden="true" />
+          <strong>导入资料</strong>
+          <p>粘贴来源材料，预览整理计划，再写入本机资料库。</p>
+        </article>
+        <article>
+          <Search size={18} aria-hidden="true" />
+          <strong>搜索档案</strong>
+          <p>从整理出的资料页和记忆线索里找回上下文。</p>
+        </article>
+        <article>
+          <Archive size={18} aria-hidden="true" />
+          <strong>维护档案</strong>
+          <p>索引、日志和只读检查仍在资料库内部保留。</p>
+        </article>
+      </div>
+      <button type="button" className="secondary memory-import-open" onClick={() => { window.location.hash = "#world"; }}>
+        <ExternalLink size={16} />
+        打开资料库
+      </button>
+    </section>
+  );
+}
+
 function MemoryFactSection({
   title,
   description,
@@ -1741,6 +1850,7 @@ export default function MemoryWindowView({
   renderEntry,
 }: MemoryWindowViewProps) {
   const [activeFilter, setActiveFilter] = useState<MemoryActivityFilter>("all");
+  const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<MemoryWorkspaceTabKey>("graph");
   const [searchQuery, setSearchQuery] = useState("");
   const [localAssets, setLocalAssets] = useState<LocalAssetStatsResponse | null>(null);
   const [localAssetsLoading, setLocalAssetsLoading] = useState(true);
@@ -2222,20 +2332,20 @@ export default function MemoryWindowView({
     }
   }
 
-  return (
-    <FeatureWindowShell
-      eyebrow="记忆"
-      title={productCopy.memoryPage.title}
-      description={productCopy.memoryPage.description}
-      activeTab="记忆"
-    >
-      <MemoryGraphPanel
-        projection={memoryGraphProjection}
-        loading={memoryGraphLoading}
-        error={memoryGraphError}
-        onRefresh={() => void loadMemoryGraphProjection()}
-      />
+  const activeWorkspaceTabConfig =
+    memoryWorkspaceTabs.find((tab) => tab.key === activeWorkspaceTab) || memoryWorkspaceTabs[0];
 
+  const graphPanel = (
+    <MemoryGraphPanel
+      projection={memoryGraphProjection}
+      loading={memoryGraphLoading}
+      error={memoryGraphError}
+      onRefresh={() => void loadMemoryGraphProjection()}
+    />
+  );
+
+  const archivePanel = (
+    <>
       <MemoryPriorityPanel
         activeFacts={activePriorityFacts}
         candidateFacts={pendingPriorityFacts}
@@ -2266,228 +2376,273 @@ export default function MemoryWindowView({
         onAction={(action) => void submitMemoryProfileAction(action)}
       />
 
-      <details className="memory-advanced-tools memory-review-tools">
-        <summary>
-          <strong>{productCopy.memoryPage.advancedReviewTitle}</strong>
-          <span>{productCopy.memoryPage.advancedReviewDescription}</span>
-        </summary>
-        <div className="memory-advanced-tools-stack">
-          <MemoryHygieneSuggestionPanel
-            preview={memoryHygienePreview}
-            loading={memoryHygieneLoading}
-            error={memoryHygieneError}
-            busyId={memoryHygieneBusyId}
-            onScan={() => void loadMemoryHygienePreview()}
-            onApply={(item) => void applyMemoryHygieneSuggestion(item)}
-          />
+      <AddMemoryForm
+        draft={memoryProposalDraft}
+        onDraftChange={onMemoryProposalDraftChange}
+        onTryPreference={fillPreferenceTrial}
+        onSubmit={onCreateMemoryProposal}
+      />
+    </>
+  );
 
-          <ReviewCoachPanel
-            retrospectives={retrospectives}
-            loading={retrospectiveLoading}
-            error={retrospectiveError}
-            message={reviewReportMessage}
-            generatingReport={generatingReport}
-            reportArtifacts={reviewReportArtifacts}
-            canRevealReports={canRevealReports}
-            onRefresh={() => void loadRetrospectives()}
-            onGenerate={generateReviewFromCard}
-            onRevealReport={(relativePath, mode) => void revealReviewReport(relativePath, mode)}
-          />
+  const searchPanel = (
+    <section className="memory-workbench-panel memory-search-workspace" aria-label="记忆和资料搜索">
+      <MemorySearchWorkbench
+        query={memorySearchQuery}
+        status={memorySearchStatus}
+        results={memorySearchResults}
+        lastQuery={memoryLastSearchQuery}
+        onQueryChange={onMemorySearchQueryChange}
+        onTrySearch={fillMemorySearchTrial}
+        onSearch={onRunMemorySearch}
+      />
+      <MemoryWorkspacePlaceholder
+        title="资料搜索入口"
+        description="资料页搜索继续保留在资料库内部。"
+        helper="需要搜索文档、链接或整理出的资料页时，可以从导入页打开资料库。"
+      />
+    </section>
+  );
 
-          <section className="panel feature-window-panel memory-source-details-panel" aria-label="复盘来源详情">
-            <div className="section-heading">
-              <strong>复盘来源详情</strong>
-              <span>生成报告前后都可以检查每次复盘背后的本地证据。</span>
-            </div>
-            <div className="retrospective-toolbar" aria-label="复盘来源窗口">
-              {[1, 7, 30, 90].map((days) => (
-                <button
-                  key={days}
-                  type="button"
-                  className={`secondary memory-activity-filter ${activeRetrospectiveDays === days ? "active" : ""}`}
-                  onClick={() => setActiveRetrospectiveDays(days)}
-                  aria-pressed={activeRetrospectiveDays === days}
-                >
-                  <CalendarRange size={15} />
-                  {days === 1 ? "今天" : `${days} 天`}
-                </button>
-              ))}
-            </div>
-            {retrospectiveLoading && !activeRetrospective ? (
-              <EmptyState text="正在加载本地复盘数据。" />
-            ) : activeRetrospective ? (
-              <RetrospectiveWindowPanel
-                window={activeRetrospective}
-                generatingReport={generatingReport}
-                onGenerateReport={(days) => void generateReport(days)}
-              />
-            ) : (
-              <EmptyState text="还没有复盘数据。请先完成一次聊天、任务或资料整理。" />
-            )}
-          </section>
-
-          <LocalAssetDashboard
-            stats={localAssets}
-            loading={localAssetsLoading}
-            error={localAssetsError}
-            onRefresh={() => void loadLocalAssets()}
-          />
-        </div>
-      </details>
+  const dataPanel = (
+    <>
+      <LocalAssetDashboard
+        stats={localAssets}
+        loading={localAssetsLoading}
+        error={localAssetsError}
+        onRefresh={() => void loadLocalAssets()}
+      />
 
       <details className="memory-advanced-tools">
         <summary>
-          <strong>{productCopy.memoryPage.advancedManagementTitle}</strong>
+          <strong>高级备份与检查</strong>
           <span>{productCopy.memoryPage.advancedManagementDescription}</span>
         </summary>
         <div className="memory-advanced-tools-stack">
-      <section className="panel feature-window-panel memory-workbench-panel" aria-label="更多记忆工作区">
-        <MemorySearchWorkbench
-          query={memorySearchQuery}
-          status={memorySearchStatus}
-          results={memorySearchResults}
-          lastQuery={memoryLastSearchQuery}
-          onQueryChange={onMemorySearchQueryChange}
-          onTrySearch={fillMemorySearchTrial}
-          onSearch={onRunMemorySearch}
-        />
-        <AddMemoryForm
-          draft={memoryProposalDraft}
-          onDraftChange={onMemoryProposalDraftChange}
-          onTryPreference={fillPreferenceTrial}
-          onSubmit={onCreateMemoryProposal}
-        />
-        <div className="guided-trial-actions memory-review-trial-actions" aria-label="复盘快捷操作">
-          <button type="button" className="secondary" onClick={() => void generateReport(1)} disabled={generatingReport !== null}>
-            {generatingReport === 1 ? <Loader2 className="spin" size={16} /> : <FileText size={16} />}
-            生成今日复盘
-          </button>
-        </div>
-      </section>
-
-      <section className="panel feature-window-panel memory-management-panel" aria-label="高级记忆管理">
-        <div className="section-heading">
-          <strong>检查和备份记忆</strong>
-          <span>
-            {memoryFacts.length > 0
-              ? `显示 ${filteredMemoryFacts.length} / ${memoryFacts.length} 条长期会用到的记忆。`
-              : "还没有长期会用到的记忆。"}
-          </span>
-        </div>
-
-        <div className="memory-graph-toolbar">
-          <div className="memory-activity-filters" aria-label="长期记忆状态筛选">
-            {graphStatusFilters.map((option) => {
-              const count =
-                option.key === "all"
-                  ? memoryFacts.length
-                  : memoryFacts.filter((fact) => fact.status === option.key).length;
-              const active = memoryFactStatus === option.key;
-              return (
-                <button
-                  key={option.key}
-                  type="button"
-                  className={`secondary memory-activity-filter ${active ? "active" : ""}`}
-                  onClick={() => setMemoryFactStatus(option.key)}
-                  aria-pressed={active}
-                >
-                  {option.label}
-                  <span>{count}</span>
-                </button>
-              );
-            })}
-          </div>
-          <label className="memory-activity-search">
-            <Search size={16} />
-            <input
-              type="search"
-              value={memoryFactQuery}
-              onChange={(event) => setMemoryFactQuery(event.target.value)}
-              placeholder="搜索主题、内容或类别"
-            />
-          </label>
-        </div>
-
-        <div className="button-row">
-          <button type="button" className="secondary" onClick={() => void loadMemoryFacts()} disabled={memoryFactsLoading}>
-            {memoryFactsLoading ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />}
-            刷新长期记忆
-          </button>
-          <button type="button" className="secondary" onClick={() => void copyExportPreview()} disabled={exportLoading}>
-            {exportLoading ? <Loader2 className="spin" size={16} /> : <Copy size={16} />}
-            复制导出预览
-          </button>
-          <button type="button" className="secondary" onClick={() => void downloadMemoryExport("markdown")} disabled={exportLoading}>
-            {exportLoading ? <Loader2 className="spin" size={16} /> : <Download size={16} />}
-            下载 Markdown 备份
-          </button>
-          <button type="button" className="secondary" onClick={() => void downloadMemoryExport("json")} disabled={exportLoading}>
-            {exportLoading ? <Loader2 className="spin" size={16} /> : <Download size={16} />}
-            下载 JSON 备份
-          </button>
-        </div>
-        {memoryFactsError ? <p className="field-note error">{memoryFactsError}</p> : null}
-        {exportMessage ? <p className={`field-note ${exportMessage.includes("失败") ? "error" : ""}`}>{exportMessage}</p> : null}
-
-        <div className="memory-fact-section-grid">
-          <MemoryFactSection
-            title="已确认记忆"
-            description={`${confirmedFacts.length} 条可用于检索的使用中事实。`}
-            facts={confirmedFacts}
-            loading={memoryFactsLoading}
-            emptyText="当前筛选下没有匹配的已确认记忆。"
-            busyId={memoryFactBusyId}
-            onAction={(factId, action) => void updateMemoryFactStatus(factId, action)}
-          />
-          <MemoryFactSection
-            title="等你确认"
-            description={`${candidateFacts.length} 条记忆正在等待你确认或处理冲突。`}
-            facts={candidateFacts}
-            loading={memoryFactsLoading}
-            emptyText="当前筛选下没有匹配的待确认记忆。"
-            busyId={memoryFactBusyId}
-            onAction={(factId, action) => void updateMemoryFactStatus(factId, action)}
-          />
-          <MemoryFactSection
-            title="日记来源记忆"
-            description={`${diaryDerivedFacts.length} 条事实来自日记或聊天提取路径。`}
-            facts={diaryDerivedFacts}
-            loading={memoryFactsLoading}
-            emptyText="当前筛选下没有匹配的日记来源记忆。"
-            busyId={memoryFactBusyId}
-            onAction={(factId, action) => void updateMemoryFactStatus(factId, action)}
-          />
-          <MemoryFactSection
-            title="已归档或封存事实"
-            description={`${managedStatusFacts.length} 条事实已归档、标错、拒绝或敏感封存。`}
-            facts={managedStatusFacts}
-            loading={memoryFactsLoading}
-            emptyText="当前筛选下没有匹配的已归档或封存事实。"
-            busyId={memoryFactBusyId}
-            onAction={(factId, action) => void updateMemoryFactStatus(factId, action)}
-          />
-        </div>
-
-        {exportPreview ? (
-          <div className="memory-export-preview" aria-label="长期记忆导出预览">
-            <div className="section-heading compact">
-              <strong>导出预览</strong>
-              <span>{safeMemoryNotice(exportPreview.redaction_note)}</span>
+          <section className="panel feature-window-panel memory-management-panel" aria-label="高级备份与检查">
+            <div className="section-heading">
+              <strong>检查和备份记忆</strong>
+              <span>
+                {memoryFacts.length > 0
+                  ? `显示 ${filteredMemoryFacts.length} / ${memoryFacts.length} 条长期会用到的记忆。`
+                  : "还没有长期会用到的记忆。"}
+              </span>
             </div>
-            <textarea readOnly value={memoryExportText(exportPreview, exportPreview.format)} />
-          </div>
-        ) : null}
-      </section>
+
+            <div className="memory-graph-toolbar">
+              <div className="memory-activity-filters" aria-label="长期记忆状态筛选">
+                {graphStatusFilters.map((option) => {
+                  const count =
+                    option.key === "all"
+                      ? memoryFacts.length
+                      : memoryFacts.filter((fact) => fact.status === option.key).length;
+                  const active = memoryFactStatus === option.key;
+                  return (
+                    <button
+                      key={option.key}
+                      type="button"
+                      className={`secondary memory-activity-filter ${active ? "active" : ""}`}
+                      onClick={() => setMemoryFactStatus(option.key)}
+                      aria-pressed={active}
+                    >
+                      {option.label}
+                      <span>{count}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <label className="memory-activity-search">
+                <Search size={16} />
+                <input
+                  type="search"
+                  value={memoryFactQuery}
+                  onChange={(event) => setMemoryFactQuery(event.target.value)}
+                  placeholder="搜索主题、内容或类别"
+                />
+              </label>
+            </div>
+
+            <div className="button-row">
+              <button type="button" className="secondary" onClick={() => void loadMemoryFacts()} disabled={memoryFactsLoading}>
+                {memoryFactsLoading ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />}
+                刷新长期记忆
+              </button>
+              <button type="button" className="secondary" onClick={() => void copyExportPreview()} disabled={exportLoading}>
+                {exportLoading ? <Loader2 className="spin" size={16} /> : <Copy size={16} />}
+                复制导出预览
+              </button>
+              <button type="button" className="secondary" onClick={() => void downloadMemoryExport("markdown")} disabled={exportLoading}>
+                {exportLoading ? <Loader2 className="spin" size={16} /> : <Download size={16} />}
+                下载 Markdown 备份
+              </button>
+              <button type="button" className="secondary" onClick={() => void downloadMemoryExport("json")} disabled={exportLoading}>
+                {exportLoading ? <Loader2 className="spin" size={16} /> : <Download size={16} />}
+                下载 JSON 备份
+              </button>
+            </div>
+            {memoryFactsError ? <p className="field-note error">{memoryFactsError}</p> : null}
+            {exportMessage ? <p className={`field-note ${exportMessage.includes("失败") ? "error" : ""}`}>{exportMessage}</p> : null}
+
+            <div className="memory-fact-section-grid">
+              <MemoryFactSection
+                title="已确认记忆"
+                description={`${confirmedFacts.length} 条可用于检索的使用中事实。`}
+                facts={confirmedFacts}
+                loading={memoryFactsLoading}
+                emptyText="当前筛选下没有匹配的已确认记忆。"
+                busyId={memoryFactBusyId}
+                onAction={(factId, action) => void updateMemoryFactStatus(factId, action)}
+              />
+              <MemoryFactSection
+                title="等你确认"
+                description={`${candidateFacts.length} 条记忆正在等待你确认或处理冲突。`}
+                facts={candidateFacts}
+                loading={memoryFactsLoading}
+                emptyText="当前筛选下没有匹配的待确认记忆。"
+                busyId={memoryFactBusyId}
+                onAction={(factId, action) => void updateMemoryFactStatus(factId, action)}
+              />
+              <MemoryFactSection
+                title="日记来源记忆"
+                description={`${diaryDerivedFacts.length} 条事实来自日记或聊天提取路径。`}
+                facts={diaryDerivedFacts}
+                loading={memoryFactsLoading}
+                emptyText="当前筛选下没有匹配的日记来源记忆。"
+                busyId={memoryFactBusyId}
+                onAction={(factId, action) => void updateMemoryFactStatus(factId, action)}
+              />
+              <MemoryFactSection
+                title="已归档或封存事实"
+                description={`${managedStatusFacts.length} 条事实已归档、标错、拒绝或敏感封存。`}
+                facts={managedStatusFacts}
+                loading={memoryFactsLoading}
+                emptyText="当前筛选下没有匹配的已归档或封存事实。"
+                busyId={memoryFactBusyId}
+                onAction={(factId, action) => void updateMemoryFactStatus(factId, action)}
+              />
+            </div>
+
+            {exportPreview ? (
+              <div className="memory-export-preview" aria-label="长期记忆导出预览">
+                <div className="section-heading compact">
+                  <strong>导出预览</strong>
+                  <span>{safeMemoryNotice(exportPreview.redaction_note)}</span>
+                </div>
+                <textarea readOnly value={memoryExportText(exportPreview, exportPreview.format)} />
+              </div>
+            ) : null}
+          </section>
+
+          <section className="panel feature-window-panel memory-activity-panel" aria-label="整理记录">
+            <div className="section-heading">
+              <strong>最近整理活动</strong>
+              <span>
+                {entries.length > 0
+                  ? `显示 ${filteredEntries.length} / ${entries.length} 条活动。`
+                  : "还没有整理活动。"}
+              </span>
+            </div>
+
+            <div className="memory-activity-toolbar">
+              <div className="memory-activity-filters" aria-label="整理活动筛选">
+                {activityFilters.map((option) => {
+                  const count = entries.filter((entry) => entryMatchesFilter(entry, option.key)).length;
+                  const active = activeFilter === option.key;
+                  return (
+                    <button
+                      key={option.key}
+                      type="button"
+                      className={`secondary memory-activity-filter ${active ? "active" : ""}`}
+                      onClick={() => setActiveFilter(option.key)}
+                      aria-pressed={active}
+                    >
+                      {option.label}
+                      <span>{count}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <label className="memory-activity-search">
+                <Search size={16} />
+                <input
+                  type="search"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder="搜索目标文件、摘要或动作"
+                />
+              </label>
+            </div>
+
+            <div className="button-row">
+              <button type="button" className="secondary" onClick={onRefresh} disabled={loading}>
+                {loading ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />}
+                刷新整理
+              </button>
+            </div>
+            {error ? <p className="field-note error">{error}</p> : null}
+            {filteredEntries.length > 0 ? (
+              <div className="memory-trust-workspace" aria-label="AI 记住了什么">
+                <div className="section-heading compact">
+                  <strong>我记住了什么</strong>
+                  <span>按写入类型、跳过原因和可撤回状态归类；敏感跳过项只显示安全摘要。</span>
+                </div>
+                <div className="memory-trust-group-grid">
+                  {memoryGroups.map((group) => (
+                    <article key={group.key} className={`memory-trust-group-card ${group.entries.length > 0 ? "active" : ""}`}>
+                      <strong>{group.label}</strong>
+                      <span>{group.entries.length}</span>
+                      <p>{group.description}</p>
+                    </article>
+                  ))}
+                </div>
+                {populatedGroups.length > 0 ? (
+                  <div className="memory-trust-group-legend">
+                    {populatedGroups.map((group) => (
+                      <span key={group.key}>
+                        {group.label}: {group.entries.length}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+            <div className="proposal-list agent-activity-log-list feature-activity-list">
+              {filteredEntries.length > 0 ? (
+                filteredEntries.map((entry) => renderEntry(entry))
+              ) : loading ? (
+                <EmptyState text="正在加载最近整理活动。" />
+              ) : entries.length > 0 ? (
+                <EmptyState text="没有匹配的整理活动。" />
+              ) : (
+                <EmptyState text="普通自动整理完成后会出现在这里；高风险写入会在这里显示确认入口。" />
+              )}
+            </div>
+          </section>
+        </div>
+      </details>
+    </>
+  );
+
+  const decayPanel = (
+    <>
+      <MemoryHygieneSuggestionPanel
+        preview={memoryHygienePreview}
+        loading={memoryHygieneLoading}
+        error={memoryHygieneError}
+        busyId={memoryHygieneBusyId}
+        onScan={() => void loadMemoryHygienePreview()}
+        onApply={(item) => void applyMemoryHygieneSuggestion(item)}
+      />
 
       <section className="panel feature-window-panel memory-review-queue-panel" aria-label="更多记忆复核">
-      <WeeklyMemoryReviewPanel
-        review={weeklyMemoryReview}
-        loading={weeklyMemoryReviewLoading}
-        error={weeklyMemoryReviewError}
-        busyId={weeklyMemoryReviewBusyId}
-        onRefresh={() => void loadWeeklyMemoryReview()}
-        onAction={(item, action) => void applyWeeklyMemoryReviewAction(item, action)}
-      />
+        <WeeklyMemoryReviewPanel
+          review={weeklyMemoryReview}
+          loading={weeklyMemoryReviewLoading}
+          error={weeklyMemoryReviewError}
+          busyId={weeklyMemoryReviewBusyId}
+          onRefresh={() => void loadWeeklyMemoryReview()}
+          onAction={(item, action) => void applyWeeklyMemoryReviewAction(item, action)}
+        />
 
         <MemoryProposalReviewList
           proposals={memoryProposals}
@@ -2497,94 +2652,110 @@ export default function MemoryWindowView({
           onRefresh={onLoadMemoryProposals}
         />
       </section>
+    </>
+  );
 
-      <section className="panel feature-window-panel memory-activity-panel" aria-label="整理记录">
+  const diaryPanel = (
+    <>
+      <ReviewCoachPanel
+        retrospectives={retrospectives}
+        loading={retrospectiveLoading}
+        error={retrospectiveError}
+        message={reviewReportMessage}
+        generatingReport={generatingReport}
+        reportArtifacts={reviewReportArtifacts}
+        canRevealReports={canRevealReports}
+        onRefresh={() => void loadRetrospectives()}
+        onGenerate={generateReviewFromCard}
+        onRevealReport={(relativePath, mode) => void revealReviewReport(relativePath, mode)}
+      />
+
+      <section className="panel feature-window-panel memory-source-details-panel" aria-label="复盘来源详情">
         <div className="section-heading">
-          <strong>最近整理活动</strong>
-          <span>
-            {entries.length > 0
-              ? `显示 ${filteredEntries.length} / ${entries.length} 条活动。`
-              : "还没有整理活动。"}
-          </span>
+          <strong>复盘来源详情</strong>
+          <span>生成报告前后都可以检查每次复盘背后的本地证据。</span>
         </div>
-
-        <div className="memory-activity-toolbar">
-          <div className="memory-activity-filters" aria-label="整理活动筛选">
-            {activityFilters.map((option) => {
-              const count = entries.filter((entry) => entryMatchesFilter(entry, option.key)).length;
-              const active = activeFilter === option.key;
-              return (
-                <button
-                  key={option.key}
-                  type="button"
-                  className={`secondary memory-activity-filter ${active ? "active" : ""}`}
-                  onClick={() => setActiveFilter(option.key)}
-                  aria-pressed={active}
-                >
-                  {option.label}
-                  <span>{count}</span>
-                </button>
-              );
-            })}
-          </div>
-          <label className="memory-activity-search">
-            <Search size={16} />
-            <input
-              type="search"
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="搜索目标文件、摘要或动作"
-            />
-          </label>
+        <div className="retrospective-toolbar" aria-label="复盘来源窗口">
+          {[1, 7, 30, 90].map((days) => (
+            <button
+              key={days}
+              type="button"
+              className={`secondary memory-activity-filter ${activeRetrospectiveDays === days ? "active" : ""}`}
+              onClick={() => setActiveRetrospectiveDays(days)}
+              aria-pressed={activeRetrospectiveDays === days}
+            >
+              <CalendarRange size={15} />
+              {days === 1 ? "今天" : `${days} 天`}
+            </button>
+          ))}
         </div>
-
-        <div className="button-row">
-          <button type="button" className="secondary" onClick={onRefresh} disabled={loading}>
-            {loading ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />}
-            刷新整理
-          </button>
-        </div>
-        {error ? <p className="field-note error">{error}</p> : null}
-        {filteredEntries.length > 0 ? (
-          <div className="memory-trust-workspace" aria-label="AI 记住了什么">
-            <div className="section-heading compact">
-              <strong>我记住了什么</strong>
-              <span>按写入类型、跳过原因和可撤回状态归类；敏感跳过项只显示安全摘要。</span>
-            </div>
-            <div className="memory-trust-group-grid">
-              {memoryGroups.map((group) => (
-                <article key={group.key} className={`memory-trust-group-card ${group.entries.length > 0 ? "active" : ""}`}>
-                  <strong>{group.label}</strong>
-                  <span>{group.entries.length}</span>
-                  <p>{group.description}</p>
-                </article>
-              ))}
-            </div>
-            {populatedGroups.length > 0 ? (
-              <div className="memory-trust-group-legend">
-                {populatedGroups.map((group) => (
-                  <span key={group.key}>
-                    {group.label}: {group.entries.length}
-                  </span>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-        <div className="proposal-list agent-activity-log-list feature-activity-list">
-          {filteredEntries.length > 0 ? (
-            filteredEntries.map((entry) => renderEntry(entry))
-          ) : loading ? (
-            <EmptyState text="正在加载最近整理活动。" />
-          ) : entries.length > 0 ? (
-            <EmptyState text="没有匹配的整理活动。" />
-          ) : (
-            <EmptyState text="普通自动整理完成后会出现在这里；高风险写入会在这里显示确认入口。" />
-          )}
-        </div>
+        {retrospectiveLoading && !activeRetrospective ? (
+          <EmptyState text="正在加载本地复盘数据。" />
+        ) : activeRetrospective ? (
+          <RetrospectiveWindowPanel
+            window={activeRetrospective}
+            generatingReport={generatingReport}
+            onGenerateReport={(days) => void generateReport(days)}
+          />
+        ) : (
+          <EmptyState text="还没有复盘数据。请先完成一次聊天、任务或资料整理。" />
+        )}
       </section>
-        </div>
-      </details>
+    </>
+  );
+
+  function renderWorkspacePanel() {
+    switch (activeWorkspaceTab) {
+      case "archive":
+        return archivePanel;
+      case "search":
+        return searchPanel;
+      case "data":
+        return dataPanel;
+      case "import":
+        return <MemoryImportPanel />;
+      case "related":
+        return (
+          <MemoryWorkspacePlaceholder
+            title="关联"
+            description="把偏好、项目、资料和日记情景串成更清楚的上下文。"
+            helper="第一阶段先保留入口；后续会把图谱节点、资料页和日记情景连接到这里。"
+          />
+        );
+      case "heatmap":
+        return (
+          <MemoryWorkspacePlaceholder
+            title="热力图"
+            description="观察最近哪些主题最常出现。"
+            helper="第一阶段先保留入口；后续会用本机日记和记忆统计形成低压热力图。"
+          />
+        );
+      case "decay":
+        return decayPanel;
+      case "diary":
+        return diaryPanel;
+      case "graph":
+      default:
+        return graphPanel;
+    }
+  }
+
+  return (
+    <FeatureWindowShell
+      eyebrow="记忆"
+      title={productCopy.memoryPage.title}
+      description={productCopy.memoryPage.description}
+      activeTab="记忆"
+    >
+      <MemoryWorkspaceTabs activeTab={activeWorkspaceTab} onChange={setActiveWorkspaceTab} />
+      <div
+        id={`memory-workspace-panel-${activeWorkspaceTab}`}
+        className="memory-workspace-tab-panel"
+        role="tabpanel"
+        aria-label={`记忆工作台：${activeWorkspaceTabConfig.label}`}
+      >
+        {renderWorkspacePanel()}
+      </div>
     </FeatureWindowShell>
   );
 }

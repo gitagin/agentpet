@@ -26,8 +26,8 @@ export const productCopy = {
     completedMessage: "我会按规则整理这次内容，你之后可以在记忆里查看和撤回。",
   },
   memoryPage: {
-    title: "我会记住重要的事，但由你决定",
-    description: "这里展示我会在以后聊天中参考的内容；你可以确认、改正或忘记。",
+    title: "记忆工作台",
+    description: "档案、图谱、日记和资料都在这里，你可以查看、搜索、整理和改正。",
     primaryPanelTitle: "先看这三件事",
     primaryPanelDescription: "记忆留在本机，重要内容可见、可确认，也能随时撤回。",
     searchPlaceholder: "搜索我记住的事",
@@ -54,7 +54,7 @@ export const productCopy = {
   home: {
     stageLabel: "Agent Pet 首页舞台",
     statusModelTitle: "对话能力",
-    statusKnowledgeTitle: "记忆保存",
+    statusKnowledgeTitle: "记忆与资料",
     recentActivityTitle: "最近帮你整理",
     connectionAndDataTitle: "连接与数据",
     quickPrompts: [
@@ -64,10 +64,10 @@ export const productCopy = {
     ],
   },
   worldPage: {
-    tabLabel: "资料",
-    eyebrow: "资料",
-    title: "我的资料",
-    description: "把聊天里提到的文档、想法和链接整理成以后能找回的资料。",
+    tabLabel: "记忆",
+    eyebrow: "记忆工作台 / 资料库",
+    title: "资料库",
+    description: "把文档、链接和想法整理成以后能找回的资料；这是记忆工作台的一部分。",
   },
   settingsPage: {
     eyebrow: "基础设置",
