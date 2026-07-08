@@ -237,7 +237,7 @@ describe("desktop polish single-scroll contract", () => {
 
   it("unifies feature route typography and foreground tokens", () => {
     expect(polishStyles).toMatch(
-      /\.feature-shell\s*\{[^}]*--feature-ink:\s*#fffafb;[^}]*--feature-soft:\s*#eadfe4;[^}]*--feature-muted:\s*#cdbfc8;[^}]*--feature-control:\s*rgba\(255,\s*255,\s*255,\s*0\.055\);/,
+      /\.feature-shell\s*\{[^}]*--feature-ink:\s*var\(--color-text\);[^}]*--feature-soft:\s*var\(--color-text-muted\);[^}]*--feature-muted:\s*var\(--color-text-faint\);[^}]*--feature-glass:\s*rgba\(18,\s*18,\s*24,\s*0\.54\);[^}]*--feature-control:\s*rgba\(255,\s*255,\s*255,\s*0\.045\);/,
     );
     expect(polishStyles).toMatch(
       /\.feature-shell :where\(input,\s*textarea,\s*select,\s*button\)\s*\{[^}]*font-family:\s*inherit;[^}]*letter-spacing:\s*0;/,
@@ -247,12 +247,12 @@ describe("desktop polish single-scroll contract", () => {
     );
   });
 
-  it("keeps chat copy high contrast on dark and light message bubbles", () => {
+  it("keeps chat copy high contrast on dark message bubbles", () => {
     expect(polishStyles).toMatch(
-      /body\[data-window-mode="chat"\] \.message-list \.message-bubble\.assistant\s*\{[^}]*background:[^}]*rgba\(18,\s*17,\s*24,\s*0\.92\);/,
+      /body\[data-window-mode="chat"\] \.message-list \.message-bubble\.assistant\s*\{[^}]*background:[^}]*rgba\(18,\s*17,\s*24,\s*0\.86\);/,
     );
     expect(polishStyles).toMatch(
-      /body\[data-window-mode="chat"\] \.message-list \.message-bubble\.user\s*\{[^}]*background:[^}]*#e7fff2;[^}]*color:\s*#18372b;/,
+      /body\[data-window-mode="chat"\] \.message-list \.message-bubble\.user\s*\{[^}]*background:[^}]*rgba\(15,\s*23,\s*21,\s*0\.88\);[^}]*color:\s*var\(--color-text\);/,
     );
     expect(polishStyles).toMatch(
       /body\[data-window-mode="chat"\] \.message-list \.message-bubble > p,[\s\S]*body\[data-window-mode="chat"\] \.message-list \.message-bubble \.message-pending\s*\{[^}]*color:\s*inherit;[^}]*font-weight:\s*560;/,
@@ -386,7 +386,7 @@ describe("desktop polish single-scroll contract", () => {
   it("keeps nested settings controls readable on dark cards", () => {
     expect(polishStyles).toContain("Impeccable settings control contrast pass");
     expect(polishStyles).toMatch(
-      /body\[data-window-mode="settings"\] \.tts-toggle-row,[\s\S]*body\[data-window-mode="settings"\] \.automation-locked-row\s*\{[^}]*background:\s*rgba\(255,\s*255,\s*255,\s*0\.065\);[^}]*color:\s*var\(--feature-soft\);/,
+      /body\[data-window-mode="settings"\] \.tts-toggle-row,[\s\S]*body\[data-window-mode="settings"\] \.automation-locked-row\s*\{[^}]*background:\s*rgba\(255,\s*255,\s*255,\s*0\.045\);[^}]*color:\s*var\(--feature-soft\);/,
     );
     expect(polishStyles).toMatch(
       /body\[data-window-mode="settings"\] \.tts-toggle-row strong,[\s\S]*body\[data-window-mode="settings"\] \.automation-locked-row strong\s*\{[^}]*color:\s*var\(--feature-ink\);[^}]*font-weight:\s*760;/,

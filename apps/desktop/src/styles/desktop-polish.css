@@ -1,19 +1,19 @@
 /* Product Design pass: keep every desktop feature route in the same dark observatory system as the homeboard. */
 .feature-shell {
-  --feature-bg: #050508;
-  --feature-ink: #fffafb;
-  --feature-soft: #eadfe4;
-  --feature-muted: #cdbfc8;
-  --feature-line: rgba(255, 255, 255, 0.13);
-  --feature-line-strong: rgba(255, 255, 255, 0.22);
-  --feature-glass: rgba(20, 20, 24, 0.68);
-  --feature-glass-strong: rgba(28, 27, 32, 0.86);
-  --feature-rose: #f58da5;
-  --feature-rose-strong: #ffc0cb;
-  --feature-teal: #62ddd3;
-  --feature-green: #55c894;
-  --feature-blue: #74a9ef;
-  --feature-amber: #dab56f;
+  --feature-bg: var(--color-bg);
+  --feature-ink: var(--color-text);
+  --feature-soft: var(--color-text-muted);
+  --feature-muted: var(--color-text-faint);
+  --feature-line: rgba(255, 255, 255, 0.095);
+  --feature-line-strong: rgba(255, 255, 255, 0.155);
+  --feature-glass: rgba(18, 18, 24, 0.54);
+  --feature-glass-strong: rgba(24, 23, 30, 0.74);
+  --feature-rose: var(--color-primary);
+  --feature-rose-strong: var(--color-primary-strong);
+  --feature-teal: #78c7bd;
+  --feature-green: var(--color-success);
+  --feature-blue: var(--color-info);
+  --feature-amber: var(--color-warning);
   position: relative;
   isolation: isolate;
   min-height: 100dvh;
@@ -32,8 +32,8 @@
   inset: 0;
   z-index: -3;
   background:
-    linear-gradient(90deg, rgba(5, 5, 8, 0.96) 0%, rgba(5, 5, 8, 0.58) 29%, rgba(5, 5, 8, 0.42) 62%, rgba(5, 5, 8, 0.9) 100%),
-    linear-gradient(180deg, rgba(5, 5, 8, 0.1), rgba(5, 5, 8, 0.84)),
+    linear-gradient(90deg, rgba(8, 9, 13, 0.94) 0%, rgba(8, 9, 13, 0.56) 29%, rgba(8, 9, 13, 0.4) 62%, rgba(8, 9, 13, 0.88) 100%),
+    linear-gradient(180deg, rgba(8, 9, 13, 0.08), rgba(8, 9, 13, 0.78)),
     url("/images/home.png") center / cover no-repeat;
   pointer-events: none;
 }
@@ -44,8 +44,9 @@
   inset: 0;
   z-index: -2;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 22%, rgba(0, 0, 0, 0.38)),
-    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.028) 0 1px, transparent 1px 148px);
+    radial-gradient(circle at 48% 14%, rgba(213, 111, 138, 0.08), transparent 28%),
+    radial-gradient(circle at 68% 42%, rgba(120, 199, 189, 0.035), transparent 23%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 24%, rgba(0, 0, 0, 0.34));
   pointer-events: none;
 }
 
@@ -55,7 +56,7 @@
   z-index: -1;
   background:
     linear-gradient(180deg, transparent 0 58%, rgba(0, 0, 0, 0.32) 100%),
-    linear-gradient(90deg, rgba(245, 141, 165, 0.06), transparent 32%, rgba(98, 221, 211, 0.04));
+    linear-gradient(90deg, rgba(213, 111, 138, 0.04), transparent 34%, rgba(120, 199, 189, 0.025));
   pointer-events: none;
 }
 
@@ -226,12 +227,12 @@
   border-color: var(--feature-line);
   border-radius: 8px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.028)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.034), rgba(255, 255, 255, 0.012)),
     var(--feature-glass);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.2);
   color: var(--feature-soft);
-  backdrop-filter: blur(18px) saturate(136%);
-  -webkit-backdrop-filter: blur(18px) saturate(136%);
+  backdrop-filter: blur(14px) saturate(112%);
+  -webkit-backdrop-filter: blur(14px) saturate(112%);
 }
 
 .feature-shell .panel {
@@ -252,9 +253,9 @@
 .feature-shell .memory-workbench-panel,
 .feature-shell #wiki-workflow-panel,
 .feature-shell #wiki-browser-panel {
-  border-color: rgba(245, 141, 165, 0.18);
+  border-color: rgba(213, 111, 138, 0.14);
   background:
-    linear-gradient(180deg, rgba(245, 141, 165, 0.105), rgba(255, 255, 255, 0.03)),
+    linear-gradient(180deg, rgba(213, 111, 138, 0.036), rgba(255, 255, 255, 0.014)),
     var(--feature-glass-strong);
 }
 
@@ -268,7 +269,7 @@
 .feature-shell .memory-source-details-panel,
 .feature-shell #wiki-browser-panel .wiki-browser-section,
 .feature-shell #wiki-browser-panel .wiki-browser-maintenance {
-  background: rgba(255, 255, 255, 0.045);
+  background: rgba(255, 255, 255, 0.032);
   box-shadow: none;
 }
 
@@ -278,7 +279,7 @@
 
 .feature-shell .panel-title svg,
 .feature-shell .growth-dimension-head svg {
-  background: rgba(245, 141, 165, 0.14);
+  background: rgba(213, 111, 138, 0.12);
   color: var(--feature-rose-strong);
   box-shadow: none;
 }
@@ -336,7 +337,7 @@
 .feature-shell .memory-review-list,
 .feature-shell .growth-history-list {
   border-color: var(--feature-line);
-  background: rgba(0, 0, 0, 0.16);
+  background: rgba(0, 0, 0, 0.12);
 }
 
 .feature-shell .chat-action-button,
@@ -353,7 +354,7 @@
 .feature-shell .message-citation-scope,
 .feature-shell .citations span {
   border-color: rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.055);
+  background: rgba(255, 255, 255, 0.042);
   color: var(--feature-soft);
   box-shadow: none;
 }
@@ -361,39 +362,39 @@
 .feature-shell .chat-action-button:hover:not(:disabled),
 .feature-shell .chat-action-button.active,
 .feature-shell .workflow-card.active {
-  border-color: rgba(245, 141, 165, 0.36);
-  background: rgba(245, 141, 165, 0.14);
+  border-color: rgba(213, 111, 138, 0.3);
+  background: rgba(213, 111, 138, 0.1);
   color: var(--feature-rose-strong);
 }
 
 .feature-shell .workflow-card.done,
 .feature-shell .trial-guide-list li.done {
-  border-color: rgba(85, 200, 148, 0.28);
-  background: rgba(85, 200, 148, 0.105);
+  border-color: rgba(98, 184, 148, 0.24);
+  background: rgba(98, 184, 148, 0.09);
 }
 
 .feature-shell .workflow-card.blocked,
 .feature-shell #settings-panel > .danger-zone,
 .feature-shell .notice.error,
 .feature-shell .message-events span.error {
-  border-color: rgba(245, 104, 130, 0.32);
-  background: rgba(245, 104, 130, 0.12);
+  border-color: rgba(223, 111, 127, 0.28);
+  background: rgba(223, 111, 127, 0.1);
 }
 
 .feature-shell input,
 .feature-shell select,
 .feature-shell textarea {
   border-color: var(--feature-line-strong);
-  background: rgba(10, 10, 14, 0.54);
+  background: rgba(18, 19, 25, 0.76);
   color: var(--feature-ink);
 }
 
 .feature-shell input:focus,
 .feature-shell select:focus,
 .feature-shell textarea:focus {
-  border-color: rgba(245, 141, 165, 0.52);
-  background: rgba(18, 18, 22, 0.72);
-  box-shadow: 0 0 0 4px rgba(245, 141, 165, 0.16);
+  border-color: rgba(213, 111, 138, 0.38);
+  background: rgba(22, 22, 28, 0.9);
+  box-shadow: 0 0 0 3px rgba(213, 111, 138, 0.1);
 }
 
 .feature-shell input::placeholder,
@@ -418,14 +419,14 @@
   color: var(--feature-rose-strong);
 }
 
-.feature-shell button:not(.secondary):not(.ghost-button):not(.bottom-nav-button):not(.chat-action-button) {
+.feature-shell button:not(.secondary):not(.ghost-button):not(.bottom-nav-button):not(.chat-action-button):not(.wiki-target-type-button):not(.memory-activity-filter):not(.task-form-shortcut) {
   border-color: rgba(245, 141, 165, 0.44);
-  background: linear-gradient(180deg, #e5768e, #ae4967);
+  background: linear-gradient(180deg, rgba(229, 118, 142, 0.9), rgba(174, 73, 103, 0.86));
   color: #ffffff;
-  box-shadow: 0 0 24px rgba(245, 141, 165, 0.22);
+  box-shadow: 0 8px 20px rgba(139, 58, 83, 0.2);
 }
 
-.feature-shell button:not(.secondary):not(.ghost-button):not(.bottom-nav-button):not(.chat-action-button):hover:not(:disabled) {
+.feature-shell button:not(.secondary):not(.ghost-button):not(.bottom-nav-button):not(.chat-action-button):not(.wiki-target-type-button):not(.memory-activity-filter):not(.task-form-shortcut):hover:not(:disabled) {
   background: linear-gradient(180deg, #f08ea4, #ba526d);
 }
 
@@ -532,8 +533,8 @@ body[data-window-mode="world"] .feature-page-stack {
 .feature-shell .automation-frequency-option span,
 .feature-shell .memory-activity-filter,
 .feature-shell .task-status-pill {
-  border-color: rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.105);
+  background: rgba(255, 255, 255, 0.038);
   color: var(--feature-soft);
 }
 
@@ -541,8 +542,8 @@ body[data-window-mode="world"] .feature-page-stack {
 .feature-shell .wiki-target-type-button.active,
 .feature-shell .memory-activity-filter.active,
 .feature-shell .automation-frequency-option input:checked + span {
-  border-color: rgba(245, 141, 165, 0.4);
-  background: rgba(245, 141, 165, 0.14);
+  border-color: rgba(213, 111, 138, 0.28);
+  background: rgba(213, 111, 138, 0.085);
   color: var(--feature-rose-strong);
 }
 
@@ -631,9 +632,9 @@ body[data-window-mode="world"] .feature-page-stack {
   justify-content: center;
   border-color: var(--feature-line);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.035)),
-    rgba(20, 20, 24, 0.82);
-  box-shadow: 0 18px 54px rgba(0, 0, 0, 0.34);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.052), rgba(255, 255, 255, 0.018)),
+    rgba(15, 15, 20, 0.68);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.22);
 }
 
 .feature-shell .bottom-nav-button {
@@ -641,10 +642,10 @@ body[data-window-mode="world"] .feature-page-stack {
 }
 
 .feature-shell .bottom-nav-indicator {
-  background: rgba(245, 141, 165, 0.18);
+  background: rgba(213, 111, 138, 0.14);
   box-shadow:
-    inset 0 0 0 1px rgba(245, 141, 165, 0.34),
-    0 0 28px rgba(245, 141, 165, 0.2);
+    inset 0 0 0 1px rgba(213, 111, 138, 0.24),
+    0 0 18px rgba(213, 111, 138, 0.12);
 }
 
 .feature-shell .bottom-nav-button.active,
@@ -653,10 +654,10 @@ body[data-window-mode="world"] .feature-page-stack {
 }
 
 .feature-shell .bottom-nav-center-avatar img {
-  border-color: rgba(245, 141, 165, 0.92);
+  border-color: rgba(213, 111, 138, 0.52);
   box-shadow:
-    0 0 0 6px rgba(245, 141, 165, 0.14),
-    0 0 32px rgba(245, 141, 165, 0.38);
+    0 0 0 4px rgba(213, 111, 138, 0.08),
+    0 12px 24px rgba(0, 0, 0, 0.24);
 }
 
 .feature-route-loading {
@@ -754,12 +755,12 @@ body[data-window-mode="world"] .feature-page-stack {
 .control-home-shell .bottom-nav,
 .feature-shell .bottom-nav {
   --bottom-nav-item-width: clamp(96px, 7.7vw, 122px);
-  --bottom-nav-item-height: 58px;
+  --bottom-nav-item-height: 54px;
   --bottom-nav-gap: 8px;
   --bottom-nav-padding: 5px;
   --bottom-nav-avatar-size: 82px;
   --bottom-nav-avatar-space: clamp(132px, 10vw, 154px);
-  min-height: 78px;
+  min-height: 70px;
   overflow: visible;
   padding: 0;
 }
@@ -768,14 +769,14 @@ body[data-window-mode="world"] .feature-page-stack {
 .feature-shell .bottom-nav-track {
   width: 100%;
   min-width: 0;
-  height: 68px;
+  height: 62px;
   justify-content: center;
   overflow: visible;
-  border-color: rgba(255, 255, 255, 0.13);
+  border-color: rgba(255, 255, 255, 0.105);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.035)),
-    rgba(20, 20, 24, 0.84);
-  box-shadow: 0 18px 54px rgba(0, 0, 0, 0.36);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.052), rgba(255, 255, 255, 0.018)),
+    rgba(15, 15, 20, 0.68);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.22);
 }
 
 .control-home-shell .bottom-nav-button,
@@ -793,31 +794,31 @@ body[data-window-mode="world"] .feature-page-stack {
 .feature-shell .bottom-nav-center-avatar img {
   width: var(--bottom-nav-avatar-size);
   height: var(--bottom-nav-avatar-size);
-  border-color: rgba(245, 141, 165, 0.94);
+  border-color: rgba(213, 111, 138, 0.52);
   background:
-    radial-gradient(circle at 50% 24%, rgba(245, 141, 165, 0.18), transparent 52%),
+    radial-gradient(circle at 50% 24%, rgba(213, 111, 138, 0.1), transparent 52%),
     rgba(10, 10, 14, 0.96);
   object-fit: contain;
   object-position: center;
   padding: 5px;
   box-shadow:
-    0 0 0 6px rgba(245, 141, 165, 0.14),
-    0 0 32px rgba(245, 141, 165, 0.38);
+    0 0 0 4px rgba(213, 111, 138, 0.08),
+    0 12px 24px rgba(0, 0, 0, 0.24);
 }
 
 .control-home-shell .bottom-nav-indicator,
 .feature-shell .bottom-nav-indicator {
-  background: rgba(245, 141, 165, 0.2);
+  background: rgba(213, 111, 138, 0.14);
   box-shadow:
-    inset 0 0 0 1px rgba(245, 141, 165, 0.34),
-    0 0 28px rgba(245, 141, 165, 0.22);
+    inset 0 0 0 1px rgba(213, 111, 138, 0.24),
+    0 0 18px rgba(213, 111, 138, 0.12);
 }
 
 .control-home-shell .bottom-nav-button.active,
 .control-home-shell .bottom-nav-button:hover,
 .feature-shell .bottom-nav-button.active,
 .feature-shell .bottom-nav-button:hover {
-  color: #ffc0cb;
+  color: var(--color-primary-strong);
 }
 
 @media (max-width: 1180px) {
@@ -2893,13 +2894,13 @@ body[data-window-mode="settings"] #settings-panel > .advanced-agent-model-settin
   border: 1px solid var(--feature-line);
   border-radius: 8px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.028)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.044), rgba(255, 255, 255, 0.018)),
     var(--feature-glass);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.2);
   color: var(--feature-soft);
   padding: 16px;
-  backdrop-filter: blur(18px) saturate(136%);
-  -webkit-backdrop-filter: blur(18px) saturate(136%);
+  backdrop-filter: blur(14px) saturate(112%);
+  -webkit-backdrop-filter: blur(14px) saturate(112%);
 }
 
 body[data-window-mode="settings"] #settings-panel > .settings-intro,
@@ -2911,8 +2912,9 @@ body[data-window-mode="settings"] #settings-panel > .advanced-agent-model-settin
 body[data-window-mode="settings"] #settings-panel > .settings-intro {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(220px, auto);
-  gap: 14px;
+  gap: 12px;
   align-items: center;
+  padding-block: 13px;
 }
 
 body[data-window-mode="settings"] #settings-panel > .settings-intro ol {
@@ -2925,13 +2927,13 @@ body[data-window-mode="settings"] #settings-panel > .settings-intro ol {
 }
 
 body[data-window-mode="settings"] #settings-panel > .settings-intro li {
-  border: 1px solid var(--feature-line);
+  border: 1px solid rgba(255, 255, 255, 0.085);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.055);
+  background: rgba(255, 255, 255, 0.04);
   color: var(--feature-soft);
   padding: 5px 10px;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 650;
 }
 
 body[data-window-mode="settings"] #settings-panel .settings-guided-trials {
@@ -2979,8 +2981,8 @@ body[data-window-mode="settings"] .automation-locked-row b {
 body[data-window-mode="settings"] .tts-toggle-row,
 body[data-window-mode="settings"] .automation-frequency-field,
 body[data-window-mode="settings"] .automation-locked-row {
-  border-color: rgba(255, 255, 255, 0.16);
-  background: rgba(255, 255, 255, 0.065);
+  border-color: rgba(255, 255, 255, 0.115);
+  background: rgba(255, 255, 255, 0.045);
   color: var(--feature-soft);
 }
 
@@ -3668,17 +3670,17 @@ body[data-window-mode="settings"] .agent-model-status {
 /* Product Design conversation-first redesign:
    Chat is the job here, so the transcript owns the viewport and controls move below it. */
 .feature-shell {
-  --feature-ink: #fffafb;
-  --feature-soft: #eadfe4;
-  --feature-muted: #cdbfc8;
-  --feature-line: rgba(255, 255, 255, 0.12);
-  --feature-line-strong: rgba(255, 255, 255, 0.2);
-  --feature-glass: rgba(18, 18, 24, 0.72);
-  --feature-glass-strong: rgba(24, 20, 28, 0.9);
-  --feature-control: rgba(255, 255, 255, 0.055);
-  --feature-control-strong: rgba(245, 141, 165, 0.15);
-  --feature-rose: #f58da5;
-  --feature-rose-strong: #ffd0d9;
+  --feature-ink: var(--color-text);
+  --feature-soft: var(--color-text-muted);
+  --feature-muted: var(--color-text-faint);
+  --feature-line: rgba(255, 255, 255, 0.095);
+  --feature-line-strong: rgba(255, 255, 255, 0.155);
+  --feature-glass: rgba(18, 18, 24, 0.54);
+  --feature-glass-strong: rgba(24, 23, 30, 0.74);
+  --feature-control: rgba(255, 255, 255, 0.045);
+  --feature-control-strong: var(--color-primary-soft);
+  --feature-rose: var(--color-primary);
+  --feature-rose-strong: var(--color-primary-strong);
   font-family: "Microsoft YaHei UI", "Segoe UI", system-ui, sans-serif;
 }
 
@@ -3689,12 +3691,12 @@ body[data-window-mode="settings"] .agent-model-status {
 
 .feature-shell :where(input, textarea, select) {
   border-color: var(--feature-line);
-  background: rgba(8, 9, 13, 0.62);
+  background: rgba(18, 19, 25, 0.76);
   color: var(--feature-ink);
 }
 
 .feature-shell :where(input, textarea, select)::placeholder {
-  color: rgba(234, 223, 228, 0.72);
+  color: var(--color-text-faint);
 }
 
 .feature-shell :where(button:not(.bottom-nav-button), summary) {
@@ -3753,12 +3755,12 @@ body[data-window-mode="chat"] .feature-window-copy p:last-child {
 }
 
 body[data-window-mode="chat"] .feature-window-content {
-  width: min(100%, 1240px);
+  width: min(100%, 1080px);
   padding: 0 4px calc(var(--chat-dock-safe-area) + env(safe-area-inset-bottom, 0px));
 }
 
 body[data-window-mode="chat"] .feature-window-content > .chat-panel {
-  width: min(100%, 1188px);
+  width: min(100%, 920px);
   min-height: 0;
   height: 100%;
 }
@@ -3770,10 +3772,11 @@ body[data-window-mode="chat"] .panel.chat-panel {
   gap: clamp(6px, 0.8dvh, 8px);
   min-height: 0;
   padding: clamp(12px, 1.7dvh, 16px);
-  border-color: rgba(245, 141, 165, 0.2);
+  border-color: rgba(255, 255, 255, 0.095);
   background:
-    linear-gradient(180deg, rgba(245, 141, 165, 0.08), rgba(255, 255, 255, 0.026)),
-    rgba(16, 16, 22, 0.86);
+    linear-gradient(180deg, rgba(213, 111, 138, 0.026), rgba(255, 255, 255, 0.012)),
+    rgba(15, 15, 21, 0.66);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.2);
 }
 
 body[data-window-mode="chat"] .chat-panel .panel-title {
@@ -3795,11 +3798,11 @@ body[data-window-mode="chat"] .chat-panel .message-list {
   max-height: 100%;
   align-self: stretch;
   padding: clamp(18px, 2.4dvh, 24px);
-  border: 1px solid rgba(255, 255, 255, 0.09);
+  border: 1px solid rgba(255, 255, 255, 0.065);
   border-radius: 10px;
   background:
-    radial-gradient(circle at 18% 0%, rgba(245, 141, 165, 0.08), transparent 32%),
-    rgba(6, 7, 10, 0.34);
+    radial-gradient(circle at 18% 0%, rgba(213, 111, 138, 0.034), transparent 32%),
+    rgba(6, 7, 10, 0.16);
 }
 
 body[data-window-mode="chat"] .chat-panel .message-list.is-empty {
@@ -3808,13 +3811,13 @@ body[data-window-mode="chat"] .chat-panel .message-list.is-empty {
 }
 
 body[data-window-mode="chat"] .message-list.is-empty .empty-state {
-  max-width: 540px;
+  max-width: 460px;
   margin: 0 auto;
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.035);
   color: var(--feature-soft);
-  font-size: clamp(15px, 1.6dvh, 18px);
-  font-weight: 550;
+  font-size: clamp(14px, 1.45dvh, 16px);
+  font-weight: 520;
 }
 
 body[data-window-mode="chat"] .message-list .message-bubble {
@@ -3824,16 +3827,16 @@ body[data-window-mode="chat"] .message-list .message-bubble {
 
 body[data-window-mode="chat"] .message-list .message-bubble.assistant {
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.035)),
-    rgba(18, 17, 24, 0.92);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.026)),
+    rgba(18, 17, 24, 0.86);
 }
 
 body[data-window-mode="chat"] .message-list .message-bubble.user {
-  border-color: rgba(100, 224, 172, 0.42);
+  border-color: rgba(98, 184, 148, 0.34);
   background:
-    linear-gradient(180deg, rgba(235, 255, 245, 0.98), rgba(210, 243, 228, 0.96)),
-    #e7fff2;
-  color: #18372b;
+    linear-gradient(180deg, rgba(98, 184, 148, 0.15), rgba(98, 184, 148, 0.08)),
+    rgba(15, 23, 21, 0.88);
+  color: var(--color-text);
 }
 
 body[data-window-mode="chat"] .message-list .message-bubble > p,
@@ -3847,7 +3850,7 @@ body[data-window-mode="chat"] .message-list .message-bubble.assistant :where(sma
 }
 
 body[data-window-mode="chat"] .message-list .message-bubble.user :where(small, span, .message-meta, .message-pending) {
-  color: rgba(24, 55, 43, 0.78);
+  color: var(--color-text-muted);
 }
 
 body[data-window-mode="chat"] .message-agent-action-bucket {
@@ -3871,10 +3874,10 @@ body[data-window-mode="chat"] .chat-panel .chat-form {
   min-height: clamp(48px, 5.7dvh, 56px);
   align-items: center;
   padding: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.105);
   border-radius: 10px;
-  background: rgba(4, 5, 8, 0.72);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.22);
+  background: rgba(12, 13, 18, 0.66);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.16);
 }
 
 body[data-window-mode="chat"] .chat-panel .chat-form input {
@@ -3895,8 +3898,9 @@ body[data-window-mode="chat"] .chat-panel .chat-form button {
   min-height: clamp(38px, 4.9dvh, 44px);
   min-width: clamp(96px, 9vw, 120px);
   border-radius: 8px;
-  background: linear-gradient(135deg, rgba(245, 141, 165, 0.82), rgba(188, 77, 113, 0.92));
+  background: linear-gradient(135deg, rgba(213, 111, 138, 0.74), rgba(167, 74, 101, 0.82));
   color: #fff8fa;
+  box-shadow: 0 8px 18px rgba(139, 58, 83, 0.22);
 }
 
 body[data-window-mode="chat"] .chat-action-board {
@@ -3926,8 +3930,8 @@ body[data-window-mode="chat"] .chat-action-button small {
 }
 
 body[data-window-mode="chat"] .chat-action-button.active {
-  border-color: rgba(245, 141, 165, 0.58);
-  background: rgba(245, 141, 165, 0.16);
+  border-color: rgba(213, 111, 138, 0.38);
+  background: rgba(213, 111, 138, 0.1);
 }
 
 body[data-window-mode="chat"] .chat-secondary-modes,
@@ -4244,6 +4248,30 @@ body[data-window-mode="world"] .wiki-page-card-head small {
 body[data-window-mode="world"] .wiki-page-card p {
   color: var(--feature-soft);
   line-height: 1.55;
+}
+
+body[data-window-mode="world"] .wiki-readiness-banner {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.055);
+  color: var(--feature-soft);
+}
+
+body[data-window-mode="world"] .wiki-readiness-banner.error {
+  border-color: rgba(223, 111, 127, 0.28);
+  background: rgba(223, 111, 127, 0.11);
+}
+
+body[data-window-mode="world"] .wiki-readiness-banner.warning {
+  border-color: rgba(215, 161, 95, 0.3);
+  background: rgba(215, 161, 95, 0.12);
+}
+
+body[data-window-mode="world"] .wiki-readiness-banner strong {
+  color: var(--feature-ink);
+}
+
+body[data-window-mode="world"] .wiki-readiness-banner span {
+  color: var(--feature-soft);
 }
 
 body[data-window-mode="world"] .wiki-page-card-meta {

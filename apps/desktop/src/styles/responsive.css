@@ -27,7 +27,7 @@
   .message,
   .result-item,
   .proposal {
-    background: #ffffff;
+    background: var(--color-surface);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
   }

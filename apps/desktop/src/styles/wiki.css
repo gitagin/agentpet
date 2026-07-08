@@ -254,26 +254,26 @@
   align-content: start;
   justify-items: start;
   gap: 5px;
-  border-color: rgba(112, 132, 143, 0.18);
+  border-color: var(--color-border);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.68);
+  background: rgba(255, 255, 255, 0.038);
   box-shadow: none;
-  color: #334750;
+  color: var(--color-text-muted);
   padding: 10px;
   text-align: left;
 }
 
 .wiki-target-type-button:hover {
-  border-color: rgba(67, 121, 96, 0.32);
-  background: rgba(248, 253, 250, 0.92);
+  border-color: rgba(213, 111, 138, 0.24);
+  background: rgba(213, 111, 138, 0.075);
   box-shadow: none;
-  color: #264d3b;
+  color: var(--color-text);
 }
 
 .wiki-target-type-button.active {
-  border-color: rgba(67, 121, 96, 0.42);
-  background: rgba(239, 250, 244, 0.94);
-  color: #22543b;
+  border-color: rgba(213, 111, 138, 0.3);
+  background: rgba(213, 111, 138, 0.095);
+  color: var(--color-primary-strong);
 }
 
 .wiki-target-type-button strong,
@@ -287,7 +287,7 @@
 }
 
 .wiki-target-type-button span {
-  color: #5d7079;
+  color: var(--color-text-muted);
   font-size: 11px;
   font-weight: 700;
   line-height: 1.35;

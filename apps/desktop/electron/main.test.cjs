@@ -19,6 +19,101 @@ function loadMainWithMocks(mocks) {
   }
 }
 
+function createBootstrapMocks({ hasSingleInstanceLock = true, existingWindows = [] } = {}) {
+  const appListeners = {};
+  const app = {
+    commandLine: {
+      appendSwitch: vi.fn(),
+    },
+    getPath: vi.fn(() => "C:\\AgentPet"),
+    requestSingleInstanceLock: vi.fn(() => hasSingleInstanceLock),
+    whenReady: vi.fn(() => new Promise(() => undefined)),
+    on: vi.fn((eventName, callback) => {
+      appListeners[eventName] = callback;
+    }),
+    quit: vi.fn(),
+  };
+  const fs = {
+    readFileSync: vi.fn(() => "{}"),
+    mkdirSync: vi.fn(),
+    writeFileSync: vi.fn(),
+    renameSync: vi.fn(),
+    rmSync: vi.fn(),
+    unlinkSync: vi.fn(),
+    rmdirSync: vi.fn(),
+  };
+  const windows = {
+    createPetWindow: vi.fn(),
+    showControlWindow: vi.fn(),
+    showStageWindow: vi.fn(),
+    showAgentWindow: vi.fn(),
+    showFeatureWindow: vi.fn(),
+    showPetInputMode: vi.fn(),
+    clearPetWindowDrag: vi.fn(),
+  };
+  const sidecar = {
+    startSidecar: vi.fn(),
+    stopSidecar: vi.fn(),
+    abortSidecarReadiness: vi.fn(),
+  };
+  const createWindowManager = vi.fn(() => windows);
+  const createSidecarManager = vi.fn(() => sidecar);
+  const createTrayManager = vi.fn(() => ({ createTray: vi.fn() }));
+  const createProxyManager = vi.fn(() => ({}));
+  const registerIpcHandlers = vi.fn();
+  const clearCache = vi.fn();
+
+  const mocks = {
+    electron: {
+      app,
+      BrowserWindow: {
+        getAllWindows: vi.fn(() => existingWindows),
+      },
+      Menu: {
+        setApplicationMenu: vi.fn(),
+      },
+      globalShortcut: {
+        register: vi.fn(),
+        unregisterAll: vi.fn(),
+      },
+      session: {
+        defaultSession: {
+          clearCache,
+        },
+      },
+    },
+    "node:fs": fs,
+    "./windows.js": {
+      createWindowManager,
+    },
+    "./tray.js": {
+      createTrayManager,
+    },
+    "./sidecar.js": {
+      createSidecarManager,
+    },
+    "./proxy.js": {
+      createProxyManager,
+    },
+    "./ipc.js": {
+      registerIpcHandlers,
+    },
+  };
+
+  return {
+    app,
+    appListeners,
+    clearCache,
+    createSidecarManager,
+    createWindowManager,
+    fs,
+    mocks,
+    registerIpcHandlers,
+    sidecar,
+    windows,
+  };
+}
+
 describe("Electron main bootstrap", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -27,68 +122,60 @@ describe("Electron main bootstrap", () => {
   });
 
   it("allows renderer TTS audio to autoplay after async synthesis", () => {
-    const app = {
-      commandLine: {
-        appendSwitch: vi.fn(),
-      },
-      getPath: vi.fn(() => "C:\\AgentPet"),
-      whenReady: vi.fn(() => new Promise(() => undefined)),
-      on: vi.fn(),
-      quit: vi.fn(),
-    };
+    const { app, mocks } = createBootstrapMocks();
 
-    loadMainWithMocks({
-      electron: {
-        app,
-        BrowserWindow: {
-          getAllWindows: vi.fn(() => []),
-        },
-        Menu: {
-          setApplicationMenu: vi.fn(),
-        },
-        globalShortcut: {
-          register: vi.fn(),
-          unregisterAll: vi.fn(),
-        },
-      },
-      "node:fs": {
-        readFileSync: vi.fn(() => "{}"),
-        mkdirSync: vi.fn(),
-        writeFileSync: vi.fn(),
-        renameSync: vi.fn(),
-      },
-      "./windows.js": {
-        createWindowManager: vi.fn(() => ({
-          createPetWindow: vi.fn(),
-          showControlWindow: vi.fn(),
-          showStageWindow: vi.fn(),
-          showAgentWindow: vi.fn(),
-          showFeatureWindow: vi.fn(),
-          showPetInputMode: vi.fn(),
-          clearPetWindowDrag: vi.fn(),
-        })),
-      },
-      "./tray.js": {
-        createTrayManager: vi.fn(() => ({ createTray: vi.fn() })),
-      },
-      "./sidecar.js": {
-        createSidecarManager: vi.fn(() => ({
-          startSidecar: vi.fn(),
-          stopSidecar: vi.fn(),
-          abortSidecarReadiness: vi.fn(),
-        })),
-      },
-      "./proxy.js": {
-        createProxyManager: vi.fn(() => ({})),
-      },
-      "./ipc.js": {
-        registerIpcHandlers: vi.fn(),
-      },
-    });
+    loadMainWithMocks(mocks);
 
     expect(app.commandLine.appendSwitch).toHaveBeenCalledWith(
       "autoplay-policy",
       "no-user-gesture-required",
     );
+    expect(app.requestSingleInstanceLock).toHaveBeenCalledOnce();
+  });
+
+  it("quits a second main process before creating windows or starting the sidecar", () => {
+    const {
+      app,
+      clearCache,
+      createSidecarManager,
+      createWindowManager,
+      fs,
+      mocks,
+      registerIpcHandlers,
+    } = createBootstrapMocks({ hasSingleInstanceLock: false });
+
+    loadMainWithMocks(mocks);
+
+    expect(app.requestSingleInstanceLock).toHaveBeenCalledOnce();
+    expect(app.quit).toHaveBeenCalledOnce();
+    expect(app.getPath).not.toHaveBeenCalled();
+    expect(app.whenReady).not.toHaveBeenCalled();
+    expect(createWindowManager).not.toHaveBeenCalled();
+    expect(createSidecarManager).not.toHaveBeenCalled();
+    expect(registerIpcHandlers).not.toHaveBeenCalled();
+    expect(clearCache).not.toHaveBeenCalled();
+    expect(fs.rmSync).not.toHaveBeenCalled();
+    expect(fs.unlinkSync).not.toHaveBeenCalled();
+    expect(fs.rmdirSync).not.toHaveBeenCalled();
+  });
+
+  it("restores and focuses an existing window when a second instance starts", () => {
+    const existingWindow = {
+      isDestroyed: vi.fn(() => false),
+      isMinimized: vi.fn(() => true),
+      restore: vi.fn(),
+      focus: vi.fn(),
+    };
+    const { appListeners, mocks, windows } = createBootstrapMocks({
+      existingWindows: [existingWindow],
+    });
+
+    loadMainWithMocks(mocks);
+    appListeners["second-instance"]();
+
+    expect(existingWindow.isMinimized).toHaveBeenCalledOnce();
+    expect(existingWindow.restore).toHaveBeenCalledOnce();
+    expect(existingWindow.focus).toHaveBeenCalledOnce();
+    expect(windows.showControlWindow).not.toHaveBeenCalled();
   });
 });

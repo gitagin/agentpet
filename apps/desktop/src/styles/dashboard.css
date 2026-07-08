@@ -920,11 +920,11 @@
   --control-panel-strong: rgba(31, 30, 34, 0.84);
   --control-line: rgba(255, 255, 255, 0.13);
   --control-line-strong: rgba(255, 255, 255, 0.2);
-  --control-rose: #f08aa0;
-  --control-rose-strong: #ffb1bf;
-  --control-teal: #59d6c9;
-  --control-green: #64c99c;
-  --control-amber: #dfbd78;
+  --control-rose: #d56f8a;
+  --control-rose-strong: #f08aa4;
+  --control-teal: #78c7bd;
+  --control-green: #62b894;
+  --control-amber: #d7a15f;
   min-height: 100dvh;
   height: 100dvh;
   overflow: auto;
@@ -939,8 +939,8 @@
   border: 0;
   border-radius: 0;
   background:
-    linear-gradient(90deg, rgba(4, 5, 8, 0.94) 0%, rgba(4, 5, 8, 0.56) 24%, rgba(4, 5, 8, 0.22) 52%, rgba(4, 5, 8, 0.74) 100%),
-    linear-gradient(180deg, rgba(6, 7, 10, 0.18), rgba(6, 7, 10, 0.9)),
+    linear-gradient(90deg, rgba(4, 5, 8, 0.9) 0%, rgba(4, 5, 8, 0.54) 24%, rgba(4, 5, 8, 0.22) 52%, rgba(4, 5, 8, 0.74) 100%),
+    linear-gradient(180deg, rgba(6, 7, 10, 0.14), rgba(6, 7, 10, 0.82)),
     url("/images/home.png") center / cover no-repeat;
   box-shadow: none;
   opacity: 1;
@@ -954,9 +954,9 @@
   z-index: -2;
   pointer-events: none;
   background:
-    linear-gradient(180deg, rgba(6, 7, 10, 0.14), rgba(6, 7, 10, 0.82)),
-    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.035) 0 1px, transparent 1px 148px);
-  opacity: 0.76;
+    linear-gradient(180deg, rgba(6, 7, 10, 0.14), rgba(6, 7, 10, 0.72)),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.025) 0 1px, transparent 1px 148px);
+  opacity: 0.7;
 }
 
 .control-home-topbar,
@@ -1521,9 +1521,9 @@
   gap: 8px;
   border-color: var(--control-line);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.035)),
-    rgba(20, 20, 24, 0.78);
-  box-shadow: 0 18px 54px rgba(0, 0, 0, 0.34);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.052), rgba(255, 255, 255, 0.018)),
+    rgba(16, 16, 21, 0.68);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.22);
 }
 
 .control-home-shell .bottom-nav-button {
@@ -1531,10 +1531,10 @@
 }
 
 .control-home-shell .bottom-nav-indicator {
-  background: rgba(240, 138, 160, 0.18);
+  background: rgba(240, 138, 160, 0.13);
   box-shadow:
-    inset 0 0 0 1px rgba(240, 138, 160, 0.34),
-    0 0 28px rgba(240, 138, 160, 0.2);
+    inset 0 0 0 1px rgba(240, 138, 160, 0.24),
+    0 0 18px rgba(240, 138, 160, 0.13);
 }
 
 .control-home-shell .bottom-nav-button.active,
@@ -1642,16 +1642,16 @@
   --home-ink: #fff7f8;
   --home-soft: #c9bcc2;
   --home-muted: #8f858c;
-  --home-line: rgba(255, 255, 255, 0.13);
-  --home-line-strong: rgba(255, 255, 255, 0.22);
-  --home-glass: rgba(20, 20, 24, 0.64);
-  --home-glass-strong: rgba(26, 25, 30, 0.82);
-  --home-rose: #f58da5;
-  --home-rose-strong: #ffc0cb;
-  --home-teal: #62ddd3;
-  --home-green: #55c894;
-  --home-blue: #74a9ef;
-  --home-amber: #dab56f;
+  --home-line: rgba(255, 255, 255, 0.1);
+  --home-line-strong: rgba(255, 255, 255, 0.16);
+  --home-glass: rgba(18, 18, 22, 0.52);
+  --home-glass-strong: rgba(24, 23, 29, 0.72);
+  --home-rose: #d56f8a;
+  --home-rose-strong: #f08aa4;
+  --home-teal: #78c7bd;
+  --home-green: #62b894;
+  --home-blue: #86a9d2;
+  --home-amber: #d7a15f;
   min-height: 100dvh;
   height: 100dvh;
   overflow: auto;
@@ -1666,8 +1666,8 @@
   border: 0;
   border-radius: 0;
   background:
-    linear-gradient(90deg, rgba(5, 5, 8, 0.94) 0%, rgba(5, 5, 8, 0.48) 24%, rgba(5, 5, 8, 0.2) 54%, rgba(5, 5, 8, 0.82) 100%),
-    linear-gradient(180deg, rgba(5, 5, 8, 0.04), rgba(5, 5, 8, 0.72)),
+    linear-gradient(90deg, rgba(5, 5, 8, 0.9) 0%, rgba(5, 5, 8, 0.48) 24%, rgba(5, 5, 8, 0.2) 54%, rgba(5, 5, 8, 0.78) 100%),
+    linear-gradient(180deg, rgba(5, 5, 8, 0.04), rgba(5, 5, 8, 0.66)),
     url("/images/home.png") center / cover no-repeat;
   box-shadow: none;
   opacity: 1;
@@ -1680,9 +1680,9 @@
   inset: 0;
   z-index: -3;
   background:
-    radial-gradient(circle at 50% 18%, rgba(245, 141, 165, 0.16), transparent 28%),
-    radial-gradient(circle at 66% 44%, rgba(98, 221, 211, 0.11), transparent 22%),
-    linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.42));
+    radial-gradient(circle at 50% 18%, rgba(213, 111, 138, 0.12), transparent 28%),
+    radial-gradient(circle at 66% 44%, rgba(120, 199, 189, 0.08), transparent 22%),
+    linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.38));
   pointer-events: none;
 }
 
@@ -1797,11 +1797,11 @@
   border: 1px solid var(--home-line);
   border-radius: 8px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.065), rgba(255, 255, 255, 0.024)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.034), rgba(255, 255, 255, 0.012)),
     var(--home-glass);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.3);
-  backdrop-filter: blur(18px) saturate(136%);
-  -webkit-backdrop-filter: blur(18px) saturate(136%);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(12px) saturate(108%);
+  -webkit-backdrop-filter: blur(12px) saturate(108%);
 }
 
 .control-date-card {
@@ -1977,14 +1977,14 @@
   height: 112px;
   display: grid;
   place-items: center;
-  border: 9px solid rgba(98, 221, 211, 0.22);
-  border-top-color: rgba(85, 200, 148, 0.95);
+  border: 9px solid rgba(120, 199, 189, 0.16);
+  border-top-color: rgba(98, 184, 148, 0.72);
   border-radius: 999px;
   color: #ffc3cd;
-  background: radial-gradient(circle, rgba(245, 141, 165, 0.38), rgba(245, 141, 165, 0.06) 62%);
+  background: radial-gradient(circle, rgba(213, 111, 138, 0.22), rgba(213, 111, 138, 0.05) 62%);
   box-shadow:
-    inset 0 0 32px rgba(245, 141, 165, 0.24),
-    0 0 38px rgba(245, 141, 165, 0.16);
+    inset 0 0 26px rgba(213, 111, 138, 0.16),
+    0 0 24px rgba(213, 111, 138, 0.08);
 }
 
 .control-pet-vitals dl {
@@ -2015,14 +2015,14 @@
 
 .control-wide-button {
   width: 100%;
-  border-color: rgba(245, 141, 165, 0.42);
-  background: rgba(245, 141, 165, 0.13);
+  border-color: rgba(213, 111, 138, 0.3);
+  background: rgba(213, 111, 138, 0.1);
   color: var(--home-rose-strong);
   box-shadow: none;
 }
 
 .control-wide-button:hover {
-  background: rgba(245, 141, 165, 0.22);
+  background: rgba(213, 111, 138, 0.16);
 }
 
 .control-center-stage {
@@ -2071,12 +2071,12 @@
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 18px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.035)),
-    rgba(21, 22, 27, 0.82);
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.32);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.064), rgba(255, 255, 255, 0.026)),
+    rgba(21, 22, 27, 0.76);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.24);
   padding: 18px 20px;
   transform: translateX(-50%);
-  backdrop-filter: blur(18px) saturate(140%);
+  backdrop-filter: blur(14px) saturate(118%);
 }
 
 .control-speech-bubble::after {
@@ -2184,7 +2184,7 @@
   right: 10%;
   top: 22%;
   height: 34%;
-  border: 1px solid rgba(245, 141, 165, 0.28);
+  border: 1px solid rgba(213, 111, 138, 0.16);
   border-radius: 50%;
   transform: rotate(-17deg);
 }
@@ -2194,7 +2194,7 @@
   right: 12%;
   top: 35%;
   height: 28%;
-  border-color: rgba(98, 221, 211, 0.18);
+  border-color: rgba(120, 199, 189, 0.1);
   transform: rotate(23deg);
 }
 
@@ -2216,7 +2216,7 @@
   border: 2px solid rgba(255, 255, 255, 0.58);
   border-radius: 999px;
   background: var(--home-rose);
-  box-shadow: 0 0 12px rgba(245, 141, 165, 0.72);
+  box-shadow: 0 0 10px rgba(213, 111, 138, 0.32);
 }
 
 .orbit-point small {
@@ -2242,7 +2242,7 @@
 
 .point-three i {
   background: var(--home-teal);
-  box-shadow: 0 0 12px rgba(98, 221, 211, 0.72);
+  box-shadow: 0 0 10px rgba(120, 199, 189, 0.28);
 }
 
 .point-four {
@@ -2287,12 +2287,12 @@
   border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 18px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.035)),
-    rgba(24, 22, 25, 0.84);
-  box-shadow: 0 20px 54px rgba(0, 0, 0, 0.36);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.024)),
+    rgba(20, 20, 24, 0.78);
+  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.28);
   padding: 12px 14px;
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  backdrop-filter: blur(14px) saturate(118%);
+  -webkit-backdrop-filter: blur(14px) saturate(118%);
 }
 
 .control-stage-composer input {
@@ -2306,7 +2306,7 @@
 
 .control-stage-composer input:focus {
   background: rgba(255, 255, 255, 0.04);
-  box-shadow: inset 0 0 0 1px rgba(245, 141, 165, 0.32);
+  box-shadow: inset 0 0 0 1px rgba(213, 111, 138, 0.28);
 }
 
 .control-stage-composer input::placeholder {
@@ -2343,11 +2343,11 @@
   width: 54px;
   height: 54px;
   min-height: 54px;
-  border-color: rgba(245, 141, 165, 0.46);
+  border-color: rgba(213, 111, 138, 0.4);
   border-radius: 999px;
-  background: linear-gradient(180deg, #e5768e, #ae4967);
+  background: linear-gradient(180deg, #d56f8a, #a74a65);
   color: #ffffff;
-  box-shadow: 0 0 30px rgba(245, 141, 165, 0.32);
+  box-shadow: 0 0 22px rgba(213, 111, 138, 0.2);
   padding: 0;
 }
 
@@ -2659,9 +2659,9 @@
   gap: 8px;
   border-color: var(--home-line);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.035)),
-    rgba(20, 20, 24, 0.82);
-  box-shadow: 0 18px 54px rgba(0, 0, 0, 0.34);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.052), rgba(255, 255, 255, 0.018)),
+    rgba(16, 16, 21, 0.68);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.22);
 }
 
 .control-home-shell .bottom-nav-button {
@@ -2674,10 +2674,10 @@
 }
 
 .control-home-shell .bottom-nav-indicator {
-  background: rgba(245, 141, 165, 0.18);
+  background: rgba(245, 141, 165, 0.13);
   box-shadow:
-    inset 0 0 0 1px rgba(245, 141, 165, 0.34),
-    0 0 28px rgba(245, 141, 165, 0.2);
+    inset 0 0 0 1px rgba(245, 141, 165, 0.24),
+    0 0 18px rgba(245, 141, 165, 0.13);
 }
 
 .control-home-shell .bottom-nav-button.active,
@@ -2699,8 +2699,8 @@
   object-position: 50% 28%;
   transform: translate(-50%, -50%);
   box-shadow:
-    0 0 0 6px rgba(245, 141, 165, 0.14),
-    0 0 32px rgba(245, 141, 165, 0.38);
+    0 0 0 5px rgba(245, 141, 165, 0.1),
+    0 0 22px rgba(245, 141, 165, 0.22);
   pointer-events: none;
 }
 

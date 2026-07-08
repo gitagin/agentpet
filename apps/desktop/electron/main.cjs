@@ -12,20 +12,8 @@ const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL || "http://127.0.0.1:5173
 const SIDECAR_HOST = "127.0.0.1";
 const SIDECAR_PORT = 8765;
 const SIDECAR_BASE_URL = `http://${SIDECAR_HOST}:${SIDECAR_PORT}`;
-const sessionToken = process.env.AGENT_PET_SESSION_TOKEN || crypto.randomBytes(32).toString("base64url");
-const rendererUiStatePath = path.join(app.getPath("userData"), "renderer-ui-state.json");
-const managedSidecarDataDir = path.join(app.getPath("userData"), "backend-state");
-const state = {
-  isQuitting: false,
-  rendererUiState: loadRendererUiState(rendererUiStatePath),
-};
 
 app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
-
-function quitApp() {
-  state.isQuitting = true;
-  app.quit();
-}
 
 function loadRendererUiState(filePath) {
   try {
@@ -41,83 +29,119 @@ function loadRendererUiState(filePath) {
   }
 }
 
-function persistRendererUiState() {
-  try {
-    fs.mkdirSync(path.dirname(rendererUiStatePath), { recursive: true });
-    const payload = Object.fromEntries(state.rendererUiState.entries());
-    const tempPath = `${rendererUiStatePath}.tmp`;
-    fs.writeFileSync(tempPath, JSON.stringify(payload, null, 2), "utf8");
-    fs.renameSync(tempPath, rendererUiStatePath);
-  } catch (error) {
-    console.warn("Failed to persist renderer UI state.", error);
+function focusExistingInstanceWindow(windows) {
+  const existingWindow = BrowserWindow.getAllWindows().find((window) => !window.isDestroyed?.());
+  if (existingWindow) {
+    if (existingWindow.isMinimized()) {
+      existingWindow.restore();
+    }
+    existingWindow.focus();
+    return;
   }
+  windows.showControlWindow();
 }
 
-const windows = createWindowManager({
-  devServerUrl: DEV_SERVER_URL,
-  state,
-  quitApp,
-});
-const sidecar = createSidecarManager({
-  host: SIDECAR_HOST,
-  port: SIDECAR_PORT,
-  baseUrl: SIDECAR_BASE_URL,
-  sessionToken,
-  managedSidecarDataDir,
-  state,
-  showControlWindow: windows.showControlWindow,
-});
-const proxy = createProxyManager({
-  baseUrl: SIDECAR_BASE_URL,
-  sessionToken,
-});
-const tray = createTrayManager({
-  createPetWindow: windows.createPetWindow,
-  showControlWindow: windows.showControlWindow,
-  showStageWindow: windows.showStageWindow,
-  showAgentWindow: windows.showAgentWindow,
-  showFeatureWindow: windows.showFeatureWindow,
-  showPetInputMode: windows.showPetInputMode,
-  quitApp,
-});
+const hasSingleInstanceLock =
+  typeof app.requestSingleInstanceLock === "function" ? app.requestSingleInstanceLock() : true;
 
-registerIpcHandlers({
-  baseUrl: SIDECAR_BASE_URL,
-  rendererUiState: state.rendererUiState,
-  persistRendererUiState,
-  sidecar,
-  proxy,
-  windows,
-});
+if (!hasSingleInstanceLock) {
+  app.quit();
+} else {
+  const sessionToken = process.env.AGENT_PET_SESSION_TOKEN || crypto.randomBytes(32).toString("base64url");
+  const rendererUiStatePath = path.join(app.getPath("userData"), "renderer-ui-state.json");
+  const managedSidecarDataDir = path.join(app.getPath("userData"), "backend-state");
+  const state = {
+    isQuitting: false,
+    rendererUiState: loadRendererUiState(rendererUiStatePath),
+  };
 
-app.whenReady().then(() => {
-  Menu.setApplicationMenu(null);
-  sidecar.startSidecar();
-  windows.createPetWindow();
-  tray.createTray();
-  globalShortcut.register("CommandOrControl+Shift+A", windows.showControlWindow);
-
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      windows.createPetWindow();
-    }
-  });
-});
-
-app.on("window-all-closed", () => {
-  if (state.isQuitting && process.platform !== "darwin") {
+  function quitApp() {
+    state.isQuitting = true;
     app.quit();
   }
-});
 
-app.on("before-quit", () => {
-  state.isQuitting = true;
-  windows.clearPetWindowDrag();
-  sidecar.stopSidecar();
-});
+  function persistRendererUiState() {
+    try {
+      fs.mkdirSync(path.dirname(rendererUiStatePath), { recursive: true });
+      const payload = Object.fromEntries(state.rendererUiState.entries());
+      const tempPath = `${rendererUiStatePath}.tmp`;
+      fs.writeFileSync(tempPath, JSON.stringify(payload, null, 2), "utf8");
+      fs.renameSync(tempPath, rendererUiStatePath);
+    } catch (error) {
+      console.warn("Failed to persist renderer UI state.", error);
+    }
+  }
 
-app.on("quit", () => {
-  windows.clearPetWindowDrag();
-  globalShortcut.unregisterAll();
-  sidecar.abortSidecarReadiness();
-});
+  const windows = createWindowManager({
+    devServerUrl: DEV_SERVER_URL,
+    state,
+    quitApp,
+  });
+  const sidecar = createSidecarManager({
+    host: SIDECAR_HOST,
+    port: SIDECAR_PORT,
+    baseUrl: SIDECAR_BASE_URL,
+    sessionToken,
+    managedSidecarDataDir,
+    state,
+    showControlWindow: windows.showControlWindow,
+  });
+  const proxy = createProxyManager({
+    baseUrl: SIDECAR_BASE_URL,
+    sessionToken,
+  });
+  const tray = createTrayManager({
+    createPetWindow: windows.createPetWindow,
+    showControlWindow: windows.showControlWindow,
+    showStageWindow: windows.showStageWindow,
+    showAgentWindow: windows.showAgentWindow,
+    showFeatureWindow: windows.showFeatureWindow,
+    showPetInputMode: windows.showPetInputMode,
+    quitApp,
+  });
+
+  registerIpcHandlers({
+    baseUrl: SIDECAR_BASE_URL,
+    rendererUiState: state.rendererUiState,
+    persistRendererUiState,
+    sidecar,
+    proxy,
+    windows,
+  });
+
+  app.on("second-instance", () => {
+    focusExistingInstanceWindow(windows);
+  });
+
+  app.whenReady().then(() => {
+    Menu.setApplicationMenu(null);
+    sidecar.startSidecar();
+    windows.createPetWindow();
+    tray.createTray();
+    globalShortcut.register("CommandOrControl+Shift+A", windows.showControlWindow);
+
+    app.on("activate", () => {
+      if (BrowserWindow.getAllWindows().length === 0) {
+        windows.createPetWindow();
+      }
+    });
+  });
+
+  app.on("window-all-closed", () => {
+    if (state.isQuitting && process.platform !== "darwin") {
+      app.quit();
+    }
+  });
+
+  app.on("before-quit", () => {
+    state.isQuitting = true;
+    windows.clearPetWindowDrag();
+    sidecar.stopSidecar();
+  });
+
+  app.on("quit", () => {
+    windows.clearPetWindowDrag();
+    globalShortcut.unregisterAll();
+    sidecar.abortSidecarReadiness();
+  });
+}
