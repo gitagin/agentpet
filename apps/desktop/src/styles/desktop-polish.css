@@ -3357,6 +3357,7 @@ body[data-window-mode="settings"] .agent-model-status {
 .control-memory-day {
   display: grid;
   grid-template-rows: auto minmax(0, auto);
+  height: auto;
   min-height: 0;
   margin-bottom: 0;
   align-content: start;
@@ -3368,10 +3369,11 @@ body[data-window-mode="settings"] .agent-model-status {
 .control-memory-day.is-expanded {
   position: relative;
   z-index: 1;
-  max-height: min(var(--memory-expanded-day-min-height, 420px), 100%);
+  height: auto;
+  max-height: none;
   min-height: 0;
   gap: clamp(9px, 1.15dvh, 12px);
-  overflow: hidden;
+  overflow: visible;
 }
 
 .control-memory-day h2 {
@@ -3487,15 +3489,14 @@ body[data-window-mode="settings"] .agent-model-status {
   padding-left: 0;
   position: relative;
   transform: translateY(0);
-  transition: max-height 0.28s ease, opacity 0.2s ease, transform 0.24s ease;
+  transition: opacity 0.2s ease, transform 0.24s ease;
 }
 
 .control-memory-day.is-expanded .control-memory-timeline {
-  max-height: min(var(--memory-visible-timeline-min-height, 360px), 100%);
+  max-height: none;
   min-height: 0;
-  overflow: auto;
-  overflow-x: hidden;
-  padding-right: 2px;
+  overflow: visible;
+  padding-right: 0;
 }
 
 .control-memory-day.is-collapsed .control-memory-timeline {

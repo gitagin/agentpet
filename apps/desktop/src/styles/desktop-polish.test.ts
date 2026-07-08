@@ -156,7 +156,7 @@ describe("desktop polish detail contract", () => {
       /\.control-memory-days\s*\{[^}]*height:\s*100%;[^}]*display:\s*grid;[^}]*align-content:\s*start;[^}]*grid-auto-flow:\s*row;[^}]*grid-auto-rows:\s*minmax\(min-content,\s*max-content\);[^}]*overflow:\s*auto;[^}]*overflow-x:\s*hidden;[^}]*scrollbar-gutter:\s*stable;/,
     );
     expect(polishStyles).toMatch(
-      /\.control-memory-day\s*\{[^}]*display:\s*grid;[^}]*grid-template-rows:\s*auto minmax\(0,\s*auto\);[^}]*min-height:\s*0;[^}]*overflow:\s*visible;/,
+      /\.control-memory-day\s*\{[^}]*display:\s*grid;[^}]*grid-template-rows:\s*auto minmax\(0,\s*auto\);[^}]*height:\s*auto;[^}]*min-height:\s*0;[^}]*overflow:\s*visible;/,
     );
     expect(polishStyles).toMatch(
       /\.control-memory-day\.is-collapsed \.control-memory-day-toggle\s*\{[^}]*min-height:\s*44px;[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\) 26px 16px;[^}]*border:\s*1px solid rgba\(255,\s*255,\s*255,\s*0\.075\);[^}]*border-radius:\s*10px;/,
@@ -165,10 +165,22 @@ describe("desktop polish detail contract", () => {
       /\.control-memory-day\.is-collapsed \.control-memory-day-label\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*minmax\(58px,\s*auto\) minmax\(0,\s*1fr\);[^}]*align-items:\s*center;[^}]*line-height:\s*1\.08;/,
     );
     expect(polishStyles).toMatch(
-      /\.control-memory-day\.is-expanded\s*\{[^}]*position:\s*relative;[^}]*z-index:\s*1;[^}]*max-height:\s*min\(var\(--memory-expanded-day-min-height,\s*420px\),\s*100%\);[^}]*min-height:\s*0;[^}]*overflow:\s*hidden;/,
+      /\.control-memory-day\.is-expanded\s*\{[^}]*position:\s*relative;[^}]*z-index:\s*1;[^}]*height:\s*auto;[^}]*max-height:\s*none;[^}]*min-height:\s*0;[^}]*overflow:\s*visible;/,
     );
     expect(polishStyles).toMatch(
-      /\.control-memory-day\.is-expanded \.control-memory-timeline\s*\{[^}]*max-height:\s*min\(var\(--memory-visible-timeline-min-height,\s*360px\),\s*100%\);[^}]*min-height:\s*0;[^}]*overflow:\s*auto;[^}]*overflow-x:\s*hidden;/,
+      /\.control-memory-day\.is-expanded \.control-memory-timeline\s*\{[^}]*max-height:\s*none;[^}]*min-height:\s*0;[^}]*overflow:\s*visible;[^}]*padding-right:\s*0;/,
+    );
+    expect(polishStyles).not.toMatch(
+      /\.control-memory-day\.is-expanded\s*\{[^}]*max-height:\s*min\(var\(--memory-expanded-day-min-height/,
+    );
+    expect(polishStyles).not.toMatch(
+      /\.control-memory-day\.is-expanded \.control-memory-timeline\s*\{[^}]*max-height:\s*min\(var\(--memory-visible-timeline-min-height/,
+    );
+    expect(polishStyles).not.toMatch(
+      /\.control-memory-day\.is-expanded \.control-memory-timeline\s*\{[^}]*overflow:\s*auto/,
+    );
+    expect(polishStyles).not.toMatch(
+      /\.control-memory-timeline\s*\{[^}]*transition:[^}]*max-height/,
     );
     expect(polishStyles).toMatch(
       /\.control-memory-day\.is-collapsed \.control-memory-timeline\s*\{[^}]*max-height:\s*0;[^}]*min-height:\s*0;[^}]*overflow:\s*hidden;[^}]*opacity:\s*0;[^}]*transform:\s*translateY\(-6px\);/,
