@@ -5,29 +5,29 @@ import { describe, expect, it } from "vitest";
 const polishStyles = readFileSync(resolve(__dirname, "desktop-polish.css"), "utf8");
 
 describe("desktop polish navigation contract", () => {
-  it("keeps feature route navigation fixed to the bottom like the home route", () => {
+  it("keeps every route dock centered and fitted to its nav buttons", () => {
     expect(polishStyles).toContain("Default design baselines: stageWindow 1100x720; controlWindow 1200x820;");
     expect(polishStyles).toContain("featureWindow/agentWindow 980x740");
     expect(polishStyles).toContain("User-resize safety floors, not the visual baseline: stageWindow 900x600;");
     expect(polishStyles).toContain("@media (min-width: 1360px) and (min-height: 820px)");
-    expect(polishStyles).toContain("Product Design feature dock sync");
+    expect(polishStyles).toContain("Shared content-fit route dock: every primary route hugs its nav buttons.");
     expect(polishStyles).toMatch(
-      /\.feature-shell \.bottom-nav\s*\{[^}]*position:\s*fixed;[^}]*top:\s*auto;[^}]*bottom:\s*clamp\(18px,\s*3\.6dvh,\s*38px\);[^}]*left:\s*50%;[^}]*width:\s*clamp\(760px,\s*67\.5vw,\s*1004px\);/,
+      /\.control-home-shell \.control-bottom-dock,\s*\.feature-shell > \.bottom-nav\s*\{[^}]*left:\s*50%;[^}]*right:\s*auto;[^}]*width:\s*fit-content;[^}]*min-width:\s*0;[^}]*max-width:\s*calc\(100vw - 32px\);[^}]*transform:\s*translateX\(-50%\);/,
     );
     expect(polishStyles).toMatch(
-      /@media \(max-width:\s*1100px\) and \(max-height:\s*720px\)\s*\{[\s\S]*\.feature-shell \.bottom-nav\s*\{[^}]*bottom:\s*18px;[^}]*width:\s*min\(820px,\s*calc\(100vw - 96px\)\);/,
+      /\.control-home-shell \.bottom-nav,\s*\.feature-shell > \.bottom-nav,\s*\.stage-footer \.bottom-nav\s*\{[^}]*--bottom-nav-item-width:\s*clamp\(64px,\s*5\.2vw,\s*74px\);[^}]*--bottom-nav-avatar-space:\s*0px;[^}]*width:\s*fit-content;[^}]*min-width:\s*0;[^}]*max-width:\s*calc\(100vw - 32px\);/,
     );
     expect(polishStyles).toMatch(
-      /@media \(max-width:\s*980px\) and \(max-height:\s*740px\)\s*\{[\s\S]*\.feature-shell \.bottom-nav\s*\{[^}]*--bottom-nav-item-width:\s*84px;[^}]*bottom:\s*16px;[^}]*width:\s*min\(820px,\s*calc\(100vw - 72px\)\);/,
+      /\.control-home-shell \.bottom-nav-center-avatar,\s*\.feature-shell \.bottom-nav-center-avatar,\s*\.stage-footer \.bottom-nav-center-avatar\s*\{[^}]*display:\s*none;/,
     );
     expect(polishStyles).toMatch(
-      /@media \(max-width:\s*960px\) and \(max-height:\s*640px\)\s*\{[\s\S]*\.feature-shell \.bottom-nav\s*\{[^}]*--bottom-nav-item-width:\s*76px;[^}]*bottom:\s*12px;[^}]*width:\s*min\(648px,\s*calc\(100vw - 252px\)\);/,
+      /\.control-home-shell \.bottom-nav-track,\s*\.feature-shell \.bottom-nav-track,\s*\.stage-footer \.bottom-nav-track\s*\{[^}]*width:\s*max-content;[^}]*min-width:\s*max-content;[^}]*justify-content:\s*flex-start;[^}]*margin:\s*0;/,
     );
     expect(polishStyles).toMatch(
-      /@media \(max-width:\s*900px\)\s*\{[\s\S]*\.feature-shell \.bottom-nav\s*\{[^}]*--bottom-nav-item-width:\s*68px;[^}]*width:\s*min\(608px,\s*calc\(100vw - 264px\)\);/,
+      /\.control-home-shell \.bottom-nav-button,\s*\.feature-shell \.bottom-nav-button,\s*\.stage-footer \.bottom-nav-button\s*\{[^}]*flex:\s*0 0 var\(--bottom-nav-item-width\);[^}]*width:\s*var\(--bottom-nav-item-width\);/,
     );
     expect(polishStyles).toMatch(
-      /@media \(max-width:\s*760px\) and \(max-height:\s*560px\)\s*\{[\s\S]*\.feature-shell \.bottom-nav\s*\{[^}]*--bottom-nav-item-width:\s*72px;[^}]*bottom:\s*8px;/,
+      /@media \(max-width:\s*1100px\), \(max-height:\s*720px\)\s*\{[\s\S]*\.control-home-shell \.bottom-nav,\s*\.feature-shell > \.bottom-nav,\s*\.stage-footer \.bottom-nav\s*\{[^}]*--bottom-nav-item-width:\s*clamp\(56px,\s*6\.8vw,\s*66px\);[^}]*--bottom-nav-item-height:\s*48px;[^}]*--bottom-nav-gap:\s*5px;/,
     );
   });
 });

@@ -204,14 +204,55 @@ describe("ControlDashboard memory review", () => {
     ]);
   });
 
-  it("starts as a date-only index, expands only one day, and can close all days", () => {
+  it("keeps home goals user-created and toggles completion from the goal item", () => {
+    const { container } = renderDashboard();
+    const goalList = container.querySelector(".control-goal-list") as HTMLElement;
+    const goalInput = container.querySelector(".control-goal-form input") as HTMLInputElement;
+    const goalForm = container.querySelector(".control-goal-form") as HTMLFormElement;
+
+    expect(goalInput).toBeInTheDocument();
+    expect(goalList.querySelectorAll(".control-goal-row")).toHaveLength(0);
+    expect(container).not.toHaveTextContent("完成产品原型评审");
+    expect(container).not.toHaveTextContent("晚间散步 20 分钟");
+
+    fireEvent.change(goalInput, { target: { value: "Ship test goal" } });
+    fireEvent.submit(goalForm);
+
+    const goalRow = container.querySelector(".control-goal-row") as HTMLElement;
+    const goalToggle = within(goalRow).getByRole("button", { name: "Ship test goal" });
+
+    expect(goalRow).toHaveClass("active");
+    expect(goalRow).not.toHaveClass("done");
+    expect(goalToggle).toHaveAttribute("aria-pressed", "false");
+    expect(goalInput).toHaveValue("");
+
+    fireEvent.click(goalToggle);
+
+    expect(goalRow).toHaveClass("done");
+    expect(goalRow).not.toHaveClass("active");
+    expect(goalToggle).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.click(goalToggle);
+
+    expect(goalRow).toHaveClass("active");
+    expect(goalRow).not.toHaveClass("done");
+    expect(goalToggle).toHaveAttribute("aria-pressed", "false");
+
+    const deleteButton = goalRow.querySelector(".control-goal-delete") as HTMLButtonElement;
+    fireEvent.click(deleteButton);
+
+    expect(goalList.querySelectorAll(".control-goal-row")).toHaveLength(0);
+    expect(container.querySelector(".control-goal-empty")).toBeInTheDocument();
+  });
+
+  it("starts with the latest memory day expanded, expands only one day, and can close all days", () => {
     renderDashboard({ agentActivityEntries: richActivityEntries() });
 
     const memoryPanel = screen.getByLabelText("记忆回顾");
     const dayButtons = within(memoryPanel).getAllByRole("button", { name: /记忆记录/ });
     expect(dayButtons).toHaveLength(4);
     expect(dayButtons.map((button) => button.getAttribute("aria-expanded"))).toEqual([
-      "false",
+      "true",
       "false",
       "false",
       "false",
@@ -221,23 +262,12 @@ describe("ControlDashboard memory review", () => {
     expect(within(dayButtons[2]).getByText("3")).toBeInTheDocument();
     expect(within(dayButtons[3]).getByText("1")).toBeInTheDocument();
 
-    expect(within(memoryPanel).queryByText("今天第一条")).not.toBeInTheDocument();
-    expect(within(memoryPanel).queryByText("昨天第一条")).not.toBeInTheDocument();
-    expect(within(memoryPanel).queryByText("6月29日第一条")).not.toBeInTheDocument();
-
-    fireEvent.click(dayButtons[0]);
-    expect(dayButtons.map((button) => button.getAttribute("aria-expanded"))).toEqual([
-      "true",
-      "false",
-      "false",
-      "false",
-    ]);
     expect(within(memoryPanel).getByText("今天第一条")).toBeInTheDocument();
     expect(within(memoryPanel).getByText("今天第二条")).toBeInTheDocument();
     expect(within(memoryPanel).getByText("今天第三条")).toBeInTheDocument();
     expect(within(memoryPanel).queryByText("今天第四条")).not.toBeInTheDocument();
-    expect(within(memoryPanel).queryByText("今天第五条")).not.toBeInTheDocument();
-    expect(within(memoryPanel).queryByText("今天第六条不应显示")).not.toBeInTheDocument();
+    expect(within(memoryPanel).queryByText("昨天第一条")).not.toBeInTheDocument();
+    expect(within(memoryPanel).queryByText("6月29日第一条")).not.toBeInTheDocument();
 
     fireEvent.click(dayButtons[1]);
     expect(dayButtons[0]).toHaveAttribute("aria-expanded", "false");
@@ -320,7 +350,6 @@ describe("ControlDashboard memory review", () => {
       onLocateWorkflowTarget,
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "展开7月2日 今天的记忆记录" }));
     fireEvent.click(screen.getByRole("button", { name: "查看今天第一条" }));
 
     expect(screen.getByText("详情卡")).toBeInTheDocument();

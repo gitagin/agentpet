@@ -15,6 +15,7 @@ import {
   Image,
   ListFilter,
   Loader2,
+  Mic,
   MoreVertical,
   Paperclip,
   Pencil,
@@ -24,7 +25,6 @@ import {
   Send,
   Settings,
   ShieldCheck,
-  Sparkles,
   Star,
   Utensils,
   X,
@@ -173,6 +173,92 @@ const emptyHomeDayRecord: HomeDayRecord = { journal: "", goals: [] };
 
 const quickPromptOptions = [...productCopy.home.quickPrompts];
 
+const referenceMemoryDays: MemoryDayGroup[] = [
+  {
+    key: "reference-memory-today",
+    title: "7月8日",
+    subtitle: "今天",
+    totalCount: 3,
+    entries: [
+      {
+        id: "reference-memory-prototype",
+        sortKey: 1_783_499_400_000,
+        time: "14:30",
+        date: "07.08",
+        title: "产品原型讨论",
+        tag: "工作",
+        tone: "rose",
+        detail: "你分享了新的交互想法，我帮你记下了。",
+      },
+      {
+        id: "reference-memory-lunch",
+        sortKey: 1_783_491_000_000,
+        time: "12:10",
+        date: "07.08",
+        title: "午餐时间",
+        tag: "生活",
+        tone: "green",
+        detail: "你说食堂的番茄牛腩很好吃。",
+      },
+      {
+        id: "reference-memory-reading",
+        sortKey: 1_783_483_500_000,
+        time: "10:05",
+        date: "07.08",
+        title: "阅读笔记",
+        tag: "学习",
+        tone: "blue",
+        detail: "《设计心理学》P23-P32。",
+      },
+    ],
+  },
+  {
+    key: "reference-memory-yesterday",
+    title: "7月7日",
+    subtitle: "昨天",
+    totalCount: 3,
+    entries: [
+      {
+        id: "reference-memory-overtime",
+        sortKey: 1_783_441_500_000,
+        time: "22:45",
+        date: "07.07",
+        title: "深夜加班",
+        tag: "工作",
+        tone: "rose",
+        detail: "你完成了项目的关键模块，辛苦了。",
+      },
+      {
+        id: "reference-memory-relax",
+        sortKey: 1_783_429_400_000,
+        time: "19:30",
+        date: "07.07",
+        title: "散步放松",
+        tag: "生活",
+        tone: "green",
+        detail: "你说晚风很好，心情好多了。",
+      },
+      {
+        id: "reference-memory-priority",
+        sortKey: 1_783_392_000_000,
+        time: "09:20",
+        date: "07.07",
+        title: "需求梳理",
+        tag: "工作",
+        tone: "rose",
+        detail: "我们一起梳理了需求优先级。",
+      },
+    ],
+  },
+];
+
+const referenceOrbitItems: OrbitItem[] = [
+  { key: "reference-orbit-first-chat", className: "point-one", label: "第一次聊产品", date: "05.01" },
+  { key: "reference-orbit-overtime", className: "point-two", label: "深夜加班", date: "05.08" },
+  { key: "reference-orbit-walk", className: "point-three", label: "周末散步", date: "05.11" },
+  { key: "reference-orbit-sort", className: "point-four", label: "需求梳理", date: "05.16" },
+];
+
 export function ControlDashboard({
   sidecarStatus,
   health,
@@ -218,6 +304,7 @@ export function ControlDashboard({
   const [memoriesOpen, setMemoriesOpen] = useState(false);
   const [memoryFilter, setMemoryFilter] = useState<MemoryFilter>("全部");
   const memoryDaysRef = useRef<HTMLDivElement | null>(null);
+  const didAutoExpandMemoryRef = useRef(false);
   const [expandedMemoryDayKey, setExpandedMemoryDayKey] = useState<string | null>(null);
   const [expandedMemoryEntryLimit, setExpandedMemoryEntryLimit] = useState(defaultExpandedMemoryEntriesPerDay);
   const [dateOffset, setDateOffset] = useState(0);
@@ -240,6 +327,16 @@ export function ControlDashboard({
     [visibleMemoryDays, expandedMemoryDayKey],
   );
   const orbitItems = useMemo(() => buildOrbitItems(memoryDays), [memoryDays]);
+  const isUsingReferenceMemoryDays = visibleMemoryDays.length === 0;
+  const displayedMemoryDays = isUsingReferenceMemoryDays ? referenceMemoryDays : renderedMemoryDays;
+  const activeMemoryDayKey =
+    isUsingReferenceMemoryDays && displayedMemoryDays.length > 0
+      ? displayedMemoryDays.some((day) => day.key === expandedMemoryDayKey)
+        ? expandedMemoryDayKey
+        : displayedMemoryDays[0].key
+      : expandedMemoryDayKey;
+  const displayedMemoryEntryLimit = isUsingReferenceMemoryDays ? 3 : expandedMemoryEntryLimit;
+  const displayedOrbitItems = orbitItems.length > 0 ? orbitItems : referenceOrbitItems;
   const displayDate = addDays(new Date(), dateOffset);
   const displayDateKey = formatDateKey(displayDate);
   const selectedDayRecord = homeDayRecords[displayDateKey] || emptyHomeDayRecord;
@@ -252,6 +349,8 @@ export function ControlDashboard({
   const energyCopy =
     continuityState?.energy_level?.trim() || (streaming ? "思考中" : hasConnection ? "在线" : "待连接");
   const affinityLabel = buildAffinityLabel(messages, agentActivityEntries, tasks, continuityState);
+  const moodScore = buildPetVitalScore("mood", streaming, hasConnection, continuityState);
+  const energyScore = buildPetVitalScore("energy", streaming, hasConnection, continuityState);
   const speechCopy = useMemo(
     () => buildSpeechCopy(streaming, hasConnection, latestAssistantMessage),
     [hasConnection, latestAssistantMessage, streaming],
@@ -283,9 +382,16 @@ export function ControlDashboard({
   }, [homeDayRecords]);
 
   useEffect(() => {
-    setExpandedMemoryDayKey((currentKey) =>
-      currentKey && visibleMemoryDays.some((day) => day.key === currentKey) ? currentKey : null,
-    );
+    setExpandedMemoryDayKey((currentKey) => {
+      if (currentKey && visibleMemoryDays.some((day) => day.key === currentKey)) {
+        return currentKey;
+      }
+      if (!didAutoExpandMemoryRef.current && visibleMemoryDays.length > 0) {
+        didAutoExpandMemoryRef.current = true;
+        return visibleMemoryDays[0].key;
+      }
+      return null;
+    });
   }, [visibleMemoryDays]);
 
   useEffect(() => {
@@ -325,7 +431,9 @@ export function ControlDashboard({
         daysElement.scrollTo({ top, behavior: "auto" });
         return;
       }
-      expandedDay.scrollIntoView({ block: "start", inline: "nearest" });
+      if (typeof expandedDay.scrollIntoView === "function") {
+        expandedDay.scrollIntoView({ block: "start", inline: "nearest" });
+      }
     });
     return () => window.cancelAnimationFrame(frame);
   }, [expandedMemoryDayKey]);
@@ -563,7 +671,10 @@ export function ControlDashboard({
             <div className="control-goal-list">
               {dayGoals.length > 0 ? (
                 dayGoals.map((item) => (
-                  <div key={item.id} className={`control-goal-row ${item.done ? "done" : "active"}`}>
+                  <div
+                    key={item.id}
+                    className={`control-goal-row ${item.done ? "done" : "active"}`}
+                  >
                     <button
                       type="button"
                       className="control-goal-toggle"
@@ -576,7 +687,7 @@ export function ControlDashboard({
                     <button
                       type="button"
                       className="control-goal-delete"
-                      aria-label={`删除目标：${item.title}`}
+                      aria-label={`Delete goal: ${item.title}`}
                       onClick={() => removeGoal(item.id)}
                     >
                       <X size={12} />
@@ -597,15 +708,24 @@ export function ControlDashboard({
             <dl>
               <div>
                 <dt>心情</dt>
-                <dd>{petMood}</dd>
+                <dd>
+                  <strong>{moodScore}</strong>
+                  <small>{petMood}</small>
+                </dd>
               </div>
               <div>
                 <dt>精力</dt>
-                <dd>{energyCopy}</dd>
+                <dd>
+                  <strong>{energyScore}</strong>
+                  <small>{energyCopy}</small>
+                </dd>
               </div>
               <div>
                 <dt>亲密度</dt>
-                <dd>{affinityLabel}</dd>
+                <dd>
+                  <strong>{affinityLabel}</strong>
+                  <small>亲密</small>
+                </dd>
               </div>
             </dl>
             <button type="button" className="control-wide-button" onClick={() => locateWorkflowTarget("agent-activity-log")}>
@@ -653,9 +773,9 @@ export function ControlDashboard({
             </span>
           </div>
 
-          {orbitItems.length > 0 ? (
+          {displayedOrbitItems.length > 0 ? (
             <div className="control-orbit-map" aria-hidden="true">
-              {orbitItems.map((item) => (
+              {displayedOrbitItems.map((item) => (
                 <span key={item.key} className={`orbit-point ${item.className}`}>
                   <i />
                   {item.label}
@@ -693,7 +813,7 @@ export function ControlDashboard({
                 aria-expanded={quickPromptsOpen}
                 onClick={() => setQuickPromptsOpen((open) => !open)}
               >
-                <Sparkles size={18} />
+                <Mic size={18} />
               </button>
             </div>
             {quickPromptsOpen ? (
@@ -767,8 +887,8 @@ export function ControlDashboard({
             {memoryFilter !== "全部" ? <p className="control-memory-filter">正在查看：{memoryFilter}</p> : null}
 
             <div className="control-memory-days" aria-label="按日期排列的记忆记录" ref={memoryDaysRef}>
-              {visibleMemoryDays.length > 0 ? (
-                renderedMemoryDays.map((day) => (
+              {displayedMemoryDays.length > 0 ? (
+                displayedMemoryDays.map((day) => (
                   <MemoryDay
                     key={day.key}
                     dayKey={day.key}
@@ -776,8 +896,8 @@ export function ControlDashboard({
                     subtitle={day.subtitle}
                     totalCount={day.totalCount}
                     entries={day.entries}
-                    entryLimit={expandedMemoryEntryLimit}
-                    isExpanded={expandedMemoryDayKey === day.key}
+                    entryLimit={displayedMemoryEntryLimit}
+                    isExpanded={activeMemoryDayKey === day.key}
                     onToggle={() => toggleMemoryDay(day.key)}
                     onOpenEntry={locateWorkflowTarget}
                   />
@@ -1231,6 +1351,23 @@ function buildAffinityLabel(
   return `Lv.${level}`;
 }
 
+function buildPetVitalScore(
+  kind: "mood" | "energy",
+  streaming: boolean,
+  hasConnection: boolean,
+  continuityState: ContinuityStateResponse | null,
+): number {
+  if (!hasConnection) {
+    return kind === "mood" ? 58 : 42;
+  }
+  if (streaming) {
+    return kind === "mood" ? 76 : 64;
+  }
+  const hasContinuitySignal =
+    kind === "mood" ? Boolean(continuityState?.current_mood?.trim()) : Boolean(continuityState?.energy_level?.trim());
+  return hasContinuitySignal ? (kind === "mood" ? 82 : 67) : kind === "mood" ? 78 : 70;
+}
+
 function statusToWorkflowState(status: string): ControlWorkflowItem["status"] {
   if (["done", "completed", "indexed", "bound", "reviewed"].includes(status)) {
     return "done";
@@ -1433,18 +1570,21 @@ function MemoryDay({
             <button
               key={entry.id}
               type="button"
-              className={`control-memory-entry ${entry.tone}`}
+              className={`control-memory-entry memory-timeline-item ${entry.tone}`}
               onClick={() => onOpenEntry(entry.targetId)}
               aria-label={`查看${entry.title}`}
             >
-              <span className="control-memory-entry-node">
-                <time>{entry.time}</time>
+              <span className="control-memory-entry-node memory-time-icon">
+                <time className="memory-time">{entry.time}</time>
+                <span className="control-memory-entry-dot" aria-hidden="true" />
               </span>
-              <div className="control-memory-entry-card">
-                <div className="control-memory-entry-main">
-                  <span className="control-memory-entry-kicker">{entry.tag}</span>
-                  <strong>{entry.title}</strong>
-                  <p>{entry.detail}</p>
+              <div className="control-memory-entry-card memory-card-compact">
+                <div className="control-memory-entry-main memory-content">
+                  <span className="control-memory-entry-title-row memory-header">
+                    <strong className="memory-title">{entry.title}</strong>
+                    <span className="control-memory-entry-kicker memory-chip">{entry.tag}</span>
+                  </span>
+                  <p className="memory-summary">{entry.detail}</p>
                 </div>
                 <MemoryEntryIcon tone={entry.tone} />
               </div>
@@ -1458,7 +1598,15 @@ function MemoryDay({
 
 function MemoryEntryIcon({ tone }: { tone: MemoryTone }) {
   const Icon = tone === "green" ? Utensils : tone === "blue" ? BookOpen : Star;
-  return <Icon className="control-memory-entry-icon" size={18} aria-hidden="true" />;
+  const visualType = tone === "green" ? "life" : tone === "blue" ? "study" : "work";
+  return (
+    <Icon
+      className="control-memory-entry-icon memory-icon"
+      data-type={visualType}
+      size={18}
+      aria-hidden="true"
+    />
+  );
 }
 
 function NotebookAction({ onEdit }: { onEdit: () => void }) {
