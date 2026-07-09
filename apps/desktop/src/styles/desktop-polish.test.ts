@@ -114,6 +114,25 @@ describe("desktop polish detail contract", () => {
     );
   });
 
+  it("keeps the home goal list in the full card body when create mode is closed", () => {
+    expect(polishStyles).toContain("Goal list boundary fix");
+    expect(polishStyles).toMatch(
+      /\.control-home-shell \.control-goals-card:not\(\.is-creating-goal\)\s*\{[^}]*grid-template-rows:\s*auto minmax\(0,\s*1fr\);/,
+    );
+    expect(polishStyles).toMatch(
+      /\.control-home-shell \.control-goals-card:not\(\.is-creating-goal\) \.control-goal-list\s*\{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;[^}]*overflow:\s*hidden;/,
+    );
+    expect(polishStyles).toMatch(
+      /\.control-home-shell \.control-goals-card:not\(\.is-creating-goal\) \.control-goal-row\s*\{[^}]*flex:\s*0 0 clamp\(22px,\s*3\.25dvh,\s*28px\);/,
+    );
+    expect(polishStyles).toMatch(
+      /\.control-home-shell \.control-goal-list-pane\.has-goal-pages\s*\{[^}]*grid-template-rows:\s*minmax\(0,\s*1fr\) minmax\(20px,\s*22px\);[^}]*gap:\s*clamp\(3px,\s*0\.56dvh,\s*5px\);/,
+    );
+    expect(polishStyles).toMatch(
+      /\.control-home-shell \.control-goal-list-pane\.has-goal-pages \.control-goal-row\s*\{[^}]*flex-basis:\s*clamp\(18px,\s*2\.62dvh,\s*22px\);/,
+    );
+  });
+
   it("keeps the journal action clear and upgrades home scrollbars", () => {
     expect(polishStyles).toContain("Product Design journal action and scroll polish");
     expect(polishStyles).toMatch(
@@ -205,6 +224,34 @@ describe("desktop polish detail contract", () => {
     );
     expect(polishStyles).toMatch(
       /\.control-memory-entry-icon\s*\{[^}]*position:\s*static;[^}]*width:\s*30px;[^}]*height:\s*30px;/,
+    );
+  });
+
+  it("fits the home right rail memory timeline to the reference compact layout", () => {
+    expect(polishStyles).toContain("Home right rail reference timeline fit");
+    expect(polishStyles).toMatch(
+      /\.control-home-shell \.control-right-rail \.control-memory-panel\s*\{[^}]*grid-template-rows:\s*auto minmax\(0,\s*1fr\) auto;[^}]*align-content:\s*stretch;/,
+    );
+    expect(polishStyles).toMatch(
+      /\.control-home-shell \.control-right-rail \.control-memory-days\s*\{[^}]*grid-row:\s*2;[^}]*height:\s*100%;[^}]*max-height:\s*100%;[^}]*align-content:\s*start;[^}]*grid-auto-rows:\s*max-content;[^}]*overflow-y:\s*auto;/,
+    );
+    expect(polishStyles).toMatch(
+      /\.control-home-shell \.control-right-rail \.control-memory-more\s*\{[^}]*grid-row:\s*3;[^}]*align-self:\s*end;/,
+    );
+    expect(polishStyles).toMatch(
+      /\.control-home-shell \.control-right-rail \.control-memory-timeline\s*\{[^}]*--memory-rail-x:\s*42px;[^}]*--memory-node-y:\s*24px;[^}]*overflow:\s*visible;/,
+    );
+    expect(polishStyles).toMatch(
+      /\.control-home-shell \.control-right-rail \.control-memory-entry,[\s\S]*?\.control-home-shell \.control-right-rail \.memory-timeline-item\s*\{[^}]*min-height:\s*clamp\(58px,\s*8\.2dvh,\s*66px\);[^}]*grid-template-columns:\s*54px minmax\(0,\s*1fr\);/,
+    );
+    expect(polishStyles).toMatch(
+      /\.control-home-shell \.control-right-rail \.memory-time\s*\{[^}]*position:\s*absolute;[^}]*top:\s*calc\(var\(--memory-node-y\) - 6px\);[^}]*width:\s*34px;[^}]*text-align:\s*right;/,
+    );
+    expect(polishStyles).toMatch(
+      /\.control-home-shell \.control-right-rail \.control-memory-entry \.control-memory-entry-dot\s*\{[^}]*position:\s*absolute;[^}]*top:\s*calc\(var\(--memory-node-y\) - 3px\);[^}]*left:\s*calc\(var\(--memory-rail-x\) - 3px\);/,
+    );
+    expect(polishStyles).toMatch(
+      /\.control-home-shell \.control-right-rail \.control-memory-entry-card,[\s\S]*?\.control-home-shell \.control-right-rail \.memory-card-compact\s*\{[^}]*min-height:\s*clamp\(58px,\s*8\.2dvh,\s*66px\);[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\) 26px;[^}]*overflow:\s*hidden;/,
     );
   });
 
@@ -303,6 +350,29 @@ describe("desktop polish single-scroll contract", () => {
     );
     expect(polishStyles).toMatch(
       /body\[data-window-mode="chat"\] \.chat-action-button\s*\{[^}]*min-height:\s*32px;[^}]*padding:\s*4px 10px;/,
+    );
+  });
+
+  it("keeps the chat transcript dominant with compact WeChat-like controls", () => {
+    expect(polishStyles).toContain("Chat window compact pass");
+    expect(polishStyles).toContain("Chat window blue-frame expansion");
+    expect(polishStyles).toMatch(
+      /body\[data-window-mode="chat"\] \.feature-window-content\s*\{[^}]*width:\s*calc\(100vw - \(2 \* var\(--chat-route-x\)\)\);[^}]*max-width:\s*none;[^}]*height:\s*calc\(100dvh - clamp\(186px,\s*23dvh,\s*210px\)\);[^}]*padding:\s*0;/,
+    );
+    expect(polishStyles).toMatch(
+      /body\[data-window-mode="chat"\] \.feature-window-content > \.chat-panel\s*\{[^}]*width:\s*100%;[^}]*max-width:\s*none;[^}]*justify-self:\s*stretch;/,
+    );
+    expect(polishStyles).toMatch(
+      /body\[data-window-mode="chat"\] \.panel\.chat-panel\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\);[^}]*grid-template-rows:\s*minmax\(0,\s*1fr\) minmax\(26px,\s*auto\) minmax\(26px,\s*auto\) minmax\(46px,\s*auto\);[^}]*gap:\s*8px;/,
+    );
+    expect(polishStyles).toMatch(
+      /body\[data-window-mode="chat"\] \.chat-action-button\s*\{[^}]*min-height:\s*28px;[^}]*max-height:\s*30px;[^}]*border-radius:\s*var\(--radius-pill\);/,
+    );
+    expect(polishStyles).toMatch(
+      /body\[data-window-mode="chat"\] \.chat-panel \.chat-form\s*\{[^}]*min-height:\s*44px;[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\) 42px;[^}]*padding:\s*6px 7px 6px 12px;/,
+    );
+    expect(polishStyles).toMatch(
+      /body\[data-window-mode="chat"\] \.chat-panel \.chat-form input\s*\{[^}]*min-height:\s*32px;[^}]*height:\s*32px;[^}]*background:\s*transparent;/,
     );
   });
 

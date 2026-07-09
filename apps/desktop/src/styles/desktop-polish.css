@@ -10102,3 +10102,841 @@ body[data-window-mode="growth"] .growth-page-stack > * {
     padding: 4px;
   }
 }
+
+/* Goal card interaction pass: the list and create form are separate panes toggled by the header button. */
+.control-goals-card {
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.control-goals-card .control-card-title .control-mini-button[aria-pressed="true"] {
+  border-color: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.075);
+  color: rgba(255, 248, 250, 0.86);
+}
+
+.control-goal-list-pane,
+.control-goal-create-pane {
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.control-goal-list-pane {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 7px;
+}
+
+.control-goal-list {
+  min-height: 0;
+  align-content: start;
+  overflow: hidden;
+}
+
+.control-goal-create-pane {
+  display: grid;
+  grid-template-rows: minmax(40px, 1fr) auto;
+  gap: 9px;
+  align-content: stretch;
+}
+
+.control-goal-create-pane input {
+  width: 100%;
+  height: 100%;
+  min-height: 48px;
+  border-radius: 14px;
+  padding: 0 14px;
+}
+
+.control-goal-create-submit {
+  width: 100%;
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.control-goal-create-submit:disabled {
+  opacity: 0.46;
+  filter: saturate(0.65);
+}
+
+.control-goal-pager {
+  min-height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+  color: rgba(255, 246, 249, 0.48);
+  font-size: 11px;
+}
+
+.control-goal-pager button {
+  width: 22px;
+  height: 22px;
+  min-height: 22px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.045);
+  color: rgba(255, 246, 249, 0.68);
+  box-shadow: none;
+  padding: 0;
+}
+
+.control-goal-pager button:disabled {
+  opacity: 0.32;
+}
+
+/* WeChat-like stage composer: shorter, centered in the stage, and not wider than the character area. */
+.control-stage-composer {
+  left: 50%;
+  right: auto;
+  width: min(520px, calc(100% - 112px));
+  min-height: 66px;
+  grid-template-columns: minmax(0, 1fr) 48px;
+  grid-template-rows: 28px 32px;
+  gap: 5px 10px;
+  border-radius: 16px;
+  padding: 10px 12px 10px 16px;
+  transform: translateX(-50%);
+}
+
+.control-stage-composer input[type="text"],
+.control-stage-composer > input:not([type]) {
+  min-height: 28px;
+  font-size: 14px;
+}
+
+.control-composer-tools {
+  gap: 8px;
+}
+
+.control-composer-tools button {
+  width: 30px;
+  height: 30px;
+  min-height: 30px;
+  border: 0;
+  background: transparent;
+  color: rgba(255, 246, 249, 0.58);
+  box-shadow: none;
+}
+
+.control-composer-tools button:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 248, 250, 0.82);
+}
+
+.control-send-button {
+  width: 48px;
+  height: 48px;
+  min-height: 48px;
+  background:
+    radial-gradient(circle at 35% 22%, rgba(255, 224, 230, 0.32), transparent 34%),
+    rgba(213, 111, 138, 0.58);
+  box-shadow:
+    0 0 0 1px rgba(255, 207, 218, 0.18),
+    0 10px 26px rgba(213, 111, 138, 0.2);
+}
+
+.control-send-button:disabled {
+  color: rgba(255, 246, 249, 0.42);
+  background: rgba(255, 255, 255, 0.075);
+  box-shadow: none;
+  opacity: 1;
+}
+
+@media (max-width: 1100px), (max-height: 720px) {
+  .control-stage-composer {
+    width: min(460px, calc(100% - 72px));
+    min-height: 60px;
+    grid-template-columns: minmax(0, 1fr) 44px;
+    grid-template-rows: 24px 30px;
+    padding: 8px 10px 8px 14px;
+  }
+
+  .control-composer-tools button {
+    width: 28px;
+    height: 28px;
+    min-height: 28px;
+  }
+
+  .control-send-button {
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
+  }
+}
+
+/* Home detail pass: keep the create-goal pane and character art inside natural bounds. */
+.control-home-shell .control-goals-card.is-creating-goal {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.control-home-shell .control-goals-card.is-creating-goal .control-goal-create-pane {
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(40px, 46px) minmax(30px, 34px);
+  align-content: start;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.control-home-shell .control-goals-card.is-creating-goal .control-goal-create-pane input {
+  height: 44px;
+  min-height: 40px;
+  padding: 0 14px;
+}
+
+.control-home-shell .control-goals-card.is-creating-goal .control-goal-create-submit {
+  min-height: 30px;
+}
+
+.control-home-shell .control-portrait-anchor.control-stage-halfbody {
+  width: auto;
+  aspect-ratio: 1484 / 1060;
+  height: min(58dvh, calc(100% - var(--home-composer-height) - 108px), 520px);
+  min-height: 0;
+  max-height: none;
+  bottom: calc(var(--home-stage-safe-bottom) + var(--home-composer-height) + 2px);
+}
+
+.control-home-shell .control-stage-halfbody .halfbody-pet-portrait-frame,
+.control-home-shell .control-stage-halfbody .halfbody-pet-portrait-layer {
+  width: 100%;
+  height: 100%;
+}
+
+.control-home-shell .control-stage-halfbody .halfbody-pet-portrait-layer {
+  object-fit: contain;
+  object-position: center bottom;
+}
+
+@media (max-width: 1100px), (max-height: 720px) {
+  .control-home-shell .control-goals-card.is-creating-goal .control-goal-create-pane {
+    grid-template-rows: minmax(34px, 38px) minmax(26px, 30px);
+    gap: 6px;
+  }
+
+  .control-home-shell .control-goals-card.is-creating-goal .control-goal-create-pane input {
+    height: 38px;
+    min-height: 34px;
+  }
+
+  .control-home-shell .control-goals-card.is-creating-goal .control-goal-create-submit {
+    min-height: 26px;
+  }
+
+  .control-home-shell .control-portrait-anchor.control-stage-halfbody {
+    height: min(54dvh, calc(100% - var(--home-composer-height) - 92px), 470px);
+  }
+}
+
+/* Goal list boundary fix: list mode has no inline form, so the list must own the
+   available card body instead of being placed in the old 24px form row. */
+.control-home-shell .control-goals-card:not(.is-creating-goal) {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.control-home-shell .control-goals-card:not(.is-creating-goal) .control-goal-list-pane {
+  min-height: 0;
+  height: 100%;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.control-home-shell .control-goals-card:not(.is-creating-goal) .control-goal-list {
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(5px, 0.8dvh, 7px);
+  overflow: hidden;
+}
+
+.control-home-shell .control-goals-card:not(.is-creating-goal) .control-goal-row {
+  flex: 0 0 clamp(22px, 3.25dvh, 28px);
+}
+
+.control-home-shell .control-goal-list-pane.has-goal-pages {
+  grid-template-rows: minmax(0, 1fr) minmax(20px, 22px);
+  gap: clamp(3px, 0.56dvh, 5px);
+}
+
+.control-home-shell .control-goal-list-pane.has-goal-pages .control-goal-list {
+  gap: clamp(3px, 0.52dvh, 5px);
+}
+
+.control-home-shell .control-goal-list-pane.has-goal-pages .control-goal-row {
+  flex-basis: clamp(18px, 2.62dvh, 22px);
+}
+
+.control-home-shell .control-goal-list-pane.has-goal-pages .control-goal-toggle {
+  min-height: clamp(18px, 2.62dvh, 22px);
+  grid-template-columns: 17px minmax(0, 1fr);
+  gap: 7px;
+}
+
+.control-home-shell .control-goal-list-pane.has-goal-pages .control-goal-toggle span {
+  width: 17px;
+  height: 17px;
+}
+
+.control-home-shell .control-goal-list-pane.has-goal-pages .control-goal-toggle strong {
+  font-size: clamp(11px, 1.36dvh, 12px);
+  line-height: 1.08;
+}
+
+.control-home-shell .control-goal-list-pane.has-goal-pages .control-goal-delete {
+  width: 20px;
+  height: 20px;
+  min-height: 20px;
+}
+
+.control-home-shell .control-goal-list-pane.has-goal-pages .control-goal-pager {
+  min-height: 20px;
+}
+
+.control-home-shell .control-goal-list-pane.has-goal-pages .control-goal-pager button {
+  width: 22px;
+  height: 22px;
+  min-height: 22px;
+}
+
+@media (max-width: 1100px), (max-height: 720px) {
+  .control-home-shell .control-goals-card:not(.is-creating-goal) .control-goal-list {
+    gap: 4px;
+  }
+
+  .control-home-shell .control-goals-card:not(.is-creating-goal) .control-goal-row {
+    flex-basis: clamp(20px, 3.1dvh, 24px);
+  }
+
+  .control-home-shell .control-goal-list-pane.has-goal-pages .control-goal-list {
+    gap: 3px;
+  }
+
+  .control-home-shell .control-goal-list-pane.has-goal-pages .control-goal-row,
+  .control-home-shell .control-goal-list-pane.has-goal-pages .control-goal-toggle {
+    flex-basis: 18px;
+    min-height: 18px;
+  }
+
+  .control-home-shell .control-goal-list-pane.has-goal-pages .control-goal-toggle span {
+    width: 15px;
+    height: 15px;
+  }
+
+  .control-home-shell .control-goal-list-pane.has-goal-pages .control-goal-toggle strong {
+    font-size: 10.5px;
+  }
+}
+
+/* Home right rail reference timeline fit: compact rows, fixed panel boundary,
+   and time labels sitting on the same visual axis as the timeline dots. */
+.control-home-shell .control-right-rail .control-memory-panel {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  align-content: stretch;
+  gap: clamp(6px, 0.85dvh, 9px);
+  overflow: hidden;
+}
+
+.control-home-shell .control-right-rail .control-memory-head {
+  grid-row: 1;
+}
+
+.control-home-shell .control-right-rail .control-memory-head {
+  padding-bottom: clamp(7px, 0.9dvh, 9px);
+}
+
+.control-home-shell .control-right-rail .control-memory-days {
+  grid-row: 2;
+  height: 100%;
+  max-height: 100%;
+  min-height: 0;
+  display: grid;
+  align-content: start;
+  align-items: start;
+  justify-content: stretch;
+  grid-auto-flow: row;
+  grid-auto-rows: max-content;
+  gap: clamp(6px, 0.8dvh, 9px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 0 8px 0 0;
+  scroll-padding-top: 0;
+}
+
+.control-home-shell .control-right-rail .control-memory-more {
+  grid-row: 3;
+  align-self: end;
+  margin-top: 0;
+}
+
+.control-home-shell .control-right-rail .control-memory-day {
+  align-self: start;
+  grid-template-rows: auto minmax(0, auto);
+  gap: clamp(5px, 0.7dvh, 7px);
+  min-height: 0;
+  max-width: 100%;
+  overflow: visible;
+}
+
+.control-home-shell .control-right-rail .control-memory-day.is-expanded {
+  gap: clamp(5px, 0.7dvh, 7px);
+  min-height: 0;
+  max-height: none;
+  overflow: visible;
+}
+
+.control-home-shell .control-right-rail .control-memory-day.is-expanded .control-memory-day-toggle {
+  min-height: 28px;
+  padding: 0 2px;
+}
+
+.control-home-shell .control-right-rail .control-memory-timeline {
+  --memory-rail-x: 42px;
+  --memory-node-y: 24px;
+  position: relative;
+  display: grid;
+  gap: clamp(6px, 0.75dvh, 8px);
+  min-height: 0;
+  max-height: none;
+  overflow: visible;
+  padding: 0;
+}
+
+.control-home-shell .control-right-rail .control-memory-timeline::before {
+  top: 0;
+  bottom: 0;
+  left: var(--memory-rail-x);
+  width: 1px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.05));
+}
+
+.control-home-shell .control-right-rail .control-memory-entry,
+.control-home-shell .control-right-rail .memory-timeline-item {
+  min-height: clamp(58px, 8.2dvh, 66px);
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  align-items: start;
+  gap: 6px;
+  overflow: visible;
+}
+
+.control-home-shell .control-right-rail .control-memory-entry-node,
+.control-home-shell .control-right-rail .memory-time-icon {
+  position: relative;
+  width: 54px;
+  min-width: 54px;
+  height: 100%;
+  display: block;
+  padding: 0;
+}
+
+.control-home-shell .control-right-rail .memory-time {
+  position: absolute;
+  top: calc(var(--memory-node-y) - 6px);
+  left: 0;
+  width: 34px;
+  padding: 0;
+  color: rgba(255, 248, 250, 0.62);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 620;
+  line-height: 1;
+  text-align: right;
+}
+
+.control-home-shell .control-right-rail .control-memory-entry .control-memory-entry-dot {
+  position: absolute;
+  top: calc(var(--memory-node-y) - 3px);
+  left: calc(var(--memory-rail-x) - 3px);
+  width: 6px;
+  min-width: 6px;
+  height: 6px;
+  margin: 0;
+  border-radius: 50%;
+}
+
+.control-home-shell .control-right-rail .control-memory-entry-card,
+.control-home-shell .control-right-rail .control-memory-entry.rose .control-memory-entry-card,
+.control-home-shell .control-right-rail .control-memory-entry.green .control-memory-entry-card,
+.control-home-shell .control-right-rail .control-memory-entry.blue .control-memory-entry-card,
+.control-home-shell .control-right-rail .memory-card-compact {
+  min-height: clamp(58px, 8.2dvh, 66px);
+  max-width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 26px;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  border-radius: 10px;
+  padding: 8px 8px 8px 10px;
+}
+
+.control-home-shell .control-right-rail .control-memory-entry-main,
+.control-home-shell .control-right-rail .memory-content {
+  gap: 3px;
+}
+
+.control-home-shell .control-right-rail .control-memory-entry-title-row,
+.control-home-shell .control-right-rail .memory-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.control-home-shell .control-right-rail .control-memory-entry strong,
+.control-home-shell .control-right-rail .memory-title {
+  min-width: 0;
+  font-size: 11.5px;
+  line-height: 1.12;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.control-home-shell .control-right-rail .control-memory-entry-kicker,
+.control-home-shell .control-right-rail .memory-chip {
+  border-radius: 5px;
+  font-size: 9px;
+  line-height: 1.1;
+  padding: 2px 5px;
+}
+
+.control-home-shell .control-right-rail .control-memory-entry p,
+.control-home-shell .control-right-rail .memory-summary {
+  font-size: 10px;
+  line-height: 1.24;
+  -webkit-line-clamp: 2;
+}
+
+.control-home-shell .control-right-rail .control-memory-entry-icon,
+.control-home-shell .control-right-rail .memory-icon {
+  width: 24px;
+  height: 24px;
+  padding: 5px;
+}
+
+@media (max-width: 1100px), (max-height: 720px) {
+  .control-home-shell .control-right-rail .control-memory-panel {
+    gap: 6px;
+  }
+
+  .control-home-shell .control-right-rail .control-memory-timeline {
+    --memory-rail-x: 39px;
+    --memory-node-y: 22px;
+    gap: 6px;
+  }
+
+  .control-home-shell .control-right-rail .control-memory-entry,
+  .control-home-shell .control-right-rail .memory-timeline-item {
+    min-height: 56px;
+    grid-template-columns: 50px minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .control-home-shell .control-right-rail .control-memory-entry-card,
+  .control-home-shell .control-right-rail .memory-card-compact {
+    min-height: 56px;
+    grid-template-columns: minmax(0, 1fr) 24px;
+    padding: 7px 7px 7px 9px;
+  }
+
+  .control-home-shell .control-right-rail .memory-time {
+    width: 32px;
+    font-size: 9.5px;
+  }
+
+  .control-home-shell .control-right-rail .control-memory-entry strong,
+  .control-home-shell .control-right-rail .memory-title {
+    font-size: 11px;
+  }
+
+  .control-home-shell .control-right-rail .control-memory-entry p,
+  .control-home-shell .control-right-rail .memory-summary {
+    font-size: 9.6px;
+    line-height: 1.2;
+  }
+
+  .control-home-shell .control-right-rail .control-memory-entry-icon,
+  .control-home-shell .control-right-rail .memory-icon {
+    width: 22px;
+    height: 22px;
+    padding: 4px;
+  }
+}
+
+/* Chat window compact pass: keep the transcript dominant and make controls feel like a WeChat-style tool strip. */
+body[data-window-mode="chat"] .feature-window-content {
+  height: calc(100dvh - var(--bottom-nav-safe-area) - clamp(92px, 13dvh, 122px));
+  min-height: 0;
+  overflow: hidden;
+}
+
+body[data-window-mode="chat"] .feature-window-content > .chat-panel {
+  width: min(100%, 1120px);
+  height: 100%;
+  min-height: 0;
+}
+
+body[data-window-mode="chat"] .panel.chat-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) minmax(26px, auto) minmax(26px, auto) minmax(46px, auto);
+  gap: 8px;
+  overflow: hidden;
+  padding: clamp(12px, 1.6dvh, 16px);
+}
+
+body[data-window-mode="chat"] .chat-panel .message-list {
+  grid-column: 1;
+  grid-row: 1;
+  min-height: 0;
+  height: 100%;
+  padding: clamp(12px, 1.6dvh, 16px);
+}
+
+body[data-window-mode="chat"] .chat-action-board {
+  grid-column: 1;
+  grid-row: 2;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border: 0;
+  background: transparent;
+  scrollbar-width: none;
+}
+
+body[data-window-mode="chat"] .panel.chat-panel:has(.field-note) .chat-action-board {
+  padding-right: min(360px, 54%);
+}
+
+body[data-window-mode="chat"] .chat-action-button {
+  flex: 0 0 auto;
+  min-height: 28px;
+  max-height: 30px;
+  width: auto;
+  border-radius: var(--radius-pill);
+  padding: 4px 10px;
+  gap: 6px;
+}
+
+body[data-window-mode="chat"] .chat-action-button svg {
+  width: 14px;
+  height: 14px;
+}
+
+body[data-window-mode="chat"] .chat-action-button span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+body[data-window-mode="chat"] .chat-action-button strong {
+  font-size: 12px;
+  line-height: 1;
+}
+
+body[data-window-mode="chat"] .chat-action-button small {
+  font-size: 10px;
+  line-height: 1;
+  opacity: 0.72;
+}
+
+body[data-window-mode="chat"] .chat-secondary-modes,
+body[data-window-mode="chat"] .chat-guided-trials {
+  grid-column: 1;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+body[data-window-mode="chat"] .chat-secondary-modes {
+  grid-row: 3;
+  justify-self: start;
+  max-width: min(34%, 380px);
+}
+
+body[data-window-mode="chat"] .chat-guided-trials {
+  grid-row: 3;
+  justify-self: end;
+  max-width: min(66%, 720px);
+  padding-left: 12px;
+  mask-image: linear-gradient(90deg, transparent, #000 12px, #000 calc(100% - 10px), transparent);
+}
+
+body[data-window-mode="chat"] .chat-secondary-modes button,
+body[data-window-mode="chat"] .chat-guided-trials button {
+  flex: 0 0 auto;
+  min-height: 26px;
+  max-height: 28px;
+  border-radius: var(--radius-pill);
+  padding: 0 9px;
+  gap: 5px;
+  font-size: 11px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+body[data-window-mode="chat"] .chat-secondary-modes button svg,
+body[data-window-mode="chat"] .chat-guided-trials button svg {
+  width: 13px;
+  height: 13px;
+}
+
+body[data-window-mode="chat"] .chat-panel .chat-form {
+  grid-column: 1;
+  grid-row: 4;
+  min-height: 44px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 42px;
+  gap: 8px;
+  align-items: center;
+  border-radius: 14px;
+  padding: 6px 7px 6px 12px;
+}
+
+body[data-window-mode="chat"] .chat-panel .chat-form input {
+  min-height: 32px;
+  height: 32px;
+  border: 0;
+  background: transparent;
+  padding: 0 4px;
+  font-size: 14px;
+}
+
+body[data-window-mode="chat"] .chat-panel .chat-form input:focus {
+  background: transparent;
+  box-shadow: none;
+}
+
+body[data-window-mode="chat"] .chat-panel .chat-form button {
+  width: 42px;
+  min-width: 42px;
+  min-height: 34px;
+  height: 34px;
+  justify-content: center;
+  border-radius: var(--radius-pill);
+  padding: 0;
+  font-size: 0;
+}
+
+body[data-window-mode="chat"] .chat-panel .chat-form button svg {
+  width: 16px;
+  height: 16px;
+}
+
+body[data-window-mode="chat"] .chat-panel .field-note {
+  grid-column: 1;
+  grid-row: 2;
+  justify-self: end;
+  align-self: start;
+  max-width: min(340px, 52%);
+  min-height: 26px;
+  margin: 0;
+  padding: 5px 9px;
+  border-radius: var(--radius-pill);
+  background: rgba(255, 255, 255, 0.055);
+  font-size: 11px;
+  line-height: 1;
+  pointer-events: none;
+}
+
+@media (max-width: 1100px), (max-height: 720px) {
+  body[data-window-mode="chat"] .feature-window-content {
+    height: calc(100dvh - var(--bottom-nav-safe-area) - clamp(76px, 12dvh, 96px));
+  }
+
+  body[data-window-mode="chat"] .panel.chat-panel {
+    grid-template-rows: minmax(0, 1fr) minmax(24px, auto) minmax(24px, auto) minmax(42px, auto);
+    gap: 6px;
+    padding: 10px;
+  }
+
+  body[data-window-mode="chat"] .chat-guided-trials {
+    max-width: min(58%, 560px);
+  }
+
+  body[data-window-mode="chat"] .chat-action-button small {
+    display: none;
+  }
+
+  body[data-window-mode="chat"] .chat-action-button,
+  body[data-window-mode="chat"] .chat-secondary-modes button,
+  body[data-window-mode="chat"] .chat-guided-trials button {
+    min-height: 24px;
+    max-height: 26px;
+    padding-inline: 8px;
+    font-size: 10.5px;
+  }
+
+  body[data-window-mode="chat"] .chat-panel .chat-form {
+    min-height: 42px;
+    grid-template-columns: minmax(0, 1fr) 38px;
+  }
+
+  body[data-window-mode="chat"] .chat-panel .chat-form input {
+    height: 30px;
+    min-height: 30px;
+  }
+
+  body[data-window-mode="chat"] .chat-panel .chat-form button {
+    width: 38px;
+    min-width: 38px;
+    height: 32px;
+    min-height: 32px;
+  }
+}
+
+/* Chat window blue-frame expansion: match the preview's available page span instead of the older narrow transcript card. */
+body[data-window-mode="chat"] .feature-shell {
+  --chat-route-x: clamp(12px, 1.25vw, 18px);
+  padding-inline: var(--chat-route-x);
+}
+
+body[data-window-mode="chat"] .feature-window-header {
+  width: calc(100vw - (2 * var(--chat-route-x)));
+  max-width: none;
+  margin-bottom: clamp(2px, 0.6dvh, 6px);
+}
+
+body[data-window-mode="chat"] .feature-window-content {
+  width: calc(100vw - (2 * var(--chat-route-x)));
+  max-width: none;
+  height: calc(100dvh - clamp(186px, 23dvh, 210px));
+  margin: 0 auto;
+  padding: 0;
+}
+
+body[data-window-mode="chat"] .feature-window-content > .chat-panel {
+  width: 100%;
+  max-width: none;
+  justify-self: stretch;
+}
+
+@media (max-height: 820px) {
+  body[data-window-mode="chat"] .feature-window-content {
+    height: calc(100dvh - clamp(176px, 22dvh, 194px));
+  }
+}

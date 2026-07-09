@@ -167,7 +167,7 @@ const estimatedMemoryDayGap = 8;
 const estimatedMemoryEntryHeight = 112;
 const estimatedMemoryEntryGap = 12;
 const visibleCollapsedMemoryDayBudget = 1;
-const maxVisibleCollapsedDaysWhenExpanded = 3;
+const homeGoalsPerPage = 3;
 const homeDayRecordsStorageKey = "agent-pet.control-home-day-records.v1";
 const emptyHomeDayRecord: HomeDayRecord = { journal: "", goals: [] };
 
@@ -309,6 +309,8 @@ export function ControlDashboard({
   const [expandedMemoryEntryLimit, setExpandedMemoryEntryLimit] = useState(defaultExpandedMemoryEntriesPerDay);
   const [dateOffset, setDateOffset] = useState(0);
   const [quickPromptsOpen, setQuickPromptsOpen] = useState(false);
+  const [goalComposerOpen, setGoalComposerOpen] = useState(false);
+  const [goalPageIndex, setGoalPageIndex] = useState(0);
   const [goalDraft, setGoalDraft] = useState("");
   const [homeDayRecords, setHomeDayRecords] = useState<Record<string, HomeDayRecord>>(() => readHomeDayRecords());
   const [speechPageIndex, setSpeechPageIndex] = useState(0);
@@ -343,6 +345,11 @@ export function ControlDashboard({
   const dayGoals = selectedDayRecord.goals;
   const doneGoalCount = dayGoals.filter((item) => item.done).length;
   const goalTotal = dayGoals.length;
+  const goalPageCount = Math.max(1, Math.ceil(goalTotal / homeGoalsPerPage));
+  const safeGoalPageIndex = Math.min(goalPageIndex, goalPageCount - 1);
+  const visibleGoals = goalComposerOpen
+    ? []
+    : dayGoals.slice(safeGoalPageIndex * homeGoalsPerPage, safeGoalPageIndex * homeGoalsPerPage + homeGoalsPerPage);
   const todayLabel = formatTodayLabel(displayDate);
   const connectionCopy = hasConnection ? "本地模式 · 已连接" : "本地模式 · 连接中";
   const petMood = continuityState?.current_mood?.trim() || (streaming ? "专注" : hasConnection ? "陪伴中" : "等待");
@@ -367,7 +374,13 @@ export function ControlDashboard({
 
   useEffect(() => {
     setGoalDraft("");
+    setGoalComposerOpen(false);
+    setGoalPageIndex(0);
   }, [displayDateKey]);
+
+  useEffect(() => {
+    setGoalPageIndex((currentIndex) => Math.min(currentIndex, goalPageCount - 1));
+  }, [goalPageCount]);
 
   useEffect(() => {
     setSpeechPageIndex(0);
@@ -426,13 +439,25 @@ export function ControlDashboard({
       if (!expandedDay) {
         return;
       }
-      const top = Math.max(0, expandedDay.offsetTop - daysElement.offsetTop);
-      if (typeof daysElement.scrollTo === "function") {
-        daysElement.scrollTo({ top, behavior: "auto" });
-        return;
+      const dayTop = expandedDay.offsetTop - daysElement.offsetTop;
+      const dayBottom = dayTop + expandedDay.offsetHeight;
+      const viewportTop = daysElement.scrollTop;
+      const viewportBottom = viewportTop + daysElement.clientHeight;
+      const scrollPadding = 8;
+      let nextTop: number | null = null;
+
+      if (dayTop < viewportTop + scrollPadding) {
+        nextTop = Math.max(0, dayTop - scrollPadding);
+      } else if (dayBottom > viewportBottom - scrollPadding) {
+        nextTop = Math.max(0, dayBottom - daysElement.clientHeight + scrollPadding);
       }
-      if (typeof expandedDay.scrollIntoView === "function") {
-        expandedDay.scrollIntoView({ block: "start", inline: "nearest" });
+
+      if (nextTop !== null && Math.abs(nextTop - viewportTop) > 1) {
+        if (typeof daysElement.scrollTo === "function") {
+          daysElement.scrollTo({ top: nextTop, behavior: "auto" });
+          return;
+        }
+        daysElement.scrollTop = nextTop;
       }
     });
     return () => window.cancelAnimationFrame(frame);
@@ -473,6 +498,8 @@ export function ControlDashboard({
         },
       ],
     }));
+    setGoalPageIndex(Math.floor(dayGoals.length / homeGoalsPerPage));
+    setGoalComposerOpen(false);
     setGoalDraft("");
   };
 
@@ -640,64 +667,94 @@ export function ControlDashboard({
             <small>{Array.from(selectedDayRecord.journal).length}/200</small>
           </section>
 
-          <section className="control-glass-card control-goals-card">
+          <section className={`control-glass-card control-goals-card${goalComposerOpen ? " is-creating-goal" : ""}`}>
             <div className="control-card-title">
               <strong>今日目标</strong>
               <span>{Math.min(doneGoalCount, goalTotal)}/{goalTotal}</span>
               <button
                 type="button"
                 className="control-mini-button"
-                aria-label="添加目标"
-                onClick={createGoal}
-                disabled={!goalDraft.trim()}
+                aria-label={goalComposerOpen ? "关闭目标创建" : "创建今日目标"}
+                aria-pressed={goalComposerOpen}
+                onClick={() => {
+                  setGoalComposerOpen((open) => !open);
+                  setGoalDraft("");
+                }}
               >
-                <Plus size={16} />
+                {goalComposerOpen ? <X size={16} /> : <Plus size={16} />}
               </button>
             </div>
-            <form
-              className="control-goal-form"
-              onSubmit={(event) => {
-                event.preventDefault();
-                createGoal();
-              }}
-            >
-              <input
-                value={goalDraft}
-                onChange={(event) => setGoalDraft(event.target.value)}
-                placeholder={dateOffset === 0 ? "创建今天的目标..." : "创建所选日期的目标..."}
-                maxLength={32}
-              />
-            </form>
-            <div className="control-goal-list">
-              {dayGoals.length > 0 ? (
-                dayGoals.map((item) => (
-                  <div
-                    key={item.id}
-                    className={`control-goal-row ${item.done ? "done" : "active"}`}
-                  >
+            {goalComposerOpen ? (
+              <form
+                className="control-goal-form control-goal-create-pane"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  createGoal();
+                }}
+              >
+                <input
+                  autoFocus
+                  value={goalDraft}
+                  onChange={(event) => setGoalDraft(event.target.value)}
+                  placeholder={dateOffset === 0 ? "创建今天的目标..." : "创建所选日期的目标..."}
+                  maxLength={32}
+                />
+                <button type="submit" className="control-goal-create-submit" disabled={!goalDraft.trim()}>
+                  <Check size={14} />
+                  保存
+                </button>
+              </form>
+            ) : (
+              <div className={`control-goal-list-pane${goalPageCount > 1 ? " has-goal-pages" : ""}`}>
+                <div className="control-goal-list" aria-label="今日目标列表">
+                  {visibleGoals.map((item) => (
+                    <div
+                      key={item.id}
+                      className={`control-goal-row ${item.done ? "done" : "active"}`}
+                    >
+                      <button
+                        type="button"
+                        className="control-goal-toggle"
+                        aria-pressed={item.done}
+                        onClick={() => toggleGoal(item.id)}
+                      >
+                        <span aria-hidden="true">{item.done ? <Check size={12} /> : null}</span>
+                        <strong>{item.title}</strong>
+                      </button>
+                      <button
+                        type="button"
+                        className="control-goal-delete"
+                        aria-label={`Delete goal: ${item.title}`}
+                        onClick={() => removeGoal(item.id)}
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                {goalPageCount > 1 ? (
+                  <div className="control-goal-pager" aria-label="目标分页">
                     <button
                       type="button"
-                      className="control-goal-toggle"
-                      aria-pressed={item.done}
-                      onClick={() => toggleGoal(item.id)}
+                      aria-label="上一页目标"
+                      onClick={() => setGoalPageIndex((index) => Math.max(0, index - 1))}
+                      disabled={safeGoalPageIndex <= 0}
                     >
-                      <span aria-hidden="true">{item.done ? <Check size={12} /> : null}</span>
-                      <strong>{item.title}</strong>
+                      <ChevronLeft size={14} />
                     </button>
+                    <span>{safeGoalPageIndex + 1}/{goalPageCount}</span>
                     <button
                       type="button"
-                      className="control-goal-delete"
-                      aria-label={`Delete goal: ${item.title}`}
-                      onClick={() => removeGoal(item.id)}
+                      aria-label="下一页目标"
+                      onClick={() => setGoalPageIndex((index) => Math.min(goalPageCount - 1, index + 1))}
+                      disabled={safeGoalPageIndex >= goalPageCount - 1}
                     >
-                      <X size={12} />
+                      <ChevronRight size={14} />
                     </button>
                   </div>
-                ))
-              ) : (
-                <p className="control-goal-empty">还没有创建目标。</p>
-              )}
-            </div>
+                ) : null}
+              </div>
+            )}
           </section>
 
           <section className="control-glass-card control-pet-vitals">
@@ -1149,17 +1206,8 @@ export function selectVisibleMemoryDaysForReview(
   groups: MemoryDayGroup[],
   expandedDayKey: string | null,
 ): MemoryDayGroup[] {
-  if (!expandedDayKey) {
-    return groups;
-  }
-  const expandedIndex = groups.findIndex((group) => group.key === expandedDayKey);
-  if (expandedIndex < 0) {
-    return groups;
-  }
-  const previousDays = groups.slice(Math.max(0, expandedIndex - 2), expandedIndex);
-  const nextDayBudget = Math.max(0, maxVisibleCollapsedDaysWhenExpanded - previousDays.length);
-  const nextDays = groups.slice(expandedIndex + 1, expandedIndex + 1 + nextDayBudget);
-  return [...previousDays, groups[expandedIndex], ...nextDays];
+  void expandedDayKey;
+  return groups;
 }
 
 export function buildMemoryDayGroups(

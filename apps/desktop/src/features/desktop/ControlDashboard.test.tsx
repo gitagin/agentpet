@@ -206,25 +206,38 @@ describe("ControlDashboard memory review", () => {
 
   it("keeps home goals user-created and toggles completion from the goal item", () => {
     const { container } = renderDashboard();
-    const goalList = container.querySelector(".control-goal-list") as HTMLElement;
-    const goalInput = container.querySelector(".control-goal-form input") as HTMLInputElement;
-    const goalForm = container.querySelector(".control-goal-form") as HTMLFormElement;
+    const goalCard = container.querySelector(".control-goals-card") as HTMLElement;
+    const modeButton = goalCard.querySelector(".control-card-title .control-mini-button") as HTMLButtonElement;
+    const goalList = goalCard.querySelector(".control-goal-list") as HTMLElement;
 
-    expect(goalInput).toBeInTheDocument();
+    expect(modeButton).toHaveAttribute("aria-pressed", "false");
+    expect(goalCard.querySelector(".control-goal-form input")).not.toBeInTheDocument();
     expect(goalList.querySelectorAll(".control-goal-row")).toHaveLength(0);
+    expect(goalCard.querySelector(".control-goal-empty")).not.toBeInTheDocument();
+    expect(goalCard.querySelector(".control-goal-pager")).not.toBeInTheDocument();
     expect(container).not.toHaveTextContent("完成产品原型评审");
     expect(container).not.toHaveTextContent("晚间散步 20 分钟");
+
+    fireEvent.click(modeButton);
+
+    const goalInput = goalCard.querySelector(".control-goal-form input") as HTMLInputElement;
+    const goalForm = goalCard.querySelector(".control-goal-form") as HTMLFormElement;
+
+    expect(modeButton).toHaveAttribute("aria-pressed", "true");
+    expect(goalInput).toBeInTheDocument();
+    expect(goalCard.querySelectorAll(".control-goal-row")).toHaveLength(0);
 
     fireEvent.change(goalInput, { target: { value: "Ship test goal" } });
     fireEvent.submit(goalForm);
 
-    const goalRow = container.querySelector(".control-goal-row") as HTMLElement;
+    const goalRow = goalCard.querySelector(".control-goal-row") as HTMLElement;
     const goalToggle = within(goalRow).getByRole("button", { name: "Ship test goal" });
 
+    expect(modeButton).toHaveAttribute("aria-pressed", "false");
+    expect(goalCard.querySelector(".control-goal-form input")).not.toBeInTheDocument();
     expect(goalRow).toHaveClass("active");
     expect(goalRow).not.toHaveClass("done");
     expect(goalToggle).toHaveAttribute("aria-pressed", "false");
-    expect(goalInput).toHaveValue("");
 
     fireEvent.click(goalToggle);
 
@@ -242,7 +255,41 @@ describe("ControlDashboard memory review", () => {
     fireEvent.click(deleteButton);
 
     expect(goalList.querySelectorAll(".control-goal-row")).toHaveLength(0);
-    expect(container.querySelector(".control-goal-empty")).toBeInTheDocument();
+    expect(goalCard.querySelector(".control-goal-empty")).not.toBeInTheDocument();
+  });
+
+  it("paginates home goals only after the list exceeds the visible pane", () => {
+    const { container } = renderDashboard();
+    const goalCard = container.querySelector(".control-goals-card") as HTMLElement;
+    const modeButton = goalCard.querySelector(".control-card-title .control-mini-button") as HTMLButtonElement;
+
+    const createGoal = (title: string) => {
+      fireEvent.click(modeButton);
+      const goalInput = goalCard.querySelector(".control-goal-form input") as HTMLInputElement;
+      const goalForm = goalCard.querySelector(".control-goal-form") as HTMLFormElement;
+      fireEvent.change(goalInput, { target: { value: title } });
+      fireEvent.submit(goalForm);
+    };
+
+    createGoal("Goal one");
+    createGoal("Goal two");
+    createGoal("Goal three");
+
+    expect(goalCard.querySelector(".control-goal-pager")).not.toBeInTheDocument();
+    expect(goalCard.querySelectorAll(".control-goal-row")).toHaveLength(3);
+
+    createGoal("Goal four");
+
+    expect(goalCard.querySelector(".control-goal-pager")).toHaveTextContent("2/2");
+    expect(goalCard.querySelector(".control-goal-list-pane")).toHaveClass("has-goal-pages");
+    expect(goalCard).toHaveTextContent("Goal four");
+    expect(goalCard).not.toHaveTextContent("Goal one");
+
+    fireEvent.click(screen.getByRole("button", { name: "上一页目标" }));
+
+    expect(goalCard.querySelector(".control-goal-pager")).toHaveTextContent("1/2");
+    expect(goalCard).toHaveTextContent("Goal one");
+    expect(goalCard).not.toHaveTextContent("Goal four");
   });
 
   it("starts with the latest memory day expanded, expands only one day, and can close all days", () => {
@@ -296,7 +343,7 @@ describe("ControlDashboard memory review", () => {
     expect(calculateExpandedMemoryEntryLimit(0, 4)).toBe(3);
   });
 
-  it("shows every date only while closed and trims to nearby dates when expanded", () => {
+  it("keeps every date visible when a day expands", () => {
     const groups = Array.from({ length: 7 }, (_, index) => ({
       key: `day-${index}`,
       title: `day ${index}`,
@@ -319,8 +366,14 @@ describe("ControlDashboard memory review", () => {
       "day-1",
       "day-2",
       "day-3",
+      "day-4",
+      "day-5",
+      "day-6",
     ]);
     expect(selectVisibleMemoryDaysForReview(groups, "day-5").map((group) => group.key)).toEqual([
+      "day-0",
+      "day-1",
+      "day-2",
       "day-3",
       "day-4",
       "day-5",
