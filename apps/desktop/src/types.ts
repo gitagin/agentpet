@@ -351,6 +351,25 @@ export type ChatAcceptedResponse = {
   stream_url: string;
 };
 
+export type ChatDailyHistoryMessage = {
+  id: string;
+  conversation_id: string;
+  role: "user" | "assistant" | string;
+  content: string;
+  status: "partial" | "completed" | "failed" | "cancelled" | string;
+  created_at: string;
+  updated_at: string;
+  agent_run_id?: string | null;
+};
+
+export type ChatDailyHistoryResponse = {
+  date: string;
+  timezone: string;
+  conversation_id?: string | null;
+  messages: ChatDailyHistoryMessage[];
+  has_more?: boolean;
+};
+
 export type MemorySearchResult = {
   note_id: string;
   chunk_id: string;

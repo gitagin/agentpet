@@ -1,17 +1,17 @@
-# v0.1 Local Trial Runbook
+# Local Trial Runbook
 
-This runbook covers the Windows developer-machine trial for the v0.1 backend sidecar, Electron desktop shell, core console workflow, smoke endpoints, and environment variables. Run commands from the repository root unless a step says otherwise.
+This runbook covers the current Windows developer-machine trial for the backend sidecar, Electron desktop shell, core console workflow, smoke endpoints, and environment variables. Run commands from the repository root unless a step says otherwise.
 
-## Current v0.1 Trial Focus
+## Current Trial Focus
 
-v0.1 is accepted when the local core loop is runnable:
+The local trial is considered runnable when the core loop works:
 
 - Backend sidecar starts locally, passes the one-key smoke chain, and stops without leaving a trial `uvicorn` process.
 - Electron starts, shows the desktop-pet shell, and can open the control console.
 - The control console supports health check, model configuration test, Vault initialization/status, indexing/search, memory proposal actions, task actions, Chat SSE tool-event visibility, and diagnostics export.
 - `scripts\smoke-backend.ps1` covers `/api/health`, authorization, `/api/vaults/init`, `/api/memory/search`, memory proposal confirm/reject, `/api/tasks`, `/api/chat`, and `/api/diagnostics/export`.
 
-Do not expand the v0.1 gate into desktop-pet visual polish, blank-area mouse passthrough, sprite-pet animation quality, edge snapping, lip sync, voice, multiple characters, complex action queues, installer delivery, tray notification polish, or auto-update behavior. Record those only as post-v0.1 UI observations unless they prevent opening or using the control console.
+Do not expand this gate into desktop-pet visual polish, blank-area mouse passthrough, sprite-pet animation quality, edge snapping, lip sync, voice, multiple characters, complex action queues, installer delivery, tray notification polish, or auto-update behavior. Record those as out-of-scope UI observations unless they prevent opening or using the control console.
 
 ## Core Trial Steps
 
@@ -49,7 +49,7 @@ Do not point `-WorkDir` at a real Vault unless the goal is a controlled trial on
 
 ## Memory Paths
 
-The customer-facing UI must be Chinese, but knowledge-base file paths are not required to be Chinese. v0.1 intentionally uses English default paths so the Electron UI, backend init template, chat-created memory proposals, smoke scripts, and tests stay aligned:
+The customer-facing UI must be Chinese, but knowledge-base file paths are not required to be Chinese. The repository intentionally uses English default paths so the Electron UI, backend init template, chat-created memory proposals, smoke scripts, and tests stay aligned:
 
 ```text
 Inbox/Pending Memories.md
@@ -68,7 +68,7 @@ Run:
 
 The preflight checks Python, backend dependencies, Node/npm, desktop dependencies, Electron runtime, Electron entrypoints, `AGENT_PET_SESSION_TOKEN` shell state, and leftover uvicorn/Electron processes.
 
-For v0.1, occupied ports are handled as follows:
+For the local trial, occupied ports are handled as follows:
 
 - If `127.0.0.1:8765/api/health` responds, Electron can reuse the existing backend. If protected APIs return `401`, stop the existing backend and restart Electron so the session token matches.
 - If `127.0.0.1:5173` is occupied, `electron/dev.mjs` can choose the next available Vite port.
@@ -226,7 +226,7 @@ Record the 30-second story:
 
 The trial is only valid if the receipt comes from the real chat response and persisted action data. Do not replace it with screenshots, seeded DOM, or a mocked demo layer.
 
-## Manual v0.1 Chain
+## Manual Local Chain
 
 Use this chain when validating the developer-machine flow by hand:
 
@@ -342,12 +342,58 @@ npm run sprite-pet:check:dist
 Pop-Location
 ```
 
-## Post-v0.1 UI Observations
+## Optional Live Provider Gate
 
-Record these separately from the v0.1 gate:
+Only run this gate when a real compatible provider is available. Never paste the real key into committed files or command logs.
+
+```powershell
+$env:LIVE_MODEL_BASE_URL = "https://example-compatible-provider/v1"
+$env:LIVE_CHAT_MODEL = "model-name"
+$env:LIVE_MODEL_API_KEY = "provider-key"
+
+Push-Location apps\backend
+python -m pytest -q tests/test_live_model_chat_acceptance.py -m live_model
+Pop-Location
+```
+
+The gate must prove model test success, at least one non-empty chat token, a citation for indexed Vault content, one final `done`, and no provider key in logs, diagnostics, responses or test output. Missing `LIVE_*` variables are a skipped external gate, not a source failure.
+
+## Manual Memory, Export, and Revert Gate
+
+Use an isolated test Vault or a backed-up copy. Binding a real Vault, writing Markdown and reverting state require explicit user confirmation.
+
+1. Start the current backend and Electron app and bind the verified test Vault.
+2. Send a low-risk memory-worthy chat message; confirm chat completion, daily/structured archive and an `agent_actions` entry.
+3. Open memory and confirm source, reason, risk, confidence/status and linked activity are visible.
+4. Capture non-sensitive database/file state before revert.
+5. Revert through the second confirmation dialog; capture database/file state after revert and confirm UI feedback.
+6. Download the portable Markdown and JSON memory exports and inspect that both files are readable and omit secrets.
+7. Record a failure case, or explicitly state that none was observed.
+
+Until those observations exist, TASK-0102 remains skipped and TASK-0202 remains implemented without its manual export gate.
+
+## Manual Vault and Wiki Gate
+
+Still using the isolated or backed-up Vault:
+
+1. Index test Markdown and confirm grounded chat citations.
+2. Confirm diary, structured memory and relevant long-term recall.
+3. Confirm low-risk Wiki organization writes only under `Wiki/`, records `agent_action`, updates index/log and exposes revert.
+4. Disable automatic Wiki organization and confirm the same request becomes a confirmation item rather than a write.
+5. Run ingest preview, review and selected-target apply; applied files must exactly match reviewed targets.
+6. Run lint against a malformed test page and confirm it reports missing template/source/trigger/log/revision/link requirements without destructive unreviewed repair.
+7. Open the result in Obsidian and verify navigation; record before/after and revert evidence without personal content.
+
+## Recall Quality Human Gate
+
+TASK-0503 cannot complete from synthetic fixtures alone. Collect at least 20 real dialogue samples after the isolated memory chain is available. Label each as over-recall, under-recall, stiff or natural; score relevance, naturalness, privacy/boundary handling and helpfulness from 1 to 5. Passing requires zero raw path/id/score/secret leakage, at least 80% natural or acceptable after revision, a follow-up action for every unsafe or over-recall case, and human sign-off.
+
+## Out-of-scope UI Observations
+
+Record these separately from the local trial gate:
 
 - Desktop-pet blank area blocks underlying apps.
 - Drag sticks to cursor or drifts.
 - Sprite-pet halfbody is blank, layered overlays are misaligned, or pet-window sprite animation stutters.
 - Hitbox or tray behavior feels rough.
-- Lip sync, voice, multi-character switching, complex action queues, edge snapping, installer UX, notification polish, and auto-update are not v0.1 requirements.
+- Lip sync, voice, multi-character switching, complex action queues, edge snapping, installer UX, notification polish, and auto-update are not current local-trial requirements.

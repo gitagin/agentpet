@@ -1,4 +1,4 @@
-import { Bot, FolderOpen, RefreshCw } from "lucide-react";
+import { Bot, FolderOpen, RefreshCw, ShieldCheck, SlidersHorizontal, Volume2 } from "lucide-react";
 import type { FormEvent } from "react";
 import type { AgentModelId, ModelTestResponse, TtsSettingsResponse, VaultStatusResponse } from "../../types";
 import type { AgentModelDraft } from "../../services/agentModelDrafts";
@@ -116,13 +116,20 @@ export function SettingsPanel({
   return (
     <section id="settings-panel" className="settings-panel-compact settings-panel-grid" aria-label="设置">
       <section className="settings-intro" aria-label="设置引导">
-        <div>
+        <div className="settings-intro-copy">
           <p className="eyebrow">{productCopy.settingsPage.eyebrow}</p>
           <h3>{productCopy.settingsPage.title}</h3>
+          <p className="settings-intro-description">{productCopy.settingsPage.description}</p>
+          <p className="settings-scroll-note">
+            <SlidersHorizontal size={14} />
+            向下滑动可以继续设置自动整理、语音和保存位置。
+          </p>
         </div>
-        <ol>
+        <ol className="settings-intro-steps">
           <li>{productCopy.settingsPage.stepConnect}</li>
           <li>{productCopy.settingsPage.stepSave}</li>
+          <li>{productCopy.settingsPage.stepAutomation}</li>
+          <li>{productCopy.settingsPage.stepVoice}</li>
         </ol>
         <div className="guided-trial-actions settings-guided-trials" aria-label="设置快捷操作">
           <button type="button" className="secondary" onClick={onTestGlobalModel} disabled={globalModelTestStatus === "loading"}>
@@ -138,6 +145,44 @@ export function SettingsPanel({
             {productCopy.settingsPage.refresh}
           </button>
         </div>
+      </section>
+      <section className="settings-purpose-grid" aria-label="这页可以做什么">
+        <article className="settings-purpose-card">
+          <span className="settings-purpose-icon">
+            <Bot size={16} />
+          </span>
+          <span>
+            <strong>对话能力</strong>
+            <small>连接模型服务，让聊天、总结和整理记忆能正常工作。</small>
+          </span>
+        </article>
+        <article className="settings-purpose-card">
+          <span className="settings-purpose-icon">
+            <FolderOpen size={16} />
+          </span>
+          <span>
+            <strong>保存位置</strong>
+            <small>选择本机文件夹，决定长期记忆和资料放在哪里。</small>
+          </span>
+        </article>
+        <article className="settings-purpose-card">
+          <span className="settings-purpose-icon">
+            <ShieldCheck size={16} />
+          </span>
+          <span>
+            <strong>自动整理</strong>
+            <small>控制低风险整理、主动提醒和隐私边界。</small>
+          </span>
+        </article>
+        <article className="settings-purpose-card">
+          <span className="settings-purpose-icon">
+            <Volume2 size={16} />
+          </span>
+          <span>
+            <strong>语音与高级</strong>
+            <small>调整朗读、缓存和少数高级能力分工。</small>
+          </span>
+        </article>
       </section>
       <ModelHealthBanner api={api} />
       <GlobalModelCard

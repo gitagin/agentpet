@@ -55,6 +55,35 @@ describe("Electron API proxy allowlist", () => {
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
+  it("allows only GET requests to the exact daily chat history route", async () => {
+    global.fetch = vi.fn(async () => createJsonResponse({ entries: [] }));
+    const proxy = createProxyManager({
+      baseUrl: "http://127.0.0.1:8765",
+      sessionToken: "test-session-token",
+    });
+
+    await proxy.proxyApiRequest("/api/chat/daily-history?timezone=Asia%2FShanghai", { method: "GET" });
+
+    expect(global.fetch).toHaveBeenCalledOnce();
+    const [target, init] = global.fetch.mock.calls[0];
+    expect(target.toString()).toBe("http://127.0.0.1:8765/api/chat/daily-history?timezone=Asia%2FShanghai");
+    expect(init.headers.get("Authorization")).toBe("Bearer test-session-token");
+    await expect(proxy.proxyApiRequest("/api/chat/daily-history", { method: "POST", body: "{}" })).rejects.toMatchObject({
+      code: "renderer_api_route_not_allowed",
+      details: {
+        method: "POST",
+        path: "/api/chat/daily-history",
+      },
+    });
+    await expect(proxy.proxyApiRequest("/api/chat/daily-history/export", { method: "GET" })).rejects.toMatchObject({
+      code: "renderer_api_route_not_allowed",
+      details: {
+        method: "GET",
+        path: "/api/chat/daily-history/export",
+      },
+    });
+  });
+
   it("strips forbidden renderer headers before adding the main-process bearer token", async () => {
     global.fetch = vi.fn(async () => createJsonResponse({ run_id: "run-1" }));
     const proxy = createProxyManager({
@@ -111,14 +140,22 @@ describe("Electron API proxy allowlist", () => {
     });
 
     await proxy.proxyApiRequest("/api/memory/profile-projection", { method: "GET" });
+    await proxy.proxyApiRequest("/api/memory/graph-projection", { method: "GET" });
     await proxy.proxyApiRequest("/api/memory/profile-projection/items/profile_abc123", { method: "GET" });
     await proxy.proxyApiRequest("/api/memory/profile-projection/items/profile_abc123/actions", { method: "POST", body: "{}" });
     await proxy.proxyApiRequest("/api/memory/receipts?agent_run_id=run-1", { method: "GET" });
 
-    expect(global.fetch).toHaveBeenCalledTimes(4);
+    expect(global.fetch).toHaveBeenCalledTimes(5);
     for (const [, init] of global.fetch.mock.calls) {
       expect(init.headers.get("Authorization")).toBe("Bearer test-session-token");
     }
+    await expect(proxy.proxyApiRequest("/api/memory/graph-projection", { method: "POST", body: "{}" })).rejects.toMatchObject({
+      code: "renderer_api_route_not_allowed",
+      details: {
+        method: "POST",
+        path: "/api/memory/graph-projection",
+      },
+    });
     await expect(proxy.proxyApiRequest("/api/memory/profile-projection/items/profile_abc123/actions", { method: "GET" })).rejects.toMatchObject({
       code: "renderer_api_route_not_allowed",
       details: {
@@ -147,7 +184,7 @@ describe("Electron API proxy allowlist", () => {
         path: "/api/memory/profile-projection/items/candidate-raw-id",
       },
     });
-    expect(global.fetch).toHaveBeenCalledTimes(4);
+    expect(global.fetch).toHaveBeenCalledTimes(5);
   });
 
   it("allows only the exact growth snapshot route", async () => {

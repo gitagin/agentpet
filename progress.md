@@ -1,7 +1,9 @@
 # Project Progress
 
-Detailed historical handoff logs were archived unchanged in
-[`docs/archive/progress-history.md`](docs/archive/progress-history.md).
+Historical handoff logs were removed from the public document tree during
+documentation consolidation. This file retains the current capability boundary
+and the latest milestone summaries; older claims must be revalidated from code
+and tests rather than copied from historical prose.
 
 This file is coordinator-owned. Use it as the compact current-state ledger for
 this repository. Validate current facts from code and commands, not git history.
@@ -10,7 +12,7 @@ this repository. Validate current facts from code and commands, not git history.
 
 - Product/version marker: `0.0.1-alpha` (backend Python package metadata: `0.0.1a0`)
 - Current working phase: Phase 5 TASK-0505 habit loop completed; skipped Phase 1 human verification still not counted as completed
-- Latest unreconciled local file: `agentpet-task-instructions.md` is intentionally untracked task input
+- Historical task instructions were superseded by `task.md` and removed during documentation consolidation.
 
 ## Current Capability Boundary
 
@@ -25,8 +27,8 @@ this repository. Validate current facts from code and commands, not git history.
 - TASK-0402 version semantics are aligned with current completion: backend runtime, desktop package metadata, and desktop lockfile use `0.0.1-alpha`; backend Python package metadata uses PEP 440 compatible `0.0.1a0`; `CHANGELOG.md` is grouped by features, fixes, and known limitations.
 - Phase 0 hygiene tasks completed so far: local pytest artifacts removed, gitignore hardened, root `LICENSE` added, and naming decision recorded as no rename.
 - TASK-0101 desktop-pet double-click entry was user-confirmed manually on 2026-06-19; recording evidence was explicitly waived by the user.
-- TASK-0301 L1-L4 verification policy is documented in `docs/verification-policy.md` and linked from the docs index.
-- TASK-0401 created `docs/current-specification.md` as the only current effective specification and archived the old `Development_Documentation.md`.
+- TASK-0301 L1-L4 verification policy is documented in `docs/verification-policy.md`.
+- TASK-0401 created `docs/current-specification.md` as the only current effective specification; the superseded specification was removed during documentation consolidation.
 - TASK-0501 rewrote README around memory transparency, controllability, and migration, with explicit LLM API data-flow disclosure.
 - TASK-0502 implements a user-facing local privacy mode: sensitive chat input only uses local FTS/keyword retrieval, skips model-driven reply/background memory work, and has network-layer automated evidence that the configured model endpoint receives no request.
 - TASK-0504 implements a read-only growth snapshot API and desktop growth record page. Growth dimensions are tied to chat diary entries, long-term memory facts, diary memory objects, reversible/skipped/feedback actions, and Wiki pages.
@@ -59,11 +61,11 @@ this repository. Validate current facts from code and commands, not git history.
 
 | Date | Status | Verification Level | Summary | Verification |
 | --- | --- | --- | --- | --- |
-| 2026-06-21 | Completed | L3 | TASK-0505: implemented low-friction daily proactive triggers with `POST /api/habit-loop/trigger`, frequency settings, daily caps, cooldown, idle/quiet guards, desktop pet polling, and Settings frequency controls. | `docs/verification/task-0505/verification-record.md`; backend habit-loop/settings focused suite passed 4 tests; desktop/Electron focused suite passed 28 tests; typecheck and Electron proxy syntax passed. |
-| 2026-06-21 | Completed | L3 | TASK-0504: implemented visible desktop-pet growth feedback with four real-data dimensions, `GET /api/growth/snapshot`, a `#growth` record page, stage/navigation/Electron entry points, and growth history from `agent_actions`. | `docs/verification/task-0504/verification-record.md`; real `/api/chat` auto-archive test confirms `memory_depth` advances; backend focused suite passed 6 tests; desktop/Electron focused suite passed 28 tests; typecheck, Electron syntax, migration, and package checks passed. |
-| 2026-06-21 | In Progress | L2 | TASK-0503: added recall wording guardrails so no-model fallback avoids raw snippet echo, model prompt asks for natural non-verbatim recall, and a 20-sample human scoring template exists. Not Completed because TASK-0102, real samples, and human review remain missing. | `docs/verification/task-0503/verification-record.md`; backend recall guardrail suite passed 33 tests; MVP acceptance gap passed; `git diff --check` passed with LF/CRLF warnings only; sample set is template-only. |
-| 2026-06-21 | Completed | L3 | TASK-0502: implemented local privacy mode for sensitive chat input, including backend guard, settings persistence, UI toggle/copy, and model-network blocking evidence. | `docs/verification/task-0502/verification-record.md`; local fake model server received 0 requests in sensitive chat test; backend broader focused suite passed 53 tests; desktop settings tests passed 16 tests; typecheck and MVP acceptance gap passed. |
-| 2026-06-20 | Completed | L2 | TASK-0501: rewrote README narrative from local-first privacy positioning to memory transparency, controllability, and cross-tool migration; added data-flow disclosure and diagram. | `docs/verification/task-0501/verification-record.md`; misleading privacy phrase search returned no matches; required narrative/data-flow searches matched; MVP acceptance gap passed; `git diff --check` passed with LF/CRLF warnings only. |
+| 2026-07-11 | Completed | L2 | Repository cleanup removed 23 ignored Chromium/Playwright profiles, consolidated `docs/` from 29 Markdown files to 5 active contracts, removed superseded root task/product documents, and redirected per-task raw evidence to ignored `output/verification/`. A later explicit user instruction also physically deleted the 15 still-present staged Vault documents and 3 staged local configuration files; 3 Vault files outside that staged batch, backend SQLite/credential state, and product source were preserved. | Profile and second-batch physical-delete postchecks passed; documentation link check reported 0 missing links; backend documentation contracts passed 9 tests; Electron migration, MVP acceptance-gap, repository hygiene, cached/worktree diff checks all passed. |
+| 2026-06-21 | Completed | L3 | TASK-0505: implemented low-friction daily proactive triggers with `POST /api/habit-loop/trigger`, frequency settings, daily caps, cooldown, idle/quiet guards, desktop pet polling, and Settings frequency controls. | Historical run: backend habit-loop/settings focused suite passed 4 tests; desktop/Electron focused suite passed 28 tests; typecheck and Electron proxy syntax passed. Rerun before relying on it. |
+| 2026-06-21 | Completed | L3 | TASK-0504: implemented visible desktop-pet growth feedback with four real-data dimensions, `GET /api/growth/snapshot`, a `#growth` record page, stage/navigation/Electron entry points, and growth history from `agent_actions`. | Historical run: real `/api/chat` auto-archive test confirmed `memory_depth` advances; backend focused suite passed 6 tests; desktop/Electron focused suite passed 28 tests; typecheck, Electron syntax, migration, and package checks passed. Rerun before relying on it. |
+| 2026-06-21 | In Progress | L2 | TASK-0503: added recall wording guardrails so no-model fallback avoids raw snippet echo, model prompt asks for natural non-verbatim recall, and a 20-sample human scoring template exists. Not Completed because TASK-0102, real samples, and human review remain missing. | Historical run: backend recall guardrail suite passed 33 tests and MVP acceptance gap passed; no 20-sample human review exists. Rerun before relying on it. |
+| 2026-06-21 | Completed | L3 | TASK-0502: implemented local privacy mode for sensitive chat input, including backend guard, settings persistence, UI toggle/copy, and model-network blocking evidence. | Historical run: local fake model server received 0 requests; backend broader focused suite passed 53 tests; desktop settings tests passed 16 tests; typecheck and MVP acceptance gap passed. Rerun before relying on it. |
 
 ## Next Direction
 

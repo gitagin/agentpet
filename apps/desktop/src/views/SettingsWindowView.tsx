@@ -6,7 +6,7 @@ export default function SettingsWindowView({ children }: { children: ReactNode }
     <FeatureWindowShell
       eyebrow="设置"
       title="设置"
-      description="决定我用哪个模型、哪些内容可自动整理，以及记忆要不要导出到本机文件夹。"
+      description="管理我怎么聊天、怎么保存记忆、什么时候自动整理，以及是否朗读回复。"
       activeTab="设置"
     >
       {children}

@@ -142,7 +142,13 @@ vi.mock("./features/wiki/WikiWorkflowPanel", () => ({
 }));
 
 vi.mock("./features/chat/ChatMessageList", () => ({
-  ChatMessageList: () => <section aria-label="mock chat message list" />,
+  ChatMessageList: ({ messages = [] }: { messages?: Array<{ id: string; content: string }> }) => (
+    <section aria-label="mock chat message list">
+      {messages.map((message) => (
+        <p key={message.id}>{message.content}</p>
+      ))}
+    </section>
+  ),
 }));
 
 vi.mock("./features/continuity", () => ({
@@ -171,6 +177,13 @@ const api = {
     message_id: "message-1",
     agent_run_id: "run-1",
     stream_url: "/api/chat/runs/run-1/events",
+  }),
+  getDailyChatHistory: vi.fn().mockResolvedValue({
+    date: "2026-07-09",
+    timezone: "Asia/Shanghai",
+    conversation_id: null,
+    messages: [],
+    has_more: false,
   }),
   getSettingsStatus: vi.fn().mockResolvedValue({ model_configured: false, vault_configured: false }),
   getVaultStatus: vi.fn().mockResolvedValue({
@@ -504,6 +517,13 @@ describe("App", () => {
     mockTtsPlaybackQueueOptions.current = null;
     spritePetStageRenderProps.length = 0;
     vi.clearAllMocks();
+    api.getDailyChatHistory.mockResolvedValue({
+      date: "2026-07-09",
+      timezone: "Asia/Shanghai",
+      conversation_id: null,
+      messages: [],
+      has_more: false,
+    });
   });
 
   it("renders the homeboard route when desktop bridge is unavailable", async () => {
@@ -795,6 +815,53 @@ describe("App", () => {
     expect(screen.queryByText("今天想让我从哪里陪你继续？")).not.toBeInTheDocument();
   });
 
+  it("restores today's chat history and continues the latest daily conversation", async () => {
+    api.getDailyChatHistory.mockResolvedValueOnce({
+      date: "2026-07-09",
+      timezone: "Asia/Shanghai",
+      conversation_id: "daily-conversation",
+      messages: [
+        {
+          id: "daily-user-1",
+          conversation_id: "daily-conversation",
+          role: "user",
+          content: "TODAY_USER_MESSAGE",
+          status: "completed",
+          created_at: "2026-07-09T01:00:00Z",
+          updated_at: "2026-07-09T01:00:00Z",
+          agent_run_id: null,
+        },
+        {
+          id: "daily-assistant-1",
+          conversation_id: "daily-conversation",
+          role: "assistant",
+          content: "TODAY_ASSISTANT_REPLY",
+          status: "completed",
+          created_at: "2026-07-09T01:00:02Z",
+          updated_at: "2026-07-09T01:00:02Z",
+          agent_run_id: "daily-run-1",
+        },
+      ],
+      has_more: false,
+    });
+    window.location.hash = "#chat";
+
+    render(<App />);
+
+    expect(await screen.findByText("TODAY_USER_MESSAGE")).toBeInTheDocument();
+    expect(screen.getByText("TODAY_ASSISTANT_REPLY")).toBeInTheDocument();
+
+    const input = screen.getByRole("textbox");
+    fireEvent.change(input, { target: { value: "CONTINUE_TODAY" } });
+    fireEvent.submit(input.closest("form") as HTMLFormElement);
+
+    await waitFor(() => expect(api.startChat).toHaveBeenCalledTimes(1));
+    expect(api.startChat.mock.calls[0][0]).toMatchObject({
+      conversation_id: "daily-conversation",
+      message: "CONTINUE_TODAY",
+    });
+  });
+
   it("does not show first-use onboarding after completion is stored in Electron UI state", async () => {
     window.agentDesktop = {
       platform: "win32",
@@ -861,7 +928,7 @@ describe("App", () => {
   it("renders core product routes as dedicated workspaces instead of chat-only surfaces", async () => {
     const routes = [
       { hash: "#agent", query: () => screen.findByLabelText("提醒和待办区") },
-      { hash: "#memory", query: () => screen.findByRole("heading", { name: "记忆工作台" }) },
+      { hash: "#memory", query: () => screen.findByLabelText("记忆工作台入口") },
       { hash: "#world", query: () => screen.findByRole("heading", { name: "资料库" }) },
     ];
 

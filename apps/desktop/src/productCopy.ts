@@ -71,9 +71,12 @@ export const productCopy = {
   },
   settingsPage: {
     eyebrow: "基础设置",
-    title: "先连接对话能力，再决定记忆保存在哪里。",
+    title: "把 Agent Pet 调成适合你的工作方式。",
+    description: "这里管理它怎么聊天、把记忆保存在哪里、什么时候自动整理，以及是否朗读回复。",
     stepConnect: "连接对话能力",
     stepSave: "选择保存位置",
+    stepAutomation: "设置自动整理",
+    stepVoice: "调整语音与高级项",
     testConnection: "测试对话能力",
     refresh: "刷新状态",
     advancedModelTitle: "高级：能力分工",

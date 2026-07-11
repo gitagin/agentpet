@@ -167,6 +167,61 @@ def test_stream_runtime_receives_recent_turns_from_common_chat_state(client: Tes
     assert captured["recent_turns"] == ["STREAM_RECENT_TURN"]
 
 
+def test_daily_history_returns_messages_for_requested_local_day_and_latest_conversation(client: TestClient) -> None:
+    _insert_message(client, "conversation-old", "old-1", "user", "OLD_DAY_SENTINEL", "completed", "2026-07-08T15:59:00Z")
+    _insert_message(client, "conversation-main", "user-1", "user", "TODAY_USER_SENTINEL", "completed", "2026-07-08T16:01:00Z")
+    _insert_message(
+        client,
+        "conversation-main",
+        "assistant-1",
+        "assistant",
+        "TODAY_ASSISTANT_SENTINEL",
+        "completed",
+        "2026-07-08T16:02:00Z",
+    )
+    _insert_agent_run(client, "conversation-main", "run-1", "user-1", "assistant-1")
+    _insert_message(client, "conversation-latest", "latest-1", "user", "LATEST_TODAY_SENTINEL", "completed", "2026-07-09T15:59:00Z")
+    _insert_message(client, "conversation-next", "next-1", "user", "NEXT_DAY_SENTINEL", "completed", "2026-07-09T16:01:00Z")
+
+    response = client.get(
+        "/api/chat/daily-history",
+        headers=auth(),
+        params={"date": "2026-07-09", "timezone": "Asia/Shanghai"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["date"] == "2026-07-09"
+    assert payload["timezone"] == "Asia/Shanghai"
+    assert payload["conversation_id"] == "conversation-latest"
+    assert [message["content"] for message in payload["messages"]] == [
+        "TODAY_USER_SENTINEL",
+        "TODAY_ASSISTANT_SENTINEL",
+        "LATEST_TODAY_SENTINEL",
+    ]
+    assert payload["messages"][1]["agent_run_id"] == "run-1"
+    assert "OLD_DAY_SENTINEL" not in str(payload)
+    assert "NEXT_DAY_SENTINEL" not in str(payload)
+
+
+def test_daily_history_excludes_non_chat_roles_partial_and_empty_content(client: TestClient) -> None:
+    _insert_message(client, "conversation-filter", "safe-1", "user", "SAFE_HISTORY_SENTINEL", "completed", "2026-07-09T00:00:00Z")
+    _insert_message(client, "conversation-filter", "partial-1", "assistant", "PARTIAL_SENTINEL", "partial", "2026-07-09T00:01:00Z")
+    _insert_message(client, "conversation-filter", "tool-1", "tool", "TOOL_SENTINEL", "completed", "2026-07-09T00:02:00Z")
+    _insert_message(client, "conversation-filter", "empty-1", "assistant", "   ", "completed", "2026-07-09T00:03:00Z")
+
+    response = client.get(
+        "/api/chat/daily-history",
+        headers=auth(),
+        params={"date": "2026-07-09", "timezone": "UTC"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [message["content"] for message in payload["messages"]] == ["SAFE_HISTORY_SENTINEL"]
+    assert payload["conversation_id"] == "conversation-filter"
+
+
 def _insert_conversation(client: TestClient, conversation_id: str) -> None:
     db_path = client.app.state.database.path
     with sqlite3.connect(db_path) as conn:
@@ -176,6 +231,29 @@ def _insert_conversation(client: TestClient, conversation_id: str) -> None:
             VALUES (?, ?, 'active', '2026-07-01T00:00:00Z', '2026-07-01T00:00:00Z')
             """,
             (conversation_id, conversation_id),
+        )
+        conn.commit()
+
+
+def _insert_agent_run(
+    client: TestClient,
+    conversation_id: str,
+    agent_run_id: str,
+    user_message_id: str,
+    assistant_message_id: str,
+) -> None:
+    _insert_conversation(client, conversation_id)
+    db_path = client.app.state.database.path
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO agent_runs (
+                id, conversation_id, user_message_id, assistant_message_id,
+                status, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, 'success', '2026-07-09T00:00:00Z', '2026-07-09T00:00:00Z')
+            """,
+            (agent_run_id, conversation_id, user_message_id, assistant_message_id),
         )
         conn.commit()
 

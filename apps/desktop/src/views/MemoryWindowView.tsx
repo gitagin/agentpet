@@ -1424,10 +1424,6 @@ function MemoryWorkspaceTabs({
 }) {
   return (
     <section className="panel feature-window-panel memory-workspace-shell" aria-label="记忆工作台入口">
-      <div className="section-heading">
-        <strong>记忆工作台</strong>
-        <span>把个人记忆、日记情景和资料库收在同一个本机工作区。</span>
-      </div>
       <div className="memory-workspace-tabs" role="tablist" aria-label="记忆工作台分区">
         {memoryWorkspaceTabs.map((tab) => (
           <button
@@ -2746,11 +2742,12 @@ export default function MemoryWindowView({
       title={productCopy.memoryPage.title}
       description={productCopy.memoryPage.description}
       activeTab="记忆"
+      showHeader={false}
     >
       <MemoryWorkspaceTabs activeTab={activeWorkspaceTab} onChange={setActiveWorkspaceTab} />
       <div
         id={`memory-workspace-panel-${activeWorkspaceTab}`}
-        className="memory-workspace-tab-panel"
+        className={`memory-workspace-tab-panel memory-workspace-tab-panel-${activeWorkspaceTab}`}
         role="tabpanel"
         aria-label={`记忆工作台：${activeWorkspaceTabConfig.label}`}
       >

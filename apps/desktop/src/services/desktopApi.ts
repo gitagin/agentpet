@@ -8,6 +8,7 @@ import type {
   AutomationSettings,
   AutomationSettingsUpdateRequest,
   ChatAcceptedResponse,
+  ChatDailyHistoryResponse,
   ContinuityProposalActionResponse,
   ContinuityProposalListResponse,
   ContinuityStateResponse,
@@ -97,6 +98,24 @@ export class DesktopApi {
 
   startChat(request: ChatRequest, signal?: AbortSignal): Promise<ChatAcceptedResponse> {
     return this.client.post<ChatAcceptedResponse>("/api/chat", request, signal);
+  }
+
+  getDailyChatHistory(
+    options: { date?: string; timezone?: string; limit?: number } = {},
+    signal?: AbortSignal,
+  ): Promise<ChatDailyHistoryResponse> {
+    const params = new URLSearchParams();
+    if (options.date?.trim()) {
+      params.set("date", options.date.trim());
+    }
+    if (options.timezone?.trim()) {
+      params.set("timezone", options.timezone.trim());
+    }
+    if (typeof options.limit === "number") {
+      params.set("limit", String(options.limit));
+    }
+    const query = params.toString();
+    return this.client.get<ChatDailyHistoryResponse>(`/api/chat/daily-history${query ? `?${query}` : ""}`, signal);
   }
 
   listAgentActions(

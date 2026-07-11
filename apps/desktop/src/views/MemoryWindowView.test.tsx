@@ -594,14 +594,18 @@ describe("MemoryWindowView", () => {
     const { container } = renderView(api);
 
     const graph = await screen.findByLabelText("我的记忆图谱");
+    expect(document.getElementById("memory-workspace-panel-graph")).toHaveClass("memory-workspace-tab-panel-graph");
     expect(api.getMemoryGraphProjection).toHaveBeenCalledTimes(1);
     expect(within(graph).getByText("我的记忆图谱")).toBeInTheDocument();
-    expect(within(graph).getByText("把偏好、项目、事件和资料连成一张你能看懂的记忆地图。")).toBeInTheDocument();
-    expect(within(graph).getByText("记忆节点数")).toBeInTheDocument();
+    expect(within(graph).getByText("偏好、边界、项目、情景和资料会在这里连成一张可理解的记忆地图。")).toBeInTheDocument();
+    expect(within(graph).getByText("记忆节点")).toBeInTheDocument();
     expect(within(graph).getByText("6")).toBeInTheDocument();
     expect(within(graph).getByText("回答保持简洁")).toBeInTheDocument();
     expect(within(graph).getByText("Project Atlas 正在推进")).toBeInTheDocument();
-    fireEvent.click(within(graph).getByRole("button", { name: "查看记忆节点：回答保持简洁" }));
+    expect(within(graph).getByLabelText("记忆知识图谱画布")).toBeInTheDocument();
+    expect(graph.querySelector(".react-flow")).toBeInTheDocument();
+    expect(graph.querySelector(".memory-node-center")).toBeInTheDocument();
+    fireEvent.click(within(graph).getByLabelText("记忆节点：回答保持简洁"));
     expect(within(graph).getByLabelText("记忆节点详情")).toHaveTextContent("来自用户明确要求");
     expect(container.textContent).not.toMatch(
       /candidate|fact|evidence|source_text|source_excerpt|agent_run_id|message_id|conversation_id|lifecycle_status|Authorization|token|FTS|vector|[A-Za-z]:[\\/]/i,
@@ -614,10 +618,10 @@ describe("MemoryWindowView", () => {
     renderView(api);
 
     const graph = await screen.findByLabelText("我的记忆图谱");
-    expect(within(graph).getByText("还没有形成可展示的记忆星群。")).toBeInTheDocument();
+    expect(within(graph).getByText("记忆图谱还是空的")).toBeInTheDocument();
+    expect(within(graph).getByText("告诉我一些关于你的事，我会把它们连成一张记忆地图。")).toBeInTheDocument();
     expect(within(graph).getByText("告诉我一个偏好")).toBeInTheDocument();
     expect(within(graph).getByText("告诉我正在做的项目")).toBeInTheDocument();
-    expect(within(graph).getByText("告诉我不希望被记住的边界")).toBeInTheDocument();
   });
 
   it("keeps the material library as an internal memory workspace entry", async () => {
@@ -850,8 +854,8 @@ describe("MemoryWindowView", () => {
       ),
     });
 
-    expect(screen.getByRole("heading", { name: "记忆工作台" })).toBeInTheDocument();
-    expect(screen.getByText("档案、图谱、日记和资料都在这里，你可以查看、搜索、整理和改正。")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "记忆工作台" })).not.toBeInTheDocument();
+    expect(screen.queryByText("档案、图谱、日记和资料都在这里，你可以查看、搜索、整理和改正。")).not.toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /图谱/ })).toHaveAttribute("aria-selected", "true");
     ["档案", "搜索", "数据", "导入", "图谱", "关联", "热力图", "衰减图", "日记"].forEach((label) => {
       expect(screen.getByRole("tab", { name: new RegExp(label) })).toBeInTheDocument();

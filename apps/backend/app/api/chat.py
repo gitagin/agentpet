@@ -1,9 +1,12 @@
 from collections.abc import AsyncIterator
 import asyncio
+from datetime import date as date_cls
+from datetime import datetime, time, timedelta, timezone
 import logging
 import re
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from fastapi import APIRouter, Request, status
+from fastapi import APIRouter, Query, Request, status
 from fastapi.responses import StreamingResponse
 
 from ..agents.events import (
@@ -18,7 +21,7 @@ from ..agents.events import (
 from ..errors import AppError
 from ..agents.events import sse_stream
 from ..agents.state import AgentState
-from ..models.api import ChatAcceptedResponse, ChatRequest
+from ..models.api import ChatAcceptedResponse, ChatDailyHistoryMessage, ChatDailyHistoryResponse, ChatRequest
 from ..services.agent_actions import AgentActionCreate, AutomationPolicy
 from ..services.chat_pipeline import agent_action_event, archive_chat_memory, automation_settings
 from ..services.memory_policy import evaluate_memory_content
@@ -60,6 +63,8 @@ _RECENT_TURN_STACK_TRACE_PATTERN = re.compile(
     r"Traceback \(most recent call last\)|\bFile \"[^\"]+\", line \d+",
     re.IGNORECASE,
 )
+_DEFAULT_DAILY_HISTORY_TIMEZONE = "Asia/Shanghai"
+_DAILY_HISTORY_DEFAULT_LIMIT = 160
 
 
 @router.post("", response_model=ChatAcceptedResponse)
@@ -85,6 +90,134 @@ async def create_chat(chat_request: ChatRequest, request: Request) -> ChatAccept
         ),
     )
     return ChatAcceptedResponse(conversation_id=conversation_id, message_id=message_id, agent_run_id=agent_run_id, stream_url=f"/api/chat/runs/{agent_run_id}/events")
+
+
+@router.get("/daily-history", response_model=ChatDailyHistoryResponse)
+async def get_daily_chat_history(
+    request: Request,
+    date: str | None = Query(default=None, min_length=10, max_length=10),
+    timezone_name: str = Query(default=_DEFAULT_DAILY_HISTORY_TIMEZONE, alias="timezone", min_length=1, max_length=64),
+    limit: int = Query(default=_DAILY_HISTORY_DEFAULT_LIMIT, ge=1, le=300),
+) -> ChatDailyHistoryResponse:
+    tz = _daily_history_timezone(timezone_name)
+    target_date = _daily_history_date(date, tz)
+    start_utc, end_utc = _daily_history_utc_window(target_date, tz)
+    start_iso = _datetime_to_utc_iso(start_utc)
+    end_iso = _datetime_to_utc_iso(end_utc)
+
+    with database(request).connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT
+                messages.id,
+                messages.conversation_id,
+                messages.role,
+                messages.content,
+                messages.status,
+                messages.created_at,
+                messages.updated_at,
+                agent_runs.id AS agent_run_id
+            FROM messages
+            LEFT JOIN agent_runs ON agent_runs.assistant_message_id = messages.id
+            WHERE messages.created_at >= ?
+              AND messages.created_at < ?
+              AND messages.role IN (?, ?)
+              AND messages.status IN (?, ?, ?)
+              AND TRIM(messages.content) != ''
+            ORDER BY messages.created_at ASC, messages.id ASC
+            LIMIT ?
+            """,
+            (
+                start_iso,
+                end_iso,
+                MessageRole.USER.value,
+                MessageRole.ASSISTANT.value,
+                MessageStatus.COMPLETED.value,
+                MessageStatus.FAILED.value,
+                MessageStatus.CANCELLED.value,
+                limit + 1,
+            ),
+        ).fetchall()
+        latest_row = conn.execute(
+            """
+            SELECT conversation_id
+            FROM messages
+            WHERE created_at >= ?
+              AND created_at < ?
+              AND role IN (?, ?)
+              AND status IN (?, ?, ?)
+              AND TRIM(content) != ''
+            ORDER BY created_at DESC, id DESC
+            LIMIT 1
+            """,
+            (
+                start_iso,
+                end_iso,
+                MessageRole.USER.value,
+                MessageRole.ASSISTANT.value,
+                MessageStatus.COMPLETED.value,
+                MessageStatus.FAILED.value,
+                MessageStatus.CANCELLED.value,
+            ),
+        ).fetchone()
+
+    limited_rows = rows[:limit]
+    return ChatDailyHistoryResponse(
+        date=target_date.isoformat(),
+        timezone=tz.key,
+        conversation_id=str(latest_row["conversation_id"]) if latest_row is not None else None,
+        messages=[
+            ChatDailyHistoryMessage(
+                id=str(row["id"]),
+                conversation_id=str(row["conversation_id"]),
+                role=str(row["role"]),
+                content=str(row["content"]),
+                status=str(row["status"]),
+                created_at=str(row["created_at"]),
+                updated_at=str(row["updated_at"]),
+                agent_run_id=str(row["agent_run_id"]) if row["agent_run_id"] is not None else None,
+            )
+            for row in limited_rows
+        ],
+        has_more=len(rows) > limit,
+    )
+
+
+def _daily_history_timezone(timezone_name: str) -> ZoneInfo:
+    normalized = (timezone_name or _DEFAULT_DAILY_HISTORY_TIMEZONE).strip() or _DEFAULT_DAILY_HISTORY_TIMEZONE
+    try:
+        return ZoneInfo(normalized)
+    except ZoneInfoNotFoundError as exc:
+        raise AppError(
+            code="invalid_timezone",
+            message=f"未知时区：{normalized}",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            details={"timezone": normalized},
+        ) from exc
+
+
+def _daily_history_date(raw_date: str | None, tz: ZoneInfo) -> date_cls:
+    if raw_date is None:
+        return datetime.now(tz).date()
+    try:
+        return date_cls.fromisoformat(raw_date)
+    except ValueError as exc:
+        raise AppError(
+            code="invalid_date",
+            message="日期格式需要是 YYYY-MM-DD。",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            details={"date": raw_date},
+        ) from exc
+
+
+def _daily_history_utc_window(target_date: date_cls, tz: ZoneInfo) -> tuple[datetime, datetime]:
+    start = datetime.combine(target_date, time.min, tzinfo=tz)
+    end = datetime.combine(target_date + timedelta(days=1), time.min, tzinfo=tz)
+    return start.astimezone(timezone.utc), end.astimezone(timezone.utc)
+
+
+def _datetime_to_utc_iso(value: datetime) -> str:
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _local_privacy_sensitive_reason(request: Request, user_message: str) -> str | None:

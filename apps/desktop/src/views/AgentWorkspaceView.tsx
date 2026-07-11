@@ -2,7 +2,6 @@ import {
   BellRing,
   CalendarDays,
   Check,
-  CircleAlert,
   ClipboardList,
   ListChecks,
   Loader2,
@@ -51,6 +50,9 @@ type Notice = {
   message: string;
 };
 
+type PagerKey = "tasks" | "today" | "upcoming" | "triggered" | "problems" | "steps" | "logs";
+type ReminderTab = "today" | "upcoming" | "triggered" | "problems";
+
 type AgentWorkspaceViewProps = {
   api: DesktopApi;
 };
@@ -72,6 +74,16 @@ const stepStatusLabels: Record<AgentStepStatus, string> = {
 };
 
 const pollIntervalMs = 30000;
+const taskListPageSize = 1;
+const reminderPageSize = 1;
+const tracePageSize = 1;
+
+const reminderTabLabels: Record<ReminderTab, string> = {
+  today: "今天",
+  upcoming: "即将",
+  triggered: "已触发",
+  problems: "关注",
+};
 
 function mapTaskStatus(task: TaskWorkspaceItem): AgentTaskStatus {
   if (task.needs_approval) {
@@ -239,6 +251,57 @@ function reminderProblemTasks(tasks: TaskItem[]): TaskItem[] {
     .slice(0, 5);
 }
 
+function pageCountFor(total: number, pageSize: number): number {
+  return Math.max(1, Math.ceil(total / pageSize));
+}
+
+function clampPageIndex(page: number, total: number, pageSize: number): number {
+  return Math.min(Math.max(page, 0), pageCountFor(total, pageSize) - 1);
+}
+
+function pageItems<T>(items: T[], page: number, pageSize: number): T[] {
+  const safePage = clampPageIndex(page, items.length, pageSize);
+  return items.slice(safePage * pageSize, safePage * pageSize + pageSize);
+}
+
+function PaginationControls({
+  label,
+  page,
+  pageSize,
+  total,
+  onPageChange,
+}: {
+  label: string;
+  page: number;
+  pageSize: number;
+  total: number;
+  onPageChange: (page: number) => void;
+}) {
+  if (total <= pageSize) {
+    return null;
+  }
+  const pageCount = pageCountFor(total, pageSize);
+  const safePage = clampPageIndex(page, total, pageSize);
+  return (
+    <div className="task-pagination" aria-label={`${label}分页`}>
+      <button type="button" className="secondary" onClick={() => onPageChange(safePage - 1)} disabled={safePage === 0}>
+        上一页
+      </button>
+      <span>
+        {safePage + 1} / {pageCount}
+      </span>
+      <button
+        type="button"
+        className="secondary"
+        onClick={() => onPageChange(safePage + 1)}
+        disabled={safePage >= pageCount - 1}
+      >
+        下一页
+      </button>
+    </div>
+  );
+}
+
 function formatReminderStatus(status?: string | null): string {
   const labels: Record<string, string> = {
     scheduled: "已安排",
@@ -332,7 +395,21 @@ export default function AgentWorkspaceView({ api }: AgentWorkspaceViewProps) {
   const [taskNotice, setTaskNotice] = useState<Notice | null>(null);
   const [approvalBusy, setApprovalBusy] = useState<"approve" | "reject" | null>(null);
   const [creatingTask, setCreatingTask] = useState(false);
+  const [activeReminderTab, setActiveReminderTab] = useState<ReminderTab>("today");
+  const [pages, setPages] = useState<Record<PagerKey, number>>({
+    tasks: 0,
+    today: 0,
+    upcoming: 0,
+    triggered: 0,
+    problems: 0,
+    steps: 0,
+    logs: 0,
+  });
   const localTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+
+  const setPage = useCallback((key: PagerKey, page: number) => {
+    setPages((current) => ({ ...current, [key]: page }));
+  }, []);
 
   const loadTaskTrace = useCallback(
     async (taskId: string, title: string, options: { silent?: boolean; signal?: AbortSignal } = {}) => {
@@ -492,6 +569,43 @@ export default function AgentWorkspaceView({ api }: AgentWorkspaceViewProps) {
   const upcomingReminders = upcomingReminderTasks(tasks);
   const triggeredReminders = triggeredReminderTasks(tasks);
   const reminderProblems = reminderProblemTasks(tasks);
+  const reminderItems: Record<ReminderTab, TaskItem[]> = {
+    today: mergedTodayTasks,
+    upcoming: upcomingReminders,
+    triggered: triggeredReminders,
+    problems: reminderProblems,
+  };
+  const reminderEmptyText: Record<ReminderTab, string> = {
+    today: loading || loadingTasks ? "正在加载今天的任务。" : "今天没有到期任务或提醒。",
+    upcoming: loadingTasks ? "正在加载即将提醒。" : "没有已安排的即将提醒。",
+    triggered: loadingTasks ? "正在加载已触发提醒。" : "还没有已触发提醒。",
+    problems: "提醒调度器当前没有需要手动处理的问题。",
+  };
+  const activeReminderItems = reminderItems[activeReminderTab];
+  const visibleTasks = pageItems(tasks, pages.tasks, taskListPageSize);
+  const visibleReminderItems = pageItems(activeReminderItems, pages[activeReminderTab], reminderPageSize);
+  const visibleSteps = pageItems(agentSteps, pages.steps, tracePageSize);
+  const visibleLogs = pageItems(executionLogs, pages.logs, tracePageSize);
+
+  useEffect(() => {
+    setPages((current) => ({
+      tasks: clampPageIndex(current.tasks, tasks.length, taskListPageSize),
+      today: clampPageIndex(current.today, mergedTodayTasks.length, reminderPageSize),
+      upcoming: clampPageIndex(current.upcoming, upcomingReminders.length, reminderPageSize),
+      triggered: clampPageIndex(current.triggered, triggeredReminders.length, reminderPageSize),
+      problems: clampPageIndex(current.problems, reminderProblems.length, reminderPageSize),
+      steps: clampPageIndex(current.steps, agentSteps.length, tracePageSize),
+      logs: clampPageIndex(current.logs, executionLogs.length, tracePageSize),
+    }));
+  }, [
+    agentSteps.length,
+    executionLogs.length,
+    mergedTodayTasks.length,
+    reminderProblems.length,
+    tasks.length,
+    triggeredReminders.length,
+    upcomingReminders.length,
+  ]);
 
   return (
     <FeatureWindowShell
@@ -501,97 +615,113 @@ export default function AgentWorkspaceView({ api }: AgentWorkspaceViewProps) {
       activeTab="计划"
     >
       <div className="task-workspace-grid" aria-label="提醒和待办区">
-        <Panel icon={<PlusCircle size={18} />} title="创建任务" className="feature-window-panel task-create-panel">
-          <div className="guided-trial-actions" aria-label="任务快捷示例">
-            <button type="button" className="secondary" onClick={fillTomorrowReminderTrial} disabled={creatingTask}>
-              <BellRing size={16} />
-              创建明天的提醒
-            </button>
+        <section className="task-primary-column" aria-label="主要任务操作">
+          <div className="task-workspace-guide">
+            <strong>先创建或管理任务</strong>
+            <span>提醒状态和执行轨迹收在右侧与下方，主区只放最常用的操作。</span>
           </div>
-          <form className="task-create-form" aria-label="任务创建表单" onSubmit={(event) => void handleCreateTask(event)}>
-            <label>
-              <span>任务标题</span>
-              <input
-                value={taskDraft.title}
-                onChange={(event) => updateTaskDraft({ title: event.target.value })}
-                placeholder="支付账单、回电话、检查笔记..."
-                disabled={creatingTask}
-                required
-              />
-            </label>
-            <label>
-              <span>说明</span>
-              <textarea
-                rows={3}
-                value={taskDraft.description}
-                onChange={(event) => updateTaskDraft({ description: event.target.value })}
-                placeholder="补充背景、预期结果，或希望助手记住的内容。"
-                disabled={creatingTask}
-              />
-            </label>
-            <div className="task-create-time-grid">
-              <label>
-                <span>截止时间</span>
-                <input
-                  type="datetime-local"
-                  value={taskDraft.due_at || ""}
-                  onChange={(event) => updateTaskDraft({ due_at: event.target.value })}
-                  disabled={creatingTask}
-                />
-              </label>
-              <label>
-                <span>提醒时间</span>
-                <input
-                  type="datetime-local"
-                  value={taskDraft.remind_at || ""}
-                  onChange={(event) => updateTaskDraft({ remind_at: event.target.value })}
-                  disabled={creatingTask}
-                />
-              </label>
-              <label>
-                <span>时区</span>
-                <input
-                  value={taskDraft.timezone}
-                  onChange={(event) => updateTaskDraft({ timezone: event.target.value })}
-                  placeholder="Asia/Shanghai"
-                  disabled={creatingTask}
-                />
-              </label>
-            </div>
-            {taskNotice ? <p className={`field-note ${taskNotice.tone === "error" ? "error" : ""}`}>{taskNotice.message}</p> : null}
-            <div className="button-row task-button-row">
-              <button type="submit" disabled={creatingTask || !taskDraft.title.trim()}>
-                {creatingTask ? <Loader2 className="spin" size={16} /> : <PlusCircle size={16} />}
-                {creatingTask ? "正在创建" : "创建任务"}
-              </button>
-              <button type="button" className="secondary" onClick={() => void refreshTaskPage()} disabled={loading || loadingTasks}>
-                {loading || loadingTasks ? <Loader2 className="spin" size={16} /> : <ClipboardList size={16} />}
-                刷新任务
-              </button>
-            </div>
-          </form>
-        </Panel>
 
-        <Panel icon={<ClipboardList size={18} />} title="管理任务" className="feature-window-panel task-list-panel">
-          <div className="task-management-list" aria-label="任务卡片">
-            {tasks.length > 0 ? (
-              tasks.map((task) => (
-                <TaskManagementCard
-                  key={task.task_id}
-                  task={task}
-                  busy={taskActionIds.has(task.task_id)}
-                  onComplete={() => void handleTaskAction(task.task_id, "complete")}
-                  onCancel={() => void handleTaskAction(task.task_id, "cancel")}
-                  onLocate={() => void locateTaskLogs(task)}
+          <Panel icon={<PlusCircle size={18} />} title="创建任务" className="feature-window-panel task-create-panel">
+            <div className="guided-trial-actions" aria-label="任务快捷示例">
+              <button type="button" className="secondary" onClick={fillTomorrowReminderTrial} disabled={creatingTask}>
+                <BellRing size={16} />
+                创建明天的提醒
+              </button>
+            </div>
+            <form className="task-create-form" aria-label="任务创建表单" onSubmit={(event) => void handleCreateTask(event)}>
+              <label>
+                <span>任务标题</span>
+                <input
+                  value={taskDraft.title}
+                  onChange={(event) => updateTaskDraft({ title: event.target.value })}
+                  placeholder="支付账单、回电话、检查笔记..."
+                  disabled={creatingTask}
+                  required
                 />
-              ))
-            ) : loadingTasks ? (
-              <EmptyState text="正在加载任务卡片。" />
-            ) : (
-              <EmptyState text="还没有任务。可以用上方表单创建第一个任务。" />
-            )}
-          </div>
-        </Panel>
+              </label>
+              <label>
+                <span>说明</span>
+                <textarea
+                  rows={3}
+                  value={taskDraft.description}
+                  onChange={(event) => updateTaskDraft({ description: event.target.value })}
+                  placeholder="补充背景、预期结果，或希望助手记住的内容。"
+                  disabled={creatingTask}
+                />
+              </label>
+              <div className="task-create-time-grid">
+                <label>
+                  <span>截止时间</span>
+                  <input
+                    type="datetime-local"
+                    value={taskDraft.due_at || ""}
+                    onChange={(event) => updateTaskDraft({ due_at: event.target.value })}
+                    disabled={creatingTask}
+                  />
+                </label>
+                <label>
+                  <span>提醒时间</span>
+                  <input
+                    type="datetime-local"
+                    value={taskDraft.remind_at || ""}
+                    onChange={(event) => updateTaskDraft({ remind_at: event.target.value })}
+                    disabled={creatingTask}
+                  />
+                </label>
+                <label>
+                  <span>时区</span>
+                  <input
+                    value={taskDraft.timezone}
+                    onChange={(event) => updateTaskDraft({ timezone: event.target.value })}
+                    placeholder="Asia/Shanghai"
+                    disabled={creatingTask}
+                  />
+                </label>
+              </div>
+              {taskNotice ? <p className={`field-note ${taskNotice.tone === "error" ? "error" : ""}`}>{taskNotice.message}</p> : null}
+              <div className="button-row task-button-row">
+                <button type="submit" disabled={creatingTask || !taskDraft.title.trim()}>
+                  {creatingTask ? <Loader2 className="spin" size={16} /> : <PlusCircle size={16} />}
+                  {creatingTask ? "正在创建" : "创建任务"}
+                </button>
+                <button type="button" className="secondary" onClick={() => void refreshTaskPage()} disabled={loading || loadingTasks}>
+                  {loading || loadingTasks ? <Loader2 className="spin" size={16} /> : <ClipboardList size={16} />}
+                  刷新任务
+                </button>
+              </div>
+            </form>
+          </Panel>
+
+          <Panel icon={<ClipboardList size={18} />} title="管理任务" className="feature-window-panel task-list-panel">
+            <div className="task-management-list" aria-label="任务卡片">
+              {tasks.length > 0 ? (
+                visibleTasks.map((task) => (
+                  <TaskManagementCard
+                    key={task.task_id}
+                    task={task}
+                    busy={taskActionIds.has(task.task_id)}
+                    onComplete={() => void handleTaskAction(task.task_id, "complete")}
+                    onCancel={() => void handleTaskAction(task.task_id, "cancel")}
+                    onLocate={() => void locateTaskLogs(task)}
+                  />
+                ))
+              ) : loadingTasks ? (
+                <EmptyState text="正在加载任务卡片。" />
+              ) : (
+                <EmptyState text="还没有任务。可以用上方表单创建第一个任务。" />
+              )}
+            </div>
+            <PaginationControls
+              label="任务"
+              page={pages.tasks}
+              pageSize={taskListPageSize}
+              total={tasks.length}
+              onPageChange={(page) => setPage("tasks", page)}
+            />
+          </Panel>
+        </section>
+
+        <aside className="task-context-rail" aria-label="今天和提醒摘要">
 
         <Panel icon={<ListChecks size={18} />} title="当前任务" className="feature-window-panel task-current-panel">
           <div className="task-current-header">
@@ -643,59 +773,59 @@ export default function AgentWorkspaceView({ api }: AgentWorkspaceViewProps) {
           </Panel>
         ) : null}
 
-        <Panel icon={<CalendarDays size={18} />} title="今天" className="feature-window-panel task-daily-panel">
-          <div className="task-digest-list" aria-label="今日任务列表">
-            {mergedTodayTasks.length > 0 ? (
-              mergedTodayTasks.map((task) => <TaskDigestCard key={`today-${task.task_id}`} task={task} />)
-            ) : (
-              <EmptyState text={loading || loadingTasks ? "正在加载今天的任务。" : "今天没有到期任务或提醒。"} />
-            )}
+        <Panel icon={<CalendarDays size={18} />} title="今天和提醒" className="feature-window-panel task-reminder-summary-panel">
+          <div className="task-summary-tabs" aria-label="提醒分类">
+            {(Object.keys(reminderTabLabels) as ReminderTab[]).map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                className={activeReminderTab === tab ? "active" : "secondary"}
+                onClick={() => setActiveReminderTab(tab)}
+                aria-pressed={activeReminderTab === tab}
+              >
+                {reminderTabLabels[tab]}
+                <span>{reminderItems[tab].length}</span>
+              </button>
+            ))}
           </div>
-        </Panel>
-
-        <Panel icon={<BellRing size={18} />} title="即将提醒" className="feature-window-panel task-reminder-panel">
-          <div className="task-digest-list" aria-label="即将提醒列表">
-            {upcomingReminders.length > 0 ? (
-              upcomingReminders.map((task) => <TaskDigestCard key={`upcoming-${task.task_id}`} task={task} />)
-            ) : (
-              <EmptyState text={loadingTasks ? "正在加载即将提醒。" : "没有已安排的即将提醒。"} />
-            )}
-          </div>
-        </Panel>
-
-        <Panel icon={<Check size={18} />} title="已触发提醒" className="feature-window-panel task-triggered-panel">
-          <div className="task-digest-list" aria-label="已触发提醒列表">
-            {triggeredReminders.length > 0 ? (
-              triggeredReminders.map((task) => (
-                <TaskDigestCard key={`triggered-${task.task_id}`} task={task} tone="success" />
+          {activeReminderTab === "problems" ? (
+            <div className="task-reminder-alert">
+              <strong>
+                {reminderProblems.length > 0
+                  ? `${reminderProblems.length} 条提醒未安排或失败`
+                  : "没有未安排或失败的提醒"}
+              </strong>
+              <span>
+                {reminderProblems.length > 0
+                  ? "这些任务仍保留在本地列表中，但提醒没有进入可靠调度。"
+                  : "提醒调度器当前没有需要手动处理的问题。"}
+              </span>
+            </div>
+          ) : null}
+          <div className="task-digest-list" aria-label={`${reminderTabLabels[activeReminderTab]}列表`}>
+            {activeReminderItems.length > 0 ? (
+              visibleReminderItems.map((task) => (
+                <TaskDigestCard
+                  key={`${activeReminderTab}-${task.task_id}`}
+                  task={task}
+                  tone={activeReminderTab === "triggered" ? "success" : activeReminderTab === "problems" ? "warning" : "normal"}
+                />
               ))
             ) : (
-              <EmptyState text={loadingTasks ? "正在加载已触发提醒。" : "还没有已触发提醒。"} />
+              <EmptyState text={reminderEmptyText[activeReminderTab]} />
             )}
           </div>
+          <PaginationControls
+            label={reminderTabLabels[activeReminderTab]}
+            page={pages[activeReminderTab]}
+            pageSize={reminderPageSize}
+            total={activeReminderItems.length}
+            onPageChange={(page) => setPage(activeReminderTab, page)}
+          />
         </Panel>
+        </aside>
 
-        <Panel icon={<CircleAlert size={18} />} title="需要关注" className="feature-window-panel task-reminder-alert-panel">
-          <div className="task-reminder-alert">
-            <strong>
-              {reminderProblems.length > 0
-                ? `${reminderProblems.length} 条提醒未安排或失败`
-                : "没有未安排或失败的提醒"}
-            </strong>
-            <span>
-              {reminderProblems.length > 0
-                ? "这些任务仍保留在本地列表中，但提醒没有进入可靠调度。"
-                : "提醒调度器当前没有需要手动处理的问题。"}
-            </span>
-          </div>
-          <div className="task-digest-list" aria-label="未安排或失败的提醒">
-            {reminderProblems.length > 0 ? (
-              reminderProblems.map((task) => (
-                <TaskDigestCard key={`problem-${task.task_id}`} task={task} tone="warning" />
-              ))
-            ) : null}
-          </div>
-        </Panel>
+        <section className="task-trace-drawer" aria-label="执行细节">
 
         <Panel id="task-steps-panel" icon={<ListChecks size={18} />} title="执行步骤" className="feature-window-panel task-steps-panel">
           <div className="section-heading compact">
@@ -704,7 +834,7 @@ export default function AgentWorkspaceView({ api }: AgentWorkspaceViewProps) {
           </div>
           <div className="task-step-list" aria-label="工具步骤列表">
             {agentSteps.length > 0 ? (
-              agentSteps.map((step) => (
+              visibleSteps.map((step) => (
                 <article key={`${step.tool}-${step.index}`} className="task-step-row">
                   <span className="task-step-index">{String(step.index).padStart(2, "0")}</span>
                   <strong>{step.tool}</strong>
@@ -718,12 +848,19 @@ export default function AgentWorkspaceView({ api }: AgentWorkspaceViewProps) {
               <EmptyState text="未选择执行步骤。" />
             )}
           </div>
+          <PaginationControls
+            label="执行步骤"
+            page={pages.steps}
+            pageSize={tracePageSize}
+            total={agentSteps.length}
+            onPageChange={(page) => setPage("steps", page)}
+          />
         </Panel>
 
         <Panel id="task-log-panel" icon={<MessageSquareText size={18} />} title="执行日志" className="feature-window-panel task-log-panel">
           <div className="task-log-list" aria-label="执行日志">
             {executionLogs.length > 0 ? (
-              executionLogs.map((log) => (
+              visibleLogs.map((log) => (
                 <p key={`${log.time}-${log.content}`} className="task-log-line">
                   <span>{log.time}</span>
                   {log.content}
@@ -735,7 +872,15 @@ export default function AgentWorkspaceView({ api }: AgentWorkspaceViewProps) {
               <EmptyState text="未选择执行日志。" />
             )}
           </div>
+          <PaginationControls
+            label="执行日志"
+            page={pages.logs}
+            pageSize={tracePageSize}
+            total={executionLogs.length}
+            onPageChange={(page) => setPage("logs", page)}
+          />
         </Panel>
+        </section>
       </div>
     </FeatureWindowShell>
   );

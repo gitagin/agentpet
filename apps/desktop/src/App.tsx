@@ -2,6 +2,7 @@
 import type { FormEvent } from "react";
 import type {
   AgentAction,
+  ChatDailyHistoryMessage,
   ChatMessage,
   ChatContinuityProposal,
   MemorySearchResult,
@@ -92,6 +93,30 @@ function displayTextForInputMode(mode: PetInputMode, rawText: string): string {
   return text ? `${label}：${text}` : label;
 }
 
+function resolveDailyHistoryTimeZone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Shanghai";
+  } catch {
+    return "Asia/Shanghai";
+  }
+}
+
+function chatMessageFromDailyHistory(message: ChatDailyHistoryMessage): ChatMessage | null {
+  if (message.role !== "user" && message.role !== "assistant") {
+    return null;
+  }
+  const status = ["partial", "completed", "failed", "cancelled"].includes(message.status)
+    ? (message.status as ChatMessage["status"])
+    : undefined;
+  return {
+    id: message.id,
+    role: message.role,
+    content: message.content,
+    status,
+    agent_run_id: message.agent_run_id ?? undefined,
+  };
+}
+
 function App() {
   const [notice, setNotice] = useState<Notice | null>(null);
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -118,6 +143,7 @@ function App() {
   const activeChatRequestIdRef = useRef<string | null>(null);
   const streamingRef = useRef(false);
   const conversationIdRef = useRef<string | null>(conversationId);
+  const messagesRef = useRef<ChatMessage[]>(messages);
   const petTaskStageRef = useRef<() => void>(() => undefined);
   const petTaskStageTimeoutRef = useRef<number | null>(null);
   const [recentTaskStageActive, setRecentTaskStageActive] = useState(false);
@@ -134,6 +160,10 @@ function App() {
   useEffect(() => {
     conversationIdRef.current = conversationId;
   }, [conversationId]);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   useEffect(() => {
     streamingRef.current = streaming;
@@ -424,6 +454,15 @@ function App() {
   }, [api]);
 
   useEffect(() => {
+    if (sidecarStatus?.state !== "ready" && health?.status !== "ok") {
+      return undefined;
+    }
+    const abort = new AbortController();
+    void loadDailyChatHistory({ signal: abort.signal });
+    return () => abort.abort();
+  }, [api, health?.status, sidecarStatus?.state, sidecarStatus?.updatedAt]);
+
+  useEffect(() => {
     const abort = new AbortController();
     void loadPendingProposals({ silent: true, signal: abort.signal });
     return () => abort.abort();
@@ -648,6 +687,34 @@ function App() {
         streamAbort.current = null;
         activeChatRequestIdRef.current = null;
         petChat.finishStream();
+      }
+    }
+  }
+
+  async function loadDailyChatHistory(options: { signal?: AbortSignal } = {}) {
+    try {
+      const response = await api.getDailyChatHistory(
+        {
+          timezone: resolveDailyHistoryTimeZone(),
+        },
+        options.signal,
+      );
+      if (options.signal?.aborted || streamingRef.current || messagesRef.current.length > 0) {
+        return;
+      }
+      if (response.conversation_id) {
+        conversationIdRef.current = response.conversation_id;
+        setConversationId(response.conversation_id);
+      }
+      const restoredMessages = response.messages
+        .map((message) => chatMessageFromDailyHistory(message))
+        .filter((message): message is ChatMessage => message !== null);
+      if (restoredMessages.length > 0) {
+        setMessages(restoredMessages);
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return;
       }
     }
   }

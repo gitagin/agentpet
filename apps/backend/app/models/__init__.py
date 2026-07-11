@@ -1,6 +1,12 @@
 """Shared backend schemas."""
 
-from .chat import ChatAcceptedResponse, ChatRequest, ChatStreamEvent
+from .chat import (
+    ChatAcceptedResponse,
+    ChatDailyHistoryMessage,
+    ChatDailyHistoryResponse,
+    ChatRequest,
+    ChatStreamEvent,
+)
 from .config import (
     AgentModelConfigRequest,
     AgentModelConfigResponse,

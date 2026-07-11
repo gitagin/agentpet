@@ -168,7 +168,13 @@ describe("SettingsPanel", () => {
     const guidedActions = within(screen.getByRole("region", { name: "设置引导" }));
 
     expect(screen.getByText("基础设置")).toBeInTheDocument();
-    expect(screen.getByText("先连接对话能力，再决定记忆保存在哪里。")).toBeInTheDocument();
+    expect(screen.getByText("把 Agent Pet 调成适合你的工作方式。")).toBeInTheDocument();
+    expect(screen.getByText("这里管理它怎么聊天、把记忆保存在哪里、什么时候自动整理，以及是否朗读回复。")).toBeInTheDocument();
+    expect(screen.getAllByText("对话能力").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("保存位置").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("自动整理").length).toBeGreaterThan(0);
+    expect(screen.getByText("语音与高级")).toBeInTheDocument();
+    expect(screen.getByText("向下滑动可以继续设置自动整理、语音和保存位置。")).toBeInTheDocument();
     fireEvent.click(guidedActions.getByRole("button", { name: "测试对话能力" }));
     fireEvent.click(guidedActions.getByRole("button", { name: "选择保存位置" }));
     fireEvent.click(guidedActions.getByRole("button", { name: "刷新状态" }));

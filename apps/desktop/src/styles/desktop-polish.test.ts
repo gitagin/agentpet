@@ -32,6 +32,98 @@ describe("desktop polish navigation contract", () => {
   });
 });
 
+describe("desktop polish memory workspace boundary contract", () => {
+  it("keeps memory workspace tabs inside a fixed route area above the dock", () => {
+    expect(polishStyles).toContain("Product Design memory workspace boundary fix");
+    expect(polishStyles).toMatch(
+      /body\[data-window-mode="memory"\] \.feature-window-content\s*\{[^}]*grid-template-rows:\s*var\(--memory-workspace-rail-height\) minmax\(0,\s*1fr\);[^}]*overflow:\s*hidden;[^}]*padding:\s*0 0 calc\(var\(--bottom-nav-safe-area\) \+ 4px\);/,
+    );
+    expect(polishStyles).toMatch(
+      /body\[data-window-mode="memory"\] \.memory-workspace-tab-panel\s*\{[^}]*height:\s*100%;[^}]*max-height:\s*100%;[^}]*overflow:\s*hidden;[^}]*contain:\s*layout paint;/,
+    );
+    expect(polishStyles).toMatch(
+      /body\[data-window-mode="memory"\] \.memory-workspace-tab-panel:not\(\.memory-workspace-tab-panel-graph\)\s*\{[^}]*overflow-y:\s*auto;[^}]*scrollbar-gutter:\s*stable;/,
+    );
+    expect(polishStyles).toMatch(
+      /body\[data-window-mode="memory"\] \.memory-workspace-tab-panel-graph > \.memory-graph-projection-panel\s*\{[^}]*height:\s*100%;[^}]*grid-template-rows:\s*auto auto minmax\(0,\s*1fr\) auto;[^}]*overflow:\s*hidden;/,
+    );
+    expect(polishStyles).toMatch(
+      /body\[data-window-mode="memory"\] \.memory-graph-content\s*\{[^}]*height:\s*100%;[^}]*grid-template-columns:\s*minmax\(0,\s*1\.32fr\) minmax\(240px,\s*0\.52fr\);[^}]*overflow:\s*hidden;/,
+    );
+    expect(polishStyles).toMatch(
+      /@media \(max-width:\s*1100px\)\s*\{[\s\S]*body\[data-window-mode="memory"\] \.memory-graph-content\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\);[^}]*grid-template-rows:\s*minmax\(0,\s*1fr\) minmax\(118px,\s*0\.34fr\);/,
+    );
+    expect(polishStyles).toContain("Memory graph focus pass");
+    expect(polishStyles).toMatch(
+      /body\[data-window-mode="memory"\] \.feature-window-header\s*\{[^}]*display:\s*none;/,
+    );
+    expect(polishStyles).toMatch(
+      /body\[data-window-mode="memory"\] \.memory-graph-content\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*7fr\) minmax\(240px,\s*3fr\);/,
+    );
+    expect(polishStyles).toContain("Memory React Flow graph");
+    expect(polishStyles).toContain("Memory graph 85 percent focus pass");
+    expect(polishStyles).toMatch(
+      /body\[data-window-mode="memory"\] \.memory-flow-content\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*85fr\) minmax\(180px,\s*15fr\);[^}]*overflow:\s*hidden;/,
+    );
+    expect(polishStyles).toMatch(
+      /body\[data-window-mode="memory"\] \.memory-flow-canvas\s*\{[^}]*height:\s*100%;[^}]*overflow:\s*hidden;[^}]*contain:\s*layout paint;/,
+    );
+    expect(polishStyles).toMatch(
+      /body\[data-window-mode="memory"\] \.memory-node-dot\s*\{[^}]*border-radius:\s*50%;[^}]*background:\s*currentColor;[^}]*box-shadow:\s*0 0 12px currentColor;/,
+    );
+    expect(polishStyles).toMatch(
+      /body\[data-window-mode="memory"\] \.memory-node-center \.memory-node-dot\s*\{[^}]*box-shadow:\s*0 0 22px currentColor,\s*0 0 48px rgba\(213,\s*111,\s*138,\s*0\.22\);/,
+    );
+    expect(polishStyles).toMatch(
+      /body\[data-window-mode="memory"\] \.memory-node-pending \.memory-node-dot\s*\{[^}]*border-style:\s*dashed;/,
+    );
+    expect(polishStyles).toMatch(
+      /body\[data-window-mode="memory"\] \.memory-node-handle\s*\{[^}]*top:\s*50% !important;[^}]*left:\s*50% !important;[^}]*transform:\s*translate\(-50%,\s*-50%\) !important;/,
+    );
+    expect(polishStyles).toMatch(
+      /body\[data-window-mode="memory"\] \.memory-flow \.react-flow__controls-button\s*\{[^}]*background:\s*transparent;[^}]*box-shadow:\s*none;/,
+    );
+    expect(polishStyles).toMatch(
+      /body\[data-window-mode="memory"\] \.memory-flow-detail-panel\s*\{[^}]*grid-template-rows:\s*auto auto minmax\(0,\s*1fr\);[^}]*overflow:\s*hidden;[^}]*scrollbar-width:\s*none;/,
+    );
+    expect(polishStyles).toMatch(
+      /@media \(max-width:\s*1100px\), \(max-height:\s*760px\)\s*\{[\s\S]*body\[data-window-mode="memory"\] \.memory-flow-content\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\);[^}]*grid-template-rows:\s*minmax\(0,\s*84fr\) minmax\(68px,\s*16fr\);/,
+    );
+    expect(polishStyles).toContain("Memory graph revert pass");
+    expect(polishStyles).toMatch(
+      /body\[data-window-mode="memory"\] \.memory-flow-content\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\) minmax\(280px,\s*320px\);[^}]*grid-template-rows:\s*minmax\(0,\s*1fr\);/,
+    );
+    expect(polishStyles).toMatch(
+      /body\[data-window-mode="memory"\] \.memory-flow \.memory-flow-edge\.is-dashed \.react-flow__edge-path\s*\{[^}]*animation:\s*none;/,
+    );
+    expect(polishStyles).toMatch(
+      /body\[data-window-mode="memory"\] \.memory-node-pending \.memory-node-dot\s*\{[^}]*animation:\s*none;/,
+    );
+    expect(polishStyles).toMatch(
+      /@media \(max-width:\s*1100px\), \(max-height:\s*760px\)\s*\{[\s\S]*body\[data-window-mode="memory"\] \.memory-flow-content\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\) minmax\(240px,\s*300px\);[^}]*grid-template-rows:\s*minmax\(0,\s*1fr\);/,
+    );
+    expect(polishStyles).toContain("Memory graph layout separation");
+    expect(polishStyles).toMatch(
+      /body\[data-window-mode="memory"\] \.memory-workspace-tab-panel-graph > \.memory-flow-projection-panel\s*\{[^}]*grid-template-rows:\s*auto minmax\(34px,\s*42px\) minmax\(0,\s*1fr\);[^}]*align-items:\s*stretch;[^}]*align-content:\s*stretch;/,
+    );
+    expect(polishStyles).toMatch(
+      /body\[data-window-mode="memory"\] \.memory-flow-summary-grid\s*\{[^}]*grid-row:\s*2;[^}]*position:\s*static !important;[^}]*width:\s*100%;[^}]*height:\s*42px;[^}]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\);[^}]*max-height:\s*42px;[^}]*overflow:\s*hidden;/,
+    );
+    expect(polishStyles).toMatch(
+      /body\[data-window-mode="memory"\] \.memory-flow-summary-grid div\s*\{[^}]*height:\s*42px;[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\) auto;[^}]*overflow:\s*hidden;/,
+    );
+    expect(polishStyles).toMatch(
+      /body\[data-window-mode="memory"\] \.memory-flow-content\s*\{[^}]*grid-row:\s*3;[^}]*display:\s*grid;[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\) minmax\(280px,\s*320px\);[^}]*height:\s*100%;[^}]*min-height:\s*0;[^}]*max-height:\s*100%;[^}]*overflow:\s*hidden;/,
+    );
+    expect(polishStyles).toMatch(
+      /body\[data-window-mode="memory"\] \.memory-flow-detail-panel\s*\{[^}]*align-self:\s*stretch;[^}]*width:\s*100%;[^}]*height:\s*100%;/,
+    );
+    expect(polishStyles).toMatch(
+      /body\[data-window-mode="memory"\] \.memory-flow-detail-panel\.is-empty\s*\{[^}]*align-content:\s*start;/,
+    );
+  });
+});
+
 describe("desktop polish detail contract", () => {
   it("keeps the home stage inside explicit safety zones instead of negative offsets", () => {
     expect(polishStyles).toContain("Product Design stage safety zones");
@@ -511,7 +603,7 @@ describe("desktop polish single-scroll contract", () => {
       /body\[data-window-mode="settings"\] \.feature-window-content\s*\{[^}]*width:\s*min\(100%,\s*1240px\);/,
     );
     expect(polishStyles).toMatch(
-      /body\[data-window-mode="settings"\] #settings-panel\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);[^}]*gap:\s*14px;/,
+      /body\[data-window-mode="settings"\] #settings-panel\s*\{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;[^}]*gap:\s*12px;/,
     );
     expect(polishStyles).toMatch(
       /body\[data-window-mode="settings"\] #settings-panel > \.settings-intro,[\s\S]*body\[data-window-mode="settings"\] #settings-panel > \.advanced-agent-model-settings\s*\{[^}]*grid-column:\s*1 \/ -1;/,
@@ -520,7 +612,7 @@ describe("desktop polish single-scroll contract", () => {
       /body\[data-window-mode="settings"\] \.settings-form-grid,[\s\S]*body\[data-window-mode="settings"\] \.automation-toggle-grid\s*\{[^}]*grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(180px,\s*1fr\)\);/,
     );
     expect(polishStyles).toMatch(
-      /@media \(max-width:\s*980px\)\s*\{[\s\S]*body\[data-window-mode="settings"\] #settings-panel\s*\{[^}]*grid-template-columns:\s*1fr;/,
+      /body\[data-window-mode="settings"\] #settings-panel > \.settings-purpose-grid\s*\{[^}]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\);/,
     );
   });
 

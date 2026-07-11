@@ -7,6 +7,10 @@ pytest-of-*/
 .coverage
 .coverage.*
 *.egg-info/
+.mypy_cache/
+**/.mypy_cache/
+.ruff_cache/
+**/.ruff_cache/
 .venv/
 venv/
 
@@ -15,6 +19,19 @@ node_modules/
 dist/
 release/
 .vite/
+
+# Browser, screenshot, and generated design output
+/output/
+/apps/desktop/output/
+/.playwright-cli/
+**/chrome-profile*/
+playwright-report/
+test-results/
+blob-report/
+*.har
+*.trace.zip
+*.log
+*.pid
 
 # Local app data
 *.db
@@ -29,10 +46,20 @@ logs/
 .tmp/
 *.tmp
 **/.tmp/
+/.tmp-seethrough-prompt*.json
 
 # SQLite WAL 文件
 *.sqlite-wal
 *.sqlite-shm
+*.db-wal
+*.db-shm
+*.db-journal
+
+# Local product data and agent-local state
+/vault/
+/.codex/
+/.impeccable/live/
+/.claude/settings.local.json
 
 # 测试生成的 Vault 和 Markdown 产物
 tests/fixtures/tmp/

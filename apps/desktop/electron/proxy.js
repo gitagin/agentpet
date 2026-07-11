@@ -57,6 +57,7 @@ function createProxyManager({ baseUrl, sessionToken }) {
     return [
       { methods: ["GET"], pattern: /^\/api\/health$/ },
       { methods: ["POST"], pattern: /^\/api\/chat$/ },
+      { methods: ["GET"], pattern: /^\/api\/chat\/daily-history$/ },
       { methods: ["GET"], pattern: /^\/api\/chat\/runs\/[^/]+\/events$/ },
       { methods: ["GET"], pattern: /^\/api\/agent\/actions$/ },
       { methods: ["POST"], pattern: /^\/api\/agent\/actions\/[^/]+\/revert$/ },
@@ -64,6 +65,7 @@ function createProxyManager({ baseUrl, sessionToken }) {
       { methods: ["POST"], pattern: /^\/api\/habit-loop\/trigger$/ },
       { methods: ["POST"], pattern: /^\/api\/memory\/search$/ },
       { methods: ["GET"], pattern: /^\/api\/memory\/profile-projection$/ },
+      { methods: ["GET"], pattern: /^\/api\/memory\/graph-projection$/ },
       { methods: ["GET"], pattern: /^\/api\/memory\/profile-projection\/items\/profile_[A-Za-z0-9_-]+$/ },
       { methods: ["POST"], pattern: /^\/api\/memory\/profile-projection\/items\/profile_[A-Za-z0-9_-]+\/actions$/ },
       { methods: ["GET"], pattern: /^\/api\/memory\/receipts$/ },

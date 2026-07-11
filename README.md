@@ -51,7 +51,7 @@ flowchart TD
 
 - `apps/backend`：本机服务，负责接口、SQLite、检索、记忆、任务、资料整理和活动记录。
 - `apps/desktop`：Electron + React 桌面端，负责桌宠、陪伴入口、聊天、记忆页和设置。
-- `docs`：运行手册、验收边界、验证政策和历史记录。
+- `docs`：当前规格、运行手册、验收矩阵、Electron 安全清单和验证政策。
 
 ## 当前验证边界
 
@@ -61,8 +61,9 @@ flowchart TD
 
 ## 文档
 
-- 当前文档入口见 [`docs/README.md`](docs/README.md)。
-- 当前生效规格见 [`docs/current-specification.md`](docs/current-specification.md)。
-- 验证层级政策见 [`docs/verification-policy.md`](docs/verification-policy.md)。
-- 旧规格已归档到 [`docs/archive/Development_Documentation.md`](docs/archive/Development_Documentation.md)，仅作历史参考。
-- 协调进度记录见 [`progress.md`](progress.md)。
+- 当前生效规格：[`docs/current-specification.md`](docs/current-specification.md)。
+- Windows 运行手册：[`docs/runbook.md`](docs/runbook.md)。
+- MVP 验收矩阵：[`docs/mvp-acceptance-coverage.md`](docs/mvp-acceptance-coverage.md)。
+- Electron 安全清单：[`docs/electron-migration-checklist.md`](docs/electron-migration-checklist.md)。
+- 验证层级政策：[`docs/verification-policy.md`](docs/verification-policy.md)。
+- 协调进度记录：[`progress.md`](progress.md)。

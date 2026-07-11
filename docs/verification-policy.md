@@ -74,9 +74,14 @@ when a required validation step is intentionally skipped.
   broader contract check when the task touches shared policy or acceptance
   state.
 - Do not promote skipped Phase 1 human validations to `Completed`.
-- When a task is documentation-only, L2 can be satisfied by creating the
-  document, linking it from the docs index, updating `progress.md`, and passing
-  repository documentation or acceptance drift checks.
+- When a task is documentation-only, L2 can be satisfied by updating the
+  relevant retained contract document or `progress.md` and passing repository
+  documentation or acceptance drift checks. Do not create a new Markdown file
+  solely to prove that another Markdown file changed.
 - When a task changes renderer permissions, storage safety, Vault writes,
   schema, or rollback behavior, use the stronger project-specific checks listed
   in `AGENTS.md` in addition to the task-specific tests.
+- Store complete per-task command logs, screenshots and temporary evidence under
+  ignored `output/verification/task-XXXX/`; do not recreate `docs/verification/`.
+  Keep only durable status summaries in `progress.md` and public acceptance
+  boundaries in `docs/mvp-acceptance-coverage.md`.

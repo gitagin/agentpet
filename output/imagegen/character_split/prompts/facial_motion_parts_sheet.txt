@@ -1,8 +1,0 @@
-Use case: reference image edit.
-Asset type: facial, ear, and mouth motion parts sheet for a 2D rig.
-Primary request: Using the input image as the strict character reference, create a close-up motion parts sheet for animation. Include separated variants for: eyes open, eyes half closed, eyes fully closed blink, eyes serious focused, pupils looking left, pupils looking right, cat ears neutral, cat ears slightly forward, cat ears slightly back, cat ears relaxed outward, mouth neutral smile, mouth small open, mouth wide speaking, mouth rounded O, mouth flattened serious, mouth thinking smile, eyebrow relaxed, eyebrow raised, eyebrow focused. Arrange these as clean cutout parts, not a finished portrait.
-Input image: Preserve the exact adult anime catgirl identity, pink-purple eye color, black hair and bangs, black cat ears with pale fur inside, subtle blush, soft line art, hair clips, and the reference's warm highlights.
-Style/medium: anime rigging asset sheet, clean and consistent parts, polished painterly linework.
-Composition/framing: 1536x1024 sheet with separated facial and ear components, each part large enough to inspect, no text labels.
-Constraints: adult character; no text, no watermark, no logo; do not invent different eye designs; do not change the color palette; keep all expressions compatible with the original face.
-Output needs: solid pure chroma green background only (#00FF00), so the background can be removed locally; all character parts must be opaque and not green.

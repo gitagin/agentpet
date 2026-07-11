@@ -16,3 +16,22 @@ class ChatAcceptedResponse(BaseModel):
 class ChatStreamEvent(BaseModel):
     event: str
     data: dict[str, str]
+
+
+class ChatDailyHistoryMessage(BaseModel):
+    id: str
+    conversation_id: str
+    role: str
+    content: str
+    status: str
+    created_at: str
+    updated_at: str
+    agent_run_id: str | None = None
+
+
+class ChatDailyHistoryResponse(BaseModel):
+    date: str
+    timezone: str
+    conversation_id: str | None = None
+    messages: list[ChatDailyHistoryMessage]
+    has_more: bool = False

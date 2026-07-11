@@ -117,9 +117,7 @@ describe("AgentWorkspaceView", () => {
 
     const taskCards = screen.getByLabelText("任务卡片");
     const completeCard = within(taskCards).getByText("完成我").closest("article");
-    const cancelCard = within(taskCards).getByText("取消我").closest("article");
     expect(completeCard).not.toBeNull();
-    expect(cancelCard).not.toBeNull();
 
     await act(async () => {
       fireEvent.click(within(completeCard as HTMLElement).getByRole("button", { name: "完成" }));
@@ -127,6 +125,10 @@ describe("AgentWorkspaceView", () => {
       await Promise.resolve();
     });
     expect(api.completeTask).toHaveBeenCalledWith("task-1");
+
+    fireEvent.click(within(screen.getByLabelText("任务分页")).getByRole("button", { name: "下一页" }));
+    const cancelCard = within(taskCards).getByText("取消我").closest("article");
+    expect(cancelCard).not.toBeNull();
 
     await act(async () => {
       fireEvent.click(within(cancelCard as HTMLElement).getByRole("button", { name: "取消" }));
