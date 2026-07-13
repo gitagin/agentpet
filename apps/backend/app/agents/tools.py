@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from inspect import Parameter, signature
+from typing import Literal
 
 try:
     from enum import StrEnum
@@ -130,7 +132,13 @@ class SearchMemoryInput(AgentToolInput):
     query: str = Field(min_length=1, description="需要从知识库中检索的关键词或问题")
     top_k: int = Field(default=5, ge=1, le=20, description="最多返回的片段数量")
     mode: str = Field(default="fts", description="检索模式，v0.1 使用 fts")
-    source_scope: str = Field(
+    source_scope: Literal[
+        "all",
+        "personal_memory",
+        "diary_objects",
+        "daily_chat",
+        "knowledge_base",
+    ] = Field(
         default="all",
         description="检索范围：none、personal_memory、daily_chat、knowledge_base 或 all",
     )
@@ -367,16 +375,14 @@ class AgentToolSet:
     ) -> MemorySearchResponse:
         if self.retrieval is None:
             raise AgentToolUnavailableError("search_memory")
-        try:
-            value = await self._run_with_timeout(
-                "search_memory",
-                self.retrieval.search(query, top_k=top_k, mode=mode, source_scope=source_scope),
-            )
-        except TypeError:
-            value = await self._run_with_timeout(
-                "search_memory",
-                self.retrieval.search(query, top_k=top_k, mode=mode),
-            )
+        search = self.retrieval.search
+        search_kwargs: dict[str, object] = {"top_k": top_k, "mode": "fts"}
+        if _accepts_keyword_argument(search, "source_scope"):
+            search_kwargs["source_scope"] = source_scope
+        value = await self._run_with_timeout(
+            "search_memory",
+            search(query, **search_kwargs),
+        )
         response = _coerce_search_response(value)
         self._notify("search_memory", response)
         return response
@@ -629,6 +635,20 @@ class AgentToolSet:
     ) -> None:
         if self.observer is not None:
             self.observer(AgentToolResult(name=name, value=value))
+
+
+def _accepts_keyword_argument(function: Callable[..., Awaitable], name: str) -> bool:
+    try:
+        parameters = signature(function).parameters
+    except (TypeError, ValueError):
+        return True
+    parameter = parameters.get(name)
+    if parameter is not None and parameter.kind in {
+        Parameter.POSITIONAL_OR_KEYWORD,
+        Parameter.KEYWORD_ONLY,
+    }:
+        return True
+    return any(item.kind is Parameter.VAR_KEYWORD for item in parameters.values())
 
 
 def _coerce_search_response(value) -> MemorySearchResponse:

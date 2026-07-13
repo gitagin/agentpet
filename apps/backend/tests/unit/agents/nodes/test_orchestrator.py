@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from dataclasses import dataclass
 
@@ -7,7 +8,7 @@ import pytest
 
 from app.agents.nodes.orchestrator import OrchestratorNode
 from app.agents.registry import default_agent_registry
-from app.agents.state import AgentInvocationResult, NegotiationState
+from app.agents.state import AgentInvocationResult, NegotiationState, SemanticAnalysisResult
 from app.models.enums import AgentId
 
 
@@ -24,6 +25,12 @@ class JsonModel:
     async def complete(self, prompt: str) -> ModelResult:
         self.prompts.append(prompt)
         return ModelResult(text=json.dumps(self.payload))
+
+
+class SlowModel:
+    async def complete(self, prompt: str) -> ModelResult:
+        await asyncio.sleep(1)
+        return ModelResult(text="{}")
 
 
 def _state(**kwargs) -> NegotiationState:
@@ -93,10 +100,101 @@ async def test_orchestrator_falls_back_when_max_rounds_reached() -> None:
     )
     node = OrchestratorNode(model, default_agent_registry, max_rounds=5)
 
-    result = await node(_state(round=5))
+    result = await node(_state(round=2))
 
-    assert result == {"next": "synthesize", "fallback_triggered": True}
+    assert result == {
+        "next": "synthesize",
+        "fallback_triggered": True,
+        "fallback_reason": "max_rounds_reached",
+    }
     assert model.prompts == []
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_requires_initial_retrieval_for_context_question() -> None:
+    model = JsonModel({})
+    node = OrchestratorNode(model, default_agent_registry)
+    state = _state(
+        semantic_analysis=SemanticAnalysisResult(
+            needs_context=True,
+            source_scope="personal_memory",
+            query="今天的状态",
+            confidence=0.9,
+        )
+    )
+
+    result = await node(state)
+
+    assert result["next"] == "invoke_agent"
+    assert result["next_agent"] == AgentId.RETRIEVAL_AGENT
+    assert result["agent_input"] == "今天的状态"
+    assert model.prompts == []
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_blocks_duplicate_agent_query() -> None:
+    model = JsonModel(
+        {
+            "action": "invoke_agent",
+            "agent": AgentId.RETRIEVAL_AGENT.value,
+            "agent_input": "今天的状态",
+            "reasoning": "继续检索。",
+            "confidence": 0.2,
+            "expected_outcome": "补充上下文。",
+        }
+    )
+    state = _state(
+        round=1,
+        invocation_history=[
+            AgentInvocationResult(
+                agent_id=AgentId.RETRIEVAL_AGENT.value,
+                round=0,
+                input_query=" 今天的状态 ",
+                output={"result": "empty"},
+                confidence=0.0,
+                latency_ms=10,
+                tool_calls=[],
+            )
+        ],
+    )
+
+    result = await OrchestratorNode(model, default_agent_registry)(state)
+
+    assert result["next"] == "synthesize"
+    assert result["fallback_triggered"] is True
+    assert result["fallback_reason"] == "duplicate_agent_query"
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_rejects_non_retrieval_agent_request() -> None:
+    model = JsonModel(
+        {
+            "action": "invoke_agent",
+            "agent": AgentId.ACTION_AGENT.value,
+            "agent_input": "执行动作",
+            "reasoning": "尝试执行动作。",
+            "confidence": 0.2,
+            "expected_outcome": "执行动作。",
+        }
+    )
+
+    result = await OrchestratorNode(model, default_agent_registry)(_state(round=1))
+
+    assert result["next"] == "synthesize"
+    assert result["fallback_triggered"] is True
+    assert result["fallback_reason"] == "unsupported_agent_request"
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_model_call_has_hard_timeout() -> None:
+    node = OrchestratorNode(
+        SlowModel(),
+        default_agent_registry,
+        timeout_seconds=0.01,
+    )
+
+    with pytest.raises(asyncio.TimeoutError):
+        await node(_state(round=1))
 
 
 def test_build_prompt_contains_agent_names_and_context() -> None:

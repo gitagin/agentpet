@@ -1,26 +1,42 @@
 ﻿from __future__ import annotations
 
+import asyncio
+import json
 import logging
+from datetime import datetime, timezone
 from collections.abc import AsyncIterator
 from typing import Any
 
 from langgraph.graph import END, START, StateGraph
 
 from app.models.api import MemorySearchResponse
+from app.models.event_payloads import (
+    AgentTraceAgentId,
+    AgentTraceCounts,
+    AgentTracePhase,
+    AgentTraceReasonCode,
+    AgentTraceSourceScope,
+    AgentTraceStatus,
+)
 from app.models.enums import AgentIntent, AgentRunStatus
 from app.services.agent_actions import AgentActionCreate
 from app.services.chat_model import ChatModelError, StreamingChatModelClientProtocol
 from app.models.enums import AgentId
 from .agent_runner import run_agent
-from .events import AgentDoneEvent, AgentErrorEvent, AgentStatusEvent, AgentTokenEvent, NegotiationDoneEvent, NegotiationStepEvent
-from .events_helpers import _agent_state, _append_status, _events
+from .events import AgentBranchEvent, AgentDoneEvent, AgentErrorEvent, AgentStatusEvent, AgentTokenEvent, NegotiationDoneEvent, NegotiationStepEvent, public_agent_error
+from .events_helpers import _agent_state, _append_status, _events, _record_node_error
 from .immediate_understanding import extract_immediate_understanding
 from .intent import route_intent
 from .memory_router import route_memory
-from .nodes.action import _action_planner_node, _execute_action_plan
+from .checkpointer import CheckpointConflictError, CheckpointError, CheckpointExpiredError
+from .contracts import ActionProposal, AgentResultEnvelope, IndependentAgentRoleId, PolicyDecision, ReviewDecision
+from .negotiation_graph import build_negotiation_graph, build_supervisor_graph
+from .nodes.action import _action_planner_node, _execute_action_plan, _record_policy_blocked_plan
 from .nodes.chat import _chat_node, _message_with_runtime_context
 from .nodes.finish import _finish_node
 from .nodes.orchestrator import OrchestratorNode
+from .nodes.policy_guard import evaluate_action_proposal
+from .nodes.supervisor import SupervisorNode
 from .nodes.retrieval import _retrieval_node
 from .prompts.system import _semantic_system_prompt
 from .registry import AgentRegistry, default_agent_registry
@@ -29,11 +45,15 @@ from .retrieval.scoping import _force_search_memory_source_scope, _select_retrie
 from .runtime_helpers import _chat_system_prompt, _continuity_signal, _continuity_signal_event
 from .semantic import _fallback_classifier, _fallback_semantic_analysis, _parse_classifier_analysis
 from .services import AgentRuntimeServices, ToolCallingChatModelProtocol
-from .state import AgentRoute, AgentState, NegotiationState, SemanticAnalysisResult
+from .state import ActionPlan, AgentInvocationResult, AgentRoute, AgentState, MultiAgentGraphState, NegotiationState, SemanticAnalysisResult
 from .tools import AgentToolResult, AgentToolSet, AgentToolName
 
 
 logger = logging.getLogger(__name__)
+
+
+_MAX_NEGOTIATION_ROUNDS = 2
+_NEGOTIATION_AGENT_TIMEOUT_SECONDS = 15.0
 
 
 class LangGraphAgentRuntime:
@@ -56,6 +76,8 @@ class LangGraphAgentRuntime:
         )
         self.agent_registry = self._build_agent_registry()
         self.graph = self._build_graph()
+        self.negotiation_graph = self._build_negotiation_graph()
+        self.supervisor_graph = self._build_supervisor_graph()
 
     async def run(self, state: AgentState):
         if state.local_privacy_mode and state.local_privacy_sensitive_reason:
@@ -63,11 +85,14 @@ class LangGraphAgentRuntime:
                 yield event
             return
 
-        streaming_graph_state = await self._prepare_streaming_chat_fast_path(state)
-        if streaming_graph_state is not None:
-            async for event in self._run_streaming_chat_fast_path(streaming_graph_state):
-                yield event
-            return
+        use_supervisor = self._should_use_supervisor(state)
+        use_negotiation = self._should_use_negotiation(state)
+        if not use_negotiation and not use_supervisor:
+            streaming_graph_state = await self._prepare_streaming_chat_fast_path(state)
+            if streaming_graph_state is not None:
+                async for event in self._run_streaming_chat_fast_path(streaming_graph_state):
+                    yield event
+                return
 
         graph_state: dict[str, Any] = {
             "agent_state": state,
@@ -75,12 +100,101 @@ class LangGraphAgentRuntime:
             "failed": False,
         }
         yielded = 0
-        async for update in self.graph.astream(graph_state, stream_mode="updates"):
+        active_graph = self.supervisor_graph if use_supervisor else self.negotiation_graph if use_negotiation else self.graph
+        async for update in active_graph.astream(graph_state, stream_mode="updates"):
             for node_state in update.values():
                 events = node_state.get("events", [])
                 for event in events[yielded:]:
                     yield event
                 yielded = len(events)
+
+    async def resume_checkpoint(
+        self,
+        checkpoint_id: str,
+        *,
+        decision_id: str,
+        decision: str,
+        policy_version: str,
+    ) -> dict[str, Any]:
+        store = self.services.checkpoint_store
+        if store is None:
+            raise CheckpointError("checkpoint_store_unavailable")
+        if decision not in {"approved", "rejected"}:
+            raise CheckpointError("invalid_decision")
+        record = store.get(checkpoint_id)
+        if record.graph_version != "agent-graph-v1" or record.state_version != "agent-state-v1":
+            raise CheckpointConflictError("checkpoint_version_mismatch")
+        if record.status in {"completed", "cancelled", "expired", "rejected", "failed_recovery"}:
+            return {
+                "checkpoint_id": checkpoint_id,
+                "status": record.status,
+                "effect_applied": False,
+            }
+        payload = record.state
+        if str(payload.get("decision_id") or "") != decision_id:
+            raise CheckpointConflictError("decision_id_mismatch")
+        decision_expires_at = datetime.fromisoformat(str(payload["decision_expires_at"]))
+        if decision_expires_at <= datetime.now(timezone.utc):
+            store.expire_checkpoint(checkpoint_id)
+            raise CheckpointExpiredError(checkpoint_id)
+        plan = ActionPlan.model_validate(payload["action_plan"])
+        proposal = ActionProposal.model_validate(payload["action_proposal"])
+        stored_policy = PolicyDecision.model_validate(payload["policy_decision"])
+        if record.run_id != str(payload["agent_run_id"]):
+            raise CheckpointConflictError("run_id_mismatch")
+        if record.action_proposal_id != proposal.proposal_id:
+            raise CheckpointConflictError("proposal_id_mismatch")
+        if stored_policy.policy_version != policy_version:
+            raise CheckpointConflictError("policy_version_mismatch")
+        outcome = store.claim_decision(
+            checkpoint_id=checkpoint_id,
+            decision_id=decision_id,
+            decision=decision,
+            policy_version=policy_version,
+        )
+        if outcome.decision != "approved":
+            return {
+                "checkpoint_id": checkpoint_id,
+                "status": outcome.decision,
+                "effect_applied": False,
+            }
+
+        rechecked = evaluate_action_proposal(proposal)
+        if rechecked.decision == "denied" or rechecked.idempotency_key != stored_policy.idempotency_key:
+            store.mark_status(checkpoint_id, "failed_recovery")
+            raise CheckpointConflictError("policy_revalidation_failed")
+        approved_policy = rechecked.model_copy(
+            update={
+                "decision": "approved",
+                "requires_confirmation": False,
+                "confirmed_by_user": True,
+            }
+        )
+        plan.decision = "auto"
+        plan.control_state = "approved"
+        state = AgentState(
+            conversation_id=str(payload["conversation_id"]),
+            message_id=str(payload["message_id"]),
+            agent_run_id=str(payload["agent_run_id"]),
+            user_message="[checkpoint resume]",
+            action_plan=plan,
+            action_plans=[plan],
+            action_proposals=[proposal],
+            policy_decisions=[approved_policy],
+            checkpoint_id=checkpoint_id,
+            checkpoint_status="approved",
+        )
+        graph_state: dict[str, Any] = {"agent_state": state, "events": [], "failed": False}
+        await _execute_action_plan(graph_state, self.services)
+        if plan.control_state == "completed" and plan.executed:
+            store.mark_status(checkpoint_id, "completed")
+            return {"checkpoint_id": checkpoint_id, "status": "completed", "effect_applied": True}
+        store.mark_status(checkpoint_id, "failed_recovery")
+        return {
+            "checkpoint_id": checkpoint_id,
+            "status": "failed_recovery",
+            "effect_applied": False,
+        }
 
     async def _run_local_privacy_mode(self, state: AgentState) -> AsyncIterator[Any]:
         state.status = AgentRunStatus.RUNNING
@@ -122,6 +236,8 @@ class LangGraphAgentRuntime:
         )
 
     async def _prepare_streaming_chat_fast_path(self, state: AgentState) -> dict[str, Any] | None:
+        if _requires_graph_execution(state.user_message):
+            return None
         try:
             chat_model = self._model_for(AgentId.CHAT_AGENT)
         except Exception:
@@ -181,9 +297,12 @@ class LangGraphAgentRuntime:
                 yield AgentTokenEvent(agent_run_id=state.agent_run_id, text=chunk)
         except ChatModelError as exc:
             state.status = AgentRunStatus.FAILED
-            state.error_code = exc.code
-            state.error_message = str(exc)
-            yield AgentErrorEvent(agent_run_id=state.agent_run_id, code=exc.code, message=str(exc))
+            state.error_code, state.error_message = public_agent_error(exc.code)
+            yield AgentErrorEvent(
+                agent_run_id=state.agent_run_id,
+                code=state.error_code,
+                message=state.error_message,
+            )
             return
         except Exception:
             state.status = AgentRunStatus.FAILED
@@ -249,6 +368,29 @@ class LangGraphAgentRuntime:
         graph.add_edge("finish", END)
         return graph.compile()
 
+    def _build_negotiation_graph(self):
+        return build_negotiation_graph(
+            route_node=self._route_node,
+            semantic_node=self._semantic_node,
+            select_after_semantic=self._select_after_semantic_for_negotiation,
+            orchestrator_node=self._orchestrator_node_adapter,
+            invoke_agent_node=self._invoke_agent_node_adapter,
+            action_node=self._action_node_adapter,
+            synthesizer_node=self._synthesizer_node_adapter,
+            finish_node=self._finish_node_adapter,
+        )
+
+    def _build_supervisor_graph(self):
+        return build_supervisor_graph(
+            route_node=self._route_node,
+            semantic_node=self._semantic_node,
+            select_after_semantic=self._select_after_semantic_for_negotiation,
+            supervisor_node=self._supervisor_node_adapter,
+            action_node=self._action_node_adapter,
+            synthesizer_node=self._synthesizer_node_adapter,
+            finish_node=self._finish_node_adapter,
+        )
+
     async def _route_node(self, graph_state: dict[str, Any]) -> dict[str, Any]:
         state = _agent_state(graph_state)
         state.route = route_intent(state.user_message)
@@ -296,6 +438,10 @@ class LangGraphAgentRuntime:
         _append_status(graph_state, "正在调用语义分析 Agent。", stage="semantic_analysis")
         try:
             semantic_model = self._model_for(AgentId.SEMANTIC_ANALYSIS_AGENT)
+            if semantic_model is None:
+                state.semantic_analysis = route_semantic or _fallback_semantic_analysis(state)
+                state.classifier = _fallback_classifier(state)
+                return graph_state
             response = await semantic_model.complete(
                 user_message=state.user_message,
                 system_prompt=_semantic_system_prompt(),
@@ -333,26 +479,49 @@ class LangGraphAgentRuntime:
 
     def _select_after_semantic_for_negotiation(self, graph_state: dict[str, Any]) -> str:
         state = _negotiation_state(graph_state)
-        state.max_rounds = int(getattr(self.services.automation_settings, "max_rounds", state.max_rounds))
+        state.max_rounds = _MAX_NEGOTIATION_ROUNDS
         state.confidence_threshold = float(
             getattr(self.services.automation_settings, "confidence_threshold", state.confidence_threshold)
         )
-        return "synthesizer" if self._should_use_fast_path(state) else "orchestrator"
+        if _is_action_state(state):
+            return "action_agent"
+        return "orchestrator" if _needs_chat_context(state) else "synthesizer"
 
     async def _orchestrator_node_adapter(self, graph_state: dict[str, Any]) -> dict[str, Any]:
         state = _negotiation_state(graph_state)
         model = self._model_for(AgentId.CHAT_AGENT)
         if model is None:
-            graph_state.update({"next": "synthesize"})
-            return graph_state
-        result = await OrchestratorNode(
-            _PromptOnlyModel(model),
-            self.agent_registry,
-            max_rounds=int(getattr(self.services.automation_settings, "max_rounds", state.max_rounds)),
-            confidence_threshold=float(
-                getattr(self.services.automation_settings, "confidence_threshold", state.confidence_threshold)
-            ),
-        )(state)
+            return _fallback_negotiation(
+                graph_state,
+                state,
+                reason="orchestrator_model_unavailable",
+            )
+        try:
+            result = await OrchestratorNode(
+                _PromptOnlyModel(model),
+                self.agent_registry,
+                max_rounds=_MAX_NEGOTIATION_ROUNDS,
+                confidence_threshold=float(
+                    getattr(self.services.automation_settings, "confidence_threshold", state.confidence_threshold)
+                ),
+                timeout_seconds=_NEGOTIATION_AGENT_TIMEOUT_SECONDS,
+            )(state)
+        except ChatModelError as exc:
+            graph_state["next"] = "synthesize"
+            return _record_node_error(graph_state, exc)
+        except (TimeoutError, asyncio.TimeoutError):
+            return _fallback_negotiation(
+                graph_state,
+                state,
+                reason="orchestrator_timeout",
+            )
+        except Exception:
+            logger.warning("Negotiation orchestrator failed; synthesizing from bounded local context", exc_info=True)
+            return _fallback_negotiation(
+                graph_state,
+                state,
+                reason="orchestrator_invalid_response",
+            )
         state.orchestrator_decisions = result.get("orchestrator_decisions", state.orchestrator_decisions)
         state.fallback_triggered = result.get("fallback_triggered", state.fallback_triggered)
         _append_negotiation_step_event(graph_state, state, result)
@@ -363,44 +532,224 @@ class LangGraphAgentRuntime:
         state = _negotiation_state(graph_state)
         next_agent = graph_state.get("next_agent")
         if isinstance(next_agent, str):
-            next_agent = AgentId(next_agent)
+            try:
+                next_agent = AgentId(next_agent)
+            except ValueError:
+                next_agent = None
         if not isinstance(next_agent, AgentId):
-            graph_state["next"] = "synthesize"
-            return graph_state
+            return _fallback_negotiation(
+                graph_state,
+                state,
+                reason="invalid_agent_request",
+            )
 
-        agent_input = graph_state.get("agent_input") or state.user_message
-        invocation = await run_agent(next_agent, agent_input, state, self.agent_registry)
+        next_agent = _canonical_runtime_agent_id(next_agent)
+        if next_agent != AgentId.RETRIEVAL_AGENT:
+            return _fallback_negotiation(
+                graph_state,
+                state,
+                reason="unsupported_agent_request",
+            )
+
+        agent_input = str(graph_state.get("agent_input") or state.user_message).strip()
+        if _has_duplicate_invocation(state, next_agent, agent_input):
+            return _fallback_negotiation(
+                graph_state,
+                state,
+                reason="duplicate_agent_query",
+            )
+
+        invocation = await run_agent(
+            next_agent,
+            agent_input,
+            state,
+            self.agent_registry,
+            timeout_seconds=_NEGOTIATION_AGENT_TIMEOUT_SECONDS,
+        )
+        invocation, inner_events = _separate_invocation_events(invocation)
+        _append_negotiation_inner_events(graph_state, inner_events)
+        state.citations = _dedupe_citations(state.citations)
         state.invocation_history.append(invocation)
         state.round += 1
+        if _invocation_failed(invocation):
+            return _fallback_negotiation(
+                graph_state,
+                state,
+                reason=_invocation_error_code(invocation),
+            )
         state.collected_context = _append_collected_context(state.collected_context, invocation)
+        graph_state["next"] = "orchestrator"
+        return graph_state
+
+    async def _supervisor_node_adapter(self, graph_state: dict[str, Any]) -> dict[str, Any]:
+        state = _negotiation_state(graph_state)
+        model = self._model_for(AgentId.CHAT_AGENT)
+        if model is None:
+            return await self._supervisor_sequential_fallback(
+                graph_state,
+                state,
+                reason="orchestrator_model_unavailable",
+            )
+        control_state = MultiAgentGraphState(
+            run_id=state.agent_run_id,
+            source_message_id=state.message_id,
+            input_ref=f"message:{state.message_id}",
+        )
+        outcome = await SupervisorNode(
+            planner=_RuntimeSupervisorPlanner(model),
+            registry=default_agent_registry,
+            role_handlers=self._supervisor_role_handlers(),
+            reviewer=(
+                _RuntimeReviewer(model)
+                if self._should_use_reviewer(state)
+                else None
+            ),
+            planning_timeout_seconds=_NEGOTIATION_AGENT_TIMEOUT_SECONDS,
+            parallel_dispatch=self._should_use_parallel_supervisor(state),
+        )(control_state)
+        graph_state["multi_agent_state"] = outcome.state
+        _append_supervisor_branch_events(graph_state, outcome.state)
+        state.round = outcome.state.budget_usage.planning_rounds
+        state.fallback_triggered = bool(outcome.fallback_reason)
+        if outcome.fallback_reason:
+            if self._should_use_reviewer(state) and outcome.fallback_reason.startswith("review"):
+                graph_state["review_abstention"] = True
+                _append_safe_negotiation_step(
+                    graph_state,
+                    state,
+                    agent_id=AgentTraceAgentId.ORCHESTRATOR,
+                    phase=AgentTracePhase.REVIEWING,
+                    status=AgentTraceStatus.FALLBACK,
+                    reason_code=AgentTraceReasonCode.NEGOTIATION_FALLBACK,
+                )
+                graph_state["next"] = "synthesize"
+                return graph_state
+            return await self._supervisor_sequential_fallback(
+                graph_state,
+                state,
+                reason=outcome.fallback_reason,
+            )
+        if self._should_use_reviewer(state):
+            review = outcome.state.review_decision
+            graph_state["review_decision"] = review
+            graph_state["review_clarification"] = outcome.state.clarification_required
+            graph_state["review_abstention"] = outcome.state.abstention_required
+            state.collected_context = _review_approved_context(outcome.state)
+            _append_safe_negotiation_step(
+                graph_state,
+                state,
+                agent_id=AgentTraceAgentId.ORCHESTRATOR,
+                phase=AgentTracePhase.REVIEWING,
+                status=AgentTraceStatus.COMPLETED,
+                reason_code=(
+                    AgentTraceReasonCode.EVIDENCE_READY
+                    if review is not None and review.decision == "pass"
+                    else AgentTraceReasonCode.EVIDENCE_REVISED
+                ),
+            )
+        else:
+            for result in outcome.state.results:
+                state.invocation_history.append(
+                    AgentInvocationResult(
+                        agent_id=result.role_id.value,
+                        round=state.round,
+                        input_query=f"work:{result.task_id}",
+                        output=result.output,
+                        confidence=1.0 if result.status == "success" else 0.0,
+                        latency_ms=0,
+                        tool_calls=[],
+                    )
+                )
+                state.collected_context = _append_collected_context(
+                    state.collected_context,
+                    state.invocation_history[-1],
+                )
+        state.orchestrator_decisions.append(
+            {
+                "action": "synthesize",
+                "confidence": 1.0,
+                "expected_outcome": "typed_supervisor_plan_completed",
+            }
+        )
+        _append_safe_negotiation_step(
+            graph_state,
+            state,
+            agent_id=AgentTraceAgentId.ORCHESTRATOR,
+            phase=AgentTracePhase.SYNTHESIZING,
+            status=AgentTraceStatus.RUNNING,
+            reason_code=AgentTraceReasonCode.EVIDENCE_READY,
+        )
         graph_state["next"] = "synthesize"
         return graph_state
+
+    async def _supervisor_sequential_fallback(
+        self,
+        graph_state: dict[str, Any],
+        state: NegotiationState,
+        *,
+        reason: str,
+    ) -> dict[str, Any]:
+        if _needs_chat_context(state) and not state.citations:
+            await self._retrieval_node_adapter(graph_state)
+        return _fallback_negotiation(graph_state, state, reason=reason)
+
+    def _supervisor_role_handlers(self) -> dict[str, Any]:
+        return {}
 
     async def _synthesizer_node_adapter(self, graph_state: dict[str, Any]) -> dict[str, Any]:
         state = _agent_state(graph_state)
         if isinstance(state, NegotiationState):
-            if state.collected_context:
-                state.user_message = _message_with_negotiation_context(state)
-            result = await self._chat_node_adapter(graph_state)
-            if state.orchestrator_decisions or state.invocation_history or state.fallback_triggered:
+            if graph_state.get("review_clarification") or graph_state.get("review_abstention"):
+                state.response_text = _safe_review_response(
+                    graph_state.get("review_decision"),
+                    clarification=bool(graph_state.get("review_clarification")),
+                )
+                _events(graph_state).append(
+                    AgentTokenEvent(agent_run_id=state.agent_run_id, text=state.response_text)
+                )
+                _append_negotiation_done_event(graph_state, state)
+                self._record_negotiation_stats(state)
+                return graph_state
+            original_message = state.user_message
+            try:
+                if state.collected_context:
+                    state.user_message = _message_with_negotiation_context(state)
+                if graph_state.get("review_decision") is not None:
+                    graph_state["pre_chat_context_attempted"] = True
+                result = await self._chat_node_adapter(graph_state)
+            finally:
+                state.user_message = original_message
+            if (
+                not graph_state.get("failed")
+                and (state.orchestrator_decisions or state.invocation_history or state.fallback_triggered)
+            ):
                 _append_negotiation_done_event(graph_state, state)
                 self._record_negotiation_stats(state)
             return result
         return await self._chat_node_adapter(graph_state)
 
-    def _should_use_negotiation(self) -> bool:
-        return False
-
-    def _should_use_fast_path(self, state: AgentState) -> bool:
-        semantic = state.semantic_analysis
-        semantic_confidence = semantic.confidence if semantic is not None else 1.0
-        if semantic is not None and not semantic.needs_context:
-            semantic_confidence = max(semantic_confidence, 0.9)
+    def _should_use_negotiation(self, state: AgentState) -> bool:
         return bool(
-            semantic_confidence >= 0.9
-            and state.route is not None
-            and state.route.intent == AgentIntent.CHAT
-            and getattr(state, "round", 0) == 0
+            getattr(self.services.automation_settings, "use_negotiation", False)
+            and _is_memory_or_retrieval_request(state.user_message)
+        )
+
+    def _should_use_supervisor(self, state: AgentState) -> bool:
+        return bool(
+            getattr(self.services.automation_settings, "use_supervisor", False)
+            and self._should_use_negotiation(state)
+        )
+
+    def _should_use_parallel_supervisor(self, state: AgentState) -> bool:
+        return bool(
+            getattr(self.services.automation_settings, "use_parallel_supervisor", False)
+            and self._should_use_supervisor(state)
+        )
+
+    def _should_use_reviewer(self, state: AgentState) -> bool:
+        return bool(
+            getattr(self.services.automation_settings, "use_reviewer", False)
+            and self._should_use_supervisor(state)
         )
 
     def _build_agent_registry(self) -> AgentRegistry:
@@ -413,10 +762,17 @@ class LangGraphAgentRuntime:
         async def handler(input_query: str, state: NegotiationState) -> dict[str, Any]:
             graph_state: dict[str, Any] = {"agent_state": state, "events": [], "failed": False}
             original_message = state.user_message
+            original_semantic = state.semantic_analysis
+            citation_keys_before = {_citation_key(citation) for citation in state.citations}
             state.user_message = input_query
             canonical_agent_id = _canonical_runtime_agent_id(agent_id)
             try:
                 if canonical_agent_id == AgentId.RETRIEVAL_AGENT:
+                    if state.semantic_analysis is not None:
+                        semantic_update: dict[str, Any] = {"query": input_query}
+                        if state.round > 0:
+                            semantic_update["source_scope"] = "all"
+                        state.semantic_analysis = state.semantic_analysis.model_copy(update=semantic_update)
                     _select_retrieval_entry_node(graph_state)
                     await self._retrieval_node_adapter(graph_state)
                 elif canonical_agent_id == AgentId.ACTION_AGENT:
@@ -425,12 +781,21 @@ class LangGraphAgentRuntime:
                     await self._chat_node_adapter(graph_state)
             finally:
                 state.user_message = original_message
+                state.semantic_analysis = original_semantic
+            new_citations = [
+                citation
+                for citation in state.citations
+                if _citation_key(citation) not in citation_keys_before
+            ]
             return {
                 "result": state.response_text,
-                "citations": state.citations,
+                "citations": new_citations,
                 "proposal_id": state.proposal_id,
                 "task_id": state.task_id,
-                "confidence": 0.6,
+                "confidence": 0.9 if any(_is_answer_evidence(item) for item in new_citations) else 0.0,
+                "failed": bool(graph_state.get("failed")),
+                "error_code": state.error_code,
+                "_events": list(_events(graph_state)),
             }
 
         return handler
@@ -477,6 +842,10 @@ class LangGraphAgentRuntime:
         return None
 
     async def _chat_node_adapter(self, graph_state: dict[str, Any]) -> dict[str, Any]:
+        state = _agent_state(graph_state)
+        if state.checkpoint_id and state.checkpoint_status == "pending_confirmation":
+            _append_status(graph_state, "高风险操作等待确认，尚未执行任何目标写入。", stage="pending_confirmation")
+            return graph_state
         await self._ensure_pre_chat_context(graph_state)
         if graph_state.get("failed"):
             return graph_state
@@ -507,7 +876,18 @@ class LangGraphAgentRuntime:
 
     async def _finish_node_adapter(self, graph_state: dict[str, Any]) -> dict[str, Any]:
         if not graph_state.get("failed"):
-            await _execute_action_plan(graph_state, self.services)
+            state = _agent_state(graph_state)
+            if state.checkpoint_id and state.checkpoint_status == "pending_confirmation":
+                plans = state.action_plans or ([state.action_plan] if state.action_plan is not None else [])
+                for plan in plans:
+                    policy = next(
+                        (item for item in state.policy_decisions if item.proposal_id == plan.proposal_id),
+                        None,
+                    )
+                    if policy is not None and policy.decision == "pending_confirmation":
+                        _record_policy_blocked_plan(graph_state, self.services, state, plan, policy)
+            else:
+                await _execute_action_plan(graph_state, self.services)
         return await _finish_node(graph_state)
 
     def _record_negotiation_stats(self, state: NegotiationState) -> None:
@@ -572,6 +952,117 @@ def _negotiation_state(graph_state: dict[str, Any]) -> NegotiationState:
     return negotiation_state
 
 
+def _fallback_negotiation(
+    graph_state: dict[str, Any],
+    state: NegotiationState,
+    *,
+    reason: str,
+) -> dict[str, Any]:
+    state.fallback_triggered = True
+    state.status = AgentRunStatus.RUNNING
+    state.error_code = None
+    state.error_message = None
+    graph_state.update(
+        {
+            "next": "synthesize",
+            "fallback_triggered": True,
+            "fallback_reason": reason,
+        }
+    )
+    _append_safe_negotiation_step(
+        graph_state,
+        state,
+        agent_id=AgentTraceAgentId.ORCHESTRATOR,
+        phase=AgentTracePhase.SYNTHESIZING,
+        status=AgentTraceStatus.FALLBACK,
+        reason_code=_safe_trace_reason_code(reason),
+    )
+    return graph_state
+
+
+def _separate_invocation_events(invocation: Any) -> tuple[Any, list[Any]]:
+    output = invocation.output
+    if not isinstance(output, dict):
+        return invocation, []
+    sanitized = dict(output)
+    events = sanitized.pop("_events", [])
+    if not isinstance(events, list):
+        events = []
+    return invocation.model_copy(update={"output": sanitized}), events
+
+
+def _append_negotiation_inner_events(graph_state: dict[str, Any], inner_events: list[Any]) -> None:
+    existing_citation_keys = {
+        _citation_key(event.citation)
+        for event in _events(graph_state)
+        if getattr(event, "event", None) == "citation" and hasattr(event, "citation")
+    }
+    for event in inner_events:
+        if isinstance(event, AgentErrorEvent):
+            continue
+        if getattr(event, "event", None) == "citation" and hasattr(event, "citation"):
+            key = _citation_key(event.citation)
+            if key in existing_citation_keys:
+                continue
+            existing_citation_keys.add(key)
+        _events(graph_state).append(event)
+
+
+def _invocation_error_code(invocation: Any) -> str:
+    output = invocation.output
+    if not isinstance(output, dict):
+        return "agent_invocation_failed"
+    code = str(output.get("error_code") or "agent_invocation_failed")
+    return code if code in {"agent_timeout", "agent_invocation_failed"} else "agent_invocation_failed"
+
+
+def _invocation_failed(invocation: Any) -> bool:
+    output = invocation.output
+    return bool(
+        isinstance(output, dict)
+        and (output.get("failed") or output.get("error_code") or output.get("error"))
+    )
+
+
+def _has_duplicate_invocation(state: NegotiationState, agent_id: AgentId, input_query: str) -> bool:
+    normalized_query = " ".join(input_query.casefold().split())
+    for invocation in state.invocation_history:
+        try:
+            previous_agent = _canonical_runtime_agent_id(AgentId(invocation.agent_id))
+        except ValueError:
+            continue
+        previous_query = " ".join(invocation.input_query.casefold().split())
+        if previous_agent == agent_id and previous_query == normalized_query:
+            return True
+    return False
+
+
+def _citation_key(citation: Any) -> tuple[str, str, str]:
+    return (
+        str(getattr(citation, "note_id", "")),
+        str(getattr(citation, "chunk_id", "")),
+        str(getattr(citation, "relative_path", "")),
+    )
+
+
+def _dedupe_citations(citations: list[Any]) -> list[Any]:
+    seen: set[tuple[str, str, str]] = set()
+    deduped: list[Any] = []
+    for citation in citations:
+        key = _citation_key(citation)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(citation)
+    return deduped
+
+
+def _is_answer_evidence(citation: Any) -> bool:
+    snippet = str(getattr(citation, "snippet", "")).strip()
+    permissions = getattr(citation, "recall_permissions", None)
+    return bool(snippet and getattr(permissions, "can_answer_context", True))
+
+
 def _apply_classifier_route(state: AgentState) -> None:
     classifier = state.classifier
     if classifier is None:
@@ -601,6 +1092,32 @@ class _PromptOnlyModel:
         return await self.model.complete(user_message=prompt, system_prompt="orchestrator-json-only")
 
 
+class _RuntimeSupervisorPlanner:
+    def __init__(self, model: Any) -> None:
+        self.model = model
+
+    async def ainvoke(self, payload: dict[str, Any]) -> Any:
+        return await self.model.complete(
+            user_message=json.dumps(payload, ensure_ascii=True, sort_keys=True),
+            system_prompt="supervisor-plan-v1",
+        )
+
+
+class _RuntimeReviewer:
+    def __init__(self, model: Any) -> None:
+        self.model = model
+
+    async def ainvoke(self, payload: Any) -> Any:
+        if hasattr(payload, "model_dump_json"):
+            user_message = payload.model_dump_json()
+        else:
+            user_message = json.dumps(payload, ensure_ascii=True, sort_keys=True)
+        return await self.model.complete(
+            user_message=user_message,
+            system_prompt="reviewer-decision-v1",
+        )
+
+
 def _append_collected_context(current: str, invocation: Any) -> str:
     output = invocation.output
     if not isinstance(output, str):
@@ -624,16 +1141,14 @@ def _append_negotiation_step_event(
     graph_state: dict[str, Any], state: NegotiationState, result: dict[str, Any]
 ) -> None:
     if result.get("fallback_triggered"):
-        _events(graph_state).append(
-            NegotiationStepEvent(
-                agent_run_id=state.agent_run_id,
-                round=state.round,
-                agent="orchestrator",
-                action="synthesizing",
-                reasoning="达到协商轮次上限，转入最终合成。",
-                confidence=_latest_negotiation_confidence(state),
-                message="达到轮次上限，正在整理已有结果。",
-            )
+        reason = str(result.get("fallback_reason") or "negotiation_fallback")
+        _append_safe_negotiation_step(
+            graph_state,
+            state,
+            agent_id=AgentTraceAgentId.ORCHESTRATOR,
+            phase=AgentTracePhase.SYNTHESIZING,
+            status=AgentTraceStatus.FALLBACK,
+            reason_code=_safe_trace_reason_code(reason),
         )
         return
 
@@ -641,32 +1156,178 @@ def _append_negotiation_step_event(
     if not isinstance(decision, dict):
         return
     next_agent = result.get("next_agent") or decision.get("agent") or "synthesizer"
-    action = "invoking" if result.get("next") == "invoke_agent" else "synthesizing"
-    message = "正在调用子 Agent 补充信息。" if action == "invoking" else "已有信息足够，正在合成回复。"
-    _events(graph_state).append(
-        NegotiationStepEvent(
-            agent_run_id=state.agent_run_id,
-            round=state.round,
-            agent=str(next_agent),
-            action=action,
-            reasoning=str(decision.get("reasoning") or ""),
-            confidence=float(decision.get("confidence") or 0.0),
-            message=message,
-        )
+    invoking = result.get("next") == "invoke_agent"
+    _append_safe_negotiation_step(
+        graph_state,
+        state,
+        agent_id=_safe_trace_agent_id(next_agent),
+        phase=AgentTracePhase.INVOKING if invoking else AgentTracePhase.SYNTHESIZING,
+        status=AgentTraceStatus.RUNNING,
+        reason_code=(
+            AgentTraceReasonCode.ADDITIONAL_CONTEXT_REQUIRED
+            if invoking
+            else AgentTraceReasonCode.EVIDENCE_READY
+        ),
+        round_value=state.round + 1 if invoking else state.round,
     )
+
+
+def _review_approved_context(state: MultiAgentGraphState) -> str:
+    claim_lines = [
+        f"[{claim.claim_id}] {claim.text} ({', '.join(claim.citation_ids)})"
+        for claim in state.approved_claims
+    ]
+    evidence_lines = [
+        f"[{evidence.citation_id}] {evidence.permitted_excerpt}"
+        for evidence in state.approved_evidence
+    ]
+    return "\n".join(
+        [
+            "Reviewer-approved claims:",
+            *claim_lines,
+            "Reviewer-approved evidence:",
+            *evidence_lines,
+        ]
+    ).strip()
+
+
+def _safe_review_response(decision: Any, *, clarification: bool) -> str:
+    if clarification:
+        if isinstance(decision, ReviewDecision) and decision.evidence_status == "contradictory":
+            return "本地记录里有互相矛盾的信息。你能补充要以哪个时间或来源为准吗？"
+        return "我还缺少足够的本地证据。你能补充要查询的时间范围或资料范围吗？"
+    return "我没有找到足够可靠的本地证据，因此先不对这件事下结论。"
 
 
 def _append_negotiation_done_event(graph_state: dict[str, Any], state: NegotiationState) -> None:
     _events(graph_state).append(
         NegotiationDoneEvent(
-            agent_run_id=state.agent_run_id,
-            total_rounds=state.round,
-            agents_invoked=[str(invocation.agent_id) for invocation in state.invocation_history],
-            total_latency_ms=sum(invocation.latency_ms for invocation in state.invocation_history),
-            final_confidence=_latest_negotiation_confidence(state),
-            fallback=state.fallback_triggered,
+            run_id=state.agent_run_id,
+            agent_id=AgentTraceAgentId.ORCHESTRATOR,
+            phase=AgentTracePhase.COMPLETED,
+            status=AgentTraceStatus.COMPLETED,
+            round=state.round,
+            sequence=_next_trace_sequence(graph_state),
+            duration_ms=sum(invocation.latency_ms for invocation in state.invocation_history),
+            reason_code=(
+                AgentTraceReasonCode.NEGOTIATION_COMPLETED_WITH_FALLBACK
+                if state.fallback_triggered
+                else AgentTraceReasonCode.NEGOTIATION_COMPLETED
+            ),
+            counts=_trace_counts(state),
+            source_scope=_trace_source_scope(state),
         )
     )
+
+
+def _append_supervisor_branch_events(
+    graph_state: dict[str, Any],
+    state: MultiAgentGraphState,
+) -> None:
+    sequence = 1 + sum(
+        getattr(event, "event", None) == "agent_branch" for event in _events(graph_state)
+    )
+    for record in state.branch_records:
+        _events(graph_state).append(
+            AgentBranchEvent(
+                run_id=state.run_id,
+                branch_id=record.branch_id,
+                work_item_id=record.work_item_id,
+                attempt=record.attempt,
+                role_id=record.role_id,
+                status="started",
+                sequence=sequence,
+            )
+        )
+        sequence += 1
+        _events(graph_state).append(
+            AgentBranchEvent(
+                run_id=state.run_id,
+                branch_id=record.branch_id,
+                work_item_id=record.work_item_id,
+                attempt=record.attempt,
+                role_id=record.role_id,
+                status=record.status,
+                sequence=sequence,
+                duration_ms=max(0, round(record.duration_ms)),
+                safe_error_code=record.safe_error_code,
+            )
+        )
+        sequence += 1
+
+
+def _append_safe_negotiation_step(
+    graph_state: dict[str, Any],
+    state: NegotiationState,
+    *,
+    agent_id: AgentTraceAgentId,
+    phase: AgentTracePhase,
+    status: AgentTraceStatus,
+    reason_code: AgentTraceReasonCode,
+    round_value: int | None = None,
+) -> None:
+    _events(graph_state).append(
+        NegotiationStepEvent(
+            run_id=state.agent_run_id,
+            agent_id=agent_id,
+            phase=phase,
+            status=status,
+            round=state.round if round_value is None else max(0, round_value),
+            sequence=_next_trace_sequence(graph_state),
+            reason_code=reason_code,
+            counts=_trace_counts(state),
+            source_scope=_trace_source_scope(state),
+        )
+    )
+
+
+def _next_trace_sequence(graph_state: dict[str, Any]) -> int:
+    return 1 + sum(
+        getattr(event, "event", None) in {"negotiation_step", "negotiation_done"}
+        for event in _events(graph_state)
+    )
+
+
+def _trace_counts(state: NegotiationState) -> AgentTraceCounts:
+    return AgentTraceCounts(
+        agents_invoked=len(state.invocation_history),
+        citations=len(state.citations),
+        rounds=state.round,
+    )
+
+
+def _trace_source_scope(state: NegotiationState) -> AgentTraceSourceScope:
+    allowed = {
+        scope.value: scope
+        for scope in AgentTraceSourceScope
+        if scope not in {AgentTraceSourceScope.NONE, AgentTraceSourceScope.MIXED}
+    }
+    scopes: set[AgentTraceSourceScope] = set()
+    for citation in state.citations:
+        raw_scope = getattr(citation, "source_scope", "")
+        scope_value = getattr(raw_scope, "value", raw_scope)
+        if isinstance(scope_value, str) and scope_value in allowed:
+            scopes.add(allowed[scope_value])
+    if not scopes:
+        return AgentTraceSourceScope.NONE
+    if len(scopes) > 1:
+        return AgentTraceSourceScope.MIXED
+    return next(iter(scopes))
+
+
+def _safe_trace_agent_id(value: Any) -> AgentTraceAgentId:
+    raw_value = getattr(value, "value", value)
+    mapping = {
+        AgentTraceAgentId.ORCHESTRATOR.value: AgentTraceAgentId.ORCHESTRATOR,
+        AgentTraceAgentId.RETRIEVAL_AGENT.value: AgentTraceAgentId.RETRIEVAL_AGENT,
+        AgentTraceAgentId.SYNTHESIZER.value: AgentTraceAgentId.SYNTHESIZER,
+    }
+    return mapping.get(str(raw_value), AgentTraceAgentId.ORCHESTRATOR)
+
+
+def _safe_trace_reason_code(reason: str) -> AgentTraceReasonCode:
+    mapping = {code.value: code for code in AgentTraceReasonCode}
+    return mapping.get(reason, AgentTraceReasonCode.AGENT_INVOCATION_FAILED)
 
 
 def _latest_negotiation_confidence(state: NegotiationState) -> float:
@@ -706,6 +1367,47 @@ def _needs_chat_context(state: AgentState) -> bool:
         and not route.semantic_fallback
         and bool(route.all_scopes)
         and route.all_scopes != ("none",)
+    )
+
+
+def _is_action_state(state: AgentState) -> bool:
+    return bool(
+        (state.route is not None and state.route.intent in {
+            AgentIntent.PROPOSE_MEMORY,
+            AgentIntent.MANAGE_WIKI,
+            AgentIntent.CREATE_TASK,
+        })
+        or (state.classifier is not None and state.classifier.intent == "action")
+    )
+
+
+def _is_memory_or_retrieval_request(message: str) -> bool:
+    route = route_intent(message)
+    if route.intent in {
+        AgentIntent.PROPOSE_MEMORY,
+        AgentIntent.MANAGE_WIKI,
+        AgentIntent.CREATE_TASK,
+    }:
+        return False
+    if route.intent == AgentIntent.SEARCH_MEMORY:
+        return True
+    memory_route = route_memory(message)
+    return bool(
+        memory_route.semantic_fallback
+        or any(scope != "none" for scope in memory_route.all_scopes)
+    )
+
+
+def _requires_graph_execution(message: str) -> bool:
+    route = route_intent(message)
+    return bool(
+        route.intent in {
+            AgentIntent.PROPOSE_MEMORY,
+            AgentIntent.MANAGE_WIKI,
+            AgentIntent.CREATE_TASK,
+            AgentIntent.SEARCH_MEMORY,
+        }
+        or _is_memory_or_retrieval_request(message)
     )
 
 

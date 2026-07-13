@@ -70,3 +70,10 @@ tests/smoke_output/
 Thumbs.db
 .idea/
 .vscode/
+"" 
+"# Local agent and project config" 
+AGENTS.md
+CHANGELOG.md
+CLAUDE.md
+progress.md
+task.md

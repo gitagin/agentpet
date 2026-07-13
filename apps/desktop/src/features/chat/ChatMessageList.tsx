@@ -1,5 +1,12 @@
 import type { Ref } from "react";
-import type { AgentAction, ChatMessage, ChatNegotiationAction, TaskItem } from "../../types";
+import type {
+  AgentAction,
+  ChatMessage,
+  ChatTraceAgentId,
+  ChatTracePhase,
+  ChatTraceStatus,
+  TaskItem,
+} from "../../types";
 import { EmptyState } from "../../components/layout";
 import { ChatAgentActionSummary } from "./ChatAgentActionSummary";
 import { ChatCitationSummary } from "./ChatCitationSummary";
@@ -17,11 +24,24 @@ type ChatMessageListProps = {
   listRef?: Ref<HTMLDivElement>;
 };
 
-const NEGOTIATION_ACTION_LABELS: Record<ChatNegotiationAction, string> = {
+const NEGOTIATION_PHASE_LABELS: Record<ChatTracePhase, string> = {
   invoking: "调用",
   reviewing: "复核",
   revising: "修订",
   synthesizing: "合成",
+  completed: "完成",
+};
+
+const NEGOTIATION_AGENT_LABELS: Record<ChatTraceAgentId, string> = {
+  orchestrator: "协调器",
+  retrieval_agent: "检索 Agent",
+  synthesizer: "回复整理器",
+};
+
+const NEGOTIATION_STATUS_LABELS: Record<ChatTraceStatus, string> = {
+  running: "进行中",
+  fallback: "安全兜底",
+  completed: "已完成",
 };
 
 type ProgressCard = {
@@ -30,13 +50,6 @@ type ProgressCard = {
   detail: string;
   state: "active" | "done" | "queued";
 };
-
-function formatConfidence(confidence: number | undefined): string {
-  if (typeof confidence !== "number" || Number.isNaN(confidence)) {
-    return "置信度未知";
-  }
-  return `置信度 ${Math.round(Math.max(0, Math.min(1, confidence)) * 100)}%`;
-}
 
 export function ChatMessageList({
   messages,
@@ -152,33 +165,25 @@ function buildProgressCards(message: ChatMessage): ProgressCard[] {
     Boolean(message.retrieval_context_budget) ||
     Boolean(message.retrieval_scopes?.length) ||
     Boolean(message.citations?.length);
+  const stage = message.progress_stage || (hasRetrieval ? "retrieving" : "understanding");
+  const stageOrder = ["understanding", "retrieving", "verifying", "answering"] as const;
+  const activeIndex = stageOrder.indexOf(stage);
   const artifactCount = countArtifacts(message);
-  const cards: ProgressCard[] = [
-    {
-      id: "context",
-      label: hasRetrieval ? "上下文已就绪" : "正在查上下文",
-      detail: hasRetrieval ? formatProgressScopes(message.retrieval_scopes) : "我在看记忆和资料。",
-      state: hasRetrieval ? "done" : "active",
-    },
+  const descriptions = [
+    "判断你的问题和目标。",
+    hasRetrieval ? formatProgressScopes(message.retrieval_scopes) : "准备检索本地记录。",
+    message.negotiation_steps?.length
+      ? `正在进行有界核验，已完成 ${message.negotiation_steps.length} 步。`
+      : "检查证据是否足够。",
+    artifactCount > 0 ? `回答会附带 ${artifactCount} 条结果回执。` : "整理成可直接阅读的回答。",
   ];
 
-  if (artifactCount > 0) {
-    cards.push({
-      id: "artifacts",
-      label: "结果卡片已准备",
-      detail: `${artifactCount} 个整理结果会和回答一起显示。`,
-      state: "done",
-    });
-  } else {
-    cards.push({
-      id: "answer",
-      label: "正在写回答",
-      detail: "马上给你一个干净版本。",
-      state: hasRetrieval ? "active" : "queued",
-    });
-  }
-
-  return cards;
+  return ["理解问题", "查找本地记忆", "核验来源", "完成"].map((label, index) => ({
+    id: stageOrder[index],
+    label,
+    detail: descriptions[index],
+    state: index < activeIndex ? "done" : index === activeIndex ? "active" : "queued",
+  }));
 }
 
 function countArtifacts(message: ChatMessage): number {
@@ -301,26 +306,32 @@ function renderNegotiationTrace(message: ChatMessage) {
     <details className="message-negotiation">
       <summary>
         协作过程 · {message.negotiation_steps!.length} 步
-        {message.negotiation_done ? ` · ${formatConfidence(message.negotiation_done.final_confidence)}` : ""}
+        {message.negotiation_done ? " · 已完成" : ""}
       </summary>
       <ol className="message-negotiation-list">
         {message.negotiation_steps!.map((step, index) => (
           <li key={`${message.id}-negotiation-${index}`}>
             <strong>
-              {step.agent} · {NEGOTIATION_ACTION_LABELS[step.action]} · 第 {step.round + 1} 轮
+              {NEGOTIATION_AGENT_LABELS[step.agent_id]} · {NEGOTIATION_PHASE_LABELS[step.phase]} · {formatTraceRound(step.round)}
             </strong>
-            <span>{step.message || step.reasoning || "正在整理协商上下文。"}</span>
-            {step.reasoning && step.reasoning !== step.message ? <small>{step.reasoning}</small> : null}
-            <small>{formatConfidence(step.confidence)}</small>
+            <span>{step.safe_summary}</span>
+            <small>
+              {NEGOTIATION_STATUS_LABELS[step.status]}
+              {step.duration_ms > 0 ? ` · ${step.duration_ms}ms` : ""}
+            </small>
           </li>
         ))}
       </ol>
       {message.negotiation_done ? (
         <span className="message-negotiation-done">
-          调用 {message.negotiation_done.agents_invoked.length} 个子 Agent，耗时 {message.negotiation_done.total_latency_ms}ms
-          {message.negotiation_done.fallback ? "，已使用轮次上限兜底" : ""}。
+          完成 {message.negotiation_done.counts.rounds} 轮，调用 {message.negotiation_done.counts.agents_invoked} 个子 Agent，耗时 {message.negotiation_done.duration_ms}ms
+          {message.negotiation_done.reason_code === "negotiation_completed_with_fallback" ? "，已使用安全兜底" : ""}。
         </span>
       ) : null}
     </details>
   );
+}
+
+function formatTraceRound(round: number): string {
+  return round > 0 ? `第 ${round} 轮` : "准备阶段";
 }

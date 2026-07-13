@@ -47,8 +47,38 @@ async def archive_chat_memory(
         )
     )
     if _job_all_stages_disabled(run.result):
-        return [_disabled_automation_skip_event(context=context, state=state)]
-    return list(run.action_events)
+        actions = [_disabled_automation_skip_event(context=context, state=state)]
+    else:
+        actions = list(run.action_events)
+    _schedule_reflection_job(context=context, state=state, assistant_answer=assistant_answer)
+    return actions
+
+
+def _schedule_reflection_job(*, context: AppContext, state: AgentState, assistant_answer: str) -> None:
+    if state.local_privacy_mode or state.local_privacy_sensitive_reason:
+        return
+    manager = getattr(getattr(context, "app", None), "state", None)
+    manager = getattr(manager, "reflection_jobs", None)
+    if manager is None:
+        return
+    try:
+        from app.api.services.factory import chat_model_client
+
+        model = chat_model_client(context)
+    except Exception:
+        logger.warning("Reflection model setup failed; foreground and post-reply stages remain complete", exc_info=True)
+        return
+    if model is None:
+        return
+    from app.agents.reflection_graph import ReflectionJobInput
+
+    manager.start(
+        ReflectionJobInput(
+            state=state.model_copy(deep=True),
+            assistant_answer=assistant_answer,
+            model=model,
+        )
+    )
 
 
 def _post_chat_automation_disabled(automation) -> bool:

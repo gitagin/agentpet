@@ -4,7 +4,7 @@ import json
 from collections.abc import AsyncIterable, AsyncIterator
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.api import MemorySearchResult
 from app.models.enums import AgentIntent
@@ -12,15 +12,54 @@ from app.models.event_payloads import (
     AgentActionDecisionFields,
     AgentMemoryProposalFields,
     AgentTaskFields,
+    AgentTraceAgentId,
+    AgentTraceCounts,
+    AgentTracePhase,
+    AgentTraceReasonCode,
+    AgentTraceSourceScope,
+    AgentTraceStatus,
     AgentWikiProposalFields,
     ContextBudgetFields,
     ContinuityProposalFields,
+    agent_trace_safe_summary,
 )
+from .contracts import IndependentAgentRoleId
 
 
-class AgentEventBase(BaseModel):
+class AgentSseEventBase(BaseModel):
     event: str
+
+
+class AgentEventBase(AgentSseEventBase):
     agent_run_id: str
+
+
+class AgentTraceEventBase(AgentSseEventBase):
+    model_config = ConfigDict(extra="forbid")
+
+    contract_version: Literal["agent-trace.v1"] = "agent-trace.v1"
+    run_id: str = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+    )
+    branch_id: Literal["foreground"] = "foreground"
+    stage_id: Literal["negotiation"] = "negotiation"
+    agent_id: AgentTraceAgentId
+    phase: AgentTracePhase
+    status: AgentTraceStatus
+    round: int = Field(ge=0)
+    sequence: int = Field(ge=1)
+    duration_ms: int = Field(default=0, ge=0)
+    reason_code: AgentTraceReasonCode
+    safe_summary: str = ""
+    counts: AgentTraceCounts = Field(default_factory=AgentTraceCounts)
+    source_scope: AgentTraceSourceScope = AgentTraceSourceScope.NONE
+
+    @model_validator(mode="after")
+    def derive_safe_summary(self) -> "AgentTraceEventBase":
+        self.safe_summary = agent_trace_safe_summary(self.reason_code)
+        return self
 
 
 class AgentStatusEvent(AgentEventBase):
@@ -91,29 +130,80 @@ class AgentReplyReadyEvent(AgentEventBase):
     text: str = ""
 
 
-class NegotiationStepEvent(AgentEventBase):
+class AgentBranchEvent(AgentSseEventBase):
+    model_config = ConfigDict(extra="forbid")
+
+    event: Literal["agent_branch"] = "agent_branch"
+    contract_version: Literal["agent-branch.v1"] = "agent-branch.v1"
+    run_id: str = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+    )
+    branch_id: str = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+    )
+    work_item_id: str = Field(min_length=1, max_length=128)
+    attempt: int = Field(default=1, ge=1, le=2)
+    role_id: IndependentAgentRoleId
+    status: Literal["started", "success", "failed", "fallback", "timed_out", "cancelled"]
+    sequence: int = Field(ge=1)
+    duration_ms: int = Field(default=0, ge=0)
+    safe_error_code: str | None = Field(
+        default=None,
+        max_length=128,
+        pattern=r"^[a-z][a-z0-9_]*$",
+    )
+
+
+class NegotiationStepEvent(AgentTraceEventBase):
     event: Literal["negotiation_step"] = "negotiation_step"
-    round: int
-    agent: str
-    action: Literal["invoking", "reviewing", "revising", "synthesizing"]
-    reasoning: str
-    confidence: float
-    message: str
 
 
-class NegotiationDoneEvent(AgentEventBase):
+class NegotiationDoneEvent(AgentTraceEventBase):
     event: Literal["negotiation_done"] = "negotiation_done"
-    total_rounds: int
-    agents_invoked: list[str] = Field(default_factory=list)
-    total_latency_ms: int
-    final_confidence: float
-    fallback: bool
 
 
 class AgentErrorEvent(AgentEventBase):
     event: Literal["error"] = "error"
     code: str
     message: str
+
+
+_PUBLIC_AGENT_ERROR_MESSAGES: dict[str, str] = {
+    "agent_model_not_configured": "尚未配置可用的聊天模型。",
+    "authentication_failed": "模型鉴权失败，请检查模型配置。",
+    "unsupported_model": "当前模型配置不可用，请检查模型名称。",
+    "rate_limited": "模型服务暂时繁忙，请稍后重试。",
+    "provider_bad_request": "模型请求未被服务接受，请检查模型配置。",
+    "provider_timeout": "模型服务响应超时，请稍后重试。",
+    "provider_unreachable": "暂时无法连接模型服务，请稍后重试。",
+    "dependency_missing": "当前模型运行依赖不可用。",
+    "invalid_response": "模型服务返回了无效响应。",
+    "model_invocation_failed": "模型调用失败，请检查模型服务地址、模型名称和 API 密钥。",
+    "empty_response": "模型服务返回了空回复。",
+    "agent_timeout": "协作步骤超时，正在使用稳定路径。",
+    "agent_invocation_failed": "协作步骤未完成，正在使用稳定路径。",
+    "agent_error": "协作步骤未完成，正在使用稳定路径。",
+    "agent_tool_timeout": "本地工具执行超时，请稍后重试。",
+    "agent_tool_unavailable": "所需本地工具暂不可用。",
+    "sensitive_memory_rejected": "疑似密钥或凭据的敏感内容不能保存为长期记忆。",
+    "runtime_error": "回复处理失败，请稍后重试。",
+    "late_error": "回复处理失败，请稍后重试。",
+    "agent_run_not_found": "回复流已过期、已启动或已被取消。",
+    "stream_ended_without_terminal_event": "回复流未正常完成。",
+    "stream_cancelled": "回复流已取消。",
+    "internal_error": "回复处理失败，请稍后重试。",
+}
+
+
+def public_agent_error(code: object) -> tuple[str, str]:
+    normalized = str(code or "").strip().casefold()
+    if normalized not in _PUBLIC_AGENT_ERROR_MESSAGES:
+        normalized = "internal_error"
+    return normalized, _PUBLIC_AGENT_ERROR_MESSAGES[normalized]
 
 
 AgentEvent = Annotated[
@@ -128,6 +218,7 @@ AgentEvent = Annotated[
     | AgentWikiProposalEvent
     | AgentTaskEvent
     | AgentReplyReadyEvent
+    | AgentBranchEvent
     | AgentDoneEvent
     | NegotiationStepEvent
     | NegotiationDoneEvent
@@ -136,12 +227,35 @@ AgentEvent = Annotated[
 ]
 
 
-def sse_encode(event: AgentEventBase) -> str:
-    payload = event.model_dump(mode="json", exclude={"event"})
+_AGENT_TRACE_PUBLIC_FIELDS = frozenset(
+    {
+        "contract_version",
+        "run_id",
+        "branch_id",
+        "stage_id",
+        "agent_id",
+        "phase",
+        "status",
+        "round",
+        "sequence",
+        "duration_ms",
+        "reason_code",
+        "safe_summary",
+        "counts",
+        "source_scope",
+    }
+)
+
+
+def sse_encode(event: AgentSseEventBase) -> str:
+    if isinstance(event, AgentTraceEventBase):
+        payload = event.model_dump(mode="json", include=_AGENT_TRACE_PUBLIC_FIELDS)
+    else:
+        payload = event.model_dump(mode="json", exclude={"event"})
     data = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
     return f"event: {event.event}\ndata: {data}\n\n"
 
 
-async def sse_stream(events: AsyncIterable[AgentEventBase]) -> AsyncIterator[str]:
+async def sse_stream(events: AsyncIterable[AgentSseEventBase]) -> AsyncIterator[str]:
     async for event in events:
         yield sse_encode(event)

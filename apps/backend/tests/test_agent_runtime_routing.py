@@ -20,6 +20,7 @@ from tests.agent_runtime_fakes import (
 )
 
 from app.agents import AgentRuntimeServices, AgentToolSet, LangGraphAgentRuntime, route_intent
+from app.agents.runtime_helpers import _strip_memory_command
 from app.models.api import AutomationSettingsResponse
 from app.models.enums import AgentIntent
 from app.services.chat_model import AgentId, AgentModelRegistry
@@ -38,10 +39,24 @@ from app.services.chat_model import AgentId, AgentModelRegistry
         ("记住：Ada 喜欢简洁的状态更新", AgentIntent.PROPOSE_MEMORY),
         ("提醒我明天伸展", AgentIntent.CREATE_TASK),
         ("5秒钟后提醒我写笔记", AgentIntent.CREATE_TASK),
+        ("删除所有本地记忆文件", AgentIntent.MANAGE_WIKI),
+        ("bulk rewrite all markdown notes", AgentIntent.MANAGE_WIKI),
     ],
 )
 def test_route_intent(message: str, intent: AgentIntent) -> None:
     assert route_intent(message).intent == intent
+
+
+@pytest.mark.parametrize(
+    ("message", "expected"),
+    [
+        ("请记得我更喜欢下午开会", "我更喜欢下午开会"),
+        ("帮我记得：我更喜欢下午开会", "我更喜欢下午开会"),
+        ("请记住我更喜欢下午开会", "我更喜欢下午开会"),
+    ],
+)
+def test_strip_memory_command_removes_polite_chinese_prefix(message: str, expected: str) -> None:
+    assert _strip_memory_command(message) == expected
 
 
 def test_langgraph_runtime_uses_langchain_structured_tools_for_core_services() -> None:

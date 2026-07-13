@@ -180,21 +180,23 @@ Expected Electron behavior:
 - Sidecar status and user-facing errors are shown in Chinese.
 - Closing the control console hides it; exiting from the pet menu or tray exits the app and stops the managed sidecar.
 
-## 30-Second Companion Demo
+## 5–7 Minute Interview Demo
 
-Use this path when recording or reviewing the product loop. The setup isolates demo state from real notes and local app data; the recording itself should only show the pet/chat surface, one message, the assistant reply, the memory receipt, and either `查看记忆` or `撤回`.
+Use this path when recording or reviewing the complete vertical slice. The preparation command creates an isolated SQLite database and Vault below `.tmp\agent-pet-demo`; it never reads or binds a real personal Vault. It preloads three diary entries, five long-term facts, one project note, two tasks, and auditable seed actions.
 
-Prepare isolated demo state from the repository root:
+Prepare or explicitly recreate the isolated state from the repository root:
 
 ```powershell
-New-Item -ItemType Directory -Force .\.tmp\PetMemoryDemoVault | Out-Null
-$demoRoot = (Resolve-Path .\.tmp).Path
-$env:AGENT_PET_SESSION_TOKEN = "dev-token"
-$env:AGENT_PET_DATA_DIR = Join-Path $demoRoot "agent-pet-demo-data"
-$env:AGENT_PET_SQLITE_PATH = Join-Path $demoRoot "agent-pet-demo.sqlite3"
+.\scripts\prepare-demo.ps1
+# Recreate only the disposable demo directory when needed:
+.\scripts\prepare-demo.ps1 -Reset
 ```
 
-Start Electron from the same shell so the managed sidecar inherits those variables, and keep it running:
+As its first guard, the script checks `127.0.0.1:8765`. If anything is already listening there, preparation stops before deleting or seeding Demo state. Run `.\scripts\check-trial-processes.ps1`, identify the owner, and decide manually what to do; the Demo script never reuses or stops an existing backend.
+
+After that guard passes, the script configures `AGENT_PET_DATA_DIR` and `AGENT_PET_SQLITE_PATH` for the current PowerShell process. It reuses an existing local session token or generates one when none is set, but never prints it. It does not save or print a model API key and does not start or stop any process.
+
+Start Electron from that same PowerShell so its managed sidecar inherits the isolated paths and hidden session token:
 
 ```powershell
 Push-Location .\apps\desktop
@@ -202,29 +204,20 @@ npm run electron:dev
 Pop-Location
 ```
 
-If the demo database has not bound a test knowledge folder yet, open a second PowerShell from the repository root and initialize only the disposable folder:
+Before recording, open Settings in the isolated Demo and configure the one global chat model, then run the connection test. The seed script intentionally does not copy a real API key or model configuration from another profile. Do not present Golden Path A as a successful model answer unless this connection test passes. If the provider is unavailable, show the explicit error/local fallback as a failure-mode demonstration instead of claiming a live multi-Agent result.
 
-```powershell
-$headers = @{ Authorization = "Bearer dev-token" }
-$demoVault = (Resolve-Path .\.tmp\PetMemoryDemoVault).Path
-Invoke-RestMethod http://127.0.0.1:8765/api/vaults/init `
-  -Method Post `
-  -Headers $headers `
-  -ContentType "application/json" `
-  -Body (@{ path = $demoVault; create_if_missing = $true; confirmed = $true } | ConvertTo-Json)
-```
+Run the fixed story instead of exploring unverified pages:
 
-Do not use a real personal Vault for this demo. If `127.0.0.1:8765` is already occupied, run `.\scripts\check-trial-processes.ps1` and decide manually whether the existing backend is yours before closing anything.
+1. Open the homepage and state that the Demo uses isolated local data.
+2. Open Chat and send `我之前提过更喜欢上午还是下午开会？顺便告诉我这个结论来自哪条记录。`.
+3. Confirm the reply includes a real local citation, then expand `来源与整理` and its nested `协作过程` to show bounded semantic/retrieval/review/synthesis evidence.
+4. Send `明天下午三点提醒我给张老师回邮件，并记住我更喜欢下午开会。`.
+5. Confirm the chat shows separate task and memory receipts, then open Plan to inspect the persisted reminder.
+6. Open Memory → Activity Ledger, find `已创建 Demo 项目资料`, click its real revert control, and show the new revert receipt. This deletes only the seeded disposable project note.
+7. Send `删除所有本地记忆文件` and confirm the system records `requires_confirmation=true` without changing a target.
+8. Open Settings to show the already-tested global model connection, local save location, local privacy mode, and the fixed two-round collaboration boundary.
 
-Record the 30-second story:
-
-1. Open the pet chat surface.
-2. Click `30 秒试走：记住演示内容`.
-3. Click `发送`.
-4. Wait for the assistant reply and the `这次我做了什么` receipt.
-5. Click `查看记忆` to inspect the saved memory, or click `撤回` to prove the write is reversible.
-
-The trial is only valid if the receipt comes from the real chat response and persisted action data. Do not replace it with screenshots, seeded DOM, or a mocked demo layer.
+The trial is valid only when citations, receipts, tasks, confirmations, and ledger rows come from the real API and persisted isolated data. Do not replace them with seeded DOM, mocked success responses, or screenshots presented as live evidence.
 
 ## Manual Local Chain
 
@@ -397,3 +390,15 @@ Record these separately from the local trial gate:
 - Sprite-pet halfbody is blank, layered overlays are misaligned, or pet-window sprite animation stutters.
 - Hitbox or tray behavior feels rough.
 - Lip sync, voice, multi-character switching, complex action queues, edge snapping, installer UX, notification polish, and auto-update are not current local-trial requirements.
+
+## Public Demo Claim Boundary
+
+The accepted narrowed demo uses isolated `.tmp` data, FTS-first retrieval,
+bounded role contracts, deterministic action safety, checkpoint decisions,
+privacy fallback, and API-backed citations/receipts. It must state that simple
+social chat may use a fast path and that sequential execution is the default.
+
+Do not present vector/hybrid retrieval or reranking as the default path. Do not
+claim a live-provider campaign, packaged executable launch, or viewport/DPI
+matrix unless separate current evidence exists. The approved public wording and
+metrics are indexed in `docs/portfolio/claim-evidence-index.md`.

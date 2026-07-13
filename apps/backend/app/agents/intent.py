@@ -24,6 +24,10 @@ _WIKI_MANAGEMENT_PATTERNS = (
     r"\b(add to wiki|update wiki|create wiki page|organize into wiki|save to knowledge base|archive to wiki)\b",
     r"(?:\u5199\u5165\s*wiki|\u66f4\u65b0\s*wiki|\u521b\u5efa\s*wiki\s*\u9875\u9762|\u6574\u7406\u5230\s*wiki|\u4fdd\u5b58\u5230\u77e5\u8bc6\u5e93|\u5f52\u6863\u5230\u77e5\u8bc6\u5e93|\u6574\u7406\u5230\u77e5\u8bc6\u5e93|\u5199\u5165\u77e5\u8bc6\u5e93)",
 )
+_HIGH_RISK_MUTATION_PATTERNS = (
+    r"(?:删除|移走|移动|批量(?:重写|改写|修改)|覆盖).{0,16}(?:记忆|笔记|文件|文档|资料|知识库|数据库|markdown|vault|sqlite)",
+    r"\b(?:delete|move|bulk\s+(?:rewrite|edit)|overwrite).{0,32}\b(?:memory|memories|notes?|files?|documents?|vault|markdown|database|sqlite)\b",
+)
 _MEMORY_RECALL_MARKERS = (
     "\u4f60\u8bb0\u5f97",
     "\u8bb0\u5f97\u6211",
@@ -50,6 +54,13 @@ def route_intent(message: str) -> AgentRoute:
             intent=AgentIntent.CHAT,
             confidence=0.0,
             reason="empty message defaults to chat",
+        )
+
+    if is_high_risk_mutation_request(message):
+        return AgentRoute(
+            intent=AgentIntent.MANAGE_WIKI,
+            confidence=0.99,
+            reason="high-risk local mutation requires confirmation",
         )
 
     if _matches_any(_WIKI_MANAGEMENT_PATTERNS, normalized):
@@ -104,6 +115,11 @@ def route_intent(message: str) -> AgentRoute:
 
 def _matches_any(patterns: tuple[str, ...], message: str) -> bool:
     return any(re.search(pattern, message, re.IGNORECASE) for pattern in patterns)
+
+
+def is_high_risk_mutation_request(message: str) -> bool:
+    normalized = " ".join(message.strip().lower().split())
+    return bool(normalized) and _matches_any(_HIGH_RISK_MUTATION_PATTERNS, normalized)
 
 
 def _is_memory_recall_query(message: str) -> bool:

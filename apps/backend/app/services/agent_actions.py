@@ -234,6 +234,62 @@ class AgentActionStore:
             raise AgentActionNotFoundError(action_id)
         return self._map(row)
 
+    def find_by_idempotency_key(self, idempotency_key: str) -> AgentActionResponse | None:
+        rows = self.conn.execute(
+            "SELECT * FROM agent_actions ORDER BY created_at DESC, rowid DESC"
+        ).fetchall()
+        for row in rows:
+            metadata = _json_load(row["metadata_json"], {})
+            if isinstance(metadata, dict) and metadata.get("idempotency_key") == idempotency_key:
+                return self._map(row)
+        return None
+
+    def update_execution(
+        self,
+        action_id: str,
+        *,
+        status: str,
+        before_snapshot: dict[str, object] | None = None,
+        after_snapshot: dict[str, object] | None = None,
+        metadata: dict[str, object] | None = None,
+        reversible: bool | None = None,
+        error: str | None = None,
+    ) -> AgentActionResponse:
+        current = self.conn.execute(
+            "SELECT metadata_json, reversible FROM agent_actions WHERE id = ?",
+            (action_id,),
+        ).fetchone()
+        if current is None:
+            raise AgentActionNotFoundError(action_id)
+        merged_metadata = _json_load(current["metadata_json"], {})
+        if not isinstance(merged_metadata, dict):
+            merged_metadata = {}
+        merged_metadata.update(metadata or {})
+        now = utc_now_iso()
+        with self.conn:
+            self.conn.execute(
+                """
+                UPDATE agent_actions
+                SET status = ?, before_snapshot_json = COALESCE(?, before_snapshot_json),
+                    after_snapshot_json = COALESCE(?, after_snapshot_json),
+                    metadata_json = ?, reversible = ?, error = ?, updated_at = ?,
+                    completed_at = ?
+                WHERE id = ?
+                """,
+                (
+                    status,
+                    _json(before_snapshot) if before_snapshot is not None else None,
+                    _json(after_snapshot) if after_snapshot is not None else None,
+                    _json(merged_metadata),
+                    int(bool(reversible)) if reversible is not None else int(current["reversible"]),
+                    error,
+                    now,
+                    now if status in {"completed", "failed_recovery", "denied"} else None,
+                    action_id,
+                ),
+            )
+        return self.get(action_id)
+
     def mark_reverted(self, action_id: str, reverted_by: str) -> AgentActionResponse:
         with self.conn:
             self.conn.execute(
@@ -409,6 +465,98 @@ class AgentActionService:
 
     def record(self, request: AgentActionCreate) -> AgentActionResponse:
         return self.store.create(request)
+
+    def claim_execution(
+        self,
+        request: AgentActionCreate,
+        *,
+        idempotency_key: str,
+    ) -> tuple[AgentActionResponse, bool]:
+        action_id = f"action-{idempotency_key[:32]}"
+        metadata = {
+            **request.metadata,
+            "idempotency_key": idempotency_key,
+            "control_state": "claimed",
+        }
+        try:
+            action = self.store.create(
+                AgentActionCreate(
+                    action_type=request.action_type,
+                    title=request.title,
+                    summary=request.summary,
+                    source_agent_run_id=request.source_agent_run_id,
+                    source_conversation_id=request.source_conversation_id,
+                    source_message_id=request.source_message_id,
+                    risk_tier=request.risk_tier,
+                    decision=request.decision,
+                    status="claimed",
+                    target_paths=request.target_paths,
+                    before_snapshot=request.before_snapshot,
+                    after_snapshot=request.after_snapshot,
+                    metadata=metadata,
+                    reversible=request.reversible,
+                    error=request.error,
+                    action_id=action_id,
+                )
+            )
+            return action, True
+        except sqlite3.IntegrityError:
+            return self.store.get(action_id), False
+
+    def record_policy_decision(
+        self,
+        request: AgentActionCreate,
+        *,
+        idempotency_key: str,
+        status: str,
+    ) -> tuple[AgentActionResponse, bool]:
+        action_id = f"action-{idempotency_key[:32]}"
+        metadata = {**request.metadata, "idempotency_key": idempotency_key, "control_state": status}
+        try:
+            action = self.store.create(
+                AgentActionCreate(
+                    action_type=request.action_type,
+                    title=request.title,
+                    summary=request.summary,
+                    source_agent_run_id=request.source_agent_run_id,
+                    source_conversation_id=request.source_conversation_id,
+                    source_message_id=request.source_message_id,
+                    risk_tier=request.risk_tier,
+                    decision=request.decision,
+                    status=status,
+                    target_paths=request.target_paths,
+                    metadata=metadata,
+                    reversible=False,
+                    action_id=action_id,
+                )
+            )
+            return action, True
+        except sqlite3.IntegrityError:
+            return self.store.get(action_id), False
+
+    def find_execution(self, idempotency_key: str) -> AgentActionResponse | None:
+        return self.store.find_by_idempotency_key(idempotency_key)
+
+    def update_execution(
+        self,
+        action_id: str,
+        *,
+        status: str,
+        before_snapshot: dict[str, object] | None = None,
+        after_snapshot: dict[str, object] | None = None,
+        metadata: dict[str, object] | None = None,
+        reversible: bool | None = None,
+        error: str | None = None,
+    ) -> AgentActionResponse:
+        return self.store.update_execution(
+            action_id,
+            status=status,
+            before_snapshot=before_snapshot,
+            after_snapshot=after_snapshot,
+            metadata=metadata,
+            reversible=reversible,
+            error=error,
+        )
 
     def list_recent(self, *, limit: int = 50, source_agent_run_id: str | None = None) -> list[AgentActionResponse]:
         return self.store.list_recent(limit=limit, source_agent_run_id=source_agent_run_id)

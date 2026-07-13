@@ -31,6 +31,7 @@ from app.models.api import (
     WikiSynthesizeRequest,
 )
 from app.services.chat_model import AgentModelRegistry, ChatModelRunResult
+from app.agents.checkpointer import SQLiteCheckpointStore
 
 class RetrievalServiceProtocol(Protocol):
     async def search(
@@ -175,6 +176,7 @@ class AgentRuntimeServices:
     agent_action_recorder: AgentActionRecorderProtocol | None = None
     memory_activation_recorder: MemoryActivationRecorderProtocol | None = None
     prompt_profile_provider: PromptProfileProviderProtocol | None = None
+    checkpoint_store: SQLiteCheckpointStore | None = None
 
 
 class AgentServices(Protocol):

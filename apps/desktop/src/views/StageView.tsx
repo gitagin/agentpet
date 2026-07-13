@@ -1,10 +1,8 @@
 import { useCallback, useState } from "react";
 import type { CSSProperties, FormEvent } from "react";
 import {
-  BookOpen,
   CalendarCheck,
   FolderKanban,
-  HeartPulse,
   MessageSquareText,
   Settings,
   type LucideIcon,
@@ -17,7 +15,7 @@ import { HalfbodyPetPortrait } from "../features/halfbody/HalfbodyPetPortrait";
 import { productCopy } from "../productCopy";
 import { BottomNav } from "./BottomNav";
 
-type StageRoute = "agent" | "chat" | "growth" | "memory" | "settings" | "world";
+type StageRoute = "agent" | "chat" | "memory" | "settings";
 
 type StageAction = {
   label: string;
@@ -57,31 +55,16 @@ const stageActions: StageAction[] = [
     icon: CalendarCheck,
   },
   {
-    label: "设置边界",
-    detail: "管理保存规则、模型连接和本地资料",
-    route: "settings",
-    icon: Settings,
-  },
-];
-
-const advancedStageActions: StageAction[] = [
-  {
-    label: "成长记录",
-    detail: "查看长期陪伴状态和变化记录",
-    route: "growth",
-    icon: HeartPulse,
-  },
-  {
     label: "提醒和待办",
-    detail: "管理提醒、待办和执行日志",
+    detail: "用一句话创建提醒，再查看执行结果",
     route: "agent",
     icon: FolderKanban,
   },
   {
-    label: "记忆资料库",
-    detail: "从记忆工作台整理资料和记录",
-    route: "world",
-    icon: BookOpen,
+    label: "设置边界",
+    detail: "管理保存规则、模型连接和本地资料",
+    route: "settings",
+    icon: Settings,
   },
 ];
 
@@ -184,29 +167,6 @@ export default function StageView({
               );
             })}
           </div>
-          <details className="stage-advanced-routes">
-            <summary>更多和高级</summary>
-            <div className="stage-action-grid compact">
-              {advancedStageActions.map((action) => {
-                const Icon = action.icon;
-                return (
-                  <button
-                    key={action.label}
-                    type="button"
-                    className="stage-action-card"
-                    data-stage-route={action.route}
-                    onClick={() => openStageRoute(action.route)}
-                  >
-                    <Icon aria-hidden="true" size={20} />
-                    <span>
-                      <strong>{action.label}</strong>
-                      <small>{action.detail}</small>
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </details>
         </section>
 
         <section className="stage-portrait-zone" aria-label="桌宠形象">

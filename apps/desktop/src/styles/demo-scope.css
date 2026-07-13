@@ -1,0 +1,172 @@
+/* Demo scope lock: this file is intentionally small and imported last. */
+
+.stage-command-shell {
+  /* The stage uses light translucent panels over the night scene. Keep its
+     local ink tokens dark instead of inheriting the dark console theme. */
+  --text: #24323a;
+  --muted: #52656d;
+  --color-text: #24323a;
+  --color-text-muted: #52656d;
+  --color-text-soft: #52656d;
+  --color-text-faint: #6b7a80;
+  --brand: #a6406b;
+  --brand-strong: #8f315b;
+}
+
+.stage-action-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.memory-workspace-tabs > [hidden] {
+  display: none !important;
+}
+
+body[data-window-mode="chat"] .panel.chat-panel {
+  grid-template-rows: minmax(0, 1fr) auto auto auto;
+}
+
+body[data-window-mode="chat"] .chat-panel .message-list {
+  grid-row: 1;
+}
+
+body[data-window-mode="chat"] .chat-guided-trials {
+  grid-column: 1;
+  grid-row: 2;
+  justify-self: stretch;
+  max-width: 100%;
+  padding-left: 0;
+  mask-image: none;
+}
+
+body[data-window-mode="chat"] .chat-guided-trials button {
+  flex: 1 1 280px;
+  min-height: 34px;
+  max-height: none;
+  justify-content: flex-start;
+  white-space: normal;
+}
+
+body[data-window-mode="chat"] .chat-panel .chat-form {
+  grid-row: 3;
+}
+
+body[data-window-mode="chat"] .chat-panel .field-note {
+  grid-row: 4;
+  justify-self: start;
+  max-width: 100%;
+}
+
+.message-agent-action-buckets {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.message-agent-action-bucket {
+  min-height: 0;
+  padding: 8px;
+}
+
+.message-agent-action-bucket p {
+  margin-top: 3px;
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+body[data-window-mode="settings"] .feature-window-content > #settings-panel {
+  width: 100%;
+}
+
+body[data-window-mode="agent"] .task-workspace-grid {
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+body[data-window-mode="agent"] .task-trace-disclosure {
+  grid-area: trace;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  background: rgba(10, 11, 16, 0.64);
+}
+
+body[data-window-mode="agent"] .task-trace-disclosure > summary {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  color: var(--feature-ink);
+  cursor: pointer;
+}
+
+body[data-window-mode="agent"] .task-trace-disclosure > summary span {
+  color: var(--feature-soft);
+  font-size: 11px;
+}
+
+body[data-window-mode="agent"] .task-trace-disclosure[open] {
+  height: clamp(150px, 23dvh, 190px);
+}
+
+body[data-window-mode="agent"] .task-trace-disclosure .task-trace-drawer {
+  height: calc(100% - 42px);
+  max-height: none;
+}
+
+/* The legacy cockpit layer gives the side rails fixed minimum widths that are
+   wider than their grid tracks below 980px. Keep every rail inside the real
+   homepage content box without changing the 1080px reference composition. */
+@media (min-width: 861px) and (max-width: 980px) {
+  .control-home-shell .control-desktop-grid {
+    grid-template-columns: var(--home-left-col) minmax(0, 1fr) var(--home-right-col);
+  }
+
+  .control-home-shell .control-left-rail {
+    width: var(--home-left-col);
+    min-width: 0;
+    max-width: var(--home-left-col);
+  }
+
+  .control-home-shell .control-right-rail {
+    width: var(--home-right-col);
+    min-width: 0;
+    max-width: var(--home-right-col);
+  }
+}
+
+@media (min-width: 761px) and (max-width: 860px) {
+  .control-home-shell .control-desktop-grid {
+    grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
+  }
+
+  .control-home-shell .control-left-rail {
+    width: auto;
+    min-width: 0;
+    max-width: none;
+  }
+
+  .control-home-shell .control-right-rail {
+    display: none;
+  }
+
+  .control-home-shell .control-bottom-dock {
+    left: calc(
+      var(--home-shell-x) + 260px + var(--home-grid-gap) +
+      ((100vw - (2 * var(--home-shell-x)) - 260px - var(--home-grid-gap)) / 2)
+    );
+  }
+}
+
+@media (max-width: 760px) {
+  .stage-action-grid,
+  .message-agent-action-buckets {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  body[data-window-mode="chat"] .chat-guided-trials {
+    display: flex;
+    flex-wrap: wrap;
+  }
+}

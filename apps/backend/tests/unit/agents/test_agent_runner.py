@@ -70,7 +70,30 @@ async def test_run_agent_wraps_handler_exception() -> None:
 
     assert result.agent_id == AgentId.RETRIEVAL_AGENT
     assert result.round == 2
-    assert result.output == {"error": "retrieval failed"}
+    assert result.output == {
+        "error": "retrieval failed",
+        "error_code": "agent_invocation_failed",
+    }
     assert result.confidence == 0.0
     assert result.latency_ms > 0
+    assert result.tool_calls == []
+
+
+@pytest.mark.asyncio
+async def test_run_agent_times_out_hanging_handler() -> None:
+    async def handler(input_query: str, state: NegotiationState) -> dict:
+        await asyncio.sleep(1)
+        return {"result": input_query, "confidence": 0.8}
+
+    result = await run_agent(
+        AgentId.RETRIEVAL_AGENT,
+        "今天的状态",
+        _state(),
+        _registry(handler),
+        timeout_seconds=0.01,
+    )
+
+    assert result.confidence == 0.0
+    assert result.output["error_code"] == "agent_timeout"
+    assert "timed out" in result.output["error"]
     assert result.tool_calls == []

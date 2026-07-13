@@ -237,4 +237,98 @@ describe("applyStreamEvent assistant reply visibility", () => {
     expect(harness.messages[0].live2d_action_hints).toEqual(["抱枕"]);
     expect(harness.petChat.startReplyPaging).toHaveBeenCalledWith("assistant-1");
   });
+
+  it("compresses backend status and negotiation events into four visible progress stages", () => {
+    const harness = createHarness();
+
+    applyStreamEvent("assistant-1", event("status", { stage: "semantic_analysis" }), harness.context);
+    expect(harness.messages[0].progress_stage).toBe("understanding");
+
+    applyStreamEvent(
+      "assistant-1",
+      event("status", { stage: "multi_source_memory_retrieval", source_scopes: ["personal_memory"] }),
+      harness.context,
+    );
+    expect(harness.messages[0]).toMatchObject({ progress_stage: "retrieving", retrieval_attempted: true });
+
+    applyStreamEvent(
+      "assistant-1",
+      event("negotiation_step", {
+        round: 0,
+        agent: "reviewer",
+        action: "reviewing",
+        reasoning: "核验来源",
+        confidence: 0.8,
+        message: "证据足够",
+      }),
+      harness.context,
+    );
+    expect(harness.messages[0].progress_stage).toBe("verifying");
+    expect(harness.messages[0].negotiation_steps?.[0]).toMatchObject({
+      contract_version: "agent-trace.v1",
+      agent_id: "orchestrator",
+      phase: "reviewing",
+      reason_code: "evidence_review",
+      safe_summary: "正在核验已收集的本地证据。",
+    });
+    expect(JSON.stringify(harness.messages[0].negotiation_steps?.[0])).not.toMatch(/reasoning|核验来源|证据足够/);
+
+    applyStreamEvent(
+      "assistant-1",
+      event("negotiation_done", {
+        total_rounds: 1,
+        agents_invoked: ["reviewer"],
+        total_latency_ms: 12,
+        final_confidence: 0.8,
+        fallback: false,
+      }),
+      harness.context,
+    );
+    expect(harness.messages[0].progress_stage).toBe("answering");
+    expect(harness.messages[0].negotiation_done).toMatchObject({
+      contract_version: "agent-trace.v1",
+      phase: "completed",
+      reason_code: "negotiation_completed",
+      counts: { agents_invoked: 1, rounds: 1 },
+    });
+  });
+
+  it("validates versioned trace fields and derives the summary from the reason code", () => {
+    const harness = createHarness();
+
+    applyStreamEvent(
+      "assistant-1",
+      event("negotiation_step", {
+        contract_version: "agent-trace.v1",
+        run_id: "run-safe-1",
+        branch_id: "foreground",
+        stage_id: "negotiation",
+        agent_id: "retrieval_agent",
+        phase: "invoking",
+        status: "running",
+        round: 1,
+        sequence: 1,
+        duration_ms: 0,
+        reason_code: "additional_context_required",
+        safe_summary: "private-model-output",
+        counts: { agents_invoked: 0, citations: 0, rounds: 0 },
+        source_scope: "personal_memory",
+        reasoning: "private-reasoning-output",
+        raw_prompt: "private-prompt-output",
+        tool_arguments: { query: "private-query-output" },
+      }),
+      harness.context,
+    );
+
+    const stored = harness.messages[0].negotiation_steps?.[0];
+    expect(stored).toMatchObject({
+      agent_id: "retrieval_agent",
+      phase: "invoking",
+      safe_summary: "需要补充本地证据，正在进行有界检索。",
+      source_scope: "personal_memory",
+    });
+    expect(JSON.stringify(stored)).not.toMatch(
+      /private-model-output|private-reasoning-output|private-prompt-output|private-query-output|reasoning|raw_prompt|tool_arguments/,
+    );
+  });
 });

@@ -400,10 +400,14 @@ def diary_records_to_search_results(records: Iterable[DiaryMemoryObjectRecord]):
             heading=record.topic or record.type,
             snippet=_record_snippet(record),
             score=record.importance + record.confidence,
+            content_hash=record.object_hash,
             source_scope="diary_objects",
             retrieval_mode="diary_object",
+            retrieval_channels=["diary"],
+            lifecycle_status=record.status.value,
         )
         for record in records
+        if record.status == MemoryFactStatus.ACTIVE
     ]
 
 

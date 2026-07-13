@@ -145,6 +145,17 @@ def test_extracts_short_like_statement_as_preference():
     assert candidate.value == "苹果"
 
 
+def test_extracts_compound_demo_preference_clause() -> None:
+    candidate = extract_long_term_memory_candidate(
+        "明天下午三点提醒我给张老师回邮件，并记住我更喜欢下午开会。"
+    )
+
+    assert candidate is not None
+    assert candidate.target_path == "Memories/LongTerm/Preferences.md"
+    assert candidate.subject == "偏好"
+    assert candidate.value == "下午开会"
+
+
 def test_model_extraction_failure_logs_warning_and_skips_candidates(tmp_path, caplog):
     class FailingModel:
         def complete(self, *, user_message: str, system_prompt: str | None = None) -> str:

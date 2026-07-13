@@ -38,6 +38,7 @@ export function AgentActionActivityCard({ entry, reverting, onRevert, onRevealTa
   const display = getAgentActionDisplayFields(action);
   const attention = isAttentionAgentAction(action);
   const canRevert = canRevertAgentAction(action);
+  const awaitingConfirmation = action.decision === "ask" && ["pending", "pending_confirm"].includes(action.status);
   const targetPaths = action.target_paths.filter((targetPath) => targetPath.toLowerCase().endsWith(".md"));
   const showAuditDetails = !isSkippedAction(action);
   const auditDetails = [
@@ -102,7 +103,7 @@ export function AgentActionActivityCard({ entry, reverting, onRevert, onRevealTa
       {!canRevert && action.reversible && action.status !== "reverted" ? (
         <p className="field-note">当前状态不可自动撤回。</p>
       ) : null}
-      {action.decision === "ask" && action.status === "pending" ? (
+      {awaitingConfirmation ? (
         <p className="field-note error">该活动需要人工确认；请处理下方对应的高风险确认项。</p>
       ) : null}
 

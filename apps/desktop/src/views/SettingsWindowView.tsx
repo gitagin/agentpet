@@ -6,7 +6,7 @@ export default function SettingsWindowView({ children }: { children: ReactNode }
     <FeatureWindowShell
       eyebrow="设置"
       title="设置"
-      description="管理我怎么聊天、怎么保存记忆、什么时候自动整理，以及是否朗读回复。"
+      description="管理对话连接、记忆保存位置、自动整理和本地隐私边界。"
       activeTab="设置"
     >
       {children}

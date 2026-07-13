@@ -5,6 +5,7 @@ from typing import Any
 from fastapi import Request
 
 from app.agents import AgentRuntimeServices, LangGraphAgentRuntime
+from app.agents.checkpointer import SQLiteCheckpointStore
 from app.models.api import (
     MemoryProposalActionResponse,
     MemoryProposalCreateRequest,
@@ -50,6 +51,7 @@ from .factory import (
     chat_model_client,
     companion_retrieval_report_store,
     continuity_service,
+    database,
     diary_memory_service,
     memory_activation_recorder,
     memory_graph_store,
@@ -541,5 +543,6 @@ def agent_runtime(request: Request) -> LangGraphAgentRuntime:
             agent_action_recorder=lambda action: record_agent_action(request, action),
             memory_activation_recorder=memory_activation_recorder(request),
             prompt_profile_provider=prompt_profile_provider(request),
+            checkpoint_store=SQLiteCheckpointStore(database(request)),
         )
     )

@@ -8,7 +8,12 @@ from ..errors import AppError
 from ..models.api import DiagnosticsExportResponse, LocalStateResetRequest, LocalStateResetResponse, NegotiationStatsResponse
 from ..scheduler import ReminderSchedulerProtocol
 from ..services.diagnostics import DiagnosticsExporter
-from ..services.local_state_reset import LocalStateResetService, RESET_CONFIRMATION_TEXT
+from ..services.local_state_reset import (
+    MEMORY_RESET_CONFIRMATION_TEXT,
+    RESET_CONFIRMATION_TEXT,
+    LocalStateResetService,
+    MemoryStateResetService,
+)
 from .wiring import cached_active_vault_id, clear_cached_active_vault_id, database
 from .wiring import refresh_retrieval_vector_index, reminder_scheduler, reset_chat_runs
 
@@ -112,6 +117,24 @@ async def reset_local_state(
     finally:
         if scheduler_available:
             scheduler.resume()
+    return LocalStateResetResponse(
+        status=result.status,
+        cleared_tables=result.cleared_tables,
+        removed_paths=result.removed_paths,
+    )
+
+
+@router.post("/reset-memory-state", response_model=LocalStateResetResponse)
+async def reset_memory_state(request: Request, reset_request: LocalStateResetRequest) -> LocalStateResetResponse:
+    if reset_request.confirmation != MEMORY_RESET_CONFIRMATION_TEXT:
+        raise AppError(
+            code="memory_reset_confirmation_required",
+            message=f"璇疯緭鍏ョ‘璁よ瘝 {MEMORY_RESET_CONFIRMATION_TEXT} 鍚庡啀閲嶇疆璁板繂鐘舵€併€?",
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+    service = MemoryStateResetService(database(request), get_settings().data_dir)
+    result = service.reset()
+    reset_chat_runs(request)
     return LocalStateResetResponse(
         status=result.status,
         cleared_tables=result.cleared_tables,

@@ -4,6 +4,8 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pytest
+
 from apps.backend.tests._schema import migrate_db
 from app.services.memory_candidates import MemoryCandidateStore
 from app.services.memory_consolidation import MemoryConsolidationService, REDACTED_EVIDENCE
@@ -130,3 +132,94 @@ def test_explicit_remember_is_high_confidence_active_candidate_without_vault_wri
     assert item.candidate.confidence >= 0.9
     assert item.candidate.metadata["recall_permissions"]["can_persist"] is True
     assert not (tmp_path / "Memories").exists()
+
+
+def test_chinese_compound_remember_creates_active_preference_candidate(tmp_path: Path) -> None:
+    service, _ = build_service(tmp_path)
+    try:
+        result = service.consolidate(
+            user_message="明天下午三点提醒我给张老师回邮件，并记住我更喜欢下午开会。",
+            assistant_answer="已创建提醒，并整理这条偏好。",
+        )
+    finally:
+        service.close()
+
+    assert result.candidate_count == 1
+    item = result.items[0]
+    assert item.candidate.memory_kind is MemoryKind.PREFERENCE
+    assert item.candidate.source_track is SourceTrack.EXPLICIT_USER
+    assert item.candidate.status is LifecycleStatus.ACTIVE
+    assert "下午开会" in item.candidate.summary
+    assert item.candidate.metadata["recall_permissions"]["can_persist"] is True
+
+
+@pytest.mark.parametrize(
+    "message",
+    (
+        "请记得我更喜欢下午开会",
+        "请帮我记住我更喜欢下午开会",
+        "I want you to remember that I prefer afternoon meetings.",
+        "Could you please remember that I prefer afternoon meetings?",
+        "Could you remember that I prefer afternoon meetings?",
+    ),
+)
+def test_polite_remember_command_creates_active_preference_candidate(tmp_path: Path, message: str) -> None:
+    service, _ = build_service(tmp_path)
+    try:
+        result = service.consolidate(
+            user_message=message,
+            assistant_answer="已按当前策略整理这条偏好。",
+        )
+    finally:
+        service.close()
+
+    assert result.candidate_count == 1
+    item = result.items[0]
+    assert item.candidate.memory_kind is MemoryKind.PREFERENCE
+    assert item.candidate.source_track is SourceTrack.EXPLICIT_USER
+    assert item.candidate.status is LifecycleStatus.ACTIVE
+    assert "afternoon meetings" in item.candidate.normalized_value or "下午开会" in item.candidate.normalized_value
+    assert item.candidate.confidence >= 0.9
+    assert item.candidate.metadata["recall_permissions"]["can_persist"] is True
+
+
+def test_chinese_recall_questions_are_not_promoted_to_explicit_memory(tmp_path: Path) -> None:
+    service, _ = build_service(tmp_path)
+    try:
+        results = [
+            service.consolidate(
+                user_message=message,
+                assistant_answer="我会先查本地记录再回答。",
+            )
+            for message in (
+                "你还记得我更喜欢下午开会",
+                "你记得我更喜欢下午开会吗？",
+            )
+        ]
+    finally:
+        service.close()
+
+    assert all(result.candidate_count == 0 for result in results)
+    assert all(result.skipped_reason == "no_signal" for result in results)
+
+
+@pytest.mark.parametrize(
+    "message",
+    (
+        "Do you remember that I prefer afternoon meetings?",
+        "Do you still remember that I prefer afternoon meetings?",
+        "What do you remember? I prefer afternoon meetings.",
+    ),
+)
+def test_english_recall_question_is_not_promoted_to_memory(tmp_path: Path, message: str) -> None:
+    service, _ = build_service(tmp_path)
+    try:
+        result = service.consolidate(
+            user_message=message,
+            assistant_answer="I will search local records before answering.",
+        )
+    finally:
+        service.close()
+
+    assert result.candidate_count == 0
+    assert result.skipped_reason == "no_signal"

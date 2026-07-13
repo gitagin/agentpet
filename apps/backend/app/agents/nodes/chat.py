@@ -18,9 +18,14 @@ from app.services.prompt_memory_assembler import (
 
 from ..events import AgentTokenEvent
 from ..events_helpers import _agent_state, _append_status, _emit_tool_results, _events, _record_node_error
-from ..prompts.system import _knowledge_not_found_chat_prompt
+from ..retrieval.compression import (
+    UNTRUSTED_EVIDENCE_SYSTEM_POLICY,
+    accepted_citation_ids,
+    invalid_rendered_citation_ids,
+    unsupported_exact_values,
+)
 from ..retrieval.router import _chat_agent_tool_names
-from ..retrieval.scoping import _source_scope_label
+from ..retrieval.scoping import _guard_search_memory_tools, _source_scope_label
 from ..runtime_helpers import (
     _chat_system_prompt,
     _chunk_text,
@@ -51,6 +56,14 @@ async def _chat_node(
             _events(graph_state).append(_continuity_signal_event(state.agent_run_id, signal))
             graph_state["continuity_signal_emitted"] = True
         _append_status(graph_state, "正在生成桌宠回复。", stage="chat_generation")
+        if graph_state.get("deterministic_action_response") and state.response_text:
+            return _emit_response(graph_state, state, state.response_text)
+        if (
+            state.semantic_analysis is not None
+            and state.semantic_analysis.needs_context
+            and not any(_can_use_result_as_answer_context(item) for item in state.citations)
+        ):
+            return _emit_response(graph_state, state, _local_knowledge_not_found_response())
         try:
             chat_model = _model_for_chat(services, AgentId.CHAT_AGENT)
         except AgentModelNotConfiguredError as exc:
@@ -69,9 +82,9 @@ async def _chat_node(
                     tool_results.extend(fallback_tool_results)
                 _emit_tool_results(graph_state, tool_results)
                 if has_empty_search_result(tool_results):
-                    response = await _answer_with_chat_model(services, state, _knowledge_not_found_chat_prompt())
+                    response = _local_knowledge_not_found_response()
             if state.semantic_analysis and state.semantic_analysis.needs_context and not state.citations:
-                response = await _answer_with_chat_model(services, state, _knowledge_not_found_chat_prompt())
+                response = _local_knowledge_not_found_response()
         elif state.citations:
             response = _grounded_response_from_citations(state.citations)
         elif state.semantic_analysis and state.semantic_analysis.needs_context:
@@ -79,10 +92,7 @@ async def _chat_node(
         else:
             response = state.response_text or "我在呀。你先丢给我一句想法，我陪你慢慢整理。"
 
-        state.response_text = response
-        for chunk in _chunk_text(response):
-            _events(graph_state).append(AgentTokenEvent(agent_run_id=state.agent_run_id, text=chunk))
-        return graph_state
+        return _emit_response(graph_state, state, _validated_model_response(graph_state, state, response))
     except (AgentToolUnavailableError, SensitiveMemoryRejectedError) as exc:
         return _record_node_error(graph_state, exc)
     except Exception as exc:
@@ -107,16 +117,17 @@ async def _run_model_chat_with_tools(
     chat_model = _model_for_chat(services, AgentId.CHAT_AGENT)
     if isinstance(chat_model, ToolCallingChatModelProtocol):
         tool_names = _chat_agent_tool_names(state, services)
+        guarded_tools = _guard_search_memory_tools(observed_toolset.allowed_tools(tool_names))
         result = await chat_model.complete_with_tools(
             user_message=_message_with_runtime_context(services, state),
-            system_prompt=_chat_system_prompt(),
-            tools=observed_toolset.allowed_tools(tool_names),
+            system_prompt=_chat_system_prompt_with_evidence_boundary(),
+            tools=guarded_tools,
         )
         return result.text, tool_results
 
     response = await chat_model.complete(
         user_message=_message_with_runtime_context(services, state),
-        system_prompt=_chat_system_prompt(),
+        system_prompt=_chat_system_prompt_with_evidence_boundary(),
     )
     return response, tool_results
 
@@ -153,13 +164,13 @@ async def _answer_with_chat_model(
     if isinstance(chat_model, ToolCallingChatModelProtocol):
         result = await chat_model.complete_with_tools(
             user_message=_message_with_runtime_context(services, state),
-            system_prompt=system_prompt or _chat_system_prompt(),
+            system_prompt=_chat_system_prompt_with_evidence_boundary(system_prompt),
             tools=(),
         )
         return result.text
     response = await chat_model.complete(
         user_message=_message_with_runtime_context(services, state),
-        system_prompt=system_prompt or _chat_system_prompt(),
+        system_prompt=_chat_system_prompt_with_evidence_boundary(system_prompt),
     )
     return response
 
@@ -250,6 +261,50 @@ def _grounded_response_from_citations(results) -> str:
 
 def _local_knowledge_not_found_response() -> str:
     return "我翻了下记忆本，暂时没有找到能引用的记录，所以这部分我不装懂。你可以告诉我一点背景，我也可以先按一般经验陪你分析。"
+
+
+def _invalid_citation_response() -> str:
+    return "这条回答里的引用没有通过本地证据校验，所以我先不把它当作事实。你可以补充一点背景，我再重新查证。"
+
+
+def _unsupported_exact_value_response() -> str:
+    return "这条回答里的日期、实体或标识符和本地证据对不上，所以我先不把它当作事实，等进一步复核后再回答。"
+
+
+def _validated_model_response(
+    graph_state: dict[str, Any],
+    state: AgentState,
+    response: str,
+) -> str:
+    invalid_ids = invalid_rendered_citation_ids(response, accepted_citation_ids(state.citations))
+    if invalid_ids:
+        graph_state["grounding_review"] = {
+            "required": True,
+            "owner_task": "TASK-1211",
+            "reason": "fabricated_citation_id",
+        }
+        return _invalid_citation_response()
+    unsupported_values = unsupported_exact_values(response, state.citations)
+    if unsupported_values:
+        graph_state["grounding_review"] = {
+            "required": True,
+            "owner_task": "TASK-1211",
+            "reason": "unsupported_exact_value",
+        }
+        return _unsupported_exact_value_response()
+    return response
+
+
+def _chat_system_prompt_with_evidence_boundary(system_prompt: str | None = None) -> str:
+    base = system_prompt or _chat_system_prompt()
+    return f"{base}\n\nEvidence boundary:\n{UNTRUSTED_EVIDENCE_SYSTEM_POLICY}"
+
+
+def _emit_response(graph_state: dict[str, Any], state: AgentState, response: str) -> dict[str, Any]:
+    state.response_text = response
+    for chunk in _chunk_text(response):
+        _events(graph_state).append(AgentTokenEvent(agent_run_id=state.agent_run_id, text=chunk))
+    return graph_state
 
 
 def _message_with_citation_context(state: AgentState, *, sections: MemoryPromptSections | None = None) -> str:

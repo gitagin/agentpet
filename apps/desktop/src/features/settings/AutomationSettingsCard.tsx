@@ -1,6 +1,5 @@
-import { BellRing, Loader2, RefreshCw, ShieldCheck } from "lucide-react";
+import { Loader2, RefreshCw, ShieldCheck } from "lucide-react";
 import type { AsyncStatus, AutomationSettingsDraft } from "./settingsTypes";
-import type { ProactiveTriggerFrequency } from "../../types";
 
 type AutomationSettingsCardProps = {
   draft: AutomationSettingsDraft;
@@ -15,7 +14,6 @@ type AutomationToggleKey =
   | "auto_chat_diary"
   | "auto_structured_memory"
   | "auto_long_term_memory"
-  | "auto_wiki_organize"
   | "local_privacy_mode"
   | "use_negotiation";
 
@@ -42,46 +40,14 @@ const automationToggles: AutomationToggle[] = [
     description: "低风险、高置信内容可自动进入长期记忆；敏感或冲突内容仍会拦截。",
   },
   {
-    key: "auto_wiki_organize",
-    title: "资料页自动整理",
-    description: "允许低风险资料总结、补充和报告自动执行，并记录可追溯活动。",
-  },
-  {
     key: "local_privacy_mode",
     title: "本地隐私模式",
     description: "敏感输入只做本机关键词检索，不发送到外部模型服务；回复会更保守，智能程度会下降。",
   },
   {
     key: "use_negotiation",
-    title: "多轮结果复核",
-    description: "让复杂请求经过多轮检查和合成，再输出最终答案。",
-  },
-];
-
-const proactiveFrequencyOptions: Array<{
-  value: ProactiveTriggerFrequency;
-  label: string;
-  description: string;
-}> = [
-  {
-    value: "off",
-    label: "关闭",
-    description: "不主动开口。",
-  },
-  {
-    value: "low",
-    label: "低频",
-    description: "低频每天最多 1 次，间隔至少 8 小时。",
-  },
-  {
-    value: "normal",
-    label: "中频",
-    description: "中频每天最多 2 次，间隔至少 4 小时。",
-  },
-  {
-    value: "high",
-    label: "高频",
-    description: "高频每天最多 3 次，间隔至少 2 小时。",
+    title: "复杂问题有界协作",
+    description: "复杂请求最多复核两轮；超时、低置信或解析失败时回退到稳定主链。",
   },
 ];
 
@@ -122,7 +88,11 @@ export function AutomationSettingsCard({
             <input
               type="checkbox"
               checked={draft[item.key]}
-              onChange={(event) => onUpdateDraft({ [item.key]: event.target.checked })}
+              onChange={(event) => onUpdateDraft(
+                item.key === "use_negotiation"
+                  ? { use_negotiation: event.target.checked, max_rounds: 2 }
+                  : { [item.key]: event.target.checked },
+              )}
             />
             <span>
               <strong>{item.title}</strong>
@@ -132,46 +102,14 @@ export function AutomationSettingsCard({
         ))}
       </div>
 
-      <div className="automation-frequency-field" role="group" aria-label="日常主动开口">
-        <div>
-          <span>
-            <BellRing size={16} />
-            日常主动开口
-          </span>
-          <small>只在有待办、记忆、日记或资料线索时触发，并避开夜间与刚聊完的时段。</small>
-        </div>
-        <div className="automation-frequency-options">
-          {proactiveFrequencyOptions.map((option) => (
-            <label key={option.value} className="automation-frequency-option">
-              <input
-                type="radio"
-                name="proactive_trigger_frequency"
-                checked={draft.proactive_trigger_frequency === option.value}
-                onChange={() => onUpdateDraft({ proactive_trigger_frequency: option.value })}
-              />
-              <span>{option.label}</span>
-            </label>
-          ))}
-        </div>
-        <small>{proactiveFrequencyOptions.find((option) => option.value === draft.proactive_trigger_frequency)?.description}</small>
+      <div className="automation-locked-row" aria-label="有界协作最多两轮">
+        <ShieldCheck size={16} />
+        <span>
+          <strong>协作上限固定为 2 轮</strong>
+          <small>最多调用两个子 Agent；达到上限或发生异常时立即结束，不允许无限循环。</small>
+        </span>
+        <b>最多 2 轮</b>
       </div>
-
-      <label className="automation-number-field">
-        <span>复杂回答检查轮数</span>
-        <input
-          type="number"
-          min={2}
-          max={10}
-          step={1}
-          value={draft.max_rounds}
-          onChange={(event) => {
-            const value = Number.parseInt(event.target.value, 10);
-            if (Number.isFinite(value)) {
-              onUpdateDraft({ max_rounds: value });
-            }
-          }}
-        />
-      </label>
 
       <div className="automation-locked-row" aria-label="高风险确认强制开启">
         <ShieldCheck size={16} />

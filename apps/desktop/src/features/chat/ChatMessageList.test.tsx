@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import type { AgentAction, ChatMessage } from "../../types";
+import type { AgentAction, ChatMessage, ChatNegotiationStep } from "../../types";
 import { ChatMessageList } from "./ChatMessageList";
 
 function action(overrides: Partial<AgentAction>): AgentAction {
@@ -145,6 +145,7 @@ describe("ChatMessageList", () => {
         role: "assistant",
         content: "",
         status: "partial",
+        progress_stage: "verifying",
         retrieval_attempted: true,
         retrieval_scopes: ["personal_memory", "knowledge_base"],
         events: [{ id: "event-1", label: "智能体状态", detail: "retrieving memory", tone: "info" }],
@@ -155,8 +156,11 @@ describe("ChatMessageList", () => {
     const progress = screen.getByRole("region", { name: "聊天进度" });
 
     expect(screen.getByText("正在整理回答...")).toBeInTheDocument();
-    expect(within(progress).getByText("上下文已就绪")).toBeInTheDocument();
-    expect(within(progress).getByText("正在写回答")).toBeInTheDocument();
+    expect(within(progress).getByText("理解问题")).toBeInTheDocument();
+    expect(within(progress).getByText("查找本地记忆")).toBeInTheDocument();
+    expect(within(progress).getByText("核验来源")).toBeInTheDocument();
+    expect(within(progress).getByText("完成")).toBeInTheDocument();
+    expect(within(progress).getByText("核验来源").closest(".message-agent-action-bucket")).toHaveClass("pending");
     expect(container.querySelector(".message-trace")).not.toHaveAttribute("open");
   });
 
@@ -176,6 +180,46 @@ describe("ChatMessageList", () => {
 
     expect(screen.getByText(/本地资料/)).toBeInTheDocument();
     expect(container.textContent).not.toMatch(/vector|FTS|agent_run_id/i);
+  });
+
+  it("renders only allowlisted safe trace details even when legacy fields are present", () => {
+    const traceStep = {
+      contract_version: "agent-trace.v1",
+      run_id: "run-safe-1",
+      branch_id: "foreground",
+      stage_id: "negotiation",
+      agent_id: "retrieval_agent",
+      phase: "invoking",
+      status: "running",
+      round: 1,
+      sequence: 1,
+      duration_ms: 0,
+      reason_code: "additional_context_required",
+      safe_summary: "需要补充本地证据，正在进行有界检索。",
+      counts: { agents_invoked: 0, citations: 0, rounds: 0 },
+      source_scope: "personal_memory",
+      reasoning: "private-reasoning-output",
+      message: "private-message-output",
+      raw_prompt: "private-prompt-output",
+      tool_arguments: "private-tool-output",
+    } as unknown as ChatNegotiationStep;
+    const messages: ChatMessage[] = [
+      {
+        id: "assistant-trace-safe",
+        role: "assistant",
+        content: "这是安全回答。",
+        status: "completed",
+        negotiation_steps: [traceStep],
+      },
+    ];
+
+    const { container } = render(<ChatMessageList messages={messages} />);
+
+    expect(screen.getByText("需要补充本地证据，正在进行有界检索。")).toBeInTheDocument();
+    expect(container.querySelector(".message-negotiation")).not.toHaveAttribute("open");
+    expect(container.textContent).not.toMatch(
+      /private-reasoning-output|private-message-output|private-prompt-output|private-tool-output/,
+    );
   });
 
   it("keeps streamed answer text before progress details once tokens arrive", () => {

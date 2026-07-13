@@ -299,7 +299,7 @@ class MemoryConsolidationService:
         return None
 
     def _stable_preference_specs(self, user_text: str) -> Iterable[_CandidateSpec]:
-        if _looks_explicit_memory_request(user_text):
+        if _looks_explicit_memory_request(user_text) or _looks_like_memory_recall_question(user_text):
             return ()
         preference = _extract_preference_value(user_text)
         if not preference:
@@ -518,9 +518,36 @@ class MemoryConsolidationService:
 
 def _looks_explicit_memory_request(text: str) -> bool:
     lowered = text.casefold()
+    if _looks_like_memory_recall_question(text):
+        return False
+
+    english_command = (
+        r"(?:(?:please\s+)?(?:remember|save|store)\b"
+        r"|(?:can|could|would|will)\s+you\s+(?:please\s+)?(?:remember|save|store)\b"
+        r"|i\s+(?:want|need|would\s+like)\s+you\s+to\s+(?:remember|save|store)\b"
+        r"|keep\s+this\s+in\s+memory\b)"
+    )
     return bool(
-        re.search(r"\b(?:remember|save|store)\s+(?:this|that|it)?\b", lowered)
-        or "keep this in memory" in lowered
+        re.search(rf"^\s*{english_command}", lowered)
+        or re.search(rf"[,;.!?]\s*(?:and\s+)?{english_command}", lowered)
+        or re.search(
+            r"^\s*(?:(?:请\s*(?:帮我\s*)?|帮我\s*)?(?:记得|记住)|(?:请|帮我)?\s*(?:保存|存下|记下来))",
+            text,
+        )
+        or re.search(
+            r"[,，;；。]\s*(?:并且|并)?\s*(?:(?:请\s*(?:帮我\s*)?|帮我\s*)?(?:记得|记住)|(?:请|帮我)?\s*(?:保存|存下|记下来))",
+            text,
+        )
+    )
+
+
+def _looks_like_memory_recall_question(text: str) -> bool:
+    lowered = text.casefold()
+    return bool(
+        re.search(r"^\s*(?:do|did)\s+you\s+(?:still\s+)?remember\b", lowered)
+        or re.search(r"^\s*what\s+(?:do|did)\s+you\s+remember\b", lowered)
+        or re.search(r"^\s*你(?:还|仍然)?记得", text)
+        or re.search(r"^\s*(?:还|仍然)?记得.+(?:吗|么|[?？])\s*$", text)
     )
 
 

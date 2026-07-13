@@ -104,16 +104,14 @@ describe("StageView", () => {
     expect(within(commandCenter).getByText("记忆可控")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /陪我聊聊/ })).toHaveAttribute("data-stage-route", "chat");
     expect(screen.getByRole("button", { name: /看看记忆/ })).toHaveAttribute("data-stage-route", "memory");
-    expect(screen.getByRole("button", { name: /设置边界/ })).toHaveAttribute("data-stage-route", "settings");
-    const advanced = screen.getByText("更多和高级").closest("details");
-    expect(advanced).not.toHaveAttribute("open");
     expect(screen.getByRole("button", { name: /提醒和待办/ })).toHaveAttribute("data-stage-route", "agent");
-    expect(screen.getByRole("button", { name: /成长记录/ })).toHaveAttribute("data-stage-route", "growth");
-    expect(screen.getByRole("button", { name: /记忆资料库/ })).toHaveAttribute("data-stage-route", "world");
+    expect(screen.getByRole("button", { name: /设置边界/ })).toHaveAttribute("data-stage-route", "settings");
+    expect(screen.queryByText("更多和高级")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /成长记录|记忆资料库/ })).not.toBeInTheDocument();
     expect(screen.getByLabelText("聊天输入")).toBeInTheDocument();
   });
 
-  it("does not expose support abilities as first-screen primary actions", () => {
+  it("exposes only the four demo routes as first-screen actions", () => {
     renderStageView({
       visible: false,
       title: "",
@@ -125,15 +123,16 @@ describe("StageView", () => {
     const commandCenter = screen.getByLabelText("陪伴入口");
     const primaryActionNames = within(commandCenter)
       .getAllByRole("button")
-      .slice(0, 3)
+      .slice(0, 4)
       .map((button) => button.textContent ?? "");
 
     expect(primaryActionNames).toEqual([
       expect.stringContaining("陪我聊聊"),
       expect.stringContaining("看看记忆"),
+      expect.stringContaining("提醒和待办"),
       expect.stringContaining("设置边界"),
     ]);
-    expect(primaryActionNames.join(" ")).not.toMatch(/任务|知识整理|高级工具|Wiki|Markdown|Agent/);
+    expect(primaryActionNames.join(" ")).not.toMatch(/知识整理|高级工具|Wiki|Markdown|Agent/);
     expect(screen.queryByText("高级工具")).not.toBeInTheDocument();
   });
 
@@ -181,11 +180,7 @@ describe("StageView", () => {
     fireEvent.click(screen.getByRole("button", { name: /看看记忆/ }));
     expect(window.location.hash).toBe("#memory");
 
-    fireEvent.click(screen.getByRole("button", { name: /成长记录/ }));
-    expect(window.location.hash).toBe("#growth");
-
-    fireEvent.click(screen.getByRole("button", { name: /记忆资料库/ }));
-    expect(window.location.hash).toBe("#world");
+    expect(screen.queryByRole("button", { name: /成长记录|记忆资料库/ })).not.toBeInTheDocument();
   });
 
   it("keeps primary workflow entries separate from the chat composer", () => {
@@ -200,7 +195,7 @@ describe("StageView", () => {
     const commandCenter = screen.getByLabelText("陪伴入口");
     const actionButtons = within(commandCenter).getAllByRole("button");
 
-    expect(actionButtons).toHaveLength(6);
+    expect(actionButtons).toHaveLength(4);
     actionButtons.forEach((button) => {
       expect(button).toHaveAttribute("data-stage-route");
     });
@@ -250,10 +245,45 @@ describe("StageView", () => {
     expect(petAnchor).toContainElement(halfbodyPortrait);
   });
 
-  it("keeps the stage bubble layer above side cards with a safe width", () => {
+  it("keeps opaque portrait artwork below side cards while the reply bubble stays above", () => {
+    const styleElement = document.createElement("style");
+    styleElement.textContent = styles;
+    document.head.appendChild(styleElement);
+
+    const { container } = renderStageView(
+      {
+        visible: true,
+        title: "继续聊聊",
+        message: "不会被侧栏遮住的回复",
+        tone: "reply",
+        phase: "complete",
+      },
+      { api: {} },
+    );
+
+    const layout = container.querySelector(".stage-command-layout");
+    const portraitZone = container.querySelector(".stage-portrait-zone");
+    const halfbodyPortrait = container.querySelector(".halfbody-pet-portrait");
+    const outcomePanel = container.querySelector(".stage-outcome-panel");
+    const commandPanel = container.querySelector(".stage-command-panel");
+    const replyBubble = container.querySelector(".stage-agent-bubble");
+    const zIndex = (element: Element | null) => Number.parseInt(getComputedStyle(element!).zIndex, 10);
+
+    expect(layout).not.toBeNull();
+    expect(portraitZone).not.toBeNull();
+    expect(halfbodyPortrait).not.toBeNull();
+    expect(outcomePanel).not.toBeNull();
+    expect(commandPanel).not.toBeNull();
+    expect(replyBubble).not.toBeNull();
+    expect(getComputedStyle(layout!).isolation).toBe("isolate");
+    expect(getComputedStyle(portraitZone!).zIndex).toBe("auto");
+    expect(zIndex(halfbodyPortrait)).toBeLessThan(zIndex(outcomePanel));
+    expect(zIndex(halfbodyPortrait)).toBeLessThan(zIndex(commandPanel));
+    expect(zIndex(replyBubble)).toBeGreaterThan(zIndex(outcomePanel));
+    expect(zIndex(replyBubble)).toBeGreaterThan(zIndex(commandPanel));
+
+    styleElement.remove();
     expect(styles).toContain("--stage-bubble-safe-max");
-    expect(styles).toMatch(/\.stage-portrait-zone\s*\{[\s\S]*?z-index:\s*32;/);
-    expect(styles).toMatch(/\.stage-command-panel,\s*\.stage-outcome-panel\s*\{[\s\S]*?z-index:\s*10;/);
     expect(styles).toMatch(/\.stage-pet-anchor \.stage-agent-bubble\.pet-agent-bubble\s*\{[\s\S]*?max-width:\s*max\(212px, var\(--stage-bubble-safe-max\)\);/);
     expect(styles).toMatch(/\.stage-pet-anchor \.halfbody-pet-portrait\s*\{[\s\S]*?transform:\s*translateX\(var\(--stage-portrait-visual-offset-x\)\);/);
     expect(styles).toMatch(/@keyframes halfbody-pet-breathe/);

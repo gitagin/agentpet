@@ -168,6 +168,138 @@ def test_langgraph_action_agent_creates_task_when_provider_rejects_model_params(
     assert first_event(events, "token").text == "好，我先把它整理成一个本地提醒：写笔记"
 
 
+def test_demo_compound_request_creates_task_and_memory_receipts() -> None:
+    async def run_case():
+        memory = FakeMemory()
+        tasks = FakeTasks()
+        runtime = LangGraphAgentRuntime(
+            AgentRuntimeServices(
+                memory=memory,
+                tasks=tasks,
+                automation_settings=AutomationSettingsResponse(
+                    auto_long_term_memory=False,
+                    use_negotiation=False,
+                ),
+            )
+        )
+
+        events = [
+            event
+            async for event in runtime.run(
+                make_state("明天下午三点提醒我给张老师回邮件，并记住我更喜欢下午开会。")
+            )
+        ]
+        return memory, tasks, events
+
+    memory, tasks, events = asyncio.run(run_case())
+
+    assert tasks.requests[0].title == "给张老师回邮件"
+    assert tasks.requests[0].source_text == "明天下午三点提醒我给张老师回邮件"
+    assert memory.requests[0].content == "我更喜欢下午开会"
+    assert_langgraph_events(events, ["token", "task", "memory_proposal", "done"])
+    assert "同时处理两件事" in first_event(events, "token").text
+
+
+def test_demo_compound_request_ignores_unsplit_classifier_title() -> None:
+    async def run_case():
+        memory = FakeMemory()
+        tasks = FakeTasks()
+        semantic_model = FakeRegistryChatModel(
+            None,
+            json.dumps(
+                {
+                    "intent": "action",
+                    "retrieval_scope": None,
+                    "retrieval_query": None,
+                    "action_type": "task",
+                    "action_params": {
+                        "title": "给张老师回邮件，并记住我更喜欢下午开会",
+                    },
+                    "confidence": 0.99,
+                    "reason": "compound reminder",
+                },
+                ensure_ascii=False,
+            ),
+        )
+        runtime = LangGraphAgentRuntime(
+            AgentRuntimeServices(
+                memory=memory,
+                tasks=tasks,
+                model_registry=AgentModelRegistry(
+                    {AgentId.SEMANTIC_ANALYSIS_AGENT: semantic_model}
+                ),
+                automation_settings=AutomationSettingsResponse(
+                    auto_long_term_memory=False,
+                    use_negotiation=False,
+                ),
+            )
+        )
+
+        events = [
+            event
+            async for event in runtime.run(
+                make_state("明天下午三点提醒我给张老师回邮件，并记住我更喜欢下午开会。")
+            )
+        ]
+        return memory, tasks, events
+
+    memory, tasks, events = asyncio.run(run_case())
+
+    assert tasks.requests[0].title == "给张老师回邮件"
+    assert tasks.requests[0].source_text == "明天下午三点提醒我给张老师回邮件"
+    assert memory.requests[0].content == "我更喜欢下午开会"
+    assert_langgraph_events(events, ["token", "task", "memory_proposal", "done"])
+
+
+def test_high_risk_chat_request_only_records_confirmation() -> None:
+    recorded_actions = []
+
+    def record_action(action):
+        recorded_actions.append(action)
+        return SimpleNamespace(
+            action_id="action-confirm-1",
+            source_agent_run_id=action.source_agent_run_id,
+            source_conversation_id=action.source_conversation_id,
+            source_message_id=action.source_message_id,
+            action_type=action.action_type,
+            risk_tier=action.risk_tier,
+            decision=action.decision,
+            status=action.status,
+            title=action.title,
+            summary=action.summary,
+            target_paths=list(action.target_paths),
+            reversible=action.reversible,
+            reverted_by=None,
+            reverts_action_id=None,
+            error=None,
+            source={},
+            diff_summary="",
+            metadata=action.metadata,
+            created_at=None,
+            updated_at=None,
+            completed_at=None,
+        )
+
+    async def run_case():
+        runtime = LangGraphAgentRuntime(
+            AgentRuntimeServices(
+                automation_settings=SimpleNamespace(use_negotiation=False),
+                agent_action_recorder=record_action,
+            )
+        )
+        return [event async for event in runtime.run(make_state("删除所有本地记忆文件"))]
+
+    events = asyncio.run(run_case())
+
+    assert recorded_actions[0].action_type == "local.destructive_request"
+    assert recorded_actions[0].risk_tier == "high"
+    assert recorded_actions[0].decision == "ask"
+    action_event = first_event(events, "agent_action")
+    assert action_event.requires_confirmation is True
+    assert action_event.target_paths == []
+    assert_langgraph_events(events, ["token", "agent_action", "done"])
+
+
 def test_langgraph_chat_agent_returns_error_when_model_tool_call_fails() -> None:
     async def run_case():
         memory = FakeMemory()

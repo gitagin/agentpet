@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import sqlite3
 import time
@@ -9,10 +10,11 @@ from pathlib import Path
 
 import pytest
 
+from fastapi import Request
 from fastapi.testclient import TestClient
 
-from app.agents.events import AgentDoneEvent, AgentStatusEvent, AgentTokenEvent
-from app.models.enums import AgentIntent
+from app.agents.events import AgentDoneEvent, AgentErrorEvent, AgentStatusEvent, AgentTokenEvent
+from app.models.enums import AgentIntent, AgentRunStatus, MessageStatus
 from tests.conftest import auth_headers, parse_sse_events
 
 
@@ -24,6 +26,62 @@ def client(client_factory, tmp_path: Path) -> Iterator[TestClient]:
 
 def auth() -> dict[str, str]:
     return auth_headers()
+
+
+def api_request(client: TestClient) -> Request:
+    return Request(
+        {
+            "type": "http",
+            "app": client.app,
+            "state": {"request_id": "test-stream-request"},
+        }
+    )
+
+
+def create_unstreamed_chat(client: TestClient, message: str) -> tuple[dict[str, str], object]:
+    response = client.post("/api/chat", headers=auth(), json={"message": message})
+    assert response.status_code == 200
+    payload = response.json()
+    return payload, client.app.state.chat_runs[payload["agent_run_id"]]
+
+
+def stream_persistence_rows(client: TestClient, agent_run_id: str) -> tuple[sqlite3.Row, sqlite3.Row]:
+    with sqlite3.connect(client.app.state.database.path) as conn:
+        conn.row_factory = sqlite3.Row
+        run = conn.execute("SELECT * FROM agent_runs WHERE id = ?", (agent_run_id,)).fetchone()
+        assert run is not None
+        assistant_message = conn.execute(
+            "SELECT * FROM messages WHERE id = ?",
+            (run["assistant_message_id"],),
+        ).fetchone()
+        assert assistant_message is not None
+    return run, assistant_message
+
+
+def insert_daily_history_message(
+    client: TestClient,
+    *,
+    conversation_id: str,
+    message_id: str,
+    content: str,
+    created_at: str,
+) -> None:
+    with sqlite3.connect(client.app.state.database.path) as conn:
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO conversations (id, title, status, created_at, updated_at)
+            VALUES (?, ?, 'active', ?, ?)
+            """,
+            (conversation_id, conversation_id, created_at, created_at),
+        )
+        conn.execute(
+            """
+            INSERT INTO messages (id, conversation_id, role, content, status, created_at, updated_at)
+            VALUES (?, ?, 'user', ?, 'completed', ?, ?)
+            """,
+            (message_id, conversation_id, content, created_at, created_at),
+        )
+        conn.commit()
 
 
 def stream_chat(client: TestClient, message: str) -> list[dict[str, str]]:
@@ -1389,6 +1447,234 @@ def test_chat_stream_fails_when_runtime_ends_without_terminal_event(
     assert payload["agent_run_id"] not in client.app.state.chat_runs
 
 
+@pytest.mark.asyncio
+async def test_persisting_stream_aclose_marks_partial_records_cancelled(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.api import chat as chat_api
+
+    class TokenRuntime:
+        async def run(self, state):
+            yield AgentTokenEvent(agent_run_id=state.agent_run_id, text="partial reply")
+
+    monkeypatch.setattr(chat_api, "agent_runtime", lambda request: TokenRuntime())
+    payload, state = create_unstreamed_chat(client, "close this stream")
+    events = chat_api._persisting_stream(api_request(client), state)
+
+    first_event = await anext(events)
+    assert first_event.event == "token"
+    await events.aclose()
+
+    run, assistant_message = stream_persistence_rows(client, payload["agent_run_id"])
+    assert run["status"] == AgentRunStatus.CANCELLED.value
+    assert run["error_code"] == "stream_cancelled"
+    assert assistant_message["status"] == MessageStatus.CANCELLED.value
+    assert assistant_message["content"] == "partial reply"
+    assert payload["agent_run_id"] not in client.app.state.chat_runs
+
+
+@pytest.mark.asyncio
+async def test_persisting_stream_reraises_cancelled_error_after_persisting_terminal_state(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.api import chat as chat_api
+
+    class BlockingRuntime:
+        def __init__(self) -> None:
+            self.waiting = asyncio.Event()
+
+        async def run(self, state):
+            yield AgentTokenEvent(agent_run_id=state.agent_run_id, text="partial reply")
+            self.waiting.set()
+            await asyncio.Event().wait()
+
+    runtime = BlockingRuntime()
+    monkeypatch.setattr(chat_api, "agent_runtime", lambda request: runtime)
+    payload, state = create_unstreamed_chat(client, "cancel this stream")
+    events = chat_api._persisting_stream(api_request(client), state)
+
+    first_event = await anext(events)
+    assert first_event.event == "token"
+    pending_event = asyncio.create_task(anext(events))
+    await asyncio.wait_for(runtime.waiting.wait(), timeout=1)
+    pending_event.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await pending_event
+
+    run, assistant_message = stream_persistence_rows(client, payload["agent_run_id"])
+    assert run["status"] == AgentRunStatus.CANCELLED.value
+    assert run["error_code"] == "stream_cancelled"
+    assert assistant_message["status"] == MessageStatus.CANCELLED.value
+    assert assistant_message["content"] == "partial reply"
+    assert payload["agent_run_id"] not in client.app.state.chat_runs
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("terminal_kind", "expected_event", "expected_message_status", "expected_run_status"),
+    [
+        ("done", "reply_ready", MessageStatus.COMPLETED.value, AgentRunStatus.SUCCESS.value),
+        ("error", "error", MessageStatus.FAILED.value, AgentRunStatus.FAILED.value),
+    ],
+)
+async def test_persisting_stream_aclose_after_terminal_event_does_not_repeat_updates(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    terminal_kind: str,
+    expected_event: str,
+    expected_message_status: str,
+    expected_run_status: str,
+) -> None:
+    from app.api import chat as chat_api
+
+    class TerminalRuntime:
+        async def run(self, state):
+            if terminal_kind == "done":
+                yield AgentDoneEvent(
+                    agent_run_id=state.agent_run_id,
+                    intent=AgentIntent.CHAT,
+                    text="complete reply",
+                )
+            else:
+                yield AgentErrorEvent(
+                    agent_run_id=state.agent_run_id,
+                    code="runtime_error",
+                    message="runtime failed",
+                )
+
+    assistant_statuses: list[str] = []
+    run_statuses: list[str] = []
+    original_update_assistant = chat_api._update_assistant_message
+    original_update_run = chat_api._update_agent_run
+
+    def track_assistant_update(request, message_id, content, status_value):
+        assistant_statuses.append(status_value)
+        original_update_assistant(request, message_id, content, status_value)
+
+    def track_run_update(
+        request,
+        state,
+        assistant_message_id,
+        status_value,
+        *,
+        error_code,
+        error_message,
+    ):
+        run_statuses.append(status_value)
+        original_update_run(
+            request,
+            state,
+            assistant_message_id,
+            status_value,
+            error_code=error_code,
+            error_message=error_message,
+        )
+
+    monkeypatch.setattr(chat_api, "agent_runtime", lambda request: TerminalRuntime())
+    monkeypatch.setattr(chat_api, "_schedule_post_reply_work", lambda *args: None)
+    monkeypatch.setattr(chat_api, "_update_assistant_message", track_assistant_update)
+    monkeypatch.setattr(chat_api, "_update_agent_run", track_run_update)
+    payload, state = create_unstreamed_chat(client, f"terminal {terminal_kind}")
+    events = chat_api._persisting_stream(api_request(client), state)
+
+    terminal_event = await anext(events)
+    assert terminal_event.event == expected_event
+    await events.aclose()
+
+    run, assistant_message = stream_persistence_rows(client, payload["agent_run_id"])
+    assert assistant_statuses == [expected_message_status]
+    assert run_statuses == [expected_run_status]
+    assert assistant_message["status"] == expected_message_status
+    assert run["status"] == expected_run_status
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("terminal_sequence", "expected_events", "expected_message_status", "expected_run_status", "expected_error_code"),
+    [
+        (("done", "error"), ["reply_ready", "done"], MessageStatus.COMPLETED.value, AgentRunStatus.SUCCESS.value, None),
+        (("error", "done"), ["error"], MessageStatus.FAILED.value, AgentRunStatus.FAILED.value, "late_error"),
+        (("done", "done"), ["reply_ready", "done"], MessageStatus.COMPLETED.value, AgentRunStatus.SUCCESS.value, None),
+        (("error", "error"), ["error"], MessageStatus.FAILED.value, AgentRunStatus.FAILED.value, "late_error"),
+    ],
+)
+async def test_persisting_stream_first_terminal_event_wins(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    terminal_sequence: tuple[str, str],
+    expected_events: list[str],
+    expected_message_status: str,
+    expected_run_status: str,
+    expected_error_code: str | None,
+) -> None:
+    from app.api import chat as chat_api
+
+    class ContradictoryRuntime:
+        async def run(self, state):
+            for terminal in terminal_sequence:
+                if terminal == "done":
+                    yield AgentDoneEvent(
+                        agent_run_id=state.agent_run_id,
+                        intent=AgentIntent.CHAT,
+                        text="first completed reply",
+                    )
+                else:
+                    yield AgentErrorEvent(
+                        agent_run_id=state.agent_run_id,
+                        code="late_error",
+                        message="contradictory terminal",
+                    )
+
+    monkeypatch.setattr(chat_api, "agent_runtime", lambda request: ContradictoryRuntime())
+    monkeypatch.setattr(chat_api, "_schedule_post_reply_work", lambda *args: None)
+    payload, state = create_unstreamed_chat(client, "first terminal wins")
+
+    events = [event async for event in chat_api._persisting_stream(api_request(client), state)]
+
+    assert [event.event for event in events] == expected_events
+    run, assistant_message = stream_persistence_rows(client, payload["agent_run_id"])
+    assert assistant_message["status"] == expected_message_status
+    assert run["status"] == expected_run_status
+    assert run["error_code"] == expected_error_code
+
+
+def test_daily_history_limit_returns_latest_messages_in_ascending_order(client: TestClient) -> None:
+    for index in range(5):
+        insert_daily_history_message(
+            client,
+            conversation_id=f"conversation-{index}",
+            message_id=f"history-{index}",
+            content=f"HISTORY_{index}",
+            created_at=f"2026-07-09T00:0{index}:00Z",
+        )
+
+    limited = client.get(
+        "/api/chat/daily-history",
+        headers=auth(),
+        params={"date": "2026-07-09", "timezone": "UTC", "limit": 3},
+    )
+
+    assert limited.status_code == 200
+    payload = limited.json()
+    assert [message["content"] for message in payload["messages"]] == [
+        "HISTORY_2",
+        "HISTORY_3",
+        "HISTORY_4",
+    ]
+    assert payload["conversation_id"] == "conversation-4"
+    assert payload["has_more"] is True
+
+    complete = client.get(
+        "/api/chat/daily-history",
+        headers=auth(),
+        params={"date": "2026-07-09", "timezone": "UTC", "limit": 5},
+    )
+    assert complete.status_code == 200
+    assert complete.json()["has_more"] is False
+
+
 def test_chat_run_lookup_removes_expired_unstreamed_runs(client: TestClient) -> None:
     response = client.post("/api/chat", headers=auth(), json={"message": "expire this run"})
     assert response.status_code == 200
@@ -1402,6 +1688,11 @@ def test_chat_run_lookup_removes_expired_unstreamed_runs(client: TestClient) -> 
     assert stream.json()["error"]["code"] == "agent_run_not_found"
     assert agent_run_id not in client.app.state.chat_runs
     assert agent_run_id not in client.app.state.chat_runs_expires_at
+    run, assistant_message = stream_persistence_rows(client, agent_run_id)
+    assert run["status"] == AgentRunStatus.CANCELLED.value
+    assert run["error_code"] == "stream_not_started_or_expired"
+    assert assistant_message["status"] == MessageStatus.CANCELLED.value
+    assert assistant_message["content"] == ""
 
 
 def test_chat_stream_auto_archives_daily_memory_and_records_action(

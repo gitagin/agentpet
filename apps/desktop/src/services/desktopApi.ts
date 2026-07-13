@@ -9,6 +9,8 @@ import type {
   AutomationSettingsUpdateRequest,
   ChatAcceptedResponse,
   ChatDailyHistoryResponse,
+  AgentCheckpointDecisionResponse,
+  AgentCheckpointSummary,
   ContinuityProposalActionResponse,
   ContinuityProposalListResponse,
   ContinuityStateResponse,
@@ -116,6 +118,27 @@ export class DesktopApi {
     }
     const query = params.toString();
     return this.client.get<ChatDailyHistoryResponse>(`/api/chat/daily-history${query ? `?${query}` : ""}`, signal);
+  }
+
+  listPendingCheckpoints(threadId?: string, signal?: AbortSignal): Promise<AgentCheckpointSummary[]> {
+    const query = threadId ? `?thread_id=${encodeURIComponent(threadId)}` : "";
+    return this.client.get<AgentCheckpointSummary[]>(`/api/checkpoints/pending${query}`, signal);
+  }
+
+  decideCheckpoint(
+    checkpoint: Pick<AgentCheckpointSummary, "checkpoint_id" | "decision_id">,
+    decision: "approved" | "rejected",
+    signal?: AbortSignal,
+  ): Promise<AgentCheckpointDecisionResponse> {
+    return this.client.post<AgentCheckpointDecisionResponse>(
+      `/api/checkpoints/${encodeURIComponent(checkpoint.checkpoint_id)}/decision`,
+      {
+        decision_id: checkpoint.decision_id,
+        decision,
+        policy_version: "action-policy.v1",
+      },
+      signal,
+    );
   }
 
   listAgentActions(
@@ -454,6 +477,14 @@ export class DesktopApi {
   resetLocalState(confirmation: string, signal?: AbortSignal): Promise<LocalStateResetResponse> {
     return this.client.post<LocalStateResetResponse>(
       "/api/diagnostics/reset-local-state",
+      { confirmation },
+      signal,
+    );
+  }
+
+  resetMemoryState(confirmation: string, signal?: AbortSignal): Promise<LocalStateResetResponse> {
+    return this.client.post<LocalStateResetResponse>(
+      "/api/diagnostics/reset-memory-state",
       { confirmation },
       signal,
     );

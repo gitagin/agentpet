@@ -1,7 +1,6 @@
 from contextlib import asynccontextmanager
 import asyncio
 import threading
-import time
 from uuid import uuid4
 
 from fastapi import FastAPI, Request
@@ -9,17 +8,18 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .api import api_router
 from .api.health import router as health_router
+from .api.services.factory import AppContext, expire_chat_runs
 from .config import get_settings
 from .errors import register_error_handlers
 from .scheduler import APSchedulerReminderScheduler, ReminderSchedulerProtocol
 from .services.health import component_health_from_vector_index
 from .services.retrieval import RetrievalService
 from .services.retrieval_factory import build_vector_index
+from .agents.reflection_graph import ReflectionJobManager
 from .services.tasks import TaskService, TaskStore
 from .storage.database import Database, MigrationRunner
 
 
-_CHAT_RUN_TTL_SECONDS = 900
 _CHAT_RUN_CLEANUP_INTERVAL_SECONDS = 60
 
 
@@ -43,6 +43,7 @@ def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         ensure_app_services(app)
+        app.state.reflection_jobs.recover_orphans()
         cleanup_task = asyncio.create_task(_cleanup_expired_chat_runs(app))
         scheduler = app.state.reminder_scheduler
         if isinstance(scheduler, ReminderSchedulerProtocol):
@@ -65,6 +66,8 @@ def create_app() -> FastAPI:
                 await cleanup_task
             except asyncio.CancelledError:
                 pass
+            await app.state.reflection_jobs.shutdown()
+            expire_chat_runs(AppContext(app), force=True)
             if isinstance(scheduler, ReminderSchedulerProtocol):
                 scheduler.shutdown()
 
@@ -93,6 +96,7 @@ def create_app() -> FastAPI:
     app.state.chat_runs = {}
     app.state.chat_runs_expires_at = {}
     app.state.chat_runs_lock = threading.Lock()
+    app.state.reflection_jobs = ReflectionJobManager()
 
     @app.middleware("http")
     async def request_id_middleware(request: Request, call_next):
@@ -112,20 +116,7 @@ def create_app() -> FastAPI:
 async def _cleanup_expired_chat_runs(app: FastAPI) -> None:
     while True:
         await asyncio.sleep(_CHAT_RUN_CLEANUP_INTERVAL_SECONDS)
-        lock = getattr(app.state, "chat_runs_lock", None)
-        if lock is None:
-            lock = threading.Lock()
-            app.state.chat_runs_lock = lock
-        now = time.monotonic()
-        with lock:
-            expires_at = getattr(app.state, "chat_runs_expires_at", None)
-            if not expires_at:
-                continue
-            runs = app.state.chat_runs
-            for agent_run_id, expiry in list(expires_at.items()):
-                if expiry <= now:
-                    runs.pop(agent_run_id, None)
-                    expires_at.pop(agent_run_id, None)
+        expire_chat_runs(AppContext(app))
 
 
 def ensure_app_services(app: FastAPI) -> None:

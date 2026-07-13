@@ -310,7 +310,7 @@ def _extract_preference(text: str) -> tuple[str, str] | None:
     patterns = (
         r"我喜欢的(?P<subject>[\u4e00-\u9fffA-Za-z0-9_ -]{1,20})[是叫为:：](?P<value>[\u4e00-\u9fffA-Za-z0-9_ -]{1,40})",
         r"我的(?P<subject>[\u4e00-\u9fffA-Za-z0-9_ -]{1,20})(?:偏好|喜好)[是叫为:：](?P<value>[\u4e00-\u9fffA-Za-z0-9_ -]{1,40})",
-        r"我(?:最)?喜欢(?P<value>[\u4e00-\u9fffA-Za-z0-9_ -]{1,40})",
+        r"我(?:更|最)?喜欢(?P<value>[\u4e00-\u9fffA-Za-z0-9_ -]{1,40})",
         r"i like (?P<value>[A-Za-z0-9_ -]{1,40})",
         r"my favorite (?P<subject>[A-Za-z0-9_ -]{1,20}) is (?P<value>[A-Za-z0-9_ -]{1,40})",
     )

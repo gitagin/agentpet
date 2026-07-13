@@ -16,3 +16,43 @@
 @import "./styles/layout-hardening.css";
 @import "./styles/stage-restore.css";
 @import "./styles/desktop-polish.css";
+@import "./styles/demo-scope.css";
+.checkpoint-confirmation-list {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.checkpoint-confirmation-item {
+  border-left: 3px solid var(--danger, #b42318);
+  padding: 8px 12px;
+}
+
+.checkpoint-confirmation-heading,
+.checkpoint-confirmation-actions,
+.checkpoint-confirmation-item dl > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.checkpoint-confirmation-item p {
+  margin: 8px 0;
+  font-weight: 600;
+}
+
+.checkpoint-confirmation-item dl {
+  display: grid;
+  gap: 4px;
+  margin: 0 0 10px;
+}
+
+.checkpoint-confirmation-item dt {
+  min-width: 40px;
+  color: var(--text-muted);
+}
+
+.checkpoint-confirmation-item dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}

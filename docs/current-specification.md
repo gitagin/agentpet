@@ -175,3 +175,20 @@ TASK-0102 和 TASK-0103 的人工证据仍缺失；过去的跳过决定不能�
 | 24 运维与发布 | 以 `docs/runbook.md`、Electron packaging checks 和当前运行结果为准。 |
 | 25 后续扩展规划 | 不作为当前承诺；需经过 scope freeze 解冻或新任务确认。 |
 | 26 总结 | 被本文档当前规格入口取代。 |
+
+## Verified 2026-07-13 claim boundary
+
+- Simple social chat may use a fast path.
+- The bounded multi-role path has typed specialist and Reviewer contracts.
+- Router, merger, budgets, Policy Guard, Executor, ledger, and terminal
+  ownership are deterministic components rather than Agents.
+- SQLite and Markdown are authoritative; FTS is the production-safe Agent
+  default, while vector generations are optional derived acceleration.
+- Read-only parallelism is opt-in and retains sequential fallback.
+- High-risk action resume uses a minimized persisted decision boundary and
+  authenticated approval; Renderer receives no token or raw checkpoint state.
+- TASK-1215 remains Defer for final hybrid/reranker promotion.
+- TASK-1216 has narrowed functional L4 confirmation only; live-provider,
+  packaged executable, viewport/DPI, and full-scope L4 claims remain excluded.
+
+Public wording is indexed in `docs/portfolio/claim-evidence-index.md`.

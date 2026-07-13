@@ -174,10 +174,14 @@ def _hard_gate(item: MemoryActivationItem, context: MemoryActivationContext, *, 
         return "rejected_memory"
     if item.lifecycle_status is LifecycleStatus.SUPERSEDED:
         return "superseded_memory"
+    if item.lifecycle_status is LifecycleStatus.CANDIDATE:
+        return "conflicting_memory" if item.has_conflict else "candidate_memory"
     if item.memory_scope is MemoryScope.SENSITIVE or item.risk_tier is RiskTier.HIGH:
         return "sensitive_memory"
-    if item.memory_kind is MemoryKind.RECENT_STATE and _is_expired(item.expires_at, now=now):
-        return "expired_recent_state"
+    if item.has_conflict and item.lifecycle_status is not LifecycleStatus.ACTIVE:
+        return "conflicting_memory"
+    if _is_expired(item.expires_at, now=now):
+        return "expired_recent_state" if item.memory_kind is MemoryKind.RECENT_STATE else "expired_memory"
     if item.lifecycle_status is LifecycleStatus.ARCHIVED and not _historical_query(context.query):
         return "archived_memory_not_current"
     return None

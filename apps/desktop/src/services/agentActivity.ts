@@ -209,6 +209,7 @@ export function formatAgentActionStatus(status: string): string {
     completed: "已完成",
     failed: "失败",
     pending: "待处理",
+    pending_confirm: "待确认",
     rejected: "已拒绝",
     reverted: "已撤回",
     running: "处理中",

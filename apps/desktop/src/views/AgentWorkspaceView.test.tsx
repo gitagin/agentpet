@@ -154,6 +154,9 @@ describe("AgentWorkspaceView", () => {
       render(<AgentWorkspaceView api={api} />);
 
       await flushInitialLoad();
+      const traceDisclosure = screen.getByText("执行细节").closest("details");
+      expect(traceDisclosure).toBeInTheDocument();
+      expect(traceDisclosure).not.toHaveAttribute("open");
       const card = within(screen.getByLabelText("任务卡片")).getByText("查看轨迹").closest("article");
       expect(card).not.toBeNull();
       await act(async () => {
@@ -164,6 +167,7 @@ describe("AgentWorkspaceView", () => {
 
       expect(api.fetchTaskSteps).toHaveBeenCalledWith("task-1", undefined);
       expect(api.fetchTaskLogs).toHaveBeenCalledWith("task-1", undefined);
+      expect(traceDisclosure).toHaveAttribute("open");
       expect(screen.getByText("任务已创建：查看轨迹")).toBeInTheDocument();
       await act(async () => {
         await vi.advanceTimersByTimeAsync(16);

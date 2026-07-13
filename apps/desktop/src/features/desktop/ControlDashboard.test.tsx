@@ -186,6 +186,20 @@ describe("ControlDashboard memory review", () => {
     sessionStorage.clear();
   });
 
+  it("does not show reference memories or orbit points when memory is empty", () => {
+    const { container } = renderDashboard({
+      agentActivityEntries: [],
+      messages: [],
+      tasks: [],
+    });
+
+    const memoryPanel = screen.getByLabelText("记忆回顾");
+    expect(memoryPanel).toHaveTextContent("开始聊天或创建任务后，实时记忆会出现在这里。");
+    expect(memoryPanel).not.toHaveTextContent("产品原型讨论");
+    expect(memoryPanel).not.toHaveTextContent("午餐时间");
+    expect(container.querySelectorAll(".orbit-point")).toHaveLength(0);
+  });
+
   it("keeps every memory day with full per-day counts and entries", () => {
     const groups = buildMemoryDayGroups(richActivityEntries(), [], []);
 

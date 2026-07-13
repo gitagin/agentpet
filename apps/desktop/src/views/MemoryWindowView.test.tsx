@@ -543,7 +543,7 @@ function openAdvancedMemoryTools() {
 }
 
 function openMemoryWorkspaceTab(label: string) {
-  const tab = screen.getByRole("tab", { name: new RegExp(label) });
+  const tab = screen.getByRole("tab", { name: new RegExp(label), hidden: true });
   fireEvent.click(tab);
   expect(tab).toHaveAttribute("aria-selected", "true");
   return screen.getByRole("tabpanel", { name: new RegExp(`记忆工作台：${label}`) });
@@ -588,10 +588,12 @@ describe("MemoryWindowView", () => {
     vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
   });
 
-  it("renders the memory graph projection on the first screen", async () => {
+  it("keeps the hidden graph implementation lazy", async () => {
     const api = createApi([memoryFact()]);
 
     const { container } = renderView(api);
+    expect(api.getMemoryGraphProjection).not.toHaveBeenCalled();
+    openMemoryWorkspaceTab("图谱");
 
     const graph = await screen.findByLabelText("我的记忆图谱");
     expect(document.getElementById("memory-workspace-panel-graph")).toHaveClass("memory-workspace-tab-panel-graph");
@@ -616,6 +618,7 @@ describe("MemoryWindowView", () => {
     const api = createApi([memoryFact()], localAssetStats, emptyProfileProjection, emptyHygienePreview, emptyMemoryGraphProjection);
 
     renderView(api);
+    openMemoryWorkspaceTab("图谱");
 
     const graph = await screen.findByLabelText("我的记忆图谱");
     expect(within(graph).getByText("记忆图谱还是空的")).toBeInTheDocument();
@@ -645,6 +648,7 @@ describe("MemoryWindowView", () => {
     );
 
     const { container } = renderView(api);
+    openMemoryWorkspaceTab("图谱");
 
     const graph = await screen.findByLabelText("我的记忆图谱");
     expect(within(graph).getByRole("alert")).toHaveTextContent("这次没能打开记忆图谱，请稍后重试。");
@@ -856,9 +860,12 @@ describe("MemoryWindowView", () => {
 
     expect(screen.queryByRole("heading", { name: "记忆工作台" })).not.toBeInTheDocument();
     expect(screen.queryByText("档案、图谱、日记和资料都在这里，你可以查看、搜索、整理和改正。")).not.toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /图谱/ })).toHaveAttribute("aria-selected", "true");
-    ["档案", "搜索", "数据", "导入", "图谱", "关联", "热力图", "衰减图", "日记"].forEach((label) => {
+    expect(screen.getByRole("tab", { name: /档案/ })).toHaveAttribute("aria-selected", "true");
+    ["档案", "搜索", "活动账本"].forEach((label) => {
       expect(screen.getByRole("tab", { name: new RegExp(label) })).toBeInTheDocument();
+    });
+    ["数据", "导入", "图谱", "关联", "热力图", "衰减图", "日记"].forEach((label) => {
+      expect(screen.queryByRole("tab", { name: new RegExp(label) })).not.toBeInTheDocument();
     });
 
     openArchiveTab();
@@ -1126,7 +1133,7 @@ describe("MemoryWindowView", () => {
     await waitFor(() => expect(api.getMemoryHygienePreview).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(api.getMemoryProfileProjection).toHaveBeenCalledTimes(2));
     expect(api.getWeeklyMemoryReview).toHaveBeenCalledTimes(2);
-    expect(api.getLocalAssetStats).toHaveBeenCalledTimes(2);
+    expect(api.getLocalAssetStats).toHaveBeenCalledTimes(1);
     expect(onRefresh).toHaveBeenCalled();
   });
 

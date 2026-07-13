@@ -1,6 +1,6 @@
 from time import perf_counter
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Request, status
 
 from ..config import get_settings
 from ..models.api import (
@@ -33,6 +33,7 @@ from ..models.api import (
 )
 from ..services.embeddings import LangChainEmbeddingClient
 from ..services.chat_model import ChatModelError, LangChainGraphChatClient
+from ..services.health import component_health_from_vector_index
 from ..services.settings import (
     AGENT_MODEL_IDS,
     ConfigurationError,
@@ -47,6 +48,56 @@ from .wiring import database, settings_store_dependency
 from .wiring import refresh_retrieval_vector_index
 
 router = APIRouter(prefix="/settings", tags=["settings"])
+
+
+def _refresh_vector_index(request: Request, background_tasks: BackgroundTasks) -> None:
+    retrieval = getattr(request.app.state, "retrieval_service", None)
+    current = getattr(retrieval, "vector_index", None)
+    close = getattr(current, "close", None)
+    if callable(close):
+        try:
+            close()
+        except Exception:
+            # Refresh still installs a safe fallback index; no exception detail is exposed.
+            pass
+    refresh_retrieval_vector_index(request)
+    retrieval = getattr(request.app.state, "retrieval_service", None)
+    vector_index = getattr(retrieval, "vector_index", None)
+    if retrieval is None or not bool(getattr(vector_index, "available", False)):
+        return
+    try:
+        with database(request).connect() as conn:
+            row = conn.execute(
+                """
+                SELECT vaults.id
+                FROM vaults
+                LEFT JOIN app_state
+                  ON app_state.key = 'active_vault_id'
+                 AND app_state.value = vaults.id
+                ORDER BY (app_state.value IS NOT NULL) DESC, vaults.updated_at DESC, vaults.created_at DESC
+                LIMIT 1
+                """
+            ).fetchone()
+    except Exception:
+        return
+    if row is not None:
+        background_tasks.add_task(
+            _reconcile_and_refresh_vector_health,
+            request.app,
+            str(row["id"]),
+        )
+
+
+def _reconcile_and_refresh_vector_health(app, vault_id: str) -> None:
+    retrieval = getattr(app.state, "retrieval_service", None)
+    if retrieval is None:
+        return
+    try:
+        retrieval.reconcile_vector_index(vault_id)
+    finally:
+        vector_index = getattr(retrieval, "vector_index", None)
+        if vector_index is not None:
+            app.state.component_health["vector_index"] = component_health_from_vector_index(vector_index)
 
 
 @router.get("", response_model=SettingsStatusResponse)
@@ -105,10 +156,16 @@ async def get_model_health(
 
 @router.put("/automation", response_model=AutomationSettingsResponse)
 async def set_automation_settings(
+    request: Request,
+    background_tasks: BackgroundTasks,
     automation: AutomationSettingsRequest,
     store: SettingsStore = Depends(settings_store_dependency),
 ) -> AutomationSettingsResponse:
-    return store.set_automation_settings(automation)
+    previous_local_privacy_mode = store.get_automation_settings().local_privacy_mode
+    saved = store.set_automation_settings(automation)
+    if saved.local_privacy_mode != previous_local_privacy_mode:
+        _refresh_vector_index(request, background_tasks)
+    return saved
 
 
 @router.get("/tts", response_model=TtsSettingsResponse)
@@ -234,6 +291,7 @@ async def set_model_config(
 @router.put("/embedding-key", response_model=EmbeddingConfigResponse)
 async def set_embedding_key(
     request: Request,
+    background_tasks: BackgroundTasks,
     embedding_key: EmbeddingKeyRequest,
     store: SettingsStore = Depends(settings_store_dependency),
 ) -> EmbeddingConfigResponse:
@@ -250,7 +308,7 @@ async def set_embedding_key(
         status_value = store.set_embedding_key(provider, embedding_key.api_key)
     except CredentialStoreError as exc:
         _raise_credential_store_error(exc)
-    refresh_retrieval_vector_index(request)
+    _refresh_vector_index(request, background_tasks)
     return EmbeddingConfigResponse(
         provider=status_value.provider or provider,
         base_url=current.base_url,
@@ -265,6 +323,7 @@ async def set_embedding_key(
 @router.put("/embedding-config", response_model=EmbeddingConfigResponse)
 async def set_embedding_config(
     request: Request,
+    background_tasks: BackgroundTasks,
     embedding_config: EmbeddingConfigRequest,
     store: SettingsStore = Depends(settings_store_dependency),
 ) -> EmbeddingConfigResponse:
@@ -276,7 +335,7 @@ async def set_embedding_config(
         dimensions=embedding_config.dimensions,
     )
     key_status = store.get_embedding_key_status()
-    refresh_retrieval_vector_index(request)
+    _refresh_vector_index(request, background_tasks)
     return EmbeddingConfigResponse(
         provider=saved.provider,
         base_url=saved.base_url,
@@ -292,6 +351,13 @@ async def set_embedding_config(
 async def test_embedding_connection(
     store: SettingsStore = Depends(settings_store_dependency),
 ) -> EmbeddingTestResponse:
+    if store.get_automation_settings().local_privacy_mode:
+        return EmbeddingTestResponse(
+            status="blocked",
+            message="本地隐私模式已开启，Embedding 试连已阻止。",
+            error_code="local_privacy_mode",
+        )
+
     defaults = get_settings()
     key_status = store.get_embedding_key_status()
     config = store.get_embedding_config(

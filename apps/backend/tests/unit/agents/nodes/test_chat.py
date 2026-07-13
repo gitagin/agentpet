@@ -114,6 +114,34 @@ async def test_chat_node_uses_local_fallback_when_primary_fails_without_model() 
     assert any(isinstance(event, AgentTokenEvent) for event in result["events"])
 
 
+@pytest.mark.asyncio
+async def test_chat_node_does_not_call_model_when_required_evidence_is_empty() -> None:
+    graph_state = _graph_state("你记得我的偏好吗？")
+    graph_state["agent_state"].semantic_analysis = SemanticAnalysisResult(
+        needs_context=True,
+        source_scope="personal_memory",
+    )
+    model = ChatModel("不应使用的模型回复")
+
+    result = await _chat_node(graph_state, AgentRuntimeServices(chat_model=model), _has_empty_search_result)
+
+    assert "没有找到能引用的记录" in result["agent_state"].response_text
+    model.complete_with_tools.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_chat_node_preserves_deterministic_action_response_without_model_call() -> None:
+    graph_state = _graph_state("明天下午提醒我回邮件，并记住我喜欢下午开会。")
+    graph_state["deterministic_action_response"] = True
+    graph_state["agent_state"].response_text = "已创建提醒；记忆已进入本地整理流程。"
+    model = ChatModel("不应覆盖安全回执")
+
+    result = await _chat_node(graph_state, AgentRuntimeServices(chat_model=model), _has_empty_search_result)
+
+    assert result["agent_state"].response_text == "已创建提醒；记忆已进入本地整理流程。"
+    model.complete_with_tools.assert_not_awaited()
+
+
 def test_grounded_fallback_does_not_echo_raw_memory_snippets() -> None:
     response = _grounded_response_from_citations(
         [

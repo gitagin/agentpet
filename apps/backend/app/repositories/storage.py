@@ -76,6 +76,9 @@ class SearchResult:
     heading: str | None
     snippet: str
     score: float
+    content_hash: str | None = None
+    vault_id: str | None = None
+    generation: str | None = None
 
 
 class VaultRepository:

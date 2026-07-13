@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import inspect
 import json
 from typing import Any, Literal
@@ -9,6 +10,9 @@ from pydantic import BaseModel, Field
 from app.agents.registry import AgentRegistry
 from app.agents.state import AgentInvocationResult, NegotiationState
 from app.models.enums import AgentId
+
+
+MAX_NEGOTIATION_ROUNDS = 2
 
 
 class OrchestratorDecision(BaseModel):
@@ -27,17 +31,42 @@ class OrchestratorNode:
         agent_registry: AgentRegistry,
         max_rounds: int = 5,
         confidence_threshold: float = 0.8,
+        timeout_seconds: float = 15.0,
     ) -> None:
         self.model = model
         self.agent_registry = agent_registry
-        self.max_rounds = max_rounds
+        self.max_rounds = min(max(int(max_rounds), 1), MAX_NEGOTIATION_ROUNDS)
         self.confidence_threshold = confidence_threshold
+        self.timeout_seconds = max(float(timeout_seconds), 0.001)
 
     async def __call__(self, state: NegotiationState) -> dict[str, Any]:
         max_rounds = min(state.max_rounds, self.max_rounds)
         confidence_threshold = max(state.confidence_threshold, self.confidence_threshold)
         if state.round >= max_rounds:
-            return {"next": "synthesize", "fallback_triggered": True}
+            return {
+                "next": "synthesize",
+                "fallback_triggered": True,
+                "fallback_reason": "max_rounds_reached",
+            }
+
+        if _requires_initial_retrieval(state):
+            decision = OrchestratorDecision(
+                action="invoke_agent",
+                agent=AgentId.RETRIEVAL_AGENT,
+                agent_input=state.semantic_analysis.query or state.user_message,
+                reasoning="当前问题需要本地证据，先调用检索 Agent。",
+                confidence=0.0,
+                expected_outcome="获得可引用的本地证据，或确认本地证据为空。",
+            )
+            return {
+                "next": "invoke_agent",
+                "next_agent": decision.agent,
+                "agent_input": decision.agent_input,
+                "orchestrator_decisions": [
+                    *state.orchestrator_decisions,
+                    self._decision_to_dict(decision),
+                ],
+            }
 
         prompt = self._build_prompt(state)
         decision = await self._call_llm(prompt)
@@ -45,6 +74,22 @@ class OrchestratorNode:
 
         if decision.confidence >= confidence_threshold or decision.action != "invoke_agent":
             return {"next": "synthesize", "orchestrator_decisions": decisions}
+
+        if decision.agent != AgentId.RETRIEVAL_AGENT or not (decision.agent_input or "").strip():
+            return {
+                "next": "synthesize",
+                "orchestrator_decisions": decisions,
+                "fallback_triggered": True,
+                "fallback_reason": "unsupported_agent_request",
+            }
+
+        if _is_duplicate_invocation(state, decision.agent, decision.agent_input):
+            return {
+                "next": "synthesize",
+                "orchestrator_decisions": decisions,
+                "fallback_triggered": True,
+                "fallback_reason": "duplicate_agent_query",
+            }
 
         return {
             "next": "invoke_agent",
@@ -105,7 +150,7 @@ class OrchestratorNode:
             raise TypeError("Orchestrator model must be callable or expose complete/ainvoke/invoke.")
 
         if inspect.isawaitable(result):
-            return await result
+            return await asyncio.wait_for(result, timeout=self.timeout_seconds)
         return result
 
     def _parse_json_response(self, text: str) -> dict[str, Any]:
@@ -144,3 +189,31 @@ class OrchestratorNode:
         if hasattr(decision, "model_dump"):
             return decision.model_dump(mode="json")
         return decision.dict()
+
+
+def _requires_initial_retrieval(state: NegotiationState) -> bool:
+    semantic = state.semantic_analysis
+    return bool(
+        state.round == 0
+        and not state.invocation_history
+        and semantic is not None
+        and semantic.needs_context
+        and semantic.source_scope != "none"
+    )
+
+
+def _is_duplicate_invocation(
+    state: NegotiationState,
+    agent_id: AgentId,
+    input_query: str,
+) -> bool:
+    normalized_query = " ".join(input_query.casefold().split())
+    for invocation in state.invocation_history:
+        try:
+            previous_agent = AgentId(invocation.agent_id)
+        except ValueError:
+            continue
+        previous_query = " ".join(invocation.input_query.casefold().split())
+        if previous_agent == agent_id and previous_query == normalized_query:
+            return True
+    return False

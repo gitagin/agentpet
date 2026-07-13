@@ -27,7 +27,7 @@ export const productCopy = {
   },
   memoryPage: {
     title: "记忆工作台",
-    description: "档案、图谱、日记和资料都在这里，你可以查看、搜索、整理和改正。",
+    description: "查看我记住了什么、依据来自哪里，以及最近做过哪些可撤回整理。",
     primaryPanelTitle: "先看这三件事",
     primaryPanelDescription: "记忆留在本机，重要内容可见、可确认，也能随时撤回。",
     searchPlaceholder: "搜索我记住的事",
@@ -72,11 +72,11 @@ export const productCopy = {
   settingsPage: {
     eyebrow: "基础设置",
     title: "把 Agent Pet 调成适合你的工作方式。",
-    description: "这里管理它怎么聊天、把记忆保存在哪里、什么时候自动整理，以及是否朗读回复。",
+    description: "这里只保留对话连接、保存位置、自动整理和本地隐私边界。",
     stepConnect: "连接对话能力",
     stepSave: "选择保存位置",
     stepAutomation: "设置自动整理",
-    stepVoice: "调整语音与高级项",
+    stepVoice: "确认本地隐私边界",
     testConnection: "测试对话能力",
     refresh: "刷新状态",
     advancedModelTitle: "高级：能力分工",

@@ -155,6 +155,7 @@ export type ChatMessage = {
   task_actions?: TaskItem[];
   agent_run_id?: string;
   retrieval_attempted?: boolean;
+  progress_stage?: "understanding" | "retrieving" | "verifying" | "answering";
   live2d_action_hints?: string[];
 };
 
@@ -173,24 +174,63 @@ export type ChatContextBudget = {
   selected_scopes?: string[];
 };
 
-export type ChatNegotiationAction = "invoking" | "reviewing" | "revising" | "synthesizing";
+export type ChatTraceAgentId = "orchestrator" | "retrieval_agent" | "synthesizer";
+
+export type ChatTracePhase = "invoking" | "reviewing" | "revising" | "synthesizing" | "completed";
+
+export type ChatTraceStatus = "running" | "fallback" | "completed";
+
+export type ChatTraceSourceScope =
+  | "none"
+  | "personal_memory"
+  | "diary_objects"
+  | "daily_chat"
+  | "knowledge_base"
+  | "pending_memory"
+  | "mixed";
+
+export type ChatTraceReasonCode =
+  | "additional_context_required"
+  | "evidence_review"
+  | "evidence_revised"
+  | "evidence_ready"
+  | "max_rounds_reached"
+  | "duplicate_agent_query"
+  | "unsupported_agent_request"
+  | "invalid_agent_request"
+  | "orchestrator_model_unavailable"
+  | "orchestrator_timeout"
+  | "orchestrator_invalid_response"
+  | "agent_timeout"
+  | "agent_invocation_failed"
+  | "negotiation_fallback"
+  | "negotiation_completed"
+  | "negotiation_completed_with_fallback";
+
+export type ChatTraceCounts = {
+  agents_invoked: number;
+  citations: number;
+  rounds: number;
+};
 
 export type ChatNegotiationStep = {
+  contract_version: "agent-trace.v1";
+  run_id: string;
+  branch_id: "foreground";
+  stage_id: "negotiation";
+  agent_id: ChatTraceAgentId;
+  phase: ChatTracePhase;
+  status: ChatTraceStatus;
   round: number;
-  agent: string;
-  action: ChatNegotiationAction;
-  reasoning: string;
-  confidence: number;
-  message: string;
+  sequence: number;
+  duration_ms: number;
+  reason_code: ChatTraceReasonCode;
+  safe_summary: string;
+  counts: ChatTraceCounts;
+  source_scope: ChatTraceSourceScope;
 };
 
-export type ChatNegotiationDone = {
-  total_rounds: number;
-  agents_invoked: string[];
-  total_latency_ms: number;
-  final_confidence: number;
-  fallback: boolean;
-};
+export type ChatNegotiationDone = ChatNegotiationStep;
 
 export type Citation = {
   note_id?: string;
@@ -368,6 +408,31 @@ export type ChatDailyHistoryResponse = {
   conversation_id?: string | null;
   messages: ChatDailyHistoryMessage[];
   has_more?: boolean;
+};
+
+export type AgentCheckpointSummary = {
+  checkpoint_id: string;
+  thread_id: string;
+  run_id: string;
+  node_name: string;
+  status: string;
+  action_proposal_id?: string | null;
+  public_event_cursor?: number | null;
+  created_at: string;
+  updated_at: string;
+  expires_at: string;
+  decision_id: string;
+  decision_expires_at: string;
+  action_label: string;
+  safe_target_summary: string;
+  risk_tier: string;
+  reversible: boolean;
+};
+
+export type AgentCheckpointDecisionResponse = {
+  checkpoint_id: string;
+  status: string;
+  effect_applied: boolean;
 };
 
 export type MemorySearchResult = {

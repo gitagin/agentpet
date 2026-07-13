@@ -2,6 +2,7 @@
 import type { FormEvent } from "react";
 import type {
   AgentAction,
+  AgentCheckpointSummary,
   ChatDailyHistoryMessage,
   ChatMessage,
   ChatContinuityProposal,
@@ -128,6 +129,8 @@ function App() {
   const [agentActions, setAgentActions] = useState<AgentAction[]>([]);
   const [agentActionsStatus, setAgentActionsStatus] = useState<AsyncStatus>("idle");
   const [agentActionsError, setAgentActionsError] = useState("");
+  const [pendingCheckpoints, setPendingCheckpoints] = useState<AgentCheckpointSummary[]>([]);
+  const [decidingCheckpointIds, setDecidingCheckpointIds] = useState<Set<string>>(() => new Set());
   const [revertingAgentActionIds, setRevertingAgentActionIds] = useState<Set<string>>(() => new Set());
   const [continuityState, setContinuityState] = useState<ContinuityStateResponse | null>(null);
   const [continuityProposals, setContinuityProposals] = useState<ContinuityProposal[]>([]);
@@ -135,6 +138,7 @@ function App() {
   const [loadingContinuity, setLoadingContinuity] = useState(false);
   const [continuityActionIds, setContinuityActionIds] = useState<Set<string>>(() => new Set());
   const [resettingLocalState, setResettingLocalState] = useState(false);
+  const [resettingMemoryState, setResettingMemoryState] = useState(false);
   const { desktopHostMode, setWindowMode, windowMode } = useDesktopWindowRouting({
     onControlTargetRequested: scrollToWorkflowTarget,
   });
@@ -197,7 +201,6 @@ function App() {
     automationSettingsDraft,
     automationSettingsSaveStatus,
     bindVault,
-    clearTtsCache,
     globalModelDraft,
     globalModelSaveStatus,
     globalModelTestResult,
@@ -207,30 +210,17 @@ function App() {
     loadingSettingsStatus,
     loadSettingsStatus,
     loadVaultStatus,
-    negotiationSettingsDraft,
-    negotiationSettingsSaveStatus,
     rebuildIndex,
     resetSettingsState,
-    saveAgentModel,
     saveAutomationSettings,
     saveGlobalModel,
-    saveNegotiationSettings,
-    saveTtsSettings,
-    savingAgentModelIds,
     selectVaultDirectory,
     setLastIndexRun,
     setVaultPath,
     settingsStatus,
-    testAgentModelConnection,
     testGlobalModelConnection,
-    testingAgentModelIds,
-    ttsSettingsDraft,
-    ttsSettingsSaveStatus,
-    updateAgentModelDraft,
     updateAutomationSettingsDraft,
     updateGlobalModelDraft,
-    updateNegotiationSettingsDraft,
-    updateTtsSettingsDraft,
     vaultId,
     vaultPath,
     vaultStatus,
@@ -788,6 +778,57 @@ function App() {
     }
   }
 
+  async function loadPendingCheckpoints(signal?: AbortSignal) {
+    try {
+      const response = await api.listPendingCheckpoints(conversationId ?? undefined, signal);
+      setPendingCheckpoints(response);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return;
+      }
+    }
+  }
+
+  async function decideCheckpoint(
+    checkpoint: AgentCheckpointSummary,
+    decision: "approved" | "rejected",
+  ) {
+    setDecidingCheckpointIds((current) => new Set(current).add(checkpoint.checkpoint_id));
+    setNotice(null);
+    try {
+      const response = await api.decideCheckpoint(checkpoint, decision);
+      setPendingCheckpoints((current) =>
+        current.filter((item) => item.checkpoint_id !== checkpoint.checkpoint_id),
+      );
+      setNotice({
+        tone: response.status === "completed" || response.status === "rejected" ? "success" : "info",
+        message: response.effect_applied
+          ? "已批准并完成这次操作。"
+          : response.status === "rejected"
+            ? "已拒绝，这次操作没有执行。"
+            : "确认结果已记录。",
+      });
+      void loadAgentActions({ silent: true });
+    } catch (error) {
+      setNotice({ tone: "error", message: describeError(error, "确认请求处理失败") });
+    } finally {
+      setDecidingCheckpointIds((current) => {
+        const next = new Set(current);
+        next.delete(checkpoint.checkpoint_id);
+        return next;
+      });
+    }
+  }
+
+  useEffect(() => {
+    if (sidecarStatus?.state !== "ready" || streaming) {
+      return undefined;
+    }
+    const controller = new AbortController();
+    void loadPendingCheckpoints(controller.signal);
+    return () => controller.abort();
+  }, [api, conversationId, sidecarStatus?.state, streaming]);
+
   async function loadMemoryReceiptsForMessage(messageId: string, agentRunId: string, signal?: AbortSignal) {
     try {
       const response = await api.getMemoryReceipts(agentRunId, signal);
@@ -1090,6 +1131,36 @@ function App() {
     }
   }
 
+  async function resetStoredMemoryState() {
+    setResettingMemoryState(true);
+    setNotice(null);
+    try {
+      const response = await api.resetMemoryState("RESET_AGENT_PET_MEMORY");
+      setConversationId(null);
+      petChat.resetStreamState();
+      setMessages([]);
+      resetMemoryState();
+      setAgentActions([]);
+      setAgentActionsStatus("idle");
+      setAgentActionsError("");
+      setPendingCheckpoints([]);
+      setContinuityState(null);
+      setContinuityProposals([]);
+      setLatestContinuitySignal(null);
+      const clearedRows = Object.values(response.cleared_tables).reduce((total, count) => total + count, 0);
+      setNotice({
+        tone: "success",
+        message: `记忆已重置，清理 ${clearedRows} 条记忆相关记录；LLM/API 配置已保留。`,
+      });
+      await loadSettingsStatus({ silent: true });
+      await loadVaultStatus({ silent: true });
+    } catch (error) {
+      setNotice({ tone: "error", message: describeError(error, "记忆重置失败") });
+    } finally {
+      setResettingMemoryState(false);
+    }
+  }
+
   function scrollToWorkflowTarget(targetId?: string) {
     if (!targetId) {
       return;
@@ -1293,23 +1364,14 @@ function App() {
     />
   );
   const settingsPanel = (
-    <SettingsPanel
+      <SettingsPanel
         api={api}
-        agentModelDrafts={agentModelDrafts}
-        agentModelTestResults={agentModelTestResults}
         globalModelDraft={globalModelDraft}
         globalModelSaveStatus={globalModelSaveStatus}
         globalModelTestResult={globalModelTestResult}
         globalModelTestStatus={globalModelTestStatus}
         automationSettingsDraft={automationSettingsDraft}
         automationSettingsSaveStatus={automationSettingsSaveStatus}
-        ttsSettingsDraft={ttsSettingsDraft}
-        ttsSettingsSaveStatus={ttsSettingsSaveStatus}
-        ttsSettingsStatus={settingsStatus?.tts_settings}
-        negotiationSettingsDraft={negotiationSettingsDraft}
-        negotiationSettingsSaveStatus={negotiationSettingsSaveStatus}
-        savingAgentModelIds={savingAgentModelIds}
-        testingAgentModelIds={testingAgentModelIds}
         loadingSettingsStatus={loadingSettingsStatus}
         vaultId={vaultId}
         vaultPath={vaultPath}
@@ -1323,19 +1385,13 @@ function App() {
         onTestGlobalModel={() => void testGlobalModelConnection()}
         onUpdateAutomationSettingsDraft={updateAutomationSettingsDraft}
         onSaveAutomationSettings={() => void saveAutomationSettings()}
-        onUpdateTtsSettingsDraft={updateTtsSettingsDraft}
-        onSaveTtsSettings={(apiKey) => void saveTtsSettings(apiKey)}
-        onClearTtsCache={() => void clearTtsCache()}
-        onUpdateNegotiationSettingsDraft={updateNegotiationSettingsDraft}
-        onSaveNegotiationSettings={() => void saveNegotiationSettings()}
-        onUpdateAgentModelDraft={updateAgentModelDraft}
-        onSaveAgentModel={(agentId) => void saveAgentModel(agentId)}
-        onTestAgentModel={(agentId) => void testAgentModelConnection(agentId)}
         onVaultPathChange={setVaultPath}
         onSelectVaultDirectory={() => void selectVaultDirectory()}
         onBindVault={bindVault}
         onLoadVaultStatus={() => void loadVaultStatus()}
         onRebuildIndex={() => void rebuildIndex()}
+        resettingMemoryState={resettingMemoryState}
+        onResetMemoryState={() => void resetStoredMemoryState()}
     />
   );
 
@@ -1371,15 +1427,10 @@ function App() {
           messages,
           connected: hasConnection,
           streaming,
-          mode: petInputMode,
-          modes: petInputModes,
           onInputChange: setControlInput,
-          onModeChange: setPetInputMode,
           onSend: (event) => {
             event.preventDefault();
-            void sendChatText(buildPetInputIntentMessage(petInputMode, controlInput), () => setControlInput(""), {
-              displayText: displayTextForInputMode(petInputMode, controlInput),
-            });
+            void sendChatText(controlInput, () => setControlInput(""));
           },
           onStopStreaming: stopStreaming,
           revertingActionIds: revertingAgentActionIds,
@@ -1388,6 +1439,9 @@ function App() {
           onOpenMemory: () => setWindowMode("memory"),
           onOpenWiki: (path) => openArtifactTarget("world", path),
           onOpenReport: (path) => openArtifactTarget("memory", path),
+          pendingCheckpoints,
+          decidingCheckpointIds,
+          onDecideCheckpoint: (checkpoint, decision) => void decideCheckpoint(checkpoint, decision),
         }}
         memoryWindowProps={{
           api,
@@ -1412,7 +1466,6 @@ function App() {
           renderEntry: renderAgentActivityEntry,
         }}
         growthWindowProps={{ api }}
-        connectionPanel={connectionPanel}
         wikiWorkflowPanel={wikiWorkflowPanel}
         settingsPanel={settingsPanel}
       />

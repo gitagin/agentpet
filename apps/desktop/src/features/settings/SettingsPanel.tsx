@@ -1,41 +1,28 @@
-import { Bot, FolderOpen, RefreshCw, ShieldCheck, SlidersHorizontal, Volume2 } from "lucide-react";
+import { Bot, FolderOpen, RefreshCw, ShieldCheck, SlidersHorizontal } from "lucide-react";
 import type { FormEvent } from "react";
-import type { AgentModelId, ModelTestResponse, TtsSettingsResponse, VaultStatusResponse } from "../../types";
-import type { AgentModelDraft } from "../../services/agentModelDrafts";
+import type { ModelTestResponse, VaultStatusResponse } from "../../types";
 import type { DesktopApi } from "../../services/desktopApi";
 import { AutomationSettingsCard } from "./AutomationSettingsCard";
-import { AgentConfigForm } from "./AgentConfigForm";
 import { GlobalModelCard } from "./GlobalModelCard";
 import { ModelHealthBanner } from "./ModelHealthBanner";
+import { MemoryResetCard } from "./MemoryResetCard";
 import type {
   AsyncStatus,
   AutomationSettingsDraft,
   GlobalModelDraft,
   LastIndexRun,
-  NegotiationSettingsDraft,
-  TtsSettingsDraft,
 } from "./settingsTypes";
-import { TtsSettingsCard } from "./TtsSettingsCard";
 import { VaultBindingSection } from "./VaultBindingSection";
 import { productCopy } from "../../productCopy";
 
 type SettingsPanelProps = {
   api: DesktopApi;
-  agentModelDrafts: AgentModelDraft[];
-  agentModelTestResults: Record<string, ModelTestResponse | undefined>;
   globalModelDraft: GlobalModelDraft;
   globalModelSaveStatus: AsyncStatus;
   globalModelTestResult?: ModelTestResponse;
   globalModelTestStatus: AsyncStatus;
   automationSettingsDraft: AutomationSettingsDraft;
   automationSettingsSaveStatus: AsyncStatus;
-  ttsSettingsDraft: TtsSettingsDraft;
-  ttsSettingsSaveStatus: AsyncStatus;
-  ttsSettingsStatus?: TtsSettingsResponse | null;
-  negotiationSettingsDraft: NegotiationSettingsDraft;
-  negotiationSettingsSaveStatus: AsyncStatus;
-  savingAgentModelIds: Set<string>;
-  testingAgentModelIds: Set<string>;
   loadingSettingsStatus: boolean;
   vaultId: string | null;
   vaultPath: string;
@@ -49,38 +36,23 @@ type SettingsPanelProps = {
   onTestGlobalModel: () => void;
   onUpdateAutomationSettingsDraft: (patch: Partial<AutomationSettingsDraft>) => void;
   onSaveAutomationSettings: () => void;
-  onUpdateTtsSettingsDraft: (patch: Partial<TtsSettingsDraft>) => void;
-  onSaveTtsSettings: (apiKey?: string) => void;
-  onClearTtsCache?: () => void;
-  onUpdateNegotiationSettingsDraft: (patch: Partial<NegotiationSettingsDraft>) => void;
-  onSaveNegotiationSettings: () => void;
-  onUpdateAgentModelDraft: (agentId: AgentModelId, patch: Partial<AgentModelDraft>) => void;
-  onSaveAgentModel: (agentId: AgentModelId) => void;
-  onTestAgentModel: (agentId: AgentModelId) => void;
   onVaultPathChange: (vaultPath: string) => void;
   onSelectVaultDirectory: () => void;
   onBindVault: (event: FormEvent) => void;
   onLoadVaultStatus: () => void;
   onRebuildIndex: () => void;
+  resettingMemoryState: boolean;
+  onResetMemoryState: () => void;
 };
 
 export function SettingsPanel({
   api,
-  agentModelDrafts,
-  agentModelTestResults,
   globalModelDraft,
   globalModelSaveStatus,
   globalModelTestResult,
   globalModelTestStatus,
   automationSettingsDraft,
   automationSettingsSaveStatus,
-  ttsSettingsDraft,
-  ttsSettingsSaveStatus,
-  ttsSettingsStatus,
-  negotiationSettingsDraft,
-  negotiationSettingsSaveStatus,
-  savingAgentModelIds,
-  testingAgentModelIds,
   loadingSettingsStatus,
   vaultId,
   vaultPath,
@@ -94,25 +66,14 @@ export function SettingsPanel({
   onTestGlobalModel,
   onUpdateAutomationSettingsDraft,
   onSaveAutomationSettings,
-  onUpdateTtsSettingsDraft,
-  onSaveTtsSettings,
-  onClearTtsCache,
-  onUpdateNegotiationSettingsDraft,
-  onSaveNegotiationSettings,
-  onUpdateAgentModelDraft,
-  onSaveAgentModel,
-  onTestAgentModel,
   onVaultPathChange,
   onSelectVaultDirectory,
   onBindVault,
   onLoadVaultStatus,
   onRebuildIndex,
+  resettingMemoryState,
+  onResetMemoryState,
 }: SettingsPanelProps) {
-  void negotiationSettingsDraft;
-  void negotiationSettingsSaveStatus;
-  void onUpdateNegotiationSettingsDraft;
-  void onSaveNegotiationSettings;
-
   return (
     <section id="settings-panel" className="settings-panel-compact settings-panel-grid" aria-label="设置">
       <section className="settings-intro" aria-label="设置引导">
@@ -122,7 +83,7 @@ export function SettingsPanel({
           <p className="settings-intro-description">{productCopy.settingsPage.description}</p>
           <p className="settings-scroll-note">
             <SlidersHorizontal size={14} />
-            向下滑动可以继续设置自动整理、语音和保存位置。
+            向下滑动可以继续设置自动整理、隐私边界和保存位置。
           </p>
         </div>
         <ol className="settings-intro-steps">
@@ -176,11 +137,11 @@ export function SettingsPanel({
         </article>
         <article className="settings-purpose-card">
           <span className="settings-purpose-icon">
-            <Volume2 size={16} />
+            <ShieldCheck size={16} />
           </span>
           <span>
-            <strong>语音与高级</strong>
-            <small>调整朗读、缓存和少数高级能力分工。</small>
+            <strong>有界协作</strong>
+            <small>复杂问题最多复核两轮，失败时回退到稳定主链。</small>
           </span>
         </article>
       </section>
@@ -194,24 +155,6 @@ export function SettingsPanel({
         onSave={onSaveGlobalModel}
         onTest={onTestGlobalModel}
       />
-      <details className="agent-model-section settings-card advanced-agent-model-settings">
-        <summary>
-          <strong>{productCopy.settingsPage.advancedModelTitle}</strong>
-          <span>{productCopy.settingsPage.advancedModelDescription}</span>
-        </summary>
-        <AgentConfigForm
-          drafts={agentModelDrafts}
-          globalModelDraft={globalModelDraft}
-          testResults={agentModelTestResults}
-          savingIds={savingAgentModelIds}
-          testingIds={testingAgentModelIds}
-          loadingSettingsStatus={loadingSettingsStatus}
-          onRefreshSettings={onRefreshSettings}
-          onUpdateDraft={onUpdateAgentModelDraft}
-          onSaveAgentModel={onSaveAgentModel}
-          onTestAgentModel={onTestAgentModel}
-        />
-      </details>
       <AutomationSettingsCard
         draft={automationSettingsDraft}
         saveStatus={automationSettingsSaveStatus}
@@ -219,18 +162,6 @@ export function SettingsPanel({
         onUpdateDraft={onUpdateAutomationSettingsDraft}
         onSave={onSaveAutomationSettings}
         onRefresh={onRefreshSettings}
-      />
-      <TtsSettingsCard
-        draft={ttsSettingsDraft}
-        saveStatus={ttsSettingsSaveStatus}
-        loadingSettingsStatus={loadingSettingsStatus}
-        status={ttsSettingsStatus}
-        keyMasked={ttsSettingsStatus?.key_masked}
-        keyConfigured={ttsSettingsStatus?.key_configured}
-        onUpdateDraft={onUpdateTtsSettingsDraft}
-        onSave={onSaveTtsSettings}
-        onRefresh={onRefreshSettings}
-        onClearCache={onClearTtsCache}
       />
       <VaultBindingSection
         vaultId={vaultId}
@@ -245,6 +176,7 @@ export function SettingsPanel({
         onLoadVaultStatus={onLoadVaultStatus}
         onRebuildIndex={onRebuildIndex}
       />
+      <MemoryResetCard resetting={resettingMemoryState} onReset={onResetMemoryState} />
     </section>
   );
 }

@@ -14,9 +14,10 @@ from ..agents.events import (
     AgentContinuityProposalEvent,
     AgentDoneEvent,
     AgentErrorEvent,
-    AgentEventBase,
     AgentReplyReadyEvent,
+    AgentSseEventBase,
     AgentTokenEvent,
+    public_agent_error,
 )
 from ..errors import AppError
 from ..agents.events import sse_stream
@@ -36,6 +37,7 @@ from .wiring import (
     record_agent_action,
     audit_reason,
     chat_model_client,
+    claim_chat_run,
     continuity_service,
     database,
     get_chat_run,
@@ -124,7 +126,7 @@ async def get_daily_chat_history(
               AND messages.role IN (?, ?)
               AND messages.status IN (?, ?, ?)
               AND TRIM(messages.content) != ''
-            ORDER BY messages.created_at ASC, messages.id ASC
+            ORDER BY messages.created_at DESC, messages.id DESC
             LIMIT ?
             """,
             (
@@ -138,30 +140,8 @@ async def get_daily_chat_history(
                 limit + 1,
             ),
         ).fetchall()
-        latest_row = conn.execute(
-            """
-            SELECT conversation_id
-            FROM messages
-            WHERE created_at >= ?
-              AND created_at < ?
-              AND role IN (?, ?)
-              AND status IN (?, ?, ?)
-              AND TRIM(content) != ''
-            ORDER BY created_at DESC, id DESC
-            LIMIT 1
-            """,
-            (
-                start_iso,
-                end_iso,
-                MessageRole.USER.value,
-                MessageRole.ASSISTANT.value,
-                MessageStatus.COMPLETED.value,
-                MessageStatus.FAILED.value,
-                MessageStatus.CANCELLED.value,
-            ),
-        ).fetchone()
-
-    limited_rows = rows[:limit]
+    limited_rows = list(reversed(rows[:limit]))
+    latest_row = limited_rows[-1] if limited_rows else None
     return ChatDailyHistoryResponse(
         date=target_date.isoformat(),
         timezone=tz.key,
@@ -347,7 +327,14 @@ def _create_chat_records(
             )
 
 
-async def _persisting_stream(request: Request, state: AgentState) -> AsyncIterator[AgentEventBase]:
+async def _persisting_stream(request: Request, state: AgentState) -> AsyncIterator[AgentSseEventBase]:
+    if not claim_chat_run(request, state):
+        yield AgentErrorEvent(
+            agent_run_id=state.agent_run_id,
+            code="agent_run_not_found",
+            message="回复流已过期、已启动或已被取消。",
+        )
+        return
     assistant_message_id = new_id()
     _insert_assistant_message(request, state, assistant_message_id)
     token_chunks: list[str] = []
@@ -355,6 +342,7 @@ async def _persisting_stream(request: Request, state: AgentState) -> AsyncIterat
     error_code = None
     error_message = None
     terminal_event_seen = False
+    final_state_persisted = False
 
     try:
         try:
@@ -362,6 +350,7 @@ async def _persisting_stream(request: Request, state: AgentState) -> AsyncIterat
                 if isinstance(event, AgentTokenEvent):
                     token_chunks.append(event.text)
                     _update_assistant_message(request, assistant_message_id, "".join(token_chunks), MessageStatus.PARTIAL.value)
+                    yield event
                 elif isinstance(event, AgentDoneEvent):
                     terminal_event_seen = True
                     final_text = "".join(token_chunks) or event.text
@@ -370,28 +359,37 @@ async def _persisting_stream(request: Request, state: AgentState) -> AsyncIterat
                         error_code = "empty_response"
                         error_message = "后端返回了完成事件，但没有生成可显示回复。"
                         yield _fail_message(request, state, assistant_message_id, "".join(token_chunks), error_code, error_message)
-                        continue
+                        break
+                    final_status = AgentRunStatus.SUCCESS.value
+                    error_code = None
+                    error_message = None
                     _update_assistant_message(request, assistant_message_id, final_text, MessageStatus.COMPLETED.value)
+                    if not _post_reply_work_blocked(state):
+                        _schedule_post_reply_work(request, state, assistant_message_id, final_text)
                     yield AgentReplyReadyEvent(
                         agent_run_id=state.agent_run_id,
                         intent=event.intent,
                         text=final_text,
                     )
-                    if not _post_reply_work_blocked_by_local_privacy(state):
-                        _schedule_post_reply_work(request, state, assistant_message_id, final_text)
-                    final_status = AgentRunStatus.SUCCESS.value
+                    yield event
+                    break
                 elif isinstance(event, AgentErrorEvent):
                     terminal_event_seen = True
-                    error_code = event.code
-                    error_message = event.message
+                    error_code, error_message = public_agent_error(event.code)
                     final_status = AgentRunStatus.FAILED.value
                     _update_assistant_message(request, assistant_message_id, "".join(token_chunks), MessageStatus.FAILED.value)
-                yield event
+                    yield AgentErrorEvent(
+                        agent_run_id=state.agent_run_id,
+                        code=error_code,
+                        message=error_message,
+                    )
+                    break
+                else:
+                    yield event
         except Exception as exc:
             terminal_event_seen = True
             final_status = AgentRunStatus.FAILED.value
-            error_code = getattr(exc, "code", exc.__class__.__name__)
-            error_message = str(exc) or "智能体流式回复异常中断。"
+            error_code, error_message = public_agent_error(getattr(exc, "code", None))
             yield _fail_message(request, state, assistant_message_id, "".join(token_chunks), error_code, error_message)
 
         if not terminal_event_seen:
@@ -400,19 +398,85 @@ async def _persisting_stream(request: Request, state: AgentState) -> AsyncIterat
             error_message = "回复流结束时没有收到完成或错误事件。"
             yield _fail_message(request, state, assistant_message_id, "".join(token_chunks), error_code, error_message)
 
-        _update_agent_run(request, state, assistant_message_id, final_status, error_code=error_code, error_message=error_message)
-        record_audit(
+        _persist_stream_terminal_state(
             request,
-            action="chat.complete" if final_status == AgentRunStatus.SUCCESS.value else "chat.failed",
-            result="success" if final_status == AgentRunStatus.SUCCESS.value else "failed",
-            reason=audit_reason(request, agent_run_id=state.agent_run_id, conversation_id=state.conversation_id, error_code=error_code),
+            state,
+            assistant_message_id,
+            final_status,
+            error_code=error_code,
+            error_message=error_message,
         )
+        final_state_persisted = True
+    except (asyncio.CancelledError, GeneratorExit):
+        if not terminal_event_seen:
+            final_status = AgentRunStatus.CANCELLED.value
+            error_code = "stream_cancelled"
+            error_message = "客户端中断了回复流。"
+            _update_assistant_message(
+                request,
+                assistant_message_id,
+                "".join(token_chunks),
+                MessageStatus.CANCELLED.value,
+            )
+        if not final_state_persisted:
+            _persist_stream_terminal_state(
+                request,
+                state,
+                assistant_message_id,
+                final_status,
+                error_code=error_code,
+                error_message=error_message,
+            )
+            final_state_persisted = True
+        raise
     finally:
         pop_chat_run(request, state.agent_run_id)
 
 
-def _post_reply_work_blocked_by_local_privacy(state: AgentState) -> bool:
-    return bool(state.local_privacy_mode and state.local_privacy_sensitive_reason)
+def _persist_stream_terminal_state(
+    request: Request,
+    state: AgentState,
+    assistant_message_id: str,
+    final_status: str,
+    *,
+    error_code: str | None,
+    error_message: str | None,
+) -> None:
+    _update_agent_run(
+        request,
+        state,
+        assistant_message_id,
+        final_status,
+        error_code=error_code,
+        error_message=error_message,
+    )
+    if final_status == AgentRunStatus.SUCCESS.value:
+        action = "chat.complete"
+        result = "success"
+    elif final_status == AgentRunStatus.CANCELLED.value:
+        action = "chat.cancelled"
+        result = "failed"
+    else:
+        action = "chat.failed"
+        result = "failed"
+    record_audit(
+        request,
+        action=action,
+        result=result,
+        reason=audit_reason(
+            request,
+            agent_run_id=state.agent_run_id,
+            conversation_id=state.conversation_id,
+            error_code=error_code,
+        ),
+    )
+
+
+def _post_reply_work_blocked(state: AgentState) -> bool:
+    return bool(
+        state.suppress_post_reply_automation
+        or (state.local_privacy_mode and state.local_privacy_sensitive_reason)
+    )
 
 
 def _schedule_post_reply_work(request: Request, state: AgentState, assistant_message_id: str, final_text: str) -> None:
@@ -437,7 +501,6 @@ async def _complete_assistant_message_background(
     assistant_message_id: str,
     final_text: str,
 ) -> None:
-    _update_assistant_message(context, assistant_message_id, final_text, MessageStatus.COMPLETED.value)
     await _archive_chat_memory_in_background(context, state, assistant_message_id, final_text)
     async for _ in _create_continuity_proposals(context, state, assistant_answer=final_text):
         pass
@@ -452,9 +515,10 @@ def _log_post_reply_task_result(task: asyncio.Task[None]) -> None:
         logger.warning("Post-reply chat memory task failed", exc_info=True)
 
 
-def _fail_message(request: Request, state: AgentState, assistant_message_id: str, content: str, code: str, message: str) -> AgentErrorEvent:
+def _fail_message(request: Request, state: AgentState, assistant_message_id: str, content: str, code: str, _message: str) -> AgentErrorEvent:
     _update_assistant_message(request, assistant_message_id, content, MessageStatus.FAILED.value)
-    return AgentErrorEvent(agent_run_id=state.agent_run_id, code=code, message=message)
+    safe_code, safe_message = public_agent_error(code)
+    return AgentErrorEvent(agent_run_id=state.agent_run_id, code=safe_code, message=safe_message)
 
 
 async def _archive_chat_memory_in_background(

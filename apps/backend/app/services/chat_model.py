@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 from collections.abc import AsyncIterator, Callable, Sequence
 from dataclasses import dataclass
 from dataclasses import replace as dataclass_replace
 from typing import Any, Mapping, Protocol, runtime_checkable
 from urllib.parse import urlparse
+
+from pydantic import BaseModel
 
 from app.models.enums import AgentId
 
@@ -82,6 +85,71 @@ AgentFactory = Callable[[Any, str | None, Sequence[Any]], Any]
 class ChatModelRunResult:
     text: str
     raw_result: Any
+
+
+RoleAgentFactory = Callable[..., Any]
+
+
+@dataclass(frozen=True, slots=True)
+class StructuredRoleAgent:
+    structured_model: Any
+    system_prompt: str
+    output_schema: type[BaseModel]
+
+    async def ainvoke(self, task: BaseModel | Mapping[str, Any]) -> BaseModel:
+        if isinstance(task, BaseModel):
+            user_content = task.model_dump_json()
+        else:
+            user_content = json.dumps(dict(task), ensure_ascii=True, sort_keys=True)
+        messages = [
+            ("system", self.system_prompt),
+            ("user", user_content),
+        ]
+        if hasattr(self.structured_model, "ainvoke"):
+            result = await self.structured_model.ainvoke(messages)
+        else:
+            result = await asyncio.to_thread(self.structured_model.invoke, messages)
+        return self.output_schema.model_validate(result)
+
+
+def create_structured_role_agent(
+    *,
+    model: Any,
+    system_prompt: str,
+    output_schema: type[BaseModel],
+) -> StructuredRoleAgent:
+    if not hasattr(model, "with_structured_output"):
+        raise TypeError("structured role model must support with_structured_output")
+    structured_model = model.with_structured_output(output_schema)
+    return StructuredRoleAgent(
+        structured_model=structured_model,
+        system_prompt=system_prompt,
+        output_schema=output_schema,
+    )
+
+
+def create_tool_role_agent(
+    *,
+    model: Any,
+    system_prompt: str,
+    tools: Sequence[Any],
+    allowed_tool_names: Sequence[str],
+    output_schema: type[BaseModel],
+    agent_factory: RoleAgentFactory | None = None,
+) -> Any:
+    allowed = frozenset(allowed_tool_names)
+    actual = tuple(getattr(tool, "name", None) for tool in tools)
+    if any(not isinstance(name, str) or name not in allowed for name in actual):
+        raise ValueError("tool_not_allowed_for_role")
+    if len(set(actual)) != len(actual):
+        raise ValueError("duplicate_role_tool")
+    factory = agent_factory or _default_role_agent_factory
+    return factory(
+        model=model,
+        tools=list(tools),
+        system_prompt=system_prompt,
+        response_format=output_schema,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -303,6 +371,23 @@ def _default_agent_factory(model: Any, system_prompt: str | None, tools: Sequenc
         model=model,
         tools=list(tools),
         system_prompt=system_prompt,
+    )
+
+
+def _default_role_agent_factory(
+    *,
+    model: Any,
+    tools: Sequence[Any],
+    system_prompt: str,
+    response_format: type[BaseModel],
+) -> Any:
+    from langchain.agents import create_agent
+
+    return create_agent(
+        model=model,
+        tools=list(tools),
+        system_prompt=system_prompt,
+        response_format=response_format,
     )
 
 

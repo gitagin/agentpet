@@ -9,6 +9,37 @@ from app.storage.database import Database
 
 
 RESET_CONFIRMATION_TEXT = "RESET_AGENT_PET"
+MEMORY_RESET_CONFIRMATION_TEXT = "RESET_AGENT_PET_MEMORY"
+
+
+MEMORY_RESET_TABLES = (
+    "agent_checkpoint_decisions",
+    "agent_checkpoints",
+    "companion_retrieval_reports",
+    "companion_retrieval_events",
+    "companion_consolidation_run_outputs",
+    "companion_consolidation_run_sources",
+    "companion_consolidation_runs",
+    "memory_feedback_events",
+    "memory_activation_events",
+    "memory_lifecycle_events",
+    "memory_evidence",
+    "memory_candidates",
+    "memory_graph_events",
+    "memory_graph_facts",
+    "diary_memory_object_fts",
+    "diary_memory_object_sources",
+    "diary_memory_objects",
+    "daily_chat_memory_entries",
+    "continuity_events",
+    "continuity_proposals",
+    "continuity_state",
+    "memory_proposals",
+    "agent_actions",
+    "agent_runs",
+    "messages",
+    "conversations",
+)
 
 
 SQLITE_RESET_TABLES = (
@@ -74,7 +105,7 @@ class LocalStateResetService:
         self.data_dir = Path(data_dir)
 
     def reset(self) -> LocalStateResetResult:
-        cleared_tables = self._clear_sqlite_tables()
+        cleared_tables = self._clear_sqlite_tables(SQLITE_RESET_TABLES)
         removed_paths = self._remove_runtime_state_paths()
         return LocalStateResetResult(
             status="reset",
@@ -82,13 +113,13 @@ class LocalStateResetService:
             removed_paths=removed_paths,
         )
 
-    def _clear_sqlite_tables(self) -> dict[str, int]:
+    def _clear_sqlite_tables(self, tables: tuple[str, ...]) -> dict[str, int]:
         cleared: dict[str, int] = {}
         with self.database.connect() as conn:
             existing = self._existing_tables(conn)
             with conn:
                 conn.execute("PRAGMA secure_delete = ON")
-                for table in SQLITE_RESET_TABLES:
+                for table in tables:
                     if table not in existing:
                         continue
                     before = int(conn.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0])
@@ -132,3 +163,34 @@ class LocalStateResetService:
             str(row["name"])
             for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()
         }
+
+
+class MemoryStateResetService(LocalStateResetService):
+    """Clear personal memory state without touching model credentials or Vault files."""
+
+    def reset(self) -> LocalStateResetResult:
+        cleared_tables = self._clear_sqlite_tables(MEMORY_RESET_TABLES)
+        removed_paths = self._remove_memory_runtime_paths()
+        return LocalStateResetResult(
+            status="memory_reset",
+            cleared_tables=cleared_tables,
+            removed_paths=removed_paths,
+        )
+
+    def _remove_memory_runtime_paths(self) -> list[str]:
+        removed: list[str] = []
+        seen: set[Path] = set()
+        for root in self._runtime_state_roots():
+            for path in (root / "memory-graph", root / "memory_graph.kuzu"):
+                resolved = path.resolve()
+                if resolved in seen:
+                    continue
+                seen.add(resolved)
+                if not path.exists():
+                    continue
+                if path.is_dir():
+                    shutil.rmtree(path)
+                else:
+                    path.unlink()
+                removed.append(path.name)
+        return removed

@@ -59,6 +59,7 @@ type MemoryProfileProjectionGroupKey =
 type MemoryWorkspaceTabKey =
   | "archive"
   | "search"
+  | "activity"
   | "data"
   | "import"
   | "graph"
@@ -88,6 +89,10 @@ type ReviewReportArtifact = {
 const memoryWorkspaceTabs: Array<{ key: MemoryWorkspaceTabKey; label: string; description: string }> = [
   { key: "archive", label: "档案", description: "稳定记忆、待确认和可改正记录。" },
   { key: "search", label: "搜索", description: "按关键词找回记忆和资料线索。" },
+  { key: "activity", label: "活动账本", description: "查看整理、确认、失败和撤回记录。" },
+];
+
+const hiddenMemoryWorkspaceTabs: Array<{ key: MemoryWorkspaceTabKey; label: string; description: string }> = [
   { key: "data", label: "数据", description: "本机积累、状态和高级备份。" },
   { key: "import", label: "导入", description: "整理文档、链接和想法到资料库。" },
   { key: "graph", label: "图谱", description: "查看记忆之间的大致关联。" },
@@ -1441,6 +1446,20 @@ function MemoryWorkspaceTabs({
             <span>{tab.description}</span>
           </button>
         ))}
+        <div hidden aria-hidden="true">
+          {hiddenMemoryWorkspaceTabs.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              role="tab"
+              aria-label={tab.label}
+              aria-selected={activeTab === tab.key}
+              onClick={() => onChange(tab.key)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
       </div>
     </section>
   );
@@ -1846,7 +1865,7 @@ export default function MemoryWindowView({
   renderEntry,
 }: MemoryWindowViewProps) {
   const [activeFilter, setActiveFilter] = useState<MemoryActivityFilter>("all");
-  const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<MemoryWorkspaceTabKey>("graph");
+  const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<MemoryWorkspaceTabKey>("archive");
   const [searchQuery, setSearchQuery] = useState("");
   const [localAssets, setLocalAssets] = useState<LocalAssetStatsResponse | null>(null);
   const [localAssetsLoading, setLocalAssetsLoading] = useState(true);
@@ -2073,13 +2092,19 @@ export default function MemoryWindowView({
 
   useEffect(() => {
     const abort = new AbortController();
-    void loadLocalAssets(abort.signal);
-    void loadMemoryProfileProjection(abort.signal);
-    void loadMemoryGraphProjection(abort.signal);
-    void loadRetrospectives(abort.signal);
-    void loadWeeklyMemoryReview(abort.signal);
+    if (activeWorkspaceTab === "archive") {
+      void loadMemoryProfileProjection(abort.signal);
+    } else if (activeWorkspaceTab === "data") {
+      void loadLocalAssets(abort.signal);
+    } else if (activeWorkspaceTab === "graph") {
+      void loadMemoryGraphProjection(abort.signal);
+    } else if (activeWorkspaceTab === "diary") {
+      void loadRetrospectives(abort.signal);
+    } else if (activeWorkspaceTab === "decay") {
+      void loadWeeklyMemoryReview(abort.signal);
+    }
     return () => abort.abort();
-  }, [api]);
+  }, [activeWorkspaceTab, api]);
 
   useEffect(() => {
     const abort = new AbortController();
@@ -2329,7 +2354,7 @@ export default function MemoryWindowView({
   }
 
   const activeWorkspaceTabConfig =
-    memoryWorkspaceTabs.find((tab) => tab.key === activeWorkspaceTab) || memoryWorkspaceTabs[0];
+    [...memoryWorkspaceTabs, ...hiddenMemoryWorkspaceTabs].find((tab) => tab.key === activeWorkspaceTab) || memoryWorkspaceTabs[0];
 
   const graphPanel = (
     <MemoryGraphPanel
@@ -2529,91 +2554,7 @@ export default function MemoryWindowView({
             ) : null}
           </section>
 
-          <section className="panel feature-window-panel memory-activity-panel" aria-label="整理记录">
-            <div className="section-heading">
-              <strong>最近整理活动</strong>
-              <span>
-                {entries.length > 0
-                  ? `显示 ${filteredEntries.length} / ${entries.length} 条活动。`
-                  : "还没有整理活动。"}
-              </span>
-            </div>
-
-            <div className="memory-activity-toolbar">
-              <div className="memory-activity-filters" aria-label="整理活动筛选">
-                {activityFilters.map((option) => {
-                  const count = entries.filter((entry) => entryMatchesFilter(entry, option.key)).length;
-                  const active = activeFilter === option.key;
-                  return (
-                    <button
-                      key={option.key}
-                      type="button"
-                      className={`secondary memory-activity-filter ${active ? "active" : ""}`}
-                      onClick={() => setActiveFilter(option.key)}
-                      aria-pressed={active}
-                    >
-                      {option.label}
-                      <span>{count}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              <label className="memory-activity-search">
-                <Search size={16} />
-                <input
-                  type="search"
-                  value={searchQuery}
-                  onChange={(event) => setSearchQuery(event.target.value)}
-                  placeholder="搜索目标文件、摘要或动作"
-                />
-              </label>
-            </div>
-
-            <div className="button-row">
-              <button type="button" className="secondary" onClick={onRefresh} disabled={loading}>
-                {loading ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />}
-                刷新整理
-              </button>
-            </div>
-            {error ? <p className="field-note error">{error}</p> : null}
-            {filteredEntries.length > 0 ? (
-              <div className="memory-trust-workspace" aria-label="AI 记住了什么">
-                <div className="section-heading compact">
-                  <strong>我记住了什么</strong>
-                  <span>按写入类型、跳过原因和可撤回状态归类；敏感跳过项只显示安全摘要。</span>
-                </div>
-                <div className="memory-trust-group-grid">
-                  {memoryGroups.map((group) => (
-                    <article key={group.key} className={`memory-trust-group-card ${group.entries.length > 0 ? "active" : ""}`}>
-                      <strong>{group.label}</strong>
-                      <span>{group.entries.length}</span>
-                      <p>{group.description}</p>
-                    </article>
-                  ))}
-                </div>
-                {populatedGroups.length > 0 ? (
-                  <div className="memory-trust-group-legend">
-                    {populatedGroups.map((group) => (
-                      <span key={group.key}>
-                        {group.label}: {group.entries.length}
-                      </span>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-            <div className="proposal-list agent-activity-log-list feature-activity-list">
-              {filteredEntries.length > 0 ? (
-                filteredEntries.map((entry) => renderEntry(entry))
-              ) : loading ? (
-                <EmptyState text="正在加载最近整理活动。" />
-              ) : entries.length > 0 ? (
-                <EmptyState text="没有匹配的整理活动。" />
-              ) : (
-                <EmptyState text="普通自动整理完成后会出现在这里；高风险写入会在这里显示确认入口。" />
-              )}
-            </div>
-          </section>
+          {renderActivityPanel()}
         </div>
       </details>
     </>
@@ -2700,12 +2641,104 @@ export default function MemoryWindowView({
     </>
   );
 
+  function renderActivityPanel() {
+    return (
+      <section className="panel feature-window-panel memory-activity-panel" aria-label="活动账本">
+        <div className="section-heading">
+          <strong>活动账本</strong>
+          <span>
+            {entries.length > 0
+              ? `显示 ${filteredEntries.length} / ${entries.length} 条活动。`
+              : "还没有整理活动。"}
+          </span>
+        </div>
+
+        <div className="memory-activity-toolbar">
+          <div className="memory-activity-filters" aria-label="整理活动筛选">
+            {activityFilters.map((option) => {
+              const count = entries.filter((entry) => entryMatchesFilter(entry, option.key)).length;
+              const active = activeFilter === option.key;
+              return (
+                <button
+                  key={option.key}
+                  type="button"
+                  className={`secondary memory-activity-filter ${active ? "active" : ""}`}
+                  onClick={() => setActiveFilter(option.key)}
+                  aria-pressed={active}
+                >
+                  {option.label}
+                  <span>{count}</span>
+                </button>
+              );
+            })}
+          </div>
+          <label className="memory-activity-search">
+            <Search size={16} />
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="搜索目标文件、摘要或动作"
+            />
+          </label>
+        </div>
+
+        <div className="button-row">
+          <button type="button" className="secondary" onClick={onRefresh} disabled={loading}>
+            {loading ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />}
+            刷新活动
+          </button>
+        </div>
+        {error ? <p className="field-note error">{error}</p> : null}
+        {filteredEntries.length > 0 ? (
+          <div className="memory-trust-workspace" aria-label="AI 记住了什么">
+            <div className="section-heading compact">
+              <strong>我记住了什么</strong>
+              <span>按写入类型、跳过原因和可撤回状态归类；敏感跳过项只显示安全摘要。</span>
+            </div>
+            <div className="memory-trust-group-grid">
+              {memoryGroups.map((group) => (
+                <article key={group.key} className={`memory-trust-group-card ${group.entries.length > 0 ? "active" : ""}`}>
+                  <strong>{group.label}</strong>
+                  <span>{group.entries.length}</span>
+                  <p>{group.description}</p>
+                </article>
+              ))}
+            </div>
+            {populatedGroups.length > 0 ? (
+              <div className="memory-trust-group-legend">
+                {populatedGroups.map((group) => (
+                  <span key={group.key}>
+                    {group.label}: {group.entries.length}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        <div className="proposal-list agent-activity-log-list feature-activity-list">
+          {filteredEntries.length > 0 ? (
+            filteredEntries.map((entry) => renderEntry(entry))
+          ) : loading ? (
+            <EmptyState text="正在加载最近整理活动。" />
+          ) : entries.length > 0 ? (
+            <EmptyState text="没有匹配的整理活动。" />
+          ) : (
+            <EmptyState text="普通自动整理完成后会出现在这里；高风险写入会在这里显示确认入口。" />
+          )}
+        </div>
+      </section>
+    );
+  }
+
   function renderWorkspacePanel() {
     switch (activeWorkspaceTab) {
       case "archive":
         return archivePanel;
       case "search":
         return searchPanel;
+      case "activity":
+        return renderActivityPanel();
       case "data":
         return dataPanel;
       case "import":

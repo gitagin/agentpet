@@ -26,7 +26,9 @@ from .events import (
     AgentStatusEvent,
     AgentTaskEvent,
     AgentWikiProposalEvent,
+    public_agent_error,
 )
+from .retrieval.compression import gate_evidence, stable_citation_id
 from .state import AgentState
 from .tools import DEFAULT_MEMORY_TARGET_PATH, AgentToolResult, WikiIngestProposal
 
@@ -66,7 +68,14 @@ def _emit_tool_results(graph_state: dict[str, Any], results: list[AgentToolResul
     for result in results:
         value = result.value
         if result.name == "search_memory" and isinstance(value, MemorySearchResponse):
-            citations = [ensure_recall_permissions(citation) for citation in value.results]
+            normalized = [ensure_recall_permissions(citation) for citation in value.results]
+            accepted = gate_evidence(normalized).accepted
+            existing_ids = {stable_citation_id(citation) for citation in state.citations}
+            citations = [
+                envelope.result
+                for envelope in accepted
+                if envelope.citation_id not in existing_ids
+            ]
             state.citations = [*state.citations, *citations]
             for citation in citations:
                 _events(graph_state).append(
@@ -264,13 +273,15 @@ def _record_node_error(graph_state: dict[str, Any], exc: Exception) -> dict[str,
     state = _agent_state(graph_state)
     graph_state["failed"] = True
     state.status = AgentRunStatus.FAILED
-    state.error_code = getattr(exc, "code", exc.__class__.__name__)
-    state.error_message = str(exc)
+    internal_error_code = str(getattr(exc, "code", exc.__class__.__name__))
+    public_error_code, public_error_message = public_agent_error(internal_error_code)
+    state.error_code = internal_error_code
+    state.error_message = public_error_message
     _events(graph_state).append(
         AgentErrorEvent(
             agent_run_id=state.agent_run_id,
-            code=state.error_code,
-            message=state.error_message,
+            code=public_error_code,
+            message=public_error_message,
         )
     )
     return graph_state

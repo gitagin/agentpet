@@ -11,7 +11,8 @@ from fastapi import FastAPI, Request, status
 
 from app.config import get_settings
 from app.errors import AppError
-from app.models.enums import AgentId
+from app.models.common import new_id
+from app.models.enums import AgentId, AgentRunStatus, MessageRole, MessageStatus
 from app.repositories.storage import VaultRepository
 from app.services.agent_actions import AgentActionCreate, AgentActionService, AgentActionStore
 from app.services.audit import AuditLogService
@@ -42,6 +43,7 @@ from app.services.wiki_lint import WikiDiagnosticsQueueService, WikiLintService
 from app.services.wiki_workflows import WikiWorkflowService
 from app.storage.database import Database
 from app.agents.state import AgentState
+from app.utils.time import utc_now_iso
 
 
 logger = logging.getLogger(__name__)
@@ -84,7 +86,7 @@ def refresh_retrieval_vector_index(request: Request) -> None:
     request.app.state.component_health["vector_index"] = component_health_from_vector_index(vector_index)
 
 
-def _chat_runs_lock(request: Request) -> threading.Lock:
+def _chat_runs_lock(request: Request | AppContext) -> threading.Lock:
     lock = getattr(request.app.state, "chat_runs_lock", None)
     if lock is None:
         lock = threading.Lock()
@@ -103,13 +105,106 @@ def add_chat_run(request: Request, state: AgentState) -> None:
 
 
 def get_chat_run(request: Request, agent_run_id: str) -> AgentState | None:
+    expired_state = None
     with _chat_runs_lock(request):
         expires_at = request.app.state.chat_runs_expires_at.get(agent_run_id)
         if expires_at is not None and expires_at <= time.monotonic():
-            request.app.state.chat_runs.pop(agent_run_id, None)
+            expired_state = request.app.state.chat_runs.pop(agent_run_id, None)
             request.app.state.chat_runs_expires_at.pop(agent_run_id, None)
-            return None
-        return request.app.state.chat_runs.get(agent_run_id)
+        else:
+            return request.app.state.chat_runs.get(agent_run_id)
+    if expired_state is not None:
+        finalize_unstreamed_chat_run(request, expired_state)
+    return None
+
+
+def claim_chat_run(request: Request, state: AgentState) -> bool:
+    with _chat_runs_lock(request):
+        current = request.app.state.chat_runs.get(state.agent_run_id)
+        if current is not state:
+            return False
+        request.app.state.chat_runs.pop(state.agent_run_id, None)
+        request.app.state.chat_runs_expires_at.pop(state.agent_run_id, None)
+        return True
+
+
+def expire_chat_runs(request: Request | AppContext, *, force: bool = False) -> int:
+    expired_states: list[AgentState] = []
+    now = time.monotonic()
+    with _chat_runs_lock(request):
+        runs = request.app.state.chat_runs
+        expires_at = request.app.state.chat_runs_expires_at
+        for agent_run_id, state in list(runs.items()):
+            expiry = expires_at.get(agent_run_id)
+            if not force and (expiry is None or expiry > now):
+                continue
+            expired_states.append(state)
+            runs.pop(agent_run_id, None)
+            expires_at.pop(agent_run_id, None)
+    error_code = "stream_not_started_or_shutdown" if force else "stream_not_started_or_expired"
+    for state in expired_states:
+        finalize_unstreamed_chat_run(request, state, error_code=error_code)
+    return len(expired_states)
+
+
+def finalize_unstreamed_chat_run(
+    request: Request | AppContext,
+    state: AgentState,
+    *,
+    error_code: str = "stream_not_started_or_expired",
+) -> bool:
+    now = utc_now_iso()
+    with database(request).connect() as conn:
+        with conn:
+            row = conn.execute(
+                "SELECT status, assistant_message_id FROM agent_runs WHERE id = ?",
+                (state.agent_run_id,),
+            ).fetchone()
+            if row is None or row["status"] != AgentRunStatus.RUNNING.value:
+                return False
+            assistant_message_id = row["assistant_message_id"] or new_id()
+            if row["assistant_message_id"]:
+                conn.execute(
+                    "UPDATE messages SET status = ?, updated_at = ? WHERE id = ?",
+                    (MessageStatus.CANCELLED.value, now, assistant_message_id),
+                )
+            else:
+                conn.execute(
+                    """
+                    INSERT INTO messages (id, conversation_id, role, content, status, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        assistant_message_id,
+                        state.conversation_id,
+                        MessageRole.ASSISTANT.value,
+                        "",
+                        MessageStatus.CANCELLED.value,
+                        now,
+                        now,
+                    ),
+                )
+            conn.execute(
+                """
+                UPDATE agent_runs
+                SET assistant_message_id = ?, status = ?, error_code = ?, error_message = ?, updated_at = ?
+                WHERE id = ? AND status = ?
+                """,
+                (
+                    assistant_message_id,
+                    AgentRunStatus.CANCELLED.value,
+                    error_code,
+                    "回复流未在有效期内启动，运行已安全取消。",
+                    now,
+                    state.agent_run_id,
+                    AgentRunStatus.RUNNING.value,
+                ),
+            )
+            conn.execute(
+                "UPDATE conversations SET updated_at = ? WHERE id = ?",
+                (now, state.conversation_id),
+            )
+    return True
 
 
 def pop_chat_run(request: Request, agent_run_id: str) -> None:

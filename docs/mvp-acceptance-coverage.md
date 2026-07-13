@@ -24,6 +24,9 @@ Status legend:
 | TASK-0503 | In Progress, L4 pending | Completion requires at least 20 real dialogue samples, zero raw path/id/score/secret leakage, at least 80% natural or acceptable labels after revision, a follow-up for every unsafe/over-recall sample, and human sign-off. |
 | TASK-0504 | Completed mechanism path at L3 | Real chat activity can advance the four growth dimensions; no seven-day retention evidence exists. |
 | TASK-0505 | Completed mechanism path at L3 | Frequency, cooldown, quiet/busy guards and value-based candidates are implemented; no seven-day retention evidence exists. |
+| TASK-1215 | Partial / Defer | Deterministic safety and coordination passed; final hybrid Recall/MRR/no-evidence and reranker promotion gates did not all pass. |
+| TASK-1216 | Partial / narrowed L4 | Automated narrowed paths and user-confirmed functional interaction passed; no live-provider campaign, packaged executable launch, or viewport/DPI matrix exists. |
+| TASK-1217 | Human Gate | Narrowed public claim materials are audited but require final user wording/release approval. |
 
 ## MVP Matrix
 

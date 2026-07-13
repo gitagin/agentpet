@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from langchain_core.tools import StructuredTool
 
+from app.models.api import MemorySearchResponse
 from app.models.enums import AgentIntent
 
 from ..events_helpers import _agent_state
@@ -10,6 +11,7 @@ from ..state import AgentState, SemanticAnalysisResult
 from ..tools import AgentToolResult
 from ..memory_router import MemoryRoute
 from ..semantic import _fallback_semantic_analysis
+from .compression import filter_search_response
 
 # 从 graph_runtime.py 迁移，原函数名：_select_retrieval_entry_node, _effective_retrieval_source_scope, _retrieval_query, _semantic_from_memory_route, _source_scope_from_memory_route, _memory_aggregation_scopes, _force_search_memory_source_scope, _source_scope_from_prompt, _context_source_weight, _context_source_scope, _source_scope_label, _stage_for_source_scope
 
@@ -113,15 +115,21 @@ def _force_search_memory_source_scope(
     system_prompt: str,
 ) -> list[StructuredTool]:
     source_scope = _source_scope_from_prompt(system_prompt)
-    if source_scope is None:
-        return tools
+    return _guard_search_memory_tools(tools, forced_source_scope=source_scope)
+
+
+def _guard_search_memory_tools(
+    tools: list[StructuredTool],
+    *,
+    forced_source_scope: str | None = None,
+) -> list[StructuredTool]:
     wrapped = []
     for tool in tools:
         if tool.name != "search_memory":
             wrapped.append(tool)
             continue
 
-        forced_scope = source_scope
+        forced_scope = forced_source_scope
 
         async def search_memory_with_scope(
             query: str,
@@ -131,14 +139,18 @@ def _force_search_memory_source_scope(
             _tool=tool,
             _forced_scope: str = forced_scope,
         ):
-            return await _tool.ainvoke(
+            effective_scope = _forced_scope or source_scope or "all"
+            response = await _tool.ainvoke(
                 {
                     "query": query,
                     "top_k": top_k,
-                    "mode": mode,
-                    "source_scope": _forced_scope,
+                    "mode": "fts",
+                    "source_scope": effective_scope,
                 }
             )
+            if isinstance(response, MemorySearchResponse):
+                return filter_search_response(response)
+            return response
 
         wrapped.append(
             StructuredTool.from_function(

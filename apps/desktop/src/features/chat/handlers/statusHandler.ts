@@ -4,6 +4,7 @@ export function statusHandler({ messageId, payload, context }: StreamHandlerInpu
   const { petChat } = context;
   const stage = typeof payload?.stage === "string" ? payload.stage : null;
   const sourceScopes = normalizeSourceScopes(payload?.source_scopes);
+  const progressStage = progressStageForBackend(stage);
   if (!petChat.replyStartedRef.current) {
     petChat.scheduleStreamWatchdog(
       "正在整理",
@@ -12,19 +13,49 @@ export function statusHandler({ messageId, payload, context }: StreamHandlerInpu
       () => petChat.failStream(messageId, "没有等到回复", "这次没有等到可显示的回复，本轮已停止。"),
     );
   }
-  if (isRetrievalStage(stage)) {
+  if (progressStage) {
     context.setMessages((current) =>
       current.map((message) =>
         message.id === messageId
           ? {
               ...message,
-              retrieval_attempted: true,
-              retrieval_scopes: mergeScopes(message.retrieval_scopes, sourceScopes.length ? sourceScopes : scopesForStage(stage)),
+              progress_stage: progressStage,
+              retrieval_attempted: isRetrievalStage(stage) ? true : message.retrieval_attempted,
+              retrieval_scopes: isRetrievalStage(stage)
+                ? mergeScopes(message.retrieval_scopes, sourceScopes.length ? sourceScopes : scopesForStage(stage))
+                : message.retrieval_scopes,
             }
           : message,
       ),
     );
   }
+}
+
+function progressStageForBackend(
+  stage: string | null,
+): "understanding" | "retrieving" | "verifying" | "answering" | null {
+  if (!stage) {
+    return null;
+  }
+  if (isRetrievalStage(stage)) {
+    return "retrieving";
+  }
+  if (stage === "chat_generation" || stage === "background_memory") {
+    return "answering";
+  }
+  if (stage === "review" || stage === "reviewing" || stage === "source_verification") {
+    return "verifying";
+  }
+  if (
+    stage === "route" ||
+    stage === "classifier" ||
+    stage === "semantic_analysis" ||
+    stage === "memory_router" ||
+    stage === "local_privacy_guard"
+  ) {
+    return "understanding";
+  }
+  return null;
 }
 
 function isRetrievalStage(stage: string | null): boolean {

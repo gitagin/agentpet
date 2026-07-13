@@ -1,10 +1,20 @@
+import json
+import re
 from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
+from app.agents.events import NegotiationStepEvent, public_agent_error, sse_encode
+from app.models.event_payloads import (
+    AgentTraceAgentId,
+    AgentTracePhase,
+    AgentTraceReasonCode,
+    AgentTraceStatus,
+)
 from tests.conftest import FORBIDDEN_HEALTH_KEYS, assert_error_shape, auth_headers, iter_keys
 
 
@@ -125,3 +135,83 @@ def test_vault_bind_rejects_invalid_path_even_when_confirmed(
     payload = response.json()
     assert_error_shape(payload)
     assert payload["error"]["code"] != "vault_bind_confirmation_required"
+
+
+def _safe_trace_event_payload(**overrides) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "run_id": "run-security-1",
+        "agent_id": AgentTraceAgentId.ORCHESTRATOR,
+        "phase": AgentTracePhase.SYNTHESIZING,
+        "status": AgentTraceStatus.RUNNING,
+        "round": 1,
+        "sequence": 1,
+        "reason_code": AgentTraceReasonCode.EVIDENCE_READY,
+    }
+    payload.update(overrides)
+    return payload
+
+
+def test_public_trace_model_and_sse_use_an_exact_allowlist() -> None:
+    credential = "s" + "k-" + "security-contract-secret"
+    unsafe_summary = " | ".join(
+        [
+            "private-security-sentinel",
+            "Authorization: " + "Bearer " + credential,
+            r"C:\Users\Alice\Vault\Secret.md",
+            "/home/alice/vault/Secret.md",
+            "raw_prompt=hidden",
+            "tool_arguments={'query': 'hidden'}",
+            "Traceback (most recent call last):",
+        ]
+    )
+    event = NegotiationStepEvent(**_safe_trace_event_payload(safe_summary=unsafe_summary))
+    serialized = sse_encode(event)
+    payload = json.loads(serialized.split("data: ", 1)[1])
+    expected_fields = {
+        "contract_version",
+        "run_id",
+        "branch_id",
+        "stage_id",
+        "agent_id",
+        "phase",
+        "status",
+        "round",
+        "sequence",
+        "duration_ms",
+        "reason_code",
+        "safe_summary",
+        "counts",
+        "source_scope",
+    }
+
+    assert "reasoning" not in NegotiationStepEvent.model_fields
+    assert set(payload) == expected_fields
+    assert payload["safe_summary"] == "已有信息足够，正在合成回复。"
+    assert unsafe_summary not in serialized
+    forbidden_patterns = (
+        re.compile(r"authorization\s*:\s*bearer", re.IGNORECASE),
+        re.compile(r"\bsk-[A-Za-z0-9_-]+", re.IGNORECASE),
+        re.compile(r"\b[A-Za-z]:[\\/]"),
+        re.compile(r"/(?:home|users)/", re.IGNORECASE),
+        re.compile(r"raw_prompt|tool_arguments|traceback|stack trace", re.IGNORECASE),
+    )
+    assert all(pattern.search(serialized) is None for pattern in forbidden_patterns)
+
+
+@pytest.mark.parametrize(
+    "unsafe_field",
+    ["reasoning", "raw_prompt", "tool_arguments", "stack", "absolute_path"],
+)
+def test_public_trace_model_rejects_non_contract_fields(unsafe_field: str) -> None:
+    payload = _safe_trace_event_payload()
+    payload[unsafe_field] = "private detail"
+
+    with pytest.raises(ValidationError):
+        NegotiationStepEvent(**payload)
+
+
+def test_unknown_public_error_is_reduced_to_fixed_internal_error() -> None:
+    code, message = public_agent_error(r"C:\Users\Alice\Vault\Secret.md Traceback raw_prompt")
+
+    assert code == "internal_error"
+    assert message == "回复处理失败，请稍后重试。"

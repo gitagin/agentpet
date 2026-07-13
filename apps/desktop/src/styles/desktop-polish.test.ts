@@ -45,6 +45,15 @@ describe("desktop polish memory workspace boundary contract", () => {
       /body\[data-window-mode="memory"\] \.memory-workspace-tab-panel:not\(\.memory-workspace-tab-panel-graph\)\s*\{[^}]*overflow-y:\s*auto;[^}]*scrollbar-gutter:\s*stable;/,
     );
     expect(polishStyles).toMatch(
+      /body\[data-window-mode="memory"\] \.memory-workspace-tab-panel-archive\s*\{[^}]*grid-template-rows:\s*auto auto;[^}]*align-content:\s*start;[^}]*--memory-scrollbar-thumb:\s*rgba\(245,\s*141,\s*165,\s*0\.24\);/,
+    );
+    expect(polishStyles).toMatch(
+      /body\[data-window-mode="memory"\] \.memory-workspace-tab-panel-archive > :where\(\.memory-primary-panel, \.memory-profile-panel, \.memory-add-form\)\s*\{[^}]*max-height:\s*none;/,
+    );
+    expect(polishStyles).toMatch(
+      /body\[data-window-mode="memory"\] \.memory-workspace-tab-panel-archive > :where\(\.memory-profile-panel, \.memory-add-form\)\s*\{[^}]*overflow:\s*visible;/,
+    );
+    expect(polishStyles).toMatch(
       /body\[data-window-mode="memory"\] \.memory-workspace-tab-panel-graph > \.memory-graph-projection-panel\s*\{[^}]*height:\s*100%;[^}]*grid-template-rows:\s*auto auto minmax\(0,\s*1fr\) auto;[^}]*overflow:\s*hidden;/,
     );
     expect(polishStyles).toMatch(
@@ -613,6 +622,12 @@ describe("desktop polish single-scroll contract", () => {
     );
     expect(polishStyles).toMatch(
       /body\[data-window-mode="settings"\] #settings-panel > \.settings-purpose-grid\s*\{[^}]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\);/,
+    );
+    expect(polishStyles).toMatch(
+      /body\[data-window-mode="settings"\] \.settings-memory-reset-backdrop\s*\{[^}]*position:\s*fixed;[^}]*z-index:\s*120;[^}]*inset:\s*0;[^}]*place-items:\s*center;/,
+    );
+    expect(polishStyles).toMatch(
+      /body\[data-window-mode="settings"\] \.settings-memory-reset-dialog\s*\{[^}]*width:\s*min\(540px,\s*calc\(100vw - 32px\)\);[^}]*max-height:\s*calc\(100dvh - 48px\);[^}]*overflow:\s*auto;/,
     );
   });
 

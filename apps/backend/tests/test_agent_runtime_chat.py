@@ -444,7 +444,7 @@ def test_langgraph_chat_agent_does_not_treat_candidate_memory_as_confirmed() -> 
     assert "没有找到能引用的记录" in token_text
     event_names = [event.event for event in events if event.event != "status"]
     assert event_names[-2:] == ["token", "done"]
-    assert "citation" in event_names
+    assert "citation" not in event_names
 
 
 def test_langgraph_chat_agent_can_surface_wiki_manager_for_obsidian_note_request() -> None:

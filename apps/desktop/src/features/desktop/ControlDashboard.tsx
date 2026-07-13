@@ -173,92 +173,6 @@ const emptyHomeDayRecord: HomeDayRecord = { journal: "", goals: [] };
 
 const quickPromptOptions = [...productCopy.home.quickPrompts];
 
-const referenceMemoryDays: MemoryDayGroup[] = [
-  {
-    key: "reference-memory-today",
-    title: "7月8日",
-    subtitle: "今天",
-    totalCount: 3,
-    entries: [
-      {
-        id: "reference-memory-prototype",
-        sortKey: 1_783_499_400_000,
-        time: "14:30",
-        date: "07.08",
-        title: "产品原型讨论",
-        tag: "工作",
-        tone: "rose",
-        detail: "你分享了新的交互想法，我帮你记下了。",
-      },
-      {
-        id: "reference-memory-lunch",
-        sortKey: 1_783_491_000_000,
-        time: "12:10",
-        date: "07.08",
-        title: "午餐时间",
-        tag: "生活",
-        tone: "green",
-        detail: "你说食堂的番茄牛腩很好吃。",
-      },
-      {
-        id: "reference-memory-reading",
-        sortKey: 1_783_483_500_000,
-        time: "10:05",
-        date: "07.08",
-        title: "阅读笔记",
-        tag: "学习",
-        tone: "blue",
-        detail: "《设计心理学》P23-P32。",
-      },
-    ],
-  },
-  {
-    key: "reference-memory-yesterday",
-    title: "7月7日",
-    subtitle: "昨天",
-    totalCount: 3,
-    entries: [
-      {
-        id: "reference-memory-overtime",
-        sortKey: 1_783_441_500_000,
-        time: "22:45",
-        date: "07.07",
-        title: "深夜加班",
-        tag: "工作",
-        tone: "rose",
-        detail: "你完成了项目的关键模块，辛苦了。",
-      },
-      {
-        id: "reference-memory-relax",
-        sortKey: 1_783_429_400_000,
-        time: "19:30",
-        date: "07.07",
-        title: "散步放松",
-        tag: "生活",
-        tone: "green",
-        detail: "你说晚风很好，心情好多了。",
-      },
-      {
-        id: "reference-memory-priority",
-        sortKey: 1_783_392_000_000,
-        time: "09:20",
-        date: "07.07",
-        title: "需求梳理",
-        tag: "工作",
-        tone: "rose",
-        detail: "我们一起梳理了需求优先级。",
-      },
-    ],
-  },
-];
-
-const referenceOrbitItems: OrbitItem[] = [
-  { key: "reference-orbit-first-chat", className: "point-one", label: "第一次聊产品", date: "05.01" },
-  { key: "reference-orbit-overtime", className: "point-two", label: "深夜加班", date: "05.08" },
-  { key: "reference-orbit-walk", className: "point-three", label: "周末散步", date: "05.11" },
-  { key: "reference-orbit-sort", className: "point-four", label: "需求梳理", date: "05.16" },
-];
-
 export function ControlDashboard({
   sidecarStatus,
   health,
@@ -329,16 +243,10 @@ export function ControlDashboard({
     [visibleMemoryDays, expandedMemoryDayKey],
   );
   const orbitItems = useMemo(() => buildOrbitItems(memoryDays), [memoryDays]);
-  const isUsingReferenceMemoryDays = visibleMemoryDays.length === 0;
-  const displayedMemoryDays = isUsingReferenceMemoryDays ? referenceMemoryDays : renderedMemoryDays;
-  const activeMemoryDayKey =
-    isUsingReferenceMemoryDays && displayedMemoryDays.length > 0
-      ? displayedMemoryDays.some((day) => day.key === expandedMemoryDayKey)
-        ? expandedMemoryDayKey
-        : displayedMemoryDays[0].key
-      : expandedMemoryDayKey;
-  const displayedMemoryEntryLimit = isUsingReferenceMemoryDays ? 3 : expandedMemoryEntryLimit;
-  const displayedOrbitItems = orbitItems.length > 0 ? orbitItems : referenceOrbitItems;
+  const displayedMemoryDays = renderedMemoryDays;
+  const activeMemoryDayKey = expandedMemoryDayKey;
+  const displayedMemoryEntryLimit = expandedMemoryEntryLimit;
+  const displayedOrbitItems = orbitItems;
   const displayDate = addDays(new Date(), dateOffset);
   const displayDateKey = formatDateKey(displayDate);
   const selectedDayRecord = homeDayRecords[displayDateKey] || emptyHomeDayRecord;

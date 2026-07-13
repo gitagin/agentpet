@@ -92,6 +92,12 @@ def _strip_memory_command(message: str) -> str:
         "remember:",
         "please remember",
         "save this memory:",
+        "请帮我记得",
+        "帮我记得",
+        "请记得",
+        "请帮我记住",
+        "帮我记住",
+        "请记住",
         "记住：",
         "记住:",
         "记住",
@@ -139,6 +145,16 @@ def _strip_search_command(message: str) -> str:
 
 def _task_title(message: str) -> str:
     title = message.strip()
+    scheduled_reminder = re.match(
+        r"^(?:(?:今天|明天|后天)\s*(?:上午|中午|下午|晚上|凌晨)?\s*"
+        r"(?:[零〇一二两三四五六七八九十\d]{1,4}\s*点(?:半|[零〇一二两三四五六七八九十\d]{1,2}\s*分?)?)?\s*)?"
+        r"(?:提醒我|提醒)\s*(?P<title>.+)$",
+        title,
+        flags=re.IGNORECASE,
+    )
+    if scheduled_reminder is not None:
+        cleaned = scheduled_reminder.group("title").strip(" :：,，。")
+        return cleaned or message.strip()
     delayed_reminder = re.match(
         r"^(?:\d{1,2}|[零〇一二两三四五六七八九十]{1,4})\s*(?:秒钟|秒|分钟|小时)\s*后\s*(?:提醒我|提醒)\s*(?P<title>.+)$",
         title,

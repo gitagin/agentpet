@@ -38,6 +38,76 @@ describe("Electron API proxy allowlist", () => {
     expect(init.headers.has("Authorization")).toBe(false);
   });
 
+  it("allows checkpoint listing and decisions while keeping adjacent routes denied", async () => {
+    global.fetch = vi.fn(async () => createJsonResponse({ ok: true }));
+    const proxy = createProxyManager({
+      baseUrl: "http://127.0.0.1:8765",
+      sessionToken: "test-session-token",
+    });
+
+    await proxy.proxyApiRequest("/api/checkpoints/pending?thread_id=thread-1", { method: "GET" });
+    await proxy.proxyApiRequest("/api/checkpoints/checkpoint-1/decision", { method: "POST", body: "{}" });
+
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+    const [pendingTarget, pendingInit] = global.fetch.mock.calls[0];
+    const [decisionTarget, decisionInit] = global.fetch.mock.calls[1];
+    expect(pendingTarget.toString()).toBe("http://127.0.0.1:8765/api/checkpoints/pending?thread_id=thread-1");
+    expect(pendingInit.headers.get("Authorization")).toBe("Bearer test-session-token");
+    expect(decisionTarget.toString()).toBe("http://127.0.0.1:8765/api/checkpoints/checkpoint-1/decision");
+    expect(decisionInit.headers.get("Authorization")).toBe("Bearer test-session-token");
+
+    await expect(proxy.proxyApiRequest("/api/checkpoints/pending", { method: "POST", body: "{}" })).rejects.toMatchObject({
+      code: "renderer_api_route_not_allowed",
+      details: {
+        method: "POST",
+        path: "/api/checkpoints/pending",
+      },
+    });
+    await expect(proxy.proxyApiRequest("/api/checkpoints/checkpoint-1/decision/extra", { method: "POST", body: "{}" })).rejects.toMatchObject({
+      code: "renderer_api_route_not_allowed",
+      details: {
+        method: "POST",
+        path: "/api/checkpoints/checkpoint-1/decision/extra",
+      },
+    });
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("allows only POST requests to the exact memory reset diagnostics route", async () => {
+    global.fetch = vi.fn(async () => createJsonResponse({ status: "memory_reset" }));
+    const proxy = createProxyManager({
+      baseUrl: "http://127.0.0.1:8765",
+      sessionToken: "test-session-token",
+    });
+
+    const response = await proxy.proxyApiRequest("/api/diagnostics/reset-memory-state", {
+      method: "POST",
+      body: JSON.stringify({ confirmation: "RESET_AGENT_PET_MEMORY" }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(global.fetch).toHaveBeenCalledOnce();
+    const [target, init] = global.fetch.mock.calls[0];
+    expect(target.toString()).toBe("http://127.0.0.1:8765/api/diagnostics/reset-memory-state");
+    expect(init.headers.get("Authorization")).toBe("Bearer test-session-token");
+
+    await expect(proxy.proxyApiRequest("/api/diagnostics/reset-memory-state", { method: "GET" })).rejects.toMatchObject({
+      code: "renderer_api_route_not_allowed",
+      details: {
+        method: "GET",
+        path: "/api/diagnostics/reset-memory-state",
+      },
+    });
+    await expect(proxy.proxyApiRequest("/api/diagnostics/reset-memory-state/extra", { method: "POST", body: "{}" })).rejects.toMatchObject({
+      code: "renderer_api_route_not_allowed",
+      details: {
+        method: "POST",
+        path: "/api/diagnostics/reset-memory-state/extra",
+      },
+    });
+    expect(global.fetch).toHaveBeenCalledOnce();
+  });
+
   it("rejects unlisted /api routes before fetch", async () => {
     global.fetch = vi.fn(async () => createJsonResponse({ ok: true }));
     const proxy = createProxyManager({

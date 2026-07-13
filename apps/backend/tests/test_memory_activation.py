@@ -30,6 +30,7 @@ def _item(
     updated_at: str | None = None,
     expires_at: str | None = None,
     risk_tier: RiskTier = RiskTier.LOW,
+    has_conflict: bool = False,
 ) -> MemoryActivationItem:
     return MemoryActivationItem(
         memory_id=memory_id,
@@ -45,6 +46,7 @@ def _item(
         updated_at=updated_at or NOW.isoformat(),
         expires_at=expires_at,
         risk_tier=risk_tier,
+        has_conflict=has_conflict,
     )
 
 
@@ -112,6 +114,31 @@ def test_sensitive_memory_is_filtered_before_context_use() -> None:
     assert decision.filtered_reason == "sensitive_memory"
     assert decision.can_answer_context is False
     assert decision.can_proactively_mention is False
+
+
+def test_expired_and_conflicting_memories_are_hard_gated() -> None:
+    expired = _decision(
+        _item(
+            memory_kind=MemoryKind.PREFERENCE,
+            expires_at=(NOW - timedelta(seconds=1)).isoformat(),
+        )
+    )
+    conflicting = _decision(
+        _item(
+            memory_id="conflict",
+            lifecycle_status=LifecycleStatus.CANDIDATE,
+            has_conflict=True,
+        )
+    )
+    resolved_replacement = _decision(
+        _item(memory_id="resolved-replacement", has_conflict=True)
+    )
+
+    assert expired.allowed is False
+    assert expired.filtered_reason == "expired_memory"
+    assert conflicting.allowed is False
+    assert conflicting.filtered_reason == "conflicting_memory"
+    assert resolved_replacement.allowed is True
 
 
 def test_old_and_stale_memories_lose_score_while_boundaries_stay_strong() -> None:

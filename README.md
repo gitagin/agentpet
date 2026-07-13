@@ -1,69 +1,124 @@
-# 桌宠伙伴
-
-定位声明：本项目保留 `Agent Pet` / `agent-pet` 命名；它是以桌宠为入口的长期记忆陪伴体，不是代码助手监控或评测桌面工具。
+# Agent Pet
 
 [![CI](https://github.com/gitagin/agentpet/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/gitagin/agentpet/actions/workflows/ci.yml)
+![platform](https://img.shields.io/badge/platform-Windows-2563eb)
+![desktop](https://img.shields.io/badge/desktop-Electron-47848f)
 
-Agent Pet 想解决的不是“把聊天窗口搬到桌面上”，而是让用户清楚地知道：
+一个以长期记忆为核心的桌面 AI 伙伴。
 
-- 它记住了什么。
-- 为什么记住。
-- 这些记忆来自哪一次聊天或整理。
-- 用户能怎样查看、修改、撤回和带走这些记忆。
+Agent Pet 将桌宠交互、本地记忆、知识检索和自动整理放在同一个桌面应用中。用户可以像使用普通聊天助手一样与它交流，同时保留对长期记忆和本地数据的控制权。
 
-当前主叙事是：**记忆透明可控 + 跨工具可迁移**。桌宠负责陪你自然说话；记忆系统负责把值得保留的内容沉淀成可检查、可撤回、可导出的结构化记忆。资料整理、提醒、复盘报告和高级诊断都是支撑能力，不是首屏主卖点。
+<p align="center">
+  <img src="apps/desktop/public/pets/agent-pet-neko/homepage/home-hero.png" alt="Agent Pet" width="900" />
+</p>
 
-## 产品体验
+## 项目定位
 
-- 陪伴入口：从桌宠开始聊天，不要求用户先理解工作流、资料库或诊断面板。
-- 透明记忆：记忆页展示内容、来源、原因、风险、可信度和状态。
-- 可控撤回：低风险自动整理要留下活动记录；可逆写入可以撤回，高风险内容必须确认。
-- 可迁移：记忆和整理结果优先落成 SQLite 状态与本地 Markdown 文件，方便用户审阅、备份或迁移到 Obsidian 等工具。
-- 支撑能力降级：提醒、资料整理、报告和诊断保留，但应作为二级能力服务陪伴闭环。
+大多数聊天应用把历史消息留在对话列表里，但对“哪些内容应该成为长期记忆”缺少清晰的处理方式。Agent Pet 将这部分能力拆成独立的记忆系统：
 
-## 数据流向说明
+- 对话中的即时理解只服务当前交流；
+- 适合长期保留的信息经过整理后进入结构化记忆；
+- 记忆保留来源、状态和可追踪的处理记录；
+- 用户可以查看、修正、撤回或重置这些内容。
 
-使用远程或兼容 OpenAI 的模型服务时，对话内容会发送到用户选择的 LLM API，用于生成回复或执行模型能力。保存在本机的是结构化记忆、活动记录、索引状态和用户授权目录中的本地 Markdown 内容；这并不表示原始对话只在本机处理。
+对话是入口，记忆是主线。任务提醒、资料整理和多 Agent 协作都围绕这条主线提供支持。
 
-```mermaid
-flowchart TD
-  user["用户输入"]
-  desktop["桌宠与桌面端"]
-  backend["本机服务"]
-  llm["所选 LLM API"]
-  reply["回复展示"]
-  memory["本机结构化记忆"]
-  vault["本地 Markdown 文件"]
-  export["用户审阅、撤回、导出、迁移"]
+## 核心能力
 
-  user --> desktop --> backend
-  backend -->|"生成回复所需内容"| llm
-  llm -->|"回复结果"| backend --> reply
-  backend -->|"低风险整理或确认后写入"| memory
-  backend -->|"授权目录内的整理结果"| vault
-  memory --> export
-  vault --> export
+### 桌面陪伴
+
+桌宠常驻桌面，通过紧凑气泡和主舞台承载不同深度的交互。主界面包含聊天、记忆、计划和设置等页面，兼顾日常陪伴与信息管理。
+
+### 长期记忆
+
+记忆系统区分当前会话中的即时理解和可持续使用的慢速记忆。长期内容包含来源、置信度、生命周期和召回权限，减少临时情绪、玩笑或过期信息对后续对话的干扰。
+
+### 本地知识检索
+
+SQLite FTS5 与 Markdown Vault 构成本地检索主路径。回答可以关联本地来源，Markdown 内容也可以继续使用 Obsidian 等工具查看和维护。
+
+### 可控的自动整理
+
+低风险内容可以自动归档为日记、结构化记忆或资料页，同时写入活动记录。可逆的 Markdown 写入保存回滚信息；需要确认的操作不会由模型直接执行。
+
+### 任务与连续性
+
+应用支持持久化任务、提醒恢复和桌面通知。记忆、任务和最近活动共同构成连续性上下文，让桌宠能够围绕真实状态继续交流。
+
+### 多 Agent 协作
+
+复杂请求可以进入有边界的多角色流程，完成检索、分析、审阅和结果整合。简单聊天保留轻量路径，避免所有请求都承担同样的编排成本。
+
+## 使用方式
+
+在完成项目依赖安装后，进入桌面端目录运行：
+
+```bash
+cd apps/desktop
+npm run dev
 ```
 
-隐私边界必须按真实能力描述：如果配置的是云端模型，普通对话请求会离开本机；开启“本地隐私模式”后，被敏感策略命中的输入只做本机关键词检索，不发送到模型 API，代价是回复会更保守、智能程度会下降。
+首次使用时，在设置页面配置兼容的模型服务、模型名称和 API key，即可开始聊天。
 
-## 模块
+设置中同时提供模型连接测试、隐私模式、自动整理选项和记忆重置。重置记忆不会删除已经保存的模型连接配置。
 
-- `apps/backend`：本机服务，负责接口、SQLite、检索、记忆、任务、资料整理和活动记录。
-- `apps/desktop`：Electron + React 桌面端，负责桌宠、陪伴入口、聊天、记忆页和设置。
-- `docs`：当前规格、运行手册、验收矩阵、Electron 安全清单和验证政策。
+## 工作方式
 
-## 当前验证边界
+```mermaid
+flowchart LR
+    U[用户] --> D[桌宠与桌面端]
+    D --> R[本地 Agent Runtime]
+    R --> M[模型服务]
+    R --> S[(本地记忆)]
+    R --> K[Markdown 知识库]
+    S --> R
+    K --> R
+```
 
-- 当前版本标记为 `0.0.1-alpha`；后端 Python 包元数据为 `0.0.1a0`。
-- 阶段 1 的真实个人知识库目录聊天、记忆、回滚和部分 Electron 人工验收仍未补齐，跳过记录不是完成证据。
-- 2026-06-19 用户手工验证确认：真实桌宠入口里“双击 Pet 窗口打开主舞台”可以成功执行。该项以用户人工确认为验收证据，按用户决定跳过录屏文件。
+桌面端负责交互和状态呈现，本地后端负责记忆、检索、任务、Agent 编排与数据写入。模型服务由用户自行配置，SQLite 和 Markdown 保存长期使用的数据。
 
-## 文档
+## 设计重点
 
-- 当前生效规格：[`docs/current-specification.md`](docs/current-specification.md)。
-- Windows 运行手册：[`docs/runbook.md`](docs/runbook.md)。
-- MVP 验收矩阵：[`docs/mvp-acceptance-coverage.md`](docs/mvp-acceptance-coverage.md)。
-- Electron 安全清单：[`docs/electron-migration-checklist.md`](docs/electron-migration-checklist.md)。
-- 验证层级政策：[`docs/verification-policy.md`](docs/verification-policy.md)。
-- 协调进度记录：[`progress.md`](progress.md)。
+### 数据归属清晰
+
+结构化状态保存在 SQLite，可迁移内容保存在 Markdown。向量或图索引属于可重建的加速层，不替代用户可以直接检查的数据源。
+
+### 模型与执行分离
+
+模型负责理解、检索、分析和生成结构化建议。权限判断、实际写入、幂等控制和活动记录由确定性组件处理，避免把副作用完全交给模型。
+
+### 写入过程可追踪
+
+自动整理会记录来源、风险、目标、状态和可撤回性。用户看到的不只是最终结果，也包括内容如何进入本地记忆的过程。
+
+### 桌面权限隔离
+
+Electron Renderer 只通过受控 IPC 使用桌面能力，不直接访问 Node、文件系统或本地会话凭据。后端服务只面向本机运行。
+
+## 技术架构
+
+| 模块 | 技术 |
+| --- | --- |
+| Desktop | Electron、React、TypeScript、Vite |
+| Backend | FastAPI、Pydantic、Uvicorn |
+| Agent Runtime | LangGraph、LangChain |
+| Storage | SQLite、FTS5、Markdown Vault |
+| Scheduling | APScheduler、SQLAlchemy |
+| Retrieval Extensions | Qdrant、Kuzu |
+
+项目采用桌面端与本地 sidecar 分离的结构。Electron 负责窗口、桌宠和系统集成，FastAPI 后端负责业务能力，两者通过受控的本机接口连接。
+
+## 目录结构
+
+```text
+agentpet/
+├─ apps/
+│  ├─ desktop/          # Electron + React 桌面端
+│  └─ backend/          # FastAPI、Agent、记忆与检索服务
+├─ docs/                # 架构与项目文档
+└─ scripts/             # 开发和验证脚本
+```
+
+## 当前方向
+
+Agent Pet 仍在持续迭代。目前的重点是让桌宠交互、长期记忆和本地资料形成稳定的使用闭环，并继续改善记忆质量、交互体验和桌面端表现。

@@ -7,7 +7,7 @@ from .event_payloads import AgentActionDecisionFields, AgentMemoryProposalFields
 
 
 class MemorySearchRequest(BaseModel):
-    query: str = Field(min_length=1); top_k: int = Field(default=8, ge=1, le=20); mode: str = "hybrid"; source_scope: str = "all"
+    query: str = Field(min_length=1); top_k: int = Field(default=8, ge=1, le=20); mode: Literal["fts", "vector", "hybrid"] = "hybrid"; source_scope: Literal["all", "personal_memory", "diary_objects", "daily_chat", "knowledge_base"] = "all"
 
 
 class MemoryRecallPermissions(BaseModel):
@@ -17,8 +17,14 @@ class MemoryRecallPermissions(BaseModel):
     can_suggest_action: bool = False
 
 
+class RetrievalContribution(BaseModel):
+    channel: str
+    rank: int = Field(ge=1)
+    rrf_component: float = Field(gt=0.0)
+
+
 class MemorySearchResult(BaseModel):
-    note_id: str; chunk_id: str; relative_path: str; title: str; heading: str | None = None; snippet: str; score: float; source_scope: str = "knowledge_base"; retrieval_mode: str = "fts"; recall_permissions: MemoryRecallPermissions = Field(default_factory=MemoryRecallPermissions); activation_score: float | None = None; score_breakdown: dict[str, float] = Field(default_factory=dict); filtered_reason: str | None = None; memory_kind: str | None = None; memory_scope: str | None = None; lifecycle_status: str | None = None; risk_tier: str | None = None; fact_id: str | None = None; candidate_id: str | None = None
+    note_id: str; chunk_id: str; relative_path: str; title: str; heading: str | None = None; snippet: str; score: float; content_hash: str | None = None; source_scope: str = "knowledge_base"; retrieval_mode: str = "fts"; retrieval_channels: list[str] = Field(default_factory=list); channel_ranks: dict[str, int] = Field(default_factory=dict); retrieval_contributions: list[RetrievalContribution] = Field(default_factory=list); recall_permissions: MemoryRecallPermissions = Field(default_factory=MemoryRecallPermissions); activation_score: float | None = None; score_breakdown: dict[str, float] = Field(default_factory=dict); filtered_reason: str | None = None; memory_kind: str | None = None; memory_scope: str | None = None; lifecycle_status: str | None = None; risk_tier: str | None = None; fact_id: str | None = None; candidate_id: str | None = None
 
 
 class MemorySearchResponse(BaseModel):

@@ -1,81 +1,31 @@
 import {
-  BookOpenCheck,
-  ClipboardList,
+  CheckCircle2,
   Loader2,
-  MessageCircle,
   MessageSquareText,
-  NotebookPen,
   Send,
+  ShieldAlert,
   Sparkles,
   X,
+  XCircle,
 } from "lucide-react";
 import { useEffect, useRef } from "react";
 import type { FormEvent } from "react";
 import { Panel } from "../components/layout";
 import { ChatMessageList } from "../features/chat/ChatMessageList";
-import {
-  petInputModes as defaultPetInputModes,
-  type PetInputMode,
-  type PetInputModeOption,
-} from "../features/chat/petInputModes";
 import { productCopy } from "../productCopy";
-import type { AgentAction, ChatMessage, TaskItem } from "../types";
+import type { AgentAction, AgentCheckpointSummary, ChatMessage, TaskItem } from "../types";
 import { FeatureWindowShell } from "./FeatureWindowShell";
 
-const modeDescriptions: Record<PetInputMode, string> = {
-  chat: "直接说说",
-  note: "帮你记住",
-  task: "到时提醒",
-  wiki: "归好资料",
-  review: "回顾今天",
-};
-
-const primaryModeIds = new Set<PetInputMode>(["chat", "note"]);
-
-function renderModeIcon(mode: PetInputMode) {
-  switch (mode) {
-    case "note":
-      return <NotebookPen size={17} />;
-    case "task":
-      return <ClipboardList size={17} />;
-    case "wiki":
-      return <BookOpenCheck size={17} />;
-    case "review":
-      return <Sparkles size={17} />;
-    case "chat":
-    default:
-      return <MessageCircle size={17} />;
-  }
-}
-
-const chatTrialPrompts: Array<{ label: string; mode: PetInputMode; text: string }> = [
+export const chatTrialPrompts = [
   {
-    label: "我今天有点累",
-    mode: "chat",
-    text: "我今天有点累",
+    label: "查找带来源的记忆",
+    text: "我之前提过更喜欢上午还是下午开会？顺便告诉我这个结论来自哪条记录。",
   },
   {
-    label: "记住我最近在准备一件重要的事",
-    mode: "note",
-    text: "记住我最近在准备一件重要的事",
+    label: "创建提醒并记住偏好",
+    text: "明天下午三点提醒我给张老师回邮件，并记住我更喜欢下午开会。",
   },
-  {
-    label: "明天提醒我继续这件事",
-    mode: "task",
-    text: "明天提醒我继续这件事",
-  },
-  {
-    label: "帮我回顾今天",
-    mode: "review",
-    text: "",
-  },
-];
-
-export const demoMemoryTrialPrompt = {
-  label: "30 秒试走：记住演示内容",
-  mode: "note" as const,
-  text: "记住：这是一次演示，我正在准备 30 秒产品走查。",
-};
+] as const;
 
 function scheduleFrame(callback: FrameRequestCallback): number {
   if (typeof window.requestAnimationFrame === "function") {
@@ -106,9 +56,9 @@ export default function ChatWindowView({
   onOpenMemory,
   onOpenWiki,
   onOpenReport,
-  mode = "chat",
-  modes = defaultPetInputModes,
-  onModeChange = () => undefined,
+  pendingCheckpoints,
+  decidingCheckpointIds,
+  onDecideCheckpoint,
 }: {
   input: string;
   messages: ChatMessage[];
@@ -123,18 +73,15 @@ export default function ChatWindowView({
   onOpenMemory?: () => void;
   onOpenWiki?: (path?: string) => void;
   onOpenReport?: (path?: string) => void;
-  mode?: PetInputMode;
-  modes?: PetInputModeOption[];
-  onModeChange?: (mode: PetInputMode) => void;
+  pendingCheckpoints?: AgentCheckpointSummary[];
+  decidingCheckpointIds?: Set<string>;
+  onDecideCheckpoint?: (checkpoint: AgentCheckpointSummary, decision: "approved" | "rejected") => void;
 }) {
   const visibleMessages = messages.filter((message) => message.role !== "system");
-  const activeMode = modes.find((option) => option.id === mode) ?? defaultPetInputModes[0];
-  const primaryModes = modes.filter((option) => primaryModeIds.has(option.id));
-  const secondaryModes = modes.filter((option) => !primaryModeIds.has(option.id));
   const messageListRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const latestMessage = visibleMessages[visibleMessages.length - 1];
-  const canSend = connected && !streaming && (input.trim().length > 0 || activeMode.id === "review");
+  const canSend = connected && !streaming && input.trim().length > 0;
 
   useEffect(() => {
     const messageList = messageListRef.current;
@@ -157,8 +104,7 @@ export default function ChatWindowView({
     }
   }, [streaming]);
 
-  function fillTrialPrompt(mode: PetInputMode, text: string) {
-    onModeChange(mode);
+  function fillTrialPrompt(text: string) {
     onInputChange(text);
     scheduleFrame(() => inputRef.current?.focus({ preventScroll: true }));
   }
@@ -171,66 +117,60 @@ export default function ChatWindowView({
       activeTab="对话"
     >
       <Panel icon={<MessageSquareText size={18} />} title="和我说说" className="feature-window-panel chat-panel">
-        <div className="chat-action-board" role="tablist" aria-label="主要陪伴方式">
-          {primaryModes.map((option) => (
-            <button
-              key={option.id}
-              type="button"
-              className={`chat-action-button ${option.id === activeMode.id ? "active" : ""}`}
-              role="tab"
-              aria-selected={option.id === activeMode.id}
-              aria-label={option.ariaLabel}
-              disabled={streaming}
-              onClick={() => onModeChange(option.id)}
-            >
-              {renderModeIcon(option.id)}
-              <span>
-                <strong>{option.label}</strong>
-                <small>{modeDescriptions[option.id]}</small>
-              </span>
-            </button>
-          ))}
-        </div>
-        <div className="guided-trial-actions chat-secondary-modes" role="tablist" aria-label="更多陪伴方式">
-          {secondaryModes.map((option) => (
-            <button
-              key={option.id}
-              type="button"
-              className={`secondary ${option.id === activeMode.id ? "active" : ""}`}
-              role="tab"
-              aria-selected={option.id === activeMode.id}
-              aria-label={option.ariaLabel}
-              disabled={streaming}
-              onClick={() => onModeChange(option.id)}
-            >
-              {renderModeIcon(option.id)}
-              {option.label}
-            </button>
-          ))}
-        </div>
         <div className="guided-trial-actions chat-guided-trials" aria-label="可以这样说">
-          <button
-            type="button"
-            className="secondary chat-demo-trial"
-            onClick={() => fillTrialPrompt(demoMemoryTrialPrompt.mode, demoMemoryTrialPrompt.text)}
-            disabled={streaming}
-          >
-            <Sparkles size={16} />
-            {demoMemoryTrialPrompt.label}
-          </button>
           {chatTrialPrompts.map((trial) => (
             <button
               key={trial.label}
               type="button"
               className="secondary"
-              onClick={() => fillTrialPrompt(trial.mode, trial.text)}
+              onClick={() => fillTrialPrompt(trial.text)}
               disabled={streaming}
             >
-              {renderModeIcon(trial.mode)}
+              <Sparkles size={16} />
               {trial.label}
             </button>
           ))}
         </div>
+        {pendingCheckpoints && pendingCheckpoints.length > 0 ? (
+          <section className="checkpoint-confirmation-list" aria-label="待确认的高风险操作">
+            {pendingCheckpoints.map((checkpoint) => {
+              const deciding = decidingCheckpointIds?.has(checkpoint.checkpoint_id) ?? false;
+              return (
+                <article key={checkpoint.checkpoint_id} className="checkpoint-confirmation-item">
+                  <div className="checkpoint-confirmation-heading">
+                    <ShieldAlert size={17} />
+                    <strong>高风险操作等待确认</strong>
+                  </div>
+                  <p>{checkpoint.action_label}</p>
+                  <dl>
+                    <div><dt>目标</dt><dd>{checkpoint.safe_target_summary || "本地内容"}</dd></div>
+                    <div><dt>风险</dt><dd>{checkpoint.risk_tier === "high" ? "高" : "中"}</dd></div>
+                    <div><dt>可逆</dt><dd>{checkpoint.reversible ? "是" : "否"}</dd></div>
+                  </dl>
+                  <div className="checkpoint-confirmation-actions">
+                    <button
+                      type="button"
+                      onClick={() => onDecideCheckpoint?.(checkpoint, "approved")}
+                      disabled={deciding || !onDecideCheckpoint}
+                    >
+                      <CheckCircle2 size={16} />
+                      批准
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={() => onDecideCheckpoint?.(checkpoint, "rejected")}
+                      disabled={deciding || !onDecideCheckpoint}
+                    >
+                      <XCircle size={16} />
+                      拒绝
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+          </section>
+        ) : null}
         <ChatMessageList
           messages={visibleMessages}
           revertingActionIds={revertingActionIds}
@@ -246,10 +186,10 @@ export default function ChatWindowView({
             ref={inputRef}
             value={input}
             onChange={(event) => onInputChange(event.target.value)}
-            placeholder={connected ? activeMode.placeholder : "正在等待本地助手连接..."}
+            placeholder={connected ? productCopy.chatPage.inputPlaceholder : "正在等待本地助手连接..."}
             disabled={streaming}
             autoFocus
-            aria-label={`${activeMode.label}输入`}
+            aria-label="聊天输入"
           />
           {streaming ? (
             <button type="button" className="danger" onClick={onStopStreaming}>
@@ -259,7 +199,7 @@ export default function ChatWindowView({
           ) : (
             <button type="submit" disabled={!canSend}>
               <Send size={16} />
-              {activeMode.id === "review" && !input.trim() ? "回顾" : "发送"}
+              发送
             </button>
           )}
         </form>

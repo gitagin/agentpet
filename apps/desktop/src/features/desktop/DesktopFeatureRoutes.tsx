@@ -19,7 +19,6 @@ type DesktopFeatureRoutesProps = {
   chatWindowProps: ComponentProps<typeof ChatWindowView>;
   memoryWindowProps: ComponentProps<typeof MemoryWindowView>;
   growthWindowProps: ComponentProps<typeof GrowthWindowView>;
-  connectionPanel: ReactNode;
   wikiWorkflowPanel: ReactNode;
   settingsPanel: ReactNode;
 };
@@ -32,7 +31,6 @@ export function DesktopFeatureRoutes({
   chatWindowProps,
   memoryWindowProps,
   growthWindowProps,
-  connectionPanel,
   wikiWorkflowPanel,
   settingsPanel,
 }: DesktopFeatureRoutesProps) {
@@ -55,14 +53,7 @@ export function DesktopFeatureRoutes({
           </WorldWindowView>
         );
       case "settings":
-        return (
-          <SettingsWindowView>
-            <div className="feature-page-stack">
-              {connectionPanel}
-              {settingsPanel}
-            </div>
-          </SettingsWindowView>
-        );
+        return <SettingsWindowView>{settingsPanel}</SettingsWindowView>;
       default:
         return null;
     }

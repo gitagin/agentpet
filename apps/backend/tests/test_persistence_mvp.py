@@ -876,6 +876,107 @@ def test_reset_local_state_requires_confirmation(client: TestClient) -> None:
     assert response.json()["error"]["code"] == "reset_confirmation_required"
 
 
+def test_reset_memory_state_requires_confirmation(client: TestClient) -> None:
+    response = client.post(
+        "/api/diagnostics/reset-memory-state",
+        headers=auth(),
+        json={"confirmation": "wrong"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "memory_reset_confirmation_required"
+
+
+def test_reset_memory_state_preserves_model_task_vault_and_credentials(
+    client: TestClient,
+    tmp_path: Path,
+) -> None:
+    vault = tmp_path / "Vault"
+    vault.mkdir()
+    (vault / "Keep.md").write_text("# Keep this file\n", encoding="utf-8")
+    init = client.post(
+        "/api/vaults/init",
+        headers=auth(),
+        json={"path": str(vault), "create_if_missing": False, "confirmed": True},
+    )
+    assert init.status_code == 200
+
+    assert client.put(
+        "/api/settings/model-config",
+        headers=auth(),
+        json={
+            "provider": "openai-compatible",
+            "base_url": "https://example.test/v1",
+            "model": "demo-model",
+        },
+    ).status_code == 200
+    assert client.put(
+        "/api/settings/model-key",
+        headers=auth(),
+        json={"provider": "openai-compatible", "api_key": "test-api-key"},
+    ).status_code == 200
+
+    task = client.post(
+        "/api/tasks",
+        headers=auth(),
+        json={"title": "Keep this task", "timezone": "UTC"},
+    )
+    assert task.status_code == 200
+
+    db_path = client.app.state.database.path
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO conversations (id, title, status, created_at, updated_at)
+            VALUES ('conversation-memory-reset', 'test memory', 'active', datetime('now'), datetime('now'))
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO messages (id, conversation_id, role, content, status, created_at, updated_at)
+            VALUES ('message-memory-reset', 'conversation-memory-reset', 'user', 'test memory', 'completed', datetime('now'), datetime('now'))
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO memory_graph_facts (
+                id, fact_key, conflict_key, category, subject, predicate, object,
+                status, confidence, source_text, source_type, support_count, created_at, updated_at
+            )
+            VALUES (
+                'fact-memory-reset', 'fact-key-memory-reset', 'conflict-memory-reset',
+                'preference', 'user', 'prefers', 'test data', 'active', 0.9,
+                'test memory', 'test', 1, datetime('now'), datetime('now')
+            )
+            """
+        )
+        conn.commit()
+
+    credentials_dir = db_path.with_suffix(f"{db_path.suffix}.credentials")
+    assert credentials_dir.exists()
+
+    response = client.post(
+        "/api/diagnostics/reset-memory-state",
+        headers=auth(),
+        json={"confirmation": "RESET_AGENT_PET_MEMORY"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "memory_reset"
+    assert response.json()["cleared_tables"]["messages"] == 1
+    assert response.json()["cleared_tables"]["memory_graph_facts"] == 1
+    assert credentials_dir.exists()
+    assert (vault / "Keep.md").exists()
+
+    with sqlite3.connect(db_path) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM model_config").fetchone()[0] == 1
+        assert conn.execute("SELECT COUNT(*) FROM model_keys").fetchone()[0] == 1
+        assert conn.execute("SELECT COUNT(*) FROM tasks").fetchone()[0] == 1
+        assert conn.execute("SELECT COUNT(*) FROM conversations").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM messages").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM memory_graph_facts").fetchone()[0] == 0
+
+
 def test_reset_local_state_clears_user_state_and_credentials(
     client: TestClient,
     tmp_path: Path,

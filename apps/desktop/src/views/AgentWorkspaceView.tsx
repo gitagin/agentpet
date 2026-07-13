@@ -389,6 +389,7 @@ export default function AgentWorkspaceView({ api }: AgentWorkspaceViewProps) {
   const [agentSteps, setAgentSteps] = useState<AgentStep[]>([]);
   const [executionLogs, setExecutionLogs] = useState<ExecutionLog[]>([]);
   const [traceTask, setTraceTask] = useState<{ id: string; title: string } | null>(null);
+  const [traceExpanded, setTraceExpanded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [traceLoading, setTraceLoading] = useState(false);
   const [error, setError] = useState("");
@@ -524,6 +525,7 @@ export default function AgentWorkspaceView({ api }: AgentWorkspaceViewProps) {
   }
 
   async function locateTaskLogs(task: TaskItem) {
+    setTraceExpanded(true);
     await loadTaskTrace(task.task_id, task.title);
     window.requestAnimationFrame(() => {
       document.getElementById("task-steps-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -609,7 +611,7 @@ export default function AgentWorkspaceView({ api }: AgentWorkspaceViewProps) {
 
   return (
     <FeatureWindowShell
-      eyebrow="更多和高级"
+      eyebrow="计划"
       title="提醒和待办"
       description="创建提醒、查看待办，并把执行步骤和日志收在辅助细节里。"
       activeTab="计划"
@@ -825,7 +827,16 @@ export default function AgentWorkspaceView({ api }: AgentWorkspaceViewProps) {
         </Panel>
         </aside>
 
-        <section className="task-trace-drawer" aria-label="执行细节">
+        <details
+          className="task-trace-disclosure"
+          open={traceExpanded}
+          onToggle={(event) => setTraceExpanded(event.currentTarget.open)}
+        >
+          <summary>
+            <strong>执行细节</strong>
+            <span>{traceTask ? traceTask.title : "按需展开 Agent 步骤与工具日志"}</span>
+          </summary>
+          <section className="task-trace-drawer" aria-label="执行细节">
 
         <Panel id="task-steps-panel" icon={<ListChecks size={18} />} title="执行步骤" className="feature-window-panel task-steps-panel">
           <div className="section-heading compact">
@@ -880,7 +891,8 @@ export default function AgentWorkspaceView({ api }: AgentWorkspaceViewProps) {
             onPageChange={(page) => setPage("logs", page)}
           />
         </Panel>
-        </section>
+          </section>
+        </details>
       </div>
     </FeatureWindowShell>
   );

@@ -34,9 +34,10 @@ type UseSettingsOptions = {
   onSettingsStatusLoaded?: (response: SettingsStatusResponse) => void;
 };
 
+const DEMO_NEGOTIATION_MAX_ROUNDS = 2;
+
 function automationSettingsRequestFromDraft(
   draft: AutomationSettingsDraft,
-  maxRounds = Math.trunc(draft.max_rounds),
 ): AutomationSettingsUpdateRequest {
   return {
     auto_chat_diary: draft.auto_chat_diary,
@@ -46,7 +47,7 @@ function automationSettingsRequestFromDraft(
     local_privacy_mode: draft.local_privacy_mode,
     proactive_trigger_frequency: draft.proactive_trigger_frequency,
     use_negotiation: draft.use_negotiation,
-    max_rounds: maxRounds,
+    max_rounds: DEMO_NEGOTIATION_MAX_ROUNDS,
   };
 }
 
@@ -163,20 +164,18 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
 
   const saveAutomationSettings = useCallback(async () => {
     const draft = state.automationSettingsDraft;
-    const maxRounds = Math.trunc(draft.max_rounds);
-    if (!Number.isFinite(maxRounds) || maxRounds < 2 || maxRounds > 10) {
-      onNotice({ tone: "error", message: "复杂回答检查轮数需在 2 到 10 之间。" });
-      return;
-    }
 
     dispatch({ type: "setAutomationSettingsSaveStatus", status: "loading" });
     onNotice(null);
     try {
       const settings = await api.saveAutomationSettings(
-        automationSettingsRequestFromDraft(draft, maxRounds),
+        automationSettingsRequestFromDraft(draft),
       );
       const refreshed = await loadSettingsStatus({ silent: true });
-      dispatch({ type: "saveAutomationSettingsSuccess", settings: refreshed?.automation || settings });
+      dispatch({
+        type: "saveAutomationSettingsSuccess",
+        settings: { ...(refreshed?.automation || settings), max_rounds: DEMO_NEGOTIATION_MAX_ROUNDS },
+      });
       onNotice({ tone: "success", message: "自动整理设置已保存。" });
     } catch (error) {
       dispatch({ type: "setAutomationSettingsSaveStatus", status: "error" });
@@ -230,11 +229,6 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
 
   const saveNegotiationSettings = useCallback(async () => {
     const draft = state.negotiationSettingsDraft;
-    const maxRounds = Math.trunc(draft.max_rounds);
-    if (!Number.isFinite(maxRounds) || maxRounds < 2 || maxRounds > 10) {
-      onNotice({ tone: "error", message: "最大协商轮次需在 2 到 10 之间。" });
-      return;
-    }
 
     dispatch({ type: "setNegotiationSettingsSaveStatus", status: "loading" });
     onNotice(null);
@@ -242,19 +236,22 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
       const settings = await api.saveAutomationSettings({
         ...automationSettingsRequestFromDraft(state.automationSettingsDraft),
         use_negotiation: draft.use_negotiation,
-        max_rounds: maxRounds,
+        max_rounds: DEMO_NEGOTIATION_MAX_ROUNDS,
       });
       const refreshed = await loadSettingsStatus({ silent: true });
-      const automation = refreshed?.automation || settings;
+      const automation = {
+        ...(refreshed?.automation || settings),
+        max_rounds: DEMO_NEGOTIATION_MAX_ROUNDS,
+      };
       dispatch({ type: "saveAutomationSettingsSuccess", settings: automation });
       dispatch({
         type: "saveNegotiationSettingsSuccess",
         draft: { use_negotiation: automation.use_negotiation, max_rounds: automation.max_rounds },
       });
-      onNotice({ tone: "success", message: "多轮协商设置已保存。" });
+      onNotice({ tone: "success", message: "有界协作设置已保存，最多复核 2 轮。" });
     } catch (error) {
       dispatch({ type: "setNegotiationSettingsSaveStatus", status: "error" });
-      onNotice({ tone: "error", message: describeError(error, "多轮协商设置保存失败") });
+      onNotice({ tone: "error", message: describeError(error, "有界协作设置保存失败") });
     }
   }, [api, loadSettingsStatus, onNotice, state.automationSettingsDraft, state.negotiationSettingsDraft]);
 

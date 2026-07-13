@@ -164,4 +164,25 @@ describe("AgentActionActivityCard", () => {
     expect(screen.getByText(/已撤回，并留下新的活动记录/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "撤回" })).not.toBeInTheDocument();
   });
+
+  it("renders pending confirmation without exposing the backend enum", () => {
+    const { container } = render(
+      <AgentActionActivityCard
+        entry={entry(action({
+          action_type: "local.destructive_request",
+          risk_tier: "high",
+          decision: "ask",
+          status: "pending_confirm",
+          title: "高风险本地操作等待确认",
+          target_paths: [],
+        }))}
+        reverting={false}
+        onRevert={vi.fn()}
+      />,
+    );
+
+    expect(screen.getAllByText("待确认").length).toBeGreaterThan(0);
+    expect(screen.getByText(/该活动需要人工确认/)).toBeInTheDocument();
+    expect(container.textContent).not.toContain("pending_confirm");
+  });
 });

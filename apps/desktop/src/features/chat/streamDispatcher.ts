@@ -5,9 +5,14 @@ import type {
   ChatContinuityProposal,
   ChatContinuitySignal,
   ChatMessage,
-  ChatNegotiationAction,
   ChatNegotiationDone,
   ChatNegotiationStep,
+  ChatTraceAgentId,
+  ChatTraceCounts,
+  ChatTracePhase,
+  ChatTraceReasonCode,
+  ChatTraceSourceScope,
+  ChatTraceStatus,
   ChatWikiProposal,
   ContinuityProposal,
   ContinuityProposalKind,
@@ -136,6 +141,7 @@ function negotiationStepHandler({ messageId, payload, context }: StreamHandlerIn
       message.id === messageId
         ? {
             ...message,
+            progress_stage: "verifying",
             negotiation_steps: [...(message.negotiation_steps || []), step],
           }
         : message,
@@ -149,7 +155,11 @@ function negotiationDoneHandler({ messageId, payload, context }: StreamHandlerIn
     return;
   }
   context.setMessages((current) =>
-    current.map((message) => (message.id === messageId ? { ...message, negotiation_done: done } : message)),
+    current.map((message) => (
+      message.id === messageId
+        ? { ...message, progress_stage: "answering", negotiation_done: done }
+        : message
+    )),
   );
 }
 
@@ -157,17 +167,30 @@ function normalizeNegotiationStep(payload: Record<string, unknown> | null): Chat
   if (!payload) {
     return null;
   }
-  const action = payload.action;
-  if (!isNegotiationAction(action)) {
+  if (payload.contract_version === "agent-trace.v1") {
+    const trace = normalizeVersionedTrace(payload);
+    return trace?.phase === "completed" ? null : trace;
+  }
+  const phase = normalizeLegacyPhase(payload.action);
+  if (!phase) {
     return null;
   }
+  const reasonCode = legacyStepReasonCode(phase);
   return {
-    round: typeof payload.round === "number" ? payload.round : 0,
-    agent: typeof payload.agent === "string" ? payload.agent : "orchestrator",
-    action,
-    reasoning: typeof payload.reasoning === "string" ? payload.reasoning : "",
-    confidence: typeof payload.confidence === "number" ? payload.confidence : 0,
-    message: typeof payload.message === "string" ? payload.message : "",
+    contract_version: "agent-trace.v1",
+    run_id: normalizeTraceRunId(payload.agent_run_id),
+    branch_id: "foreground",
+    stage_id: "negotiation",
+    agent_id: normalizeTraceAgentId(payload.agent),
+    phase,
+    status: "running",
+    round: nonNegativeInteger(payload.round),
+    sequence: Math.max(1, nonNegativeInteger(payload.round) + 1),
+    duration_ms: 0,
+    reason_code: reasonCode,
+    safe_summary: TRACE_SAFE_SUMMARIES[reasonCode],
+    counts: emptyTraceCounts(),
+    source_scope: "none",
   };
 }
 
@@ -175,19 +198,161 @@ function normalizeNegotiationDone(payload: Record<string, unknown> | null): Chat
   if (!payload) {
     return null;
   }
+  if (payload.contract_version === "agent-trace.v1") {
+    const trace = normalizeVersionedTrace(payload);
+    return trace?.phase === "completed" ? trace : null;
+  }
+  const rounds = nonNegativeInteger(payload.total_rounds);
+  const fallback = payload.fallback === true;
+  const reasonCode: ChatTraceReasonCode = fallback
+    ? "negotiation_completed_with_fallback"
+    : "negotiation_completed";
   return {
-    total_rounds: typeof payload.total_rounds === "number" ? payload.total_rounds : 0,
-    agents_invoked: Array.isArray(payload.agents_invoked)
-      ? payload.agents_invoked.filter((agent): agent is string => typeof agent === "string")
-      : [],
-    total_latency_ms: typeof payload.total_latency_ms === "number" ? payload.total_latency_ms : 0,
-    final_confidence: typeof payload.final_confidence === "number" ? payload.final_confidence : 0,
-    fallback: payload.fallback === true,
+    contract_version: "agent-trace.v1",
+    run_id: normalizeTraceRunId(payload.agent_run_id),
+    branch_id: "foreground",
+    stage_id: "negotiation",
+    agent_id: "orchestrator",
+    phase: "completed",
+    status: "completed",
+    round: rounds,
+    sequence: Math.max(1, rounds + 1),
+    duration_ms: nonNegativeInteger(payload.total_latency_ms),
+    reason_code: reasonCode,
+    safe_summary: TRACE_SAFE_SUMMARIES[reasonCode],
+    counts: {
+      agents_invoked: Array.isArray(payload.agents_invoked) ? payload.agents_invoked.length : 0,
+      citations: 0,
+      rounds,
+    },
+    source_scope: "none",
   };
 }
 
-function isNegotiationAction(action: unknown): action is ChatNegotiationAction {
-  return action === "invoking" || action === "reviewing" || action === "revising" || action === "synthesizing";
+const TRACE_AGENT_IDS: readonly ChatTraceAgentId[] = ["orchestrator", "retrieval_agent", "synthesizer"];
+const TRACE_PHASES: readonly ChatTracePhase[] = ["invoking", "reviewing", "revising", "synthesizing", "completed"];
+const TRACE_STATUSES: readonly ChatTraceStatus[] = ["running", "fallback", "completed"];
+const TRACE_SOURCE_SCOPES: readonly ChatTraceSourceScope[] = [
+  "none",
+  "personal_memory",
+  "diary_objects",
+  "daily_chat",
+  "knowledge_base",
+  "pending_memory",
+  "mixed",
+];
+const TRACE_SAFE_SUMMARIES: Record<ChatTraceReasonCode, string> = {
+  additional_context_required: "需要补充本地证据，正在进行有界检索。",
+  evidence_review: "正在核验已收集的本地证据。",
+  evidence_revised: "已按核验结果调整处理步骤。",
+  evidence_ready: "已有信息足够，正在合成回复。",
+  max_rounds_reached: "已达到协商轮次上限，正在整理已有结果。",
+  duplicate_agent_query: "已阻止重复检索，正在整理已有结果。",
+  unsupported_agent_request: "已阻止不受支持的协作请求，正在整理已有结果。",
+  invalid_agent_request: "未找到可用的协作步骤，正在整理已有结果。",
+  orchestrator_model_unavailable: "协调能力暂不可用，正在基于本地证据完成回复。",
+  orchestrator_timeout: "协调步骤超时，正在基于已有本地证据完成回复。",
+  orchestrator_invalid_response: "协调结果无效，正在基于已有本地证据完成回复。",
+  agent_timeout: "检索步骤超时，正在基于已有本地证据完成回复。",
+  agent_invocation_failed: "检索步骤未完成，正在基于已有本地证据完成回复。",
+  negotiation_fallback: "协作已安全停止，正在整理已有结果。",
+  negotiation_completed: "协作已完成。",
+  negotiation_completed_with_fallback: "协作已通过安全兜底完成。",
+};
+
+function normalizeVersionedTrace(payload: Record<string, unknown>): ChatNegotiationStep | null {
+  if (
+    payload.branch_id !== "foreground" ||
+    payload.stage_id !== "negotiation" ||
+    !isOneOf(payload.agent_id, TRACE_AGENT_IDS) ||
+    !isOneOf(payload.phase, TRACE_PHASES) ||
+    !isOneOf(payload.status, TRACE_STATUSES) ||
+    !isTraceReasonCode(payload.reason_code) ||
+    !isOneOf(payload.source_scope, TRACE_SOURCE_SCOPES) ||
+    !isSafeTraceRunId(payload.run_id)
+  ) {
+    return null;
+  }
+  const counts = normalizeTraceCounts(payload.counts);
+  if (!counts) {
+    return null;
+  }
+  const reasonCode = payload.reason_code;
+  return {
+    contract_version: "agent-trace.v1",
+    run_id: payload.run_id,
+    branch_id: "foreground",
+    stage_id: "negotiation",
+    agent_id: payload.agent_id,
+    phase: payload.phase,
+    status: payload.status,
+    round: nonNegativeInteger(payload.round),
+    sequence: Math.max(1, nonNegativeInteger(payload.sequence)),
+    duration_ms: nonNegativeInteger(payload.duration_ms),
+    reason_code: reasonCode,
+    safe_summary: TRACE_SAFE_SUMMARIES[reasonCode],
+    counts,
+    source_scope: payload.source_scope,
+  };
+}
+
+function normalizeTraceCounts(value: unknown): ChatTraceCounts | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const counts = value as Record<string, unknown>;
+  return {
+    agents_invoked: nonNegativeInteger(counts.agents_invoked),
+    citations: nonNegativeInteger(counts.citations),
+    rounds: nonNegativeInteger(counts.rounds),
+  };
+}
+
+function emptyTraceCounts(): ChatTraceCounts {
+  return { agents_invoked: 0, citations: 0, rounds: 0 };
+}
+
+function normalizeLegacyPhase(value: unknown): Exclude<ChatTracePhase, "completed"> | null {
+  return value === "invoking" || value === "reviewing" || value === "revising" || value === "synthesizing"
+    ? value
+    : null;
+}
+
+function legacyStepReasonCode(phase: Exclude<ChatTracePhase, "completed">): ChatTraceReasonCode {
+  if (phase === "invoking") {
+    return "additional_context_required";
+  }
+  if (phase === "reviewing") {
+    return "evidence_review";
+  }
+  if (phase === "revising") {
+    return "evidence_revised";
+  }
+  return "evidence_ready";
+}
+
+function normalizeTraceAgentId(value: unknown): ChatTraceAgentId {
+  return isOneOf(value, TRACE_AGENT_IDS) ? value : "orchestrator";
+}
+
+function normalizeTraceRunId(value: unknown): string {
+  return isSafeTraceRunId(value) ? value : "legacy-run";
+}
+
+function isSafeTraceRunId(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(value);
+}
+
+function isTraceReasonCode(value: unknown): value is ChatTraceReasonCode {
+  return typeof value === "string" && Object.prototype.hasOwnProperty.call(TRACE_SAFE_SUMMARIES, value);
+}
+
+function isOneOf<T extends string>(value: unknown, allowed: readonly T[]): value is T {
+  return typeof value === "string" && allowed.includes(value as T);
+}
+
+function nonNegativeInteger(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0;
 }
 
 function applyTextOrCitationEvent({ messageId, sseEvent, payload, context }: StreamHandlerInput) {
@@ -229,6 +394,11 @@ function applyTextOrCitationEvent({ messageId, sseEvent, payload, context }: Str
       }
       return {
         ...message,
+        progress_stage: token
+          ? "answering"
+          : citations?.length
+            ? "verifying"
+            : message.progress_stage,
         content: token ? (visibleReplyText ?? message.content) : message.content,
         live2d_action_hints:
           hiddenActionHints && hiddenActionHints.length > 0 ? hiddenActionHints : message.live2d_action_hints,
