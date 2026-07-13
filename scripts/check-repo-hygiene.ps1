@@ -92,7 +92,7 @@ try {
     if (-not (Test-Path -LiteralPath $path)) {
       continue
     }
-    $item = Get-Item -LiteralPath $path
+    $item = Get-Item -Force -LiteralPath $path
     $presentTrackedCount += 1
     $trackedSize += $item.Length
     $normalized = $path.Replace('\', '/')

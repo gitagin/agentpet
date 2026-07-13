@@ -189,8 +189,8 @@ def test_openai_auth_kwargs_uses_api_key_header_for_xiaomi_mimo() -> None:
     )
 
     assert kwargs == {
-        "api_key": "",
-        "default_headers": {"api-key": "mimo-secret-value"},
+        "api_key": "mimo-secret-value",
+        "default_headers": {"api-key": "mimo-secret-value", "Authorization": ""},
     }
 
 
@@ -215,7 +215,7 @@ def test_default_model_factory_removes_bearer_for_xiaomi_mimo_host() -> None:
     headers = model.root_client.default_headers
 
     assert headers["api-key"] == "mimo-secret-value"
-    assert "Authorization" not in headers
+    assert headers.get("Authorization", "") == ""
 
 
 def test_default_model_factory_keeps_bearer_for_deepseek_host() -> None:
@@ -227,7 +227,7 @@ def test_default_model_factory_keeps_bearer_for_deepseek_host() -> None:
     )
 
     model = _default_model_factory(client)
-    headers = model.root_client.default_headers
+    headers = model.root_client.auth_headers
 
     assert headers["Authorization"] == "Bearer deepseek-secret-value"
     assert "api-key" not in headers

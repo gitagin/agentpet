@@ -1,6 +1,8 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
+process.env.TZ = "Asia/Shanghai";
+
 export default defineConfig({
   plugins: [react()],
   test: {

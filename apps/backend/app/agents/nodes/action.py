@@ -202,8 +202,14 @@ def _proposal_for_plan(state: AgentState, plan: ActionPlan, *, index: int) -> Ac
         expected_effect=expected_effect,
         reversible=plan.reversible,
         source_message_id=state.message_id,
-        requested_confirmation=plan.decision == "ask",
+        requested_confirmation=_plan_requires_execution_confirmation(plan),
     )
+
+
+def _plan_requires_execution_confirmation(plan: ActionPlan) -> bool:
+    if plan.action_type == "wiki" and not bool(plan.payload.get("auto_organize")):
+        return False
+    return plan.decision == "ask"
 
 
 def _plan_action_type(plan: ActionPlan) -> str:

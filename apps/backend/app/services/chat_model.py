@@ -353,8 +353,8 @@ def _default_model_factory(client: LangChainGraphChatClient, *, streaming: bool 
 def _openai_auth_kwargs(*, api_key: str, base_url: str, auth_scheme: str | None = None) -> dict[str, Any]:
     if auth_scheme == "api-key" or (auth_scheme is None and _uses_api_key_header(base_url)):
         return {
-            "api_key": "",
-            "default_headers": {"api-key": api_key},
+            "api_key": api_key,
+            "default_headers": {"api-key": api_key, "Authorization": ""},
         }
     return {"api_key": api_key}
 

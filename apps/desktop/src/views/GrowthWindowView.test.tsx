@@ -111,7 +111,8 @@ describe("GrowthWindowView", () => {
     render(<GrowthWindowView api={api} />);
     await waitFor(() => expect(api.getGrowthSnapshot).toHaveBeenCalledTimes(1));
 
-    fireEvent.click(screen.getByRole("button", { name: /刷新/ }));
+    const refreshButton = await screen.findByRole("button", { name: "刷新" });
+    fireEvent.click(refreshButton);
 
     await waitFor(() => expect(api.getGrowthSnapshot).toHaveBeenCalledTimes(2));
   });
