@@ -41,7 +41,7 @@ export type DesktopSseError = {
 };
 
 export type DesktopSidecarStatus = {
-  state: "stopped" | "checking-port" | "starting" | "ready" | "error" | "stopping";
+  state: "stopped" | "checking-port" | "starting" | "ready" | "degraded" | "error" | "stopping";
   baseUrl: string;
   host: string;
   port: number;
@@ -59,6 +59,8 @@ export type DesktopPetMousePassthroughStatus = {
   enabled: boolean;
   reason: string;
   changed: boolean;
+  /** 桌宠所在显示器的缩放系数，仅用于多 DPI 对齐调试；命中计算全程 DIP。 */
+  displayScaleFactor?: number;
 };
 
 export type DesktopReminderNotificationRequest = {
@@ -127,6 +129,7 @@ declare global {
       onPetDragCancelled?: (callback: () => void) => () => void;
       onControlTargetRequested?: (callback: (targetId: string) => void) => () => void;
       onStageRouteRequested?: (callback: (mode: "stage" | "agent" | DesktopFeatureWindowMode) => void) => () => void;
+      onFeatureRouteRequested?: (callback: (mode: DesktopFeatureWindowMode) => void) => () => void;
       selectKnowledgeBaseFolder?: () => Promise<string | null>;
       onSidecarStatusChanged?: (
         callback: (status: DesktopSidecarStatus) => void,

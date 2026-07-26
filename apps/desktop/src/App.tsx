@@ -203,6 +203,9 @@ function App() {
       setPendingSettingsStatusVersion((current) => current + 1);
     },
   });
+  // ready = 桌面端托管并通过健康检查；degraded = 复用外部后端（令牌未校验，业务
+  // 请求可能 401）。两者都算"有连接"，degraded 的告警文案由连接面板单独呈现。
+  const sidecarConnected = sidecarStatus?.state === "ready" || sidecarStatus?.state === "degraded";
 
   const {
     agentModelDrafts,
@@ -275,7 +278,7 @@ function App() {
   } = useTasks({
     api,
     pollingEnabled: taskReminderPollingEnabled,
-    sidecarReady: sidecarStatus?.state === "ready",
+    sidecarReady: sidecarConnected,
     onNotice: setNotice,
     onTaskStage: () => petTaskStageRef.current(),
   });
@@ -454,7 +457,7 @@ function App() {
   }, [api]);
 
   useEffect(() => {
-    if (sidecarStatus?.state !== "ready" && health?.status !== "ok") {
+    if (!sidecarConnected && health?.status !== "ok") {
       return undefined;
     }
     const abort = new AbortController();
@@ -475,7 +478,7 @@ function App() {
   }, [api]);
 
   useEffect(() => {
-    if (sidecarStatus?.state !== "ready") {
+    if (!sidecarConnected) {
       return;
     }
     const abort = new AbortController();
@@ -823,7 +826,7 @@ function App() {
   }
 
   useEffect(() => {
-    if (sidecarStatus?.state !== "ready" || streaming) {
+    if (!sidecarConnected || streaming) {
       return undefined;
     }
     const controller = new AbortController();
@@ -1170,7 +1173,7 @@ function App() {
     document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
-  const hasConnection = sidecarStatus?.state === "ready" || health?.status === "ok";
+  const hasConnection = sidecarConnected || health?.status === "ok";
   const proactiveHabitLoopBlocked =
     streaming ||
     petChat.inputVisible ||

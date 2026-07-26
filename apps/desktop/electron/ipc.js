@@ -162,10 +162,13 @@ async function revealVaultPath({ proxy, relativePath, mode, shellApi = shell }) 
   return { status: "opened", relative_path: resolved.relativePath };
 }
 
-function registerIpcHandlers({ baseUrl, rendererUiState, persistRendererUiState, sidecar, proxy, windows }) {
+function registerIpcHandlers({ baseUrl, getBaseUrl, rendererUiState, persistRendererUiState, sidecar, proxy, windows }) {
+  // 端口搜索可能在运行期改变后端 baseUrl；每次同步查询都返回当前值。
+  const resolveBaseUrl = () => (typeof getBaseUrl === "function" ? getBaseUrl() : baseUrl);
+
   ipcMain.on("agent-pet:get-sidecar-config", (event) => {
     event.returnValue = {
-      baseUrl,
+      baseUrl: resolveBaseUrl(),
     };
   });
 

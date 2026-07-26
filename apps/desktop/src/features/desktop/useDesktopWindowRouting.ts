@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import {
   detectDesktopWindowMode,
+  isDesktopFeatureWindowMode,
   isDesktopWindowMode,
   type DesktopWindowMode,
 } from "./desktopWindowModes";
@@ -94,6 +95,26 @@ export function useDesktopWindowRouting({
         return;
       }
       setWindowMode(nextMode);
+    });
+    return unsubscribe;
+  }, [desktopHostMode]);
+
+  useEffect(() => {
+    // feature 宿主窗口的复用切换：主进程发 IPC 而不是整页 reload（见 windows.js
+    // createFeatureWindow），这里改 hash 让路由状态跟着走且不丢渲染端状态。
+    if (!isDesktopFeatureWindowMode(desktopHostMode)) {
+      return;
+    }
+    const unsubscribe = window.agentDesktop?.onFeatureRouteRequested?.((mode) => {
+      if (!isDesktopFeatureWindowMode(mode)) {
+        return;
+      }
+      const nextHash = `#${mode}`;
+      if (window.location.hash !== nextHash) {
+        window.location.hash = mode;
+        return;
+      }
+      setWindowMode(mode);
     });
     return unsubscribe;
   }, [desktopHostMode]);

@@ -5,26 +5,58 @@ const { pathToFileURL } = require("node:url");
 const petHitboxConfig = require("../pet-hitbox.json");
 
 const DESKTOP_WINDOW_STATE_FILE = "desktop-window-state.json";
+// 坐标约定：本文件所有几何值（窗口边界、光标点、命中框）都在 Electron 的 DIP
+// 坐标系里，与渲染进程 zoom=1 时的 CSS px 一一对应；Windows 125%/150% 缩放由
+// Electron 统一换算，命中计算里不要再乘 scaleFactor（乘了反而错位）。
+// scaleFactor 仅作为调试信息随 passthrough 状态透出（getPetDisplayScaleFactor），
+// 供 AGENT_PET_DEBUG_HITBOX=1 的人工多 DPI 对齐核验使用。
 const PET_WINDOW_WIDTH = petHitboxConfig.window.width;
 const PET_WINDOW_HEIGHT = petHitboxConfig.window.height;
 const PET_MIN_VISIBLE_WIDTH = petHitboxConfig.window.minVisibleWidth;
 const PET_MIN_VISIBLE_HEIGHT = petHitboxConfig.window.minVisibleHeight;
-const PET_MODEL_HIT_WIDTH = petHitboxConfig.hitboxes.model.width;
-const PET_MODEL_HIT_HEIGHT = petHitboxConfig.hitboxes.model.height;
-const PET_MODEL_HIT_BOTTOM = petHitboxConfig.hitboxes.model.bottom;
-const PET_INPUT_DOCK_HIT_WIDTH = petHitboxConfig.hitboxes.inputDock.width;
-const PET_INPUT_DOCK_HIT_HEIGHT = petHitboxConfig.hitboxes.inputDock.height;
-const PET_INPUT_DOCK_HIT_BOTTOM = petHitboxConfig.hitboxes.inputDock.bottom;
-const PET_CHAT_BUBBLE_HIT_WIDTH = petHitboxConfig.hitboxes.chatBubble.width;
-const PET_CHAT_BUBBLE_HIT_HEIGHT = petHitboxConfig.hitboxes.chatBubble.height;
-const PET_CHAT_BUBBLE_HIT_BOTTOM = petHitboxConfig.hitboxes.chatBubble.bottom;
-const PET_SHORTCUT_BAR_HIT_WIDTH = petHitboxConfig.hitboxes.shortcutBar.width;
-const PET_SHORTCUT_BAR_HIT_HEIGHT = petHitboxConfig.hitboxes.shortcutBar.height;
-const PET_SHORTCUT_BAR_HIT_RIGHT = petHitboxConfig.hitboxes.shortcutBar.right;
-const PET_SHORTCUT_BAR_HIT_BOTTOM = petHitboxConfig.hitboxes.shortcutBar.bottom;
+
+// 布局锚定方式由 pet-hitbox.json 的 layout.anchors 声明，主进程命中计算与渲染端
+// 样式（petHitboxStyles.ts 里有对应断言）共同消费；改布局先改 json，两端一起动。
+function resolvePetHitboxAnchor(name) {
+  const anchor = petHitboxConfig.layout?.anchors?.[name];
+  const horizontal = anchor?.horizontal;
+  const vertical = anchor?.vertical;
+  if (!["left", "center", "right"].includes(horizontal) || vertical !== "bottom") {
+    throw new Error(
+      `pet-hitbox.json layout.anchors.${name} 缺失或不受支持（需要 horizontal: left|center|right 且 vertical: bottom）。`,
+    );
+  }
+  return { horizontal, vertical };
+}
+
+function createAnchoredPetHitRect(name) {
+  const hitbox = petHitboxConfig.hitboxes[name];
+  const anchor = resolvePetHitboxAnchor(name);
+  const x = anchor.horizontal === "center"
+    ? Math.round((PET_WINDOW_WIDTH - hitbox.width) / 2)
+    : anchor.horizontal === "right"
+      ? PET_WINDOW_WIDTH - (hitbox.right ?? 0) - hitbox.width
+      : (hitbox.left ?? 0);
+  return {
+    x,
+    y: PET_WINDOW_HEIGHT - (hitbox.bottom ?? 0) - hitbox.height,
+    width: hitbox.width,
+    height: hitbox.height,
+  };
+}
+
+const PET_MODEL_HIT_RECT = createAnchoredPetHitRect("model");
+const PET_INPUT_DOCK_HIT_RECT = createAnchoredPetHitRect("inputDock");
+const PET_CHAT_BUBBLE_HIT_RECT = createAnchoredPetHitRect("chatBubble");
+const PET_SHORTCUT_BAR_HIT_RECT = createAnchoredPetHitRect("shortcutBar");
+
+// 能耗备注：拖拽期间的 16ms 主进程移动轮询 + 命中检测 80ms（光标邻近）/500ms
+// （空闲）常驻定时器，是透明桌宠窗口方案的已知代价。调整这些周期前，先在
+// 100%/125%/150% 缩放下实测拖拽跟手性与 CPU 占用，再动数值。
 const PET_MOUSE_HIT_TEST_ACTIVE_INTERVAL_MS = 80;
 const PET_MOUSE_HIT_TEST_IDLE_INTERVAL_MS = 500;
 const PET_MOUSE_HIT_TEST_NEAR_PADDING_PX = 96;
+const PET_DRAG_MOVE_INTERVAL_MS = 16;
 const PET_ENTRY_CAPTURE_GRACE_MS = 2500;
 const PET_INPUT_MODES = new Set(["chat", "note", "task", "wiki", "review"]);
 function createWindowManager({ devServerUrl, state, quitApp }) {
@@ -144,6 +176,30 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     window.loadFile(path.join(app.getAppPath(), "dist", "index.html"), { hash: mode });
   }
 
+  function getAppRootUrl() {
+    return isDevelopment()
+      ? devServerUrl
+      : pathToFileURL(path.join(app.getAppPath(), "dist", "index.html")).toString();
+  }
+
+  function isAllowedAppNavigation(url) {
+    // 用 URL 解析后比较，而不是 startsWith：
+    // "http://127.0.0.1:5173.evil.com/" 能通过 startsWith 但通不过 origin 比较。
+    let target;
+    let root;
+    try {
+      target = new URL(url);
+      root = new URL(getAppRootUrl());
+    } catch {
+      return false;
+    }
+    if (root.protocol === "file:") {
+      // file: 的 origin 恒为 "null"，比较 origin 无意义，改比路径本身。
+      return target.protocol === "file:" && target.pathname === root.pathname;
+    }
+    return target.origin === root.origin;
+  }
+
   function configureCommonWindow(window) {
     window.webContents.setWindowOpenHandler(({ url }) => {
       if (url.startsWith("http://") || url.startsWith("https://")) {
@@ -157,17 +213,40 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     });
 
     window.webContents.on("will-navigate", (event, url) => {
-      const allowedUrl = isDevelopment()
-        ? devServerUrl
-        : pathToFileURL(path.join(app.getAppPath(), "dist", "index.html")).toString();
-
-      if (!url.startsWith(allowedUrl)) {
-        event.preventDefault();
-        if (url.startsWith("http://") || url.startsWith("https://")) {
-          shell.openExternal(url);
-        }
+      if (isAllowedAppNavigation(url)) {
+        return;
+      }
+      event.preventDefault();
+      if (url.startsWith("http://") || url.startsWith("https://")) {
+        shell.openExternal(url);
       }
     });
+  }
+
+  // 所有应用窗口共用的构造器：webPreferences 安全基线只写这一份，
+  // 新窗口忘配 sandbox/contextIsolation 这类问题从结构上消除。
+  function createAppWindow({ webPreferences, ...options }) {
+    const window = new BrowserWindow({
+      ...options,
+      webPreferences: {
+        preload: path.join(__dirname, "preload.cjs"),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+        webSecurity: true,
+        ...webPreferences,
+      },
+    });
+    configureCommonWindow(window);
+    return window;
+  }
+
+  function sendWhenLoaded(window, send) {
+    if (window.webContents.isLoading()) {
+      window.webContents.once("did-finish-load", send);
+      return;
+    }
+    send();
   }
 
   function enforcePetWindowSize() {
@@ -198,11 +277,20 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     }
   }
 
+  function getPetDisplayScaleFactor() {
+    // 仅用于调试与多 DPI 对齐核验；命中计算全程 DIP，不参与这里的换算。
+    if (!isLiveWindow(petWindow) || typeof screen.getDisplayMatching !== "function") {
+      return 1;
+    }
+    return screen.getDisplayMatching(petWindow.getBounds())?.scaleFactor || 1;
+  }
+
   function getPetMousePassthroughStatus(reason, changed = false) {
     return {
       enabled: petMousePassthrough,
       reason,
       changed,
+      displayScaleFactor: getPetDisplayScaleFactor(),
     };
   }
 
@@ -229,44 +317,18 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
       && point.y <= rect.y + rect.height;
   }
 
-  function createCenteredPetHitRect(width, height, bottom) {
-    return {
-      x: Math.round((PET_WINDOW_WIDTH - width) / 2),
-      y: PET_WINDOW_HEIGHT - bottom - height,
-      width,
-      height,
-    };
-  }
-
   function isCursorInsidePetInteractiveRegion(cursor, bounds) {
+    // cursor 与 bounds 都是 DIP，localPoint 因此与渲染端 CSS px 同一坐标系，
+    // 可以直接和 pet-hitbox.json 派生的命中框比较。
     const localPoint = {
       x: cursor.x - bounds.x,
       y: cursor.y - bounds.y,
     };
-    const modelRect = createCenteredPetHitRect(PET_MODEL_HIT_WIDTH, PET_MODEL_HIT_HEIGHT, PET_MODEL_HIT_BOTTOM);
-    const inputDockRect = createCenteredPetHitRect(
-      PET_INPUT_DOCK_HIT_WIDTH,
-      PET_INPUT_DOCK_HIT_HEIGHT,
-      PET_INPUT_DOCK_HIT_BOTTOM,
-    );
-    const chatBubbleRect = createCenteredPetHitRect(
-      PET_CHAT_BUBBLE_HIT_WIDTH,
-      PET_CHAT_BUBBLE_HIT_HEIGHT,
-      PET_CHAT_BUBBLE_HIT_BOTTOM,
-    );
     return (
-      isPointInRect(localPoint, modelRect)
-      || (petInputDockVisible && isPointInRect(localPoint, inputDockRect))
-      || isPointInRect(localPoint, chatBubbleRect)
-      || (
-        petShortcutBarVisible
-        && isPointInRect(localPoint, {
-          x: PET_WINDOW_WIDTH - PET_SHORTCUT_BAR_HIT_RIGHT - PET_SHORTCUT_BAR_HIT_WIDTH,
-          y: PET_WINDOW_HEIGHT - PET_SHORTCUT_BAR_HIT_BOTTOM - PET_SHORTCUT_BAR_HIT_HEIGHT,
-          width: PET_SHORTCUT_BAR_HIT_WIDTH,
-          height: PET_SHORTCUT_BAR_HIT_HEIGHT,
-        })
-      )
+      isPointInRect(localPoint, PET_MODEL_HIT_RECT)
+      || (petInputDockVisible && isPointInRect(localPoint, PET_INPUT_DOCK_HIT_RECT))
+      || isPointInRect(localPoint, PET_CHAT_BUBBLE_HIT_RECT)
+      || (petShortcutBarVisible && isPointInRect(localPoint, PET_SHORTCUT_BAR_HIT_RECT))
     );
   }
 
@@ -492,7 +554,7 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     petShortcutBarVisible = false;
     startPetEntryCapture();
     const initialBounds = getInitialPetWindowBounds();
-    petWindow = new BrowserWindow({
+    petWindow = createAppWindow({
       x: initialBounds.x,
       y: initialBounds.y,
       width: PET_WINDOW_WIDTH,
@@ -513,16 +575,10 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
       alwaysOnTop: petAlwaysOnTop,
       show: false,
       webPreferences: {
-        preload: path.join(__dirname, "preload.cjs"),
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: true,
-        webSecurity: true,
         backgroundThrottling: false,
       },
     });
 
-    configureCommonWindow(petWindow);
     enforcePetWindowSize();
     petWindow.setAlwaysOnTop(petAlwaysOnTop, "floating");
     petWindow.once("ready-to-show", () => {
@@ -593,11 +649,11 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
   }
 
   function createControlWindow() {
-    if (controlWindow) {
+    if (controlWindow && !controlWindow.isDestroyed()) {
       return controlWindow;
     }
 
-    controlWindow = new BrowserWindow({
+    controlWindow = createAppWindow({
       width: 1200,
       height: 820,
       minWidth: 960,
@@ -605,16 +661,8 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
       title: "桌面记忆助手控制台",
       backgroundColor: "#f7f7f2",
       show: false,
-      webPreferences: {
-        preload: path.join(__dirname, "preload.cjs"),
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: true,
-        webSecurity: true,
-      },
     });
 
-    configureCommonWindow(controlWindow);
     controlWindow.once("ready-to-show", () => {
       controlWindow?.show();
     });
@@ -636,6 +684,8 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
       focusControlTarget(targetId);
     });
 
+    // 路由约定：hash 一律是裸模式名（#pet/#stage/#agent/#chat...，不带斜杠）。
+    // control 窗口按设计承载 stage 首页路由；窗口身份仍由 getWindowMode 返回 "control"。
     loadAppWindow(controlWindow, "stage");
     return controlWindow;
   }
@@ -647,23 +697,15 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
       return stageWindow;
     }
 
-    stageWindow = new BrowserWindow({
+    stageWindow = createAppWindow({
       width: 1100,
       height: 720,
       minWidth: 900,
       minHeight: 600,
       title: "桌面记忆助手主舞台",
       backgroundColor: "#f7f7f2",
-      webPreferences: {
-        preload: path.join(__dirname, "preload.cjs"),
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: true,
-        webSecurity: true,
-      },
     });
 
-    configureCommonWindow(stageWindow);
     const currentStageWindow = stageWindow;
     stageWindow.on("close", (event) => {
       if (!state.isQuitting) {
@@ -685,7 +727,7 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
         stageWindow = null;
       }
     });
-    loadAppWindow(stageWindow, "/stage");
+    loadAppWindow(stageWindow, "stage");
     return stageWindow;
   }
 
@@ -694,7 +736,7 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
       return agentWindow;
     }
 
-    agentWindow = new BrowserWindow({
+    agentWindow = createAppWindow({
       width: 980,
       height: 740,
       minWidth: 760,
@@ -703,16 +745,8 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
       alwaysOnTop: false,
       backgroundColor: "#f7f7f2",
       show: false,
-      webPreferences: {
-        preload: path.join(__dirname, "preload.cjs"),
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: true,
-        webSecurity: true,
-      },
     });
 
-    configureCommonWindow(agentWindow);
     agentWindow.on("close", (event) => {
       if (!state.isQuitting) {
         event.preventDefault();
@@ -722,7 +756,7 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     agentWindow.on("closed", () => {
       agentWindow = null;
     });
-    loadAppWindow(agentWindow, "/agent");
+    loadAppWindow(agentWindow, "agent");
     return agentWindow;
   }
 
@@ -768,11 +802,17 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
 
     if (featureWindow && !featureWindow.isDestroyed()) {
       featureWindow.setTitle(`桌面记忆助手 - ${getFeatureWindowTitle(normalizedMode)}`);
-      loadAppWindow(featureWindow, normalizedMode);
+      // 复用窗口时走 IPC 切路由（与 stage 一致），不再整页 reload 丢渲染端状态。
+      const reusedFeatureWindow = featureWindow;
+      sendWhenLoaded(reusedFeatureWindow, () => {
+        if (!reusedFeatureWindow.isDestroyed()) {
+          reusedFeatureWindow.webContents.send("agent-pet:show-feature-route", normalizedMode);
+        }
+      });
       return featureWindow;
     }
 
-    featureWindow = new BrowserWindow({
+    featureWindow = createAppWindow({
       width: 980,
       height: 740,
       minWidth: 760,
@@ -780,16 +820,8 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
       title: `桌面记忆助手 - ${getFeatureWindowTitle(normalizedMode)}`,
       backgroundColor: "#f7f7f2",
       show: false,
-      webPreferences: {
-        preload: path.join(__dirname, "preload.cjs"),
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: true,
-        webSecurity: true,
-      },
     });
 
-    configureCommonWindow(featureWindow);
     featureWindow.once("ready-to-show", () => {
       featureWindow?.show();
     });
@@ -832,15 +864,10 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     }
     window.show();
     window.focus();
-    const sendMode = () => {
+    sendWhenLoaded(window, () => {
       window.webContents.send("agent-pet:open-pet-input-mode", normalizedMode);
       setPetInputDockVisible(window.webContents, true);
-    };
-    if (window.webContents.isLoading()) {
-      window.webContents.once("did-finish-load", sendMode);
-      return;
-    }
-    sendMode();
+    });
   }
 
   function hideAgentWindow() {
@@ -870,14 +897,9 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
       window.restore();
     }
     const routeMode = ["stage", "agent", "chat", "memory", "growth", "world", "settings"].includes(mode) ? mode : "stage";
-    const showRoute = () => {
+    sendWhenLoaded(window, () => {
       window.webContents.send("agent-pet:show-stage-route", routeMode);
-    };
-    if (window.webContents.isLoading()) {
-      window.webContents.once("did-finish-load", showRoute);
-    } else {
-      showRoute();
-    }
+    });
     window.show();
     window.focus();
   }
@@ -977,7 +999,7 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     reschedulePetMouseHitTest();
     movePetWindowFromCursor();
     if (!petDragTimer) {
-      petDragTimer = setInterval(movePetWindowFromCursor, 16);
+      petDragTimer = setInterval(movePetWindowFromCursor, PET_DRAG_MOVE_INTERVAL_MS);
     }
     if (!petDragWatchdog) {
       petDragWatchdog = setTimeout(() => {

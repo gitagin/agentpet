@@ -435,4 +435,72 @@ describe("Electron API proxy allowlist", () => {
       }),
     );
   });
+
+  it("resolves the backend base URL per request when getBaseUrl is provided", async () => {
+    global.fetch = vi.fn(async () => createJsonResponse({ ok: true }));
+    let currentBaseUrl = "http://127.0.0.1:8765";
+    const proxy = createProxyManager({
+      baseUrl: "http://127.0.0.1:8765",
+      getBaseUrl: () => currentBaseUrl,
+      sessionToken: "test-session-token",
+    });
+
+    await proxy.proxyApiRequest("/api/health", { method: "GET", auth: false });
+    // 端口搜索切换后端端口后，后续请求应打到新端口，而不是构造时固化的旧端口。
+    currentBaseUrl = "http://127.0.0.1:8767";
+    await proxy.proxyApiRequest("/api/health", { method: "GET", auth: false });
+
+    expect(global.fetch.mock.calls[0][0].toString()).toBe("http://127.0.0.1:8765/api/health");
+    expect(global.fetch.mock.calls[1][0].toString()).toBe("http://127.0.0.1:8767/api/health");
+  });
+
+  it("aborts an SSE stream and forgets it when the sender window is destroyed", async () => {
+    const { EventEmitter } = require("node:events");
+    let capturedSignal = null;
+    global.fetch = vi.fn(async (_target, init) => {
+      capturedSignal = init.signal;
+      return {
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        body: {
+          getReader: () => ({
+            read: () =>
+              new Promise((_resolve, reject) => {
+                const abortError = new Error("aborted");
+                abortError.name = "AbortError";
+                init.signal.addEventListener("abort", () => reject(abortError), { once: true });
+              }),
+          }),
+        },
+      };
+    });
+    const proxy = createProxyManager({
+      baseUrl: "http://127.0.0.1:8765",
+      sessionToken: "test-session-token",
+    });
+    const sender = Object.assign(new EventEmitter(), {
+      isDestroyed: vi.fn(() => false),
+      send: vi.fn(),
+    });
+
+    const streamPromise = proxy.startSseStream(sender, "stream_12345678", "/api/chat/runs/run-1/events");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(global.fetch).toHaveBeenCalledOnce();
+
+    // 窗口销毁：流应被中止并从活动表移除，且不上报错误事件。
+    sender.emit("destroyed");
+    await streamPromise;
+
+    expect(capturedSignal?.aborted).toBe(true);
+    expect(sender.send).not.toHaveBeenCalledWith(
+      "agent-pet:sse-error",
+      "stream_12345678",
+      expect.anything(),
+    );
+    // 活动表已清理：同一 streamId 可再次启动而不是报"已存在"。
+    global.fetch = vi.fn(async () => ({ ok: false, status: 503, statusText: "unavailable", body: null, text: async () => "" }));
+    await proxy.startSseStream(sender, "stream_12345678", "/api/chat/runs/run-1/events");
+  });
 });

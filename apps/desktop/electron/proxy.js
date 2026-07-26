@@ -1,7 +1,15 @@
-function createProxyManager({ baseUrl, sessionToken }) {
+// 幂等 GET 在后端启动窗口内的重试参数：12 次 x 250ms ≈ 3 秒，
+// 与 sidecar 冷启动到可服务的常见耗时同数量级。
+const CONNECTION_RETRY_ATTEMPTS = 12;
+const CONNECTION_RETRY_DELAY_MS = 250;
+
+function createProxyManager({ baseUrl, getBaseUrl, sessionToken }) {
   const activeSseStreams = new Map();
-  const retryableMethods = new Set(["GET", "HEAD"]);
+  // 只有 GET 可安全重试；HEAD 从未被 normalizeApiRequestOptions 放行，不再假装支持。
+  const retryableMethods = new Set(["GET"]);
   const allowedProxyRoutes = createAllowedProxyRoutes();
+  // 端口搜索可能在运行期切换后端 baseUrl，因此每次请求时解析而不是构造时固化。
+  const resolveBaseUrl = () => (typeof getBaseUrl === "function" ? getBaseUrl() : baseUrl);
 
   function delay(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -38,7 +46,7 @@ function createProxyManager({ baseUrl, sessionToken }) {
       throw new Error("接口路径不能为空。");
     }
 
-    const base = new URL(baseUrl);
+    const base = new URL(resolveBaseUrl());
     const target = trimmed.startsWith("http://") || trimmed.startsWith("https://")
       ? new URL(trimmed)
       : new URL(trimmed, base);
@@ -205,7 +213,7 @@ function createProxyManager({ baseUrl, sessionToken }) {
     const target = resolveSidecarUrl(pathOrUrl);
     const init = normalizeApiRequestOptions(options);
     assertAllowedProxyRoute(init.method, target);
-    const attempts = retryableMethods.has(init.method) ? 12 : 1;
+    const attempts = retryableMethods.has(init.method) ? CONNECTION_RETRY_ATTEMPTS : 1;
     let lastError = null;
 
     for (let attempt = 0; attempt < attempts; attempt += 1) {
@@ -229,7 +237,7 @@ function createProxyManager({ baseUrl, sessionToken }) {
         }
         lastError = error;
         if (attempt < attempts - 1) {
-          await delay(250);
+          await delay(CONNECTION_RETRY_DELAY_MS);
         }
       }
     }
@@ -244,6 +252,22 @@ function createProxyManager({ baseUrl, sessionToken }) {
     sender.send(channel, streamId, payload);
   }
 
+  function attachSenderLifecycle(sender, streamId, controller) {
+    // 窗口销毁时中止对应 SSE 流，避免 activeSseStreams 里挂着死流、
+    // fetch 连接也一直吊着后端。
+    if (typeof sender.once !== "function") {
+      return () => {};
+    }
+    const onDestroyed = () => {
+      controller.abort();
+      activeSseStreams.delete(streamId);
+    };
+    sender.once("destroyed", onDestroyed);
+    return () => {
+      sender.removeListener?.("destroyed", onDestroyed);
+    };
+  }
+
   async function startSseStream(sender, streamId, pathOrUrl) {
     if (typeof streamId !== "string" || !/^[A-Za-z0-9_-]{8,80}$/.test(streamId)) {
       throw new Error("实时回复流 ID 无效。");
@@ -254,6 +278,7 @@ function createProxyManager({ baseUrl, sessionToken }) {
 
     const controller = new AbortController();
     activeSseStreams.set(streamId, { controller, sender });
+    const detachSenderLifecycle = attachSenderLifecycle(sender, streamId, controller);
 
     try {
       const target = resolveSidecarUrl(pathOrUrl);
@@ -299,6 +324,7 @@ function createProxyManager({ baseUrl, sessionToken }) {
       }
     } finally {
       activeSseStreams.delete(streamId);
+      detachSenderLifecycle();
     }
   }
 

@@ -1,4 +1,5 @@
 import { AlarmClockPlus, BookOpen, MessageSquareText, Settings, X } from "lucide-react";
+import { useEffect, useState } from "react";
 import type { AnimationEventHandler, CSSProperties, FormEvent, PointerEvent, PointerEventHandler, RefObject } from "react";
 import { PetChatOverlay } from "../chat/PetChatOverlay";
 import type { PetChatBubbleController } from "../chat/usePetChatBubble";
@@ -8,6 +9,25 @@ import type { PetStageView } from "./petStageState";
 import type { SpritePetDragDirection } from "./spritePetState";
 
 type PetShortcutMotion = "idle" | "opening" | "closing";
+
+// AGENT_PET_DEBUG_HITBOX=1 的对齐核验角标：实时显示当前显示器缩放
+// （devicePixelRatio）与视口尺寸，跨屏拖动或改缩放时自动刷新，
+// 供 100%/125%/150%/200% 四档命中框对齐人工验收用。
+function useDevicePixelRatio(enabled: boolean): number {
+  const [devicePixelRatio, setDevicePixelRatio] = useState(() => window.devicePixelRatio);
+
+  useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+    const media = window.matchMedia(`(resolution: ${devicePixelRatio}dppx)`);
+    const update = () => setDevicePixelRatio(window.devicePixelRatio);
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, [enabled, devicePixelRatio]);
+
+  return devicePixelRatio;
+}
 
 export type PetWindowProps = {
   shellRef: RefObject<HTMLElement>;
@@ -76,6 +96,7 @@ export function PetWindow({
 }: PetWindowProps) {
   const petShortcutsInteractive = petShortcutsVisible && petShortcutMotion !== "closing";
   const petShortcutsRendered = petShortcutsVisible || petShortcutMotion === "closing";
+  const debugDevicePixelRatio = useDevicePixelRatio(hitboxDebug);
 
   return (
     <main
@@ -92,6 +113,25 @@ export function PetWindow({
       onDragOver={(event) => event.preventDefault()}
       onDrop={(event) => event.preventDefault()}
     >
+      {hitboxDebug ? (
+        <div
+          style={{
+            position: "absolute",
+            top: 4,
+            left: 4,
+            zIndex: 40,
+            padding: "2px 6px",
+            borderRadius: 4,
+            background: "rgba(0, 0, 0, 0.72)",
+            color: "#9dff9d",
+            font: "10px/1.5 monospace",
+            pointerEvents: "none",
+            whiteSpace: "pre",
+          }}
+        >
+          {`dpr ${debugDevicePixelRatio}\n${window.innerWidth}x${window.innerHeight} css-px`}
+        </div>
+      ) : null}
       <SpritePetStage
         stage={petStage}
         canvasRef={petCanvasRef}

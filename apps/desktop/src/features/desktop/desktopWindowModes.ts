@@ -11,6 +11,16 @@ export function detectDesktopWindowMode(): DesktopWindowMode {
   return "stage";
 }
 
+export function isDesktopFeatureWindowMode(mode: unknown): mode is DesktopFeatureWindowMode {
+  return (
+    mode === "chat" ||
+    mode === "memory" ||
+    mode === "growth" ||
+    mode === "world" ||
+    mode === "settings"
+  );
+}
+
 export function isDesktopWindowMode(mode: unknown): mode is DesktopWindowMode {
   return (
     mode === "pet" ||

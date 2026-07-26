@@ -149,7 +149,9 @@ export function useConnection({ onNotice, onSettingsStatus }: UseConnectionOptio
     }
 
     callbacks.current.onNotice({
-      tone: sidecarStatus.state === "ready" ? "info" : "error",
+      // degraded（降级复用外部后端）沿用旧 ready+复用 提示的 info 语气：
+      // 有可用连接，只是令牌未校验，具体动作指引在消息正文里。
+      tone: sidecarStatus.state === "ready" || sidecarStatus.state === "degraded" ? "info" : "error",
       message: getSidecarActionMessage(sidecarStatus),
     });
   }, [sidecarStatus?.state, sidecarStatus?.error?.code, sidecarStatus?.error?.message]);
@@ -159,7 +161,7 @@ export function useConnection({ onNotice, onSettingsStatus }: UseConnectionOptio
       setHealth(sidecarStatus.health);
     }
 
-    if (sidecarStatus?.state !== "ready") {
+    if (sidecarStatus?.state !== "ready" && sidecarStatus?.state !== "degraded") {
       return;
     }
 

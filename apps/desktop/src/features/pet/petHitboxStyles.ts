@@ -1,6 +1,28 @@
 import type { CSSProperties } from "react";
 import petHitboxConfig from "../../../pet-hitbox.json";
 
+// pet-hitbox.json 的 layout.anchors 是主进程命中计算（electron/windows.js）与
+// 渲染端样式共同遵守的布局锚定声明。这里的 CSS 变量/样式按下面的锚点书写；
+// 若 json 改了锚点而 CSS 没跟上，这个断言会在模块加载时立刻炸出来，
+// 避免"主进程按新锚点算命中、渲染端还按旧位置画"的静默错位。
+const rendererImplementedAnchors: Record<string, { horizontal: string; vertical: string }> = {
+  model: { horizontal: "center", vertical: "bottom" },
+  inputDock: { horizontal: "center", vertical: "bottom" },
+  chatBubble: { horizontal: "center", vertical: "bottom" },
+  shortcutBar: { horizontal: "right", vertical: "bottom" },
+};
+
+for (const [name, expected] of Object.entries(rendererImplementedAnchors)) {
+  const anchor = petHitboxConfig.layout.anchors[name as keyof typeof petHitboxConfig.layout.anchors];
+  if (anchor?.horizontal !== expected.horizontal || anchor?.vertical !== expected.vertical) {
+    throw new Error(
+      `pet-hitbox.json layout.anchors.${name} 与渲染端样式实现不一致：` +
+        `渲染端按 ${expected.horizontal}/${expected.vertical} 定位。` +
+        "修改锚点需同步更新 petHitboxStyles.ts 与对应 CSS。",
+    );
+  }
+}
+
 const petShortcutButtonSize = 30;
 const petShortcutButtonGap = 6;
 const petShortcutButtonCount = 5;

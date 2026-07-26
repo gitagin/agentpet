@@ -6,8 +6,8 @@ export function formatSidecarStatus(
   sidecarStatus: DesktopSidecarStatus | null,
   health: HealthResponse | null,
 ): string {
-  if (sidecarStatus?.state === "ready" && sidecarStatus.error?.code === "PORT_IN_USE_EXISTING_BACKEND") {
-    return "本机服务已就绪（复用已有进程）";
+  if (sidecarStatus?.state === "degraded") {
+    return "本机服务降级运行（复用外部进程，未校验令牌）";
   }
   if (sidecarStatus?.state === "error") {
     return sidecarStatus.error?.code ? `本机服务异常：${formatSidecarErrorCode(sidecarStatus.error.code)}` : "本机服务异常";
@@ -22,19 +22,21 @@ export function getSidecarActionMessage(sidecarStatus: DesktopSidecarStatus): st
   const fallback = sidecarStatus.error?.message || formatSidecarStatus(sidecarStatus, sidecarStatus.health);
   switch (sidecarStatus.error?.code) {
     case "PORT_IN_USE_EXISTING_BACKEND":
-      return "8765 端口已有本机服务响应，桌面端已先复用它。若聊天、资料库或任务请求返回 401，请关闭占用 8765 的进程后重启，或用与桌面端一致的本地会话令牌启动服务。";
+      return `端口 ${sidecarStatus.port} 已有本机服务响应，桌面端以降级状态复用它（无法校验会话令牌）。若聊天、资料库或任务请求返回 401，请关闭占用进程后重启，或用与桌面端一致的本地会话令牌启动服务。`;
     case "PORT_IN_USE":
-      return "8765 端口被其他程序占用且不是可用本机服务。请关闭占用进程后重启 npm run electron:dev。";
+      return "约定端口与备选端口都被占用，且占用者不是可用本机服务。请释放约定端口附近的端口后重启桌面端。";
     case "BACKEND_NOT_FOUND":
       return "未找到本机服务目录。请确认 apps/backend/app/main.py 存在，或设置 AGENT_PET_BACKEND_DIR 后重启。";
     case "READINESS_FAILED":
-      return "本机服务启动后没有通过健康检查。请查看终端日志，优先检查 Python 依赖、数据库配置和端口 8765。";
+      return "本机服务启动后没有通过健康检查。请查看终端日志，优先检查 Python 依赖、数据库配置和端口占用。";
+    case "READINESS_TIMEOUT":
+      return "本机服务已启动，但在约定时间内未通过健康检查；进程仍在运行、桌面端会继续等待。冷启动或首次建库可能较慢，可稍候或重启应用重试，也可用 AGENT_PET_READY_TIMEOUT_MS 调整提醒时长。";
     case "SPAWN_FAILED":
       return "无法启动本机服务。请确认 Python 和 uvicorn 可用，或设置 AGENT_PET_PYTHON 指向可用解释器。";
     case "PROCESS_EXITED":
       return "本机服务已退出。请查看终端日志中的 Python/FastAPI 报错后再重启桌面端。";
     case "PORT_CHECK_FAILED":
-      return "桌面端无法检查 8765 端口。请确认本机网络栈正常后重启。";
+      return "桌面端无法检查本机服务端口。请确认本机网络栈正常后重启。";
     default:
       return fallback;
   }
@@ -57,6 +59,7 @@ export function formatSidecarState(state: DesktopSidecarStatus["state"]): string
     "checking-port": "正在检查端口",
     starting: "正在启动",
     ready: "已就绪",
+    degraded: "降级运行（复用外部进程）",
     error: "异常",
     stopping: "正在停止",
   };
@@ -67,9 +70,10 @@ export function formatSidecarErrorCode(code: string): string {
   const labels: Record<string, string> = {
     PORT_CHECK_FAILED: "端口检查失败",
     PORT_IN_USE: "端口被占用",
-    PORT_IN_USE_EXISTING_BACKEND: "复用已有服务",
+    PORT_IN_USE_EXISTING_BACKEND: "降级复用已有服务",
     BACKEND_NOT_FOUND: "未找到服务目录",
     READINESS_FAILED: "健康检查未通过",
+    READINESS_TIMEOUT: "就绪等待超时（进程仍在运行）",
     SPAWN_FAILED: "启动服务失败",
     PROCESS_EXITED: "服务进程退出",
   };

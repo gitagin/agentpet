@@ -159,6 +159,45 @@ describe("vault reveal IPC helpers", () => {
   });
 });
 
+describe("sidecar config IPC", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    delete require.cache[ipcPath];
+    Module._load = originalModuleLoad;
+  });
+
+  it("returns the live sidecar base URL so port fallback reaches the renderer", () => {
+    const electronMock = createElectronMock();
+    const { registerIpcHandlers } = loadIpcWithMocks(electronMock);
+    let currentBaseUrl = "http://127.0.0.1:8765";
+    registerIpcHandlers({
+      baseUrl: "http://127.0.0.1:8765",
+      getBaseUrl: () => currentBaseUrl,
+      rendererUiState: new Map(),
+      persistRendererUiState: vi.fn(),
+      sidecar: {},
+      proxy: {},
+      windows: {},
+    });
+
+    const call = electronMock.ipcMain.on.mock.calls.find(
+      ([channel]) => channel === "agent-pet:get-sidecar-config",
+    );
+    expect(call).toBeTruthy();
+    const handler = call[1];
+
+    const firstEvent = {};
+    handler(firstEvent);
+    expect(firstEvent.returnValue).toEqual({ baseUrl: "http://127.0.0.1:8765" });
+
+    // 端口搜索切换后端后，同步查询应立刻反映新地址。
+    currentBaseUrl = "http://127.0.0.1:8767";
+    const secondEvent = {};
+    handler(secondEvent);
+    expect(secondEvent.returnValue).toEqual({ baseUrl: "http://127.0.0.1:8767" });
+  });
+});
+
 describe("renderer UI state IPC", () => {
   afterEach(() => {
     vi.restoreAllMocks();

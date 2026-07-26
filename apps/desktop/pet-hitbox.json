@@ -1,4 +1,14 @@
 {
+  "layout": {
+    "coordinateSpace": "dip-css-px",
+    "note": "All sizes are DIP (= renderer CSS px at zoom 1). anchors is the single source of truth for how each hitbox is positioned inside the pet window; electron/windows.js computes hit rects from it and src/features/pet/petHitboxStyles.ts asserts the renderer CSS follows it. Change an anchor here only together with both consumers.",
+    "anchors": {
+      "model": { "horizontal": "center", "vertical": "bottom" },
+      "inputDock": { "horizontal": "center", "vertical": "bottom" },
+      "chatBubble": { "horizontal": "center", "vertical": "bottom" },
+      "shortcutBar": { "horizontal": "right", "vertical": "bottom" }
+    }
+  },
   "window": {
     "width": 260,
     "height": 240,

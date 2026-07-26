@@ -1,3 +1,5 @@
+import secrets
+
 from fastapi import Request, status
 from fastapi.security.utils import get_authorization_scheme_param
 
@@ -16,7 +18,10 @@ async def require_bearer_token(request: Request) -> None:
             status_code=status.HTTP_401_UNAUTHORIZED,
         )
 
-    if not settings.session_token or token != settings.session_token:
+    # 常量时间比较，避免逐字节短路比较泄露令牌前缀匹配长度（时序侧信道）。
+    if not settings.session_token or not secrets.compare_digest(
+        token.encode("utf-8"), settings.session_token.encode("utf-8")
+    ):
         raise AppError(
             code="invalid_authorization",
             message="会话令牌无效",

@@ -7,7 +7,7 @@ type ConnectionStatusStripProps = {
 };
 
 export function ConnectionStatusStrip({ sidecarStatus, health }: ConnectionStatusStripProps) {
-  const online = sidecarStatus?.state === "ready" || health?.status === "ok";
+  const online = sidecarStatus?.state === "ready" || sidecarStatus?.state === "degraded" || health?.status === "ok";
 
   return (
     <div className="status-strip" aria-live="polite">

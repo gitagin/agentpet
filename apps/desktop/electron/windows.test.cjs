@@ -24,6 +24,7 @@ function createElectronMock() {
     window.webContents.once = vi.fn();
     window.loadURL = vi.fn();
     window.loadFile = vi.fn();
+    window.setTitle = vi.fn();
     window.isDestroyed = vi.fn(() => window.destroyed);
     window.isMinimized = vi.fn(() => window.minimized);
     window.setMinimumSize = vi.fn();
@@ -182,6 +183,81 @@ describe("createWindowManager stage window lifecycle", () => {
     const controlWindow = manager.createControlWindow();
 
     expect(controlWindow.loadURL).toHaveBeenCalledWith("http://127.0.0.1:5173#stage");
+  });
+
+  it("recreates the control window when a stale destroyed reference is left behind", () => {
+    const electron = createElectronMock();
+    const { createWindowManager } = loadWindowsWithMocks({ electron });
+    const state = { isQuitting: false };
+    const manager = createManager(createWindowManager, state);
+
+    const controlWindow = manager.createControlWindow();
+    // 模拟窗口已被销毁但 closed 回调尚未清空引用的窗口期。
+    controlWindow.destroyed = true;
+
+    const recreatedWindow = manager.createControlWindow();
+
+    expect(recreatedWindow).not.toBe(controlWindow);
+    expect(electron.BrowserWindow).toHaveBeenCalledTimes(2);
+  });
+
+  it("uses bare hash route names for the stage and agent windows", () => {
+    const electron = createElectronMock();
+    const { createWindowManager } = loadWindowsWithMocks({ electron });
+    const state = { isQuitting: false };
+    const manager = createManager(createWindowManager, state);
+
+    const stageWindow = manager.createStageWindow();
+    const agentWindow = manager.createAgentWindow();
+
+    expect(stageWindow.loadURL).toHaveBeenCalledWith("http://127.0.0.1:5173#stage");
+    expect(agentWindow.loadURL).toHaveBeenCalledWith("http://127.0.0.1:5173#agent");
+  });
+
+  it("switches a reused feature window over IPC instead of reloading it", () => {
+    const electron = createElectronMock();
+    const { createWindowManager } = loadWindowsWithMocks({ electron });
+    const state = { isQuitting: false };
+    const manager = createManager(createWindowManager, state);
+
+    const featureWindow = manager.createFeatureWindow("chat");
+    expect(featureWindow.loadURL).toHaveBeenCalledWith("http://127.0.0.1:5173#chat");
+    featureWindow.loadURL.mockClear();
+    featureWindow.loadFile.mockClear();
+
+    const reusedWindow = manager.createFeatureWindow("settings");
+
+    expect(reusedWindow).toBe(featureWindow);
+    expect(electron.BrowserWindow).toHaveBeenCalledOnce();
+    expect(featureWindow.loadURL).not.toHaveBeenCalled();
+    expect(featureWindow.loadFile).not.toHaveBeenCalled();
+    expect(featureWindow.setTitle).toHaveBeenCalledWith("桌面记忆助手 - 配置");
+    expect(featureWindow.webContents.send).toHaveBeenCalledWith("agent-pet:show-feature-route", "settings");
+    expect(manager.getFeatureWindowMode(featureWindow.webContents)).toBe("settings");
+  });
+
+  it("blocks cross-origin navigation with a URL origin comparison", () => {
+    const electron = createElectronMock();
+    const { createWindowManager } = loadWindowsWithMocks({ electron });
+    const state = { isQuitting: false };
+    const manager = createManager(createWindowManager, state);
+
+    const controlWindow = manager.createControlWindow();
+
+    const sameOriginEvent = { preventDefault: vi.fn() };
+    controlWindow.webContents.emit("will-navigate", sameOriginEvent, "http://127.0.0.1:5173/#agent");
+    expect(sameOriginEvent.preventDefault).not.toHaveBeenCalled();
+
+    // startsWith 时代的绕过样例：前缀相同但 origin 不同，必须拦截。
+    const prefixBypassEvent = { preventDefault: vi.fn() };
+    controlWindow.webContents.emit("will-navigate", prefixBypassEvent, "http://127.0.0.1:5173.evil.example/");
+    expect(prefixBypassEvent.preventDefault).toHaveBeenCalledOnce();
+    expect(electron.shell.openExternal).toHaveBeenCalledWith("http://127.0.0.1:5173.evil.example/");
+
+    const externalEvent = { preventDefault: vi.fn() };
+    controlWindow.webContents.emit("will-navigate", externalEvent, "https://example.com/");
+    expect(externalEvent.preventDefault).toHaveBeenCalledOnce();
+    expect(electron.shell.openExternal).toHaveBeenCalledWith("https://example.com/");
   });
 
   it("destroys the pet window before showing the stage window", () => {

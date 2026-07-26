@@ -90,6 +90,18 @@ contextBridge.exposeInMainWorld("agentDesktop", {
       ipcRenderer.removeListener("agent-pet:show-stage-route", listener);
     };
   },
+  onFeatureRouteRequested: (callback) => {
+    const allowedModes = new Set(["chat", "memory", "growth", "world", "settings"]);
+    const listener = (_event, mode) => {
+      if (typeof mode === "string" && allowedModes.has(mode)) {
+        callback(mode);
+      }
+    };
+    ipcRenderer.on("agent-pet:show-feature-route", listener);
+    return () => {
+      ipcRenderer.removeListener("agent-pet:show-feature-route", listener);
+    };
+  },
   selectKnowledgeBaseFolder: () => ipcRenderer.invoke("agent-pet:select-knowledge-base-folder"),
   onSidecarStatusChanged: (callback) => {
     const listener = (_event, status) => callback(status);
