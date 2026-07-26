@@ -140,7 +140,7 @@ class SQLiteCheckpointStore:
         now = _timestamp()
         expiry = _timestamp(expires_at)
         try:
-            with self.database.connect() as conn:
+            with self.database.session() as conn:
                 conn.execute(
                     """
                     INSERT INTO agent_checkpoints (
@@ -171,7 +171,7 @@ class SQLiteCheckpointStore:
         return self.get(checkpoint_id)
 
     def get(self, checkpoint_id: str) -> CheckpointRecord:
-        with self.database.connect() as conn:
+        with self.database.session() as conn:
             row = conn.execute(
                 "SELECT * FROM agent_checkpoints WHERE checkpoint_id = ?",
                 (checkpoint_id,),
@@ -187,7 +187,7 @@ class SQLiteCheckpointStore:
             query += " AND thread_id = ?"
             params = (thread_id,)
         query += " ORDER BY created_at DESC"
-        with self.database.connect() as conn:
+        with self.database.session() as conn:
             rows = conn.execute(query, params).fetchall()
         return [self._map_checkpoint(row) for row in rows]
 
@@ -201,7 +201,7 @@ class SQLiteCheckpointStore:
         now: datetime | None = None,
     ) -> DecisionRecord:
         decided_at = _timestamp(now)
-        with self.database.connect() as conn:
+        with self.database.session() as conn:
             conn.execute("BEGIN IMMEDIATE")
             existing = conn.execute(
                 "SELECT * FROM agent_checkpoint_decisions WHERE checkpoint_id = ?",
@@ -249,7 +249,7 @@ class SQLiteCheckpointStore:
 
     def expire_due(self, *, now: datetime | None = None) -> int:
         timestamp = _timestamp(now)
-        with self.database.connect() as conn:
+        with self.database.session() as conn:
             conn.execute("BEGIN IMMEDIATE")
             rows = conn.execute(
                 "SELECT checkpoint_id, expires_at FROM agent_checkpoints "
@@ -263,7 +263,7 @@ class SQLiteCheckpointStore:
 
     def expire_checkpoint(self, checkpoint_id: str, *, now: datetime | None = None) -> None:
         timestamp = _timestamp(now)
-        with self.database.connect() as conn:
+        with self.database.session() as conn:
             conn.execute("BEGIN IMMEDIATE")
             row = conn.execute(
                 "SELECT status FROM agent_checkpoints WHERE checkpoint_id = ?",
@@ -279,7 +279,7 @@ class SQLiteCheckpointStore:
             conn.commit()
 
     def delete_checkpoint(self, checkpoint_id: str) -> None:
-        with self.database.connect() as conn:
+        with self.database.session() as conn:
             cursor = conn.execute(
                 "DELETE FROM agent_checkpoints WHERE checkpoint_id = ?",
                 (checkpoint_id,),
@@ -294,7 +294,7 @@ class SQLiteCheckpointStore:
         *,
         terminal_receipt_ref: str | None = None,
     ) -> None:
-        with self.database.connect() as conn:
+        with self.database.session() as conn:
             cursor = conn.execute(
                 "UPDATE agent_checkpoints SET status = ?, terminal_receipt_ref = ?, "
                 "updated_at = ? WHERE checkpoint_id = ?",

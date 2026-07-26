@@ -2,8 +2,27 @@ from __future__ import annotations
 
 import re
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Iterator
+
+# SQLite busy timeout: with WAL enabled, writers are exclusive. The stdlib
+# default of 5s is too tight when background jobs and streaming writes
+# overlap; 30s keeps "database is locked" errors out of normal operation.
+CONNECT_TIMEOUT_SECONDS = 30.0
+
+
+def configure_connection(conn: sqlite3.Connection) -> sqlite3.Connection:
+    """Apply the project-wide per-connection PRAGMA set.
+
+    SQLite's foreign_keys flag is per-connection (default OFF), so every
+    code path that opens its own connection MUST run through here —
+    otherwise the same database gets two different integrity semantics.
+    """
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA journal_mode = WAL")
+    return conn
 
 
 class Database:
@@ -18,12 +37,26 @@ class Database:
         return self._path
 
     def connect(self) -> sqlite3.Connection:
+        """Open a configured connection.
+
+        The caller owns the connection lifetime and must close it.
+        Prefer session() for scoped use — sqlite3's own context manager
+        only commits/rolls back and never closes, which historically
+        leaked one file descriptor per call site.
+        """
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(self._path)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA foreign_keys = ON")
-        conn.execute("PRAGMA journal_mode = WAL")
-        return conn
+        conn = sqlite3.connect(self._path, timeout=CONNECT_TIMEOUT_SECONDS)
+        return configure_connection(conn)
+
+    @contextmanager
+    def session(self) -> Iterator[sqlite3.Connection]:
+        """Scoped connection: commit on success, rollback on error, always close."""
+        conn = self.connect()
+        try:
+            with conn:
+                yield conn
+        finally:
+            conn.close()
 
 
 class MigrationRunner:
@@ -37,9 +70,12 @@ class MigrationRunner:
         self.database = database
         self.migrations_dir = Path(migrations_dir) if migrations_dir else self._default_dir()
 
+    _DESTRUCTIVE_STATEMENT_RE = re.compile(r"\b(DROP\s+(TABLE|COLUMN|INDEX)|DELETE\s+FROM)\b", re.IGNORECASE)
+
     def apply(self) -> list[str]:
         applied: list[str] = []
-        with self.database.connect() as conn:
+        destructive_applied = False
+        with self.database.session() as conn:
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -69,9 +105,21 @@ class MigrationRunner:
                         (version,),
                     )
                 applied.append(version)
-            if applied:
+                if self._DESTRUCTIVE_STATEMENT_RE.search(script):
+                    destructive_applied = True
+            # Previously EVERY new migration triggered a full-database VACUUM
+            # at startup. The secure-delete scrub only matters when a
+            # migration actually removed data, so purge only for destructive
+            # scripts; purge_deleted_content() stays available as an explicit
+            # maintenance entry point.
+            if destructive_applied:
                 self._purge_deleted_content(conn)
         return applied
+
+    def purge_deleted_content(self) -> None:
+        """Explicit maintenance: securely scrub freed pages (checkpoint + VACUUM)."""
+        with self.database.session() as conn:
+            self._purge_deleted_content(conn)
 
     def _purge_deleted_content(self, conn: sqlite3.Connection) -> None:
         conn.commit()

@@ -15,7 +15,7 @@ async def health(request: Request) -> HealthResponse:
     settings = get_settings()
     database_status = "error"
     try:
-        with database(request).connect() as conn:
+        with database(request).session() as conn:
             conn.execute("SELECT 1").fetchone()
         database_status = "ok"
     except Exception as exc:

@@ -278,7 +278,7 @@ class _DeterministicVectorResultOrder:
         self._embeddings = embeddings
         self._timed_client = timed_client
         self._document_vectors: dict[str, list[float]] = {}
-        with database.connect() as conn:
+        with database.session() as conn:
             rows = conn.execute(
                 """
                 SELECT
@@ -351,7 +351,7 @@ class _DeterministicVectorResultOrder:
                 )
                 if result.content_hash:
                     self._document_vectors[result.content_hash] = document_vector
-            score = sum(left * right for left, right in zip(query_vector, document_vector))
+            score = sum(left * right for left, right in zip(query_vector, document_vector, strict=True))
             rescored.append(
                 (
                     replace(
@@ -1033,7 +1033,7 @@ def _build_local_vector_generation(
     )
     sync_results: dict[str, dict[str, Any]] = {}
     for vault_id in vault_ids:
-        with database.connect() as conn:
+        with database.session() as conn:
             sync = vector_index.reconcile(conn=conn, vault_id=vault_id, local_privacy=False)
         if sync.status not in {"success", "unchanged"} or not sync.generation:
             raise EvaluationContractError(
@@ -1072,7 +1072,7 @@ def _feature_hash_vector(text: str, *, dimensions: int) -> list[float]:
 
 
 def _logical_snapshot_hash(database: Database) -> str:
-    with database.connect() as conn:
+    with database.session() as conn:
         note_rows = conn.execute(
             """
             SELECT vault_id, relative_path, chunk_index, content_hash
@@ -1425,7 +1425,7 @@ def _map_indexed_chunks(
     db_to_logical = {db_id: logical for logical, db_id in logical_vault_ids.items()}
     indexed: dict[str, IndexedChunk] = {}
     matched_stable_ids: set[str] = set()
-    with database.connect() as conn:
+    with database.session() as conn:
         rows = conn.execute(
             """
             SELECT id, vault_id, relative_path, chunk_index, content_hash

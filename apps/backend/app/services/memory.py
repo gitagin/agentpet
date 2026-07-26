@@ -277,7 +277,7 @@ class MemoryService:
     def create_proposal(
         self,
         *,
-        type: MemoryProposalType,
+        type: MemoryProposalType,  # noqa: A002 - mirrors the serialized MemoryProposal.type field
         content: str,
         target_path: str,
         source_message_id: str | None = None,

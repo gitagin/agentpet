@@ -1,17 +1,13 @@
 from .common import *
 from .common import _CachedIngestPreview, _INGEST_PREVIEW_CACHE, _PREVIEW_TOKEN_TTL_SECONDS, _StoredIngestRun
 from .mapping import _map_ingest_review, _map_plan
-from .review import _complete_model, _deterministic_review_response, _parse_model_review, _review_system_prompt, _review_user_message
-from .utility import _json_list, _json_object, _preview_text
+from .utility import _json_list
 
-from .import_handler import _import_preview_request
-from .markdown import _ingest_log_details
-from .planning import _build_ingest_page_plans
 
 class WikiIngestStorageMixin:
 
     def _existing_source_id(self, source_hash: str) -> str | None:
-        with self.database.connect() as conn:
+        with self.database.session() as conn:
             row = conn.execute("SELECT id FROM wiki_sources WHERE source_hash = ?", (source_hash,)).fetchone()
         return str(row["id"]) if row is not None else None
 
@@ -42,7 +38,7 @@ class WikiIngestStorageMixin:
                 _INGEST_PREVIEW_CACHE.pop(token, None)
 
     def _load_ingest_run(self, run_id: str) -> _StoredIngestRun:
-        with self.database.connect() as conn:
+        with self.database.session() as conn:
             run = conn.execute(
                 """
                 SELECT r.id, r.source_id, s.title, s.source_type, s.source_uri, s.raw_content, s.content_preview
@@ -86,7 +82,7 @@ class WikiIngestStorageMixin:
         else:
             reviewer_clause = "AND reviewer_agent_id = ?"
             params = (run_id, reviewer_agent_id.value)
-        with self.database.connect() as conn:
+        with self.database.session() as conn:
             row = conn.execute(
                 f"""
                 SELECT *
@@ -103,7 +99,7 @@ class WikiIngestStorageMixin:
     def _insert_review(self, response: WikiIngestReviewResponse) -> WikiIngestReviewResponse:
         now = utc_now_iso()
         review_id = response.review_id or new_id()
-        with self.database.connect() as conn:
+        with self.database.session() as conn:
             conn.execute(
                 """
                 INSERT INTO wiki_ingest_reviews(
@@ -131,7 +127,7 @@ class WikiIngestStorageMixin:
         return _map_ingest_review(row)
 
     def _source_id_for_run(self, run_id: str) -> str | None:
-        with self.database.connect() as conn:
+        with self.database.session() as conn:
             row = conn.execute("SELECT source_id FROM wiki_workflow_runs WHERE id = ?", (run_id,)).fetchone()
         return str(row["source_id"]) if row is not None and row["source_id"] is not None else None
 
@@ -157,7 +153,7 @@ class WikiIngestStorageMixin:
         index_job_id: str | None,
         error: str | None,
     ) -> None:
-        with self.database.connect() as conn:
+        with self.database.session() as conn:
             conn.execute(
                 """
                 UPDATE wiki_workflow_page_updates

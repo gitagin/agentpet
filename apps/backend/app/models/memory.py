@@ -7,7 +7,7 @@ from .event_payloads import AgentActionDecisionFields, AgentMemoryProposalFields
 
 
 class MemorySearchRequest(BaseModel):
-    query: str = Field(min_length=1); top_k: int = Field(default=8, ge=1, le=20); mode: Literal["fts", "vector", "hybrid"] = "hybrid"; source_scope: Literal["all", "personal_memory", "diary_objects", "daily_chat", "knowledge_base"] = "all"
+    query: str = Field(min_length=1); top_k: int = Field(default=8, ge=1, le=20); mode: Literal["fts", "vector", "hybrid"] = "fts"; source_scope: Literal["all", "personal_memory", "diary_objects", "daily_chat", "knowledge_base"] = "all"
 
 
 class MemoryRecallPermissions(BaseModel):
@@ -148,7 +148,7 @@ class MemoryGraphFactResponse(BaseModel):
 
 
 class MemoryGraphExportItem(BaseModel):
-    fact_id: str; category: str; subject: str; predicate: str; object: str; status: str; lifecycle_status: str | None = None; confidence: float; source_type: str; support_count: int = 1; conflicts_with: str | None = None; superseded_by: str | None = None; memory_type: str | None = None; entity_type: str | None = None; occurred_at: str | None = None; expires_at: str | None = None; metadata: dict[str, object] = Field(default_factory=dict); importance: float = 0.5; created_at: str; updated_at: str
+    fact_id: str; category: str; subject: str; predicate: str; object: str; status: str; lifecycle_status: str | None = None; confidence: float; source_type: str; support_count: int = 1; conflicts_with: str | None = None; superseded_by: str | None = None; memory_type: str | None = None; entity_type: str | None = None; occurred_at: str | None = None; expires_at: str | None = None; metadata: dict[str, object] = Field(default_factory=dict); importance: float = 0.5; created_at: str; updated_at: str  # noqa: A003 - `object` is the graph-triple field name (API contract); annotation-only names don't shadow the builtin at runtime
 
 
 class MemoryGraphExportPreviewResponse(BaseModel):

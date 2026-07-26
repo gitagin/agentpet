@@ -8,7 +8,6 @@ from app.models.enums import AgentIntent
 from ..events_helpers import _agent_state
 from ..runtime_helpers import _strip_search_command
 from ..state import AgentState, SemanticAnalysisResult
-from ..tools import AgentToolResult
 from ..memory_router import MemoryRoute
 from ..semantic import _fallback_semantic_analysis
 from .compression import filter_search_response

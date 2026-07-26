@@ -8,15 +8,6 @@ from ..state import AgentState, SemanticAnalysisResult
 
 ROLE_PROMPT_VERSION = "agent-role-prompts.v1"
 
-_ROLE_PROMPT_IDS: dict[IndependentAgentRoleId, str] = {
-    IndependentAgentRoleId.RETRIEVAL: "vault-retrieval.v1",
-    IndependentAgentRoleId.MEMORY: "structured-memory.v1",
-    IndependentAgentRoleId.ANALYST_PLANNER: "analyst-planner.v1",
-    IndependentAgentRoleId.REVIEWER: "reviewer.v1",
-    IndependentAgentRoleId.ACTION_PROPOSAL: "action-proposal.v1",
-    IndependentAgentRoleId.VERIFIER: "verifier.v1",
-    IndependentAgentRoleId.SYNTHESIZER: "synthesizer.v1",
-}
 
 _ROLE_SYSTEM_PROMPTS: dict[IndependentAgentRoleId, str] = {
     IndependentAgentRoleId.RETRIEVAL: (
@@ -51,9 +42,6 @@ _ROLE_SYSTEM_PROMPTS: dict[IndependentAgentRoleId, str] = {
     ),
 }
 
-
-def role_prompt_id(role_id: IndependentAgentRoleId | str) -> str:
-    return _ROLE_PROMPT_IDS[IndependentAgentRoleId(role_id)]
 
 
 def role_system_prompt(role_id: IndependentAgentRoleId | str) -> str:

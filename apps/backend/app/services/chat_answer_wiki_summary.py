@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from pathlib import Path
 
 from app.models.api import WikiPageResponse, WikiPageWriteRequest
 from app.services.agent_actions import markdown_snapshot
@@ -237,7 +236,7 @@ def _summary_markdown(
             "### 经典案例",
             "",
             f"- 用户提出：{question}",
-            f"- 桌宠回答后，把本轮交互先归档到日记，再提炼为这个 Wiki 知识页。",
+            "- 桌宠回答后，把本轮交互先归档到日记，再提炼为这个 Wiki 知识页。",
             "",
             "### 实践方法",
             "",

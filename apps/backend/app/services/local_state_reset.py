@@ -115,7 +115,7 @@ class LocalStateResetService:
 
     def _clear_sqlite_tables(self, tables: tuple[str, ...]) -> dict[str, int]:
         cleared: dict[str, int] = {}
-        with self.database.connect() as conn:
+        with self.database.session() as conn:
             existing = self._existing_tables(conn)
             with conn:
                 conn.execute("PRAGMA secure_delete = ON")

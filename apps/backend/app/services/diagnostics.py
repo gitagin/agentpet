@@ -45,7 +45,7 @@ class DiagnosticsExporter:
         self.settings = settings
 
     def export(self, active_vault_id: str | None = None) -> DiagnosticsExportResponse:
-        with self.database.connect() as conn:
+        with self.database.session() as conn:
             database_status = self._database_status(conn)
             vault_status = self._vault_status(conn, active_vault_id)
             recent_index_jobs = self._recent_index_jobs(conn)

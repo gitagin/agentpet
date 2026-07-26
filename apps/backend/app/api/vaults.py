@@ -70,7 +70,7 @@ async def get_vault_status(request: Request) -> VaultStatusResponse:
         if exc.code == "vault_not_configured":
             return VaultStatusResponse(configured=False)
         raise
-    with database(request).connect() as conn:
+    with database(request).session() as conn:
         vault = VaultRepository(conn).get(vault_id)
         summary = _read_vault_summary(conn, vault_id)
     root_path = str(vault["root_path"])
@@ -137,7 +137,7 @@ async def init_vault(bind_request: VaultBindRequest, request: Request) -> VaultB
         target_path=str(root),
         reason=audit_reason(request, vault_id=vault_id),
     )
-    with database(request).connect() as conn:
+    with database(request).session() as conn:
         vault = VaultRepository(conn).get(vault_id)
     return VaultBindResponse(
         vault_id=vault_id,

@@ -51,7 +51,7 @@ async def export_diagnostics(
 
 @router.get("/negotiation-stats", response_model=NegotiationStatsResponse)
 async def negotiation_stats(request: Request) -> NegotiationStatsResponse:
-    with database(request).connect() as conn:
+    with database(request).session() as conn:
         rows = conn.execute(
             """
             SELECT negotiation_rounds, total_latency_ms, metadata_json

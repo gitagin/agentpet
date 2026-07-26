@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
 from app.models.api import MemorySearchResult
 from app.models.enums import AgentIntent, AgentRunStatus
@@ -11,17 +11,9 @@ from app.services.prompt_context_types import PromptRecentTurn
 from .immediate_understanding import ImmediateUnderstanding
 from .memory_router import MemoryRoute
 from .contracts import (
-    AgentResultEnvelope,
     ActionProposal,
-    BranchExecutionRecord,
-    BudgetUsage,
-    DraftClaim,
-    EvidenceEnvelope,
-    ExecutionPlan,
-    GlobalExecutionBudget,
     ExecutionReceipt,
     PolicyDecision,
-    ReviewDecision,
     VerificationResult,
 )
 
@@ -147,101 +139,3 @@ class NegotiationState(AgentState):
     fallback_triggered: bool = False
 
 
-class MultiAgentGraphState(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    schema_version: Literal["multi-agent-graph-state.v1"] = "multi-agent-graph-state.v1"
-    run_id: str = Field(min_length=1, max_length=128)
-    source_message_id: str = Field(min_length=1, max_length=128)
-    registry_version: Literal["agent-role-registry.v1"] = "agent-role-registry.v1"
-    route: Literal["full_read", "action", "clarify", "refuse"] = "full_read"
-    input_ref: str = Field(min_length=1, max_length=256)
-    execution_plan: ExecutionPlan | None = None
-    active_branch_id: str | None = Field(default=None, max_length=128)
-    completed_work_ids: frozenset[str] = frozenset()
-    skipped_duplicate_work_ids: frozenset[str] = frozenset()
-    executed_call_keys: frozenset[str] = frozenset()
-    results: tuple[AgentResultEnvelope, ...] = ()
-    branch_records: tuple[BranchExecutionRecord, ...] = ()
-    merged_evidence: tuple[EvidenceEnvelope, ...] = ()
-    draft_claims: tuple[DraftClaim, ...] = ()
-    review_decision: ReviewDecision | None = None
-    review_attempts: int = Field(default=0, ge=0, le=2)
-    review_status_codes: tuple[
-        Literal[
-            "evidence_supported",
-            "evidence_insufficient",
-            "evidence_contradictory",
-            "evidence_unsafe",
-        ],
-        ...,
-    ] = ()
-    approved_claims: tuple[DraftClaim, ...] = ()
-    approved_evidence: tuple[EvidenceEnvelope, ...] = ()
-    review_repair_role_id: Literal["vault_retrieval", "structured_memory"] | None = None
-    review_repair_input_ref: str | None = Field(default=None, max_length=256)
-    clarification_required: bool = False
-    abstention_required: bool = False
-    parallel_dispatch_used: bool = False
-    budget_limit: GlobalExecutionBudget = Field(default_factory=GlobalExecutionBudget)
-    budget_usage: BudgetUsage = Field(default_factory=BudgetUsage)
-    fallback_triggered: bool = False
-    fallback_reason: str | None = Field(default=None, max_length=128)
-    transition_sequence: int = Field(default=0, ge=0)
-    terminal: Literal["done", "error", "cancelled"] | None = None
-
-
-def reduce_branch_records(
-    state: MultiAgentGraphState,
-    records: tuple[BranchExecutionRecord, ...],
-) -> MultiAgentGraphState:
-    ordered = tuple(sorted(records, key=lambda record: (record.work_item_id, record.attempt)))
-    known_attempts = {(record.work_item_id, record.attempt) for record in state.branch_records}
-    if known_attempts.intersection((record.work_item_id, record.attempt) for record in ordered):
-        raise ValueError("branch record already collected")
-    return state.model_copy(
-        update={
-            "branch_records": (*state.branch_records, *ordered),
-            "parallel_dispatch_used": True,
-            "transition_sequence": state.transition_sequence + 1,
-        }
-    )
-
-
-def reduce_merged_evidence(
-    state: MultiAgentGraphState,
-    evidence: tuple[EvidenceEnvelope, ...],
-) -> MultiAgentGraphState:
-    return state.model_copy(
-        update={
-            "merged_evidence": evidence,
-            "transition_sequence": state.transition_sequence + 1,
-        }
-    )
-
-
-def reduce_review_gate(
-    state: MultiAgentGraphState,
-    *,
-    decision: ReviewDecision,
-    draft_claims: tuple[DraftClaim, ...],
-    approved_claims: tuple[DraftClaim, ...],
-    approved_evidence: tuple[EvidenceEnvelope, ...],
-) -> MultiAgentGraphState:
-    return state.model_copy(
-        update={
-            "draft_claims": draft_claims,
-            "review_decision": decision,
-            "review_attempts": state.review_attempts + 1,
-            "review_status_codes": (*state.review_status_codes, decision.safe_summary_code),
-            "approved_claims": approved_claims,
-            "approved_evidence": approved_evidence,
-            "review_repair_role_id": (
-                decision.retry_role_id.value if decision.retry_role_id is not None else None
-            ),
-            "review_repair_input_ref": decision.immutable_input_ref,
-            "clarification_required": decision.next_permitted_action == "ask_user",
-            "abstention_required": decision.next_permitted_action == "abstain",
-            "transition_sequence": state.transition_sequence + 1,
-        }
-    )

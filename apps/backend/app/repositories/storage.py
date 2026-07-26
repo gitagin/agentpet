@@ -334,7 +334,7 @@ class NoteRepository:
         if month_day is None:
             return []
         month, day = month_day
-        filename_suffix = f"-%02d-%02d.md" % (month, day)
+        filename_suffix = "-%02d-%02d.md" % (month, day)
         rows = self.conn.execute(
             """
             SELECT

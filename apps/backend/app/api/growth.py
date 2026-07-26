@@ -21,6 +21,6 @@ async def get_growth_snapshot(request: Request) -> GrowthSnapshotResponse:
         vault_id = None
         vault_root = None
 
-    with database(request).connect() as conn:
+    with database(request).session() as conn:
         return GrowthSnapshotService(conn, vault_id=vault_id, vault_root=vault_root).snapshot()
 

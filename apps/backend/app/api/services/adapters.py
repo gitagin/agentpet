@@ -48,7 +48,6 @@ from app.services.wiki import resolve_wiki_path
 from .factory import (
     active_vault_id,
     agent_model_registry,
-    chat_model_client,
     companion_retrieval_report_store,
     continuity_service,
     database,

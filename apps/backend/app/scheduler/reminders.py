@@ -113,7 +113,6 @@ class APSchedulerReminderScheduler:
 
 
 def fire_reminder_job(reminder_id: str, db_path: str) -> None:
-    from app.services.audit import AuditLogService
     from app.services.tasks import TaskService, TaskStore
 
     store = TaskStore(db_path)

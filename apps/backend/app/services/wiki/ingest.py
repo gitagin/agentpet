@@ -41,7 +41,7 @@ class WikiIngestWorkflowMixin(WikiIngestReviewMixin, WikiIngestStorageMixin):
         now = utc_now_iso()
         ingest_request = cached.request
         preview = cached.response
-        with self.database.connect() as conn:
+        with self.database.session() as conn:
             existing = conn.execute(
                 "SELECT id FROM wiki_sources WHERE source_hash = ?",
                 (preview.source_hash,),
@@ -139,7 +139,7 @@ class WikiIngestWorkflowMixin(WikiIngestReviewMixin, WikiIngestStorageMixin):
         return preview.model_copy(update={"source_id": source_id, "status": "planned", "preview_token": None})
 
     def apply_ingest(self, request: WikiIngestApplyRequest) -> WikiIngestApplyResponse:
-        with self.database.connect() as conn:
+        with self.database.session() as conn:
             run = conn.execute(
                 "SELECT * FROM wiki_workflow_runs WHERE id = ? AND workflow_type = ?",
                 (request.run_id, "ingest"),
@@ -229,7 +229,7 @@ class WikiIngestWorkflowMixin(WikiIngestReviewMixin, WikiIngestStorageMixin):
             )
             log_appended = True
             lint_summary = self.wiki.core_lint_summary()
-        with self.database.connect() as conn:
+        with self.database.session() as conn:
             conn.execute(
                 "UPDATE wiki_workflow_runs SET status = ?, result_json = ?, updated_at = ? WHERE id = ?",
                 (

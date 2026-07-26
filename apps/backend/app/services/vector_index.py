@@ -612,7 +612,7 @@ class LangChainQdrantVectorIndex:
             )
             raise
         documents = []
-        for chunk, vector_id in zip(eligible, ids):
+        for chunk, vector_id in zip(eligible, ids, strict=True):
             documents.append(
                 self._document(
                     page_content=chunk.content,
@@ -750,6 +750,7 @@ class LangChainQdrantVectorIndex:
                 for chunk, vector in zip(
                     chunks[start : start + _BATCH_SIZE],
                     vectors[start : start + _BATCH_SIZE],
+                    strict=True,
                 ):
                     points.append(
                         models.PointStruct(

@@ -66,7 +66,7 @@ class WikiQueryWorkflowMixin:
 
     def list_query_archives(self, limit: int = 20) -> QueryArchiveHistoryResponse:
         capped_limit = _history_limit(limit)
-        with self.database.connect() as conn:
+        with self.database.session() as conn:
             rows = conn.execute(
                 """
                 SELECT *
@@ -79,7 +79,7 @@ class WikiQueryWorkflowMixin:
         return QueryArchiveHistoryResponse(archives=[_map_query_archive_item(row) for row in rows])
 
     def get_query_archive(self, archive_id: str) -> QueryArchiveDetailResponse:
-        with self.database.connect() as conn:
+        with self.database.session() as conn:
             row = conn.execute(
                 "SELECT * FROM wiki_query_archives WHERE id = ?",
                 (archive_id,),
@@ -101,7 +101,7 @@ class WikiQueryWorkflowMixin:
     ) -> None:
         now = utc_now_iso()
         tags = ["query-archive", *request.tags]
-        with self.database.connect() as conn:
+        with self.database.session() as conn:
             conn.execute(
                 """
                 INSERT INTO wiki_query_archives(

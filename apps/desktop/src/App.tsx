@@ -82,8 +82,18 @@ type SendChatTextOptions = {
   displayText?: string;
 };
 
-const agentActionMemoryReviewLimit = 200;
-const localAgentActionCacheLimit = 200;
+// 自动整理活动的拉取与本地缓存共用同一个窗口大小。
+const AGENT_ACTION_ACTIVITY_LIMIT = 200;
+
+// 桌宠气泡与流式回复的时间参数（毫秒）。
+const PET_TASK_STAGE_ACTIVE_MS = 12_000;
+const CHAT_STREAM_WATCHDOG_TIMEOUT_MS = 14_000;
+const PET_BUBBLE_ERROR_HIDE_DELAY_MS = 10_000;
+const PET_BUBBLE_STOPPED_HIDE_DELAY_MS = 5_000;
+const PET_BUBBLE_PROACTIVE_HIDE_DELAY_MS = 11_000;
+
+// 日期历史查询的兜底时区（跟随系统时区，失败时退回）。
+const FALLBACK_DAILY_HISTORY_TIME_ZONE = "Asia/Shanghai";
 
 function displayTextForInputMode(mode: PetInputMode, rawText: string): string {
   const text = rawText.trim();
@@ -96,9 +106,9 @@ function displayTextForInputMode(mode: PetInputMode, rawText: string): string {
 
 function resolveDailyHistoryTimeZone(): string {
   try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Shanghai";
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || FALLBACK_DAILY_HISTORY_TIME_ZONE;
   } catch {
-    return "Asia/Shanghai";
+    return FALLBACK_DAILY_HISTORY_TIME_ZONE;
   }
 }
 
@@ -240,7 +250,7 @@ function App() {
     petTaskStageTimeoutRef.current = window.setTimeout(() => {
       setRecentTaskStageActive(false);
       petTaskStageTimeoutRef.current = null;
-    }, 12000);
+    }, PET_TASK_STAGE_ACTIVE_MS);
   }
 
   petTaskStageRef.current = triggerPetTaskStage;
@@ -513,18 +523,20 @@ function App() {
     setStreaming(true);
     setNotice(null);
     petChat.resetStreamState(assistantId);
+    const scheduleReplyWatchdog = () =>
+      petChat.scheduleStreamWatchdog(
+        "正在整理",
+        "资料多一点，我继续看。",
+        CHAT_STREAM_WATCHDOG_TIMEOUT_MS,
+        () => petChat.failStream(assistantId, "没有等到回复", "这次没有等到可显示的回复，本轮已停止。"),
+      );
     const waitingCueMessage = tts.waitingCue.start();
     petChat.showBubble({
       title: "",
       message: waitingCueMessage,
       tone: "thinking",
     });
-    petChat.scheduleStreamWatchdog(
-      "正在整理",
-      "资料多一点，我继续看。",
-      14000,
-      () => petChat.failStream(assistantId, "没有等到回复", "这次没有等到可显示的回复，本轮已停止。"),
-    );
+    scheduleReplyWatchdog();
 
     const abort = new AbortController();
     streamAbort.current = abort;
@@ -548,12 +560,7 @@ function App() {
           message.id === assistantId ? { ...message, agent_run_id: accepted.agent_run_id } : message,
         ),
       );
-      petChat.scheduleStreamWatchdog(
-        "正在整理",
-        "资料多一点，我继续看。",
-        14000,
-        () => petChat.failStream(assistantId, "没有等到回复", "这次没有等到可显示的回复，本轮已停止。"),
-      );
+      scheduleReplyWatchdog();
 
       await fetchSseStream(
         client,
@@ -563,12 +570,7 @@ function App() {
             petChat.streamOpenedRef.current = true;
             petChat.clearStreamWatchdogTimer();
             if (!petChat.replyStartedRef.current && !petChat.streamReceivedEventRef.current) {
-              petChat.scheduleStreamWatchdog(
-                "正在整理",
-                "资料多一点，我继续看。",
-                14000,
-                () => petChat.failStream(assistantId, "没有等到回复", "这次没有等到可显示的回复，本轮已停止。"),
-              );
+              scheduleReplyWatchdog();
             }
           },
           onEvent: (sseEvent) => {
@@ -651,22 +653,22 @@ function App() {
       petChat.clearStreamWatchdogTimer();
       tts.waitingCue.stop("send_failed");
       petChat.streamFailedRef.current = true;
-      const message = describeError(error, "消息发送失败");
+      const failureMessage = describeError(error, "消息发送失败");
       setMessages((current) =>
-        current.map((message) =>
-          message.id === assistantId
-            ? { ...message, status: "failed", content: message.content || describeError(error, "消息发送失败") }
-            : message,
+        current.map((entry) =>
+          entry.id === assistantId
+            ? { ...entry, status: "failed", content: entry.content || failureMessage }
+            : entry,
         ),
       );
       if (!(error instanceof DOMException && error.name === "AbortError")) {
         petChat.showBubble({
           title: "交互失败",
-          message,
+          message: failureMessage,
           tone: "error",
         });
-        petChat.scheduleHide(10000);
-        setNotice({ tone: "error", message });
+        petChat.scheduleHide(PET_BUBBLE_ERROR_HIDE_DELAY_MS);
+        setNotice({ tone: "error", message: failureMessage });
       }
       return false;
     } finally {
@@ -748,7 +750,7 @@ function App() {
           agentActivitySortKey(right.updated_at || right.created_at) -
           agentActivitySortKey(left.updated_at || left.created_at),
         )
-        .slice(0, localAgentActionCacheLimit);
+        .slice(0, AGENT_ACTION_ACTIVITY_LIMIT);
     });
   }
 
@@ -759,7 +761,7 @@ function App() {
       setNotice(null);
     }
     try {
-      const response = await api.listAgentActions(agentActionMemoryReviewLimit, null, options.signal);
+      const response = await api.listAgentActions(AGENT_ACTION_ACTIVITY_LIMIT, null, options.signal);
       setAgentActions(response.actions);
       setAgentActionsStatus(response.actions.length > 0 ? "success" : "empty");
       if (!options.silent) {
@@ -871,7 +873,7 @@ function App() {
             agentActivitySortKey(right.updated_at || right.created_at) -
             agentActivitySortKey(left.updated_at || left.created_at),
           )
-          .slice(0, localAgentActionCacheLimit);
+          .slice(0, AGENT_ACTION_ACTIVITY_LIMIT);
       });
       setMessages((current) =>
         current.map((message) => {
@@ -1018,7 +1020,7 @@ function App() {
       message: "本次回复已停止生成。",
       tone: "error",
     });
-    petChat.scheduleHide(5000);
+    petChat.scheduleHide(PET_BUBBLE_STOPPED_HIDE_DELAY_MS);
     setMessages((current) =>
       current.map((message) => (message.status === "partial" ? { ...message, status: "cancelled" } : message)),
     );
@@ -1191,7 +1193,7 @@ function App() {
         tone: "tool",
         phase: "complete",
       });
-      petChat.scheduleHide(11000);
+      petChat.scheduleHide(PET_BUBBLE_PROACTIVE_HIDE_DELAY_MS);
     },
   });
   const hasVaultInitialized = Boolean(vaultId || diagnostics?.vault.configured);

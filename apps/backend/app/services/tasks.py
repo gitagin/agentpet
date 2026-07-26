@@ -131,7 +131,7 @@ def parse_natural_reminder(
     tz_name = normalize_timezone_name(timezone, DEFAULT_NATURAL_TIMEZONE)
     try:
         tz = ZoneInfo(tz_name)
-    except ZoneInfoNotFoundError as exc:
+    except ZoneInfoNotFoundError:
         return NaturalReminderParseResult(
             status="failed",
             remind_at=None,

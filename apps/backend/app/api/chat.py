@@ -4,6 +4,8 @@ from datetime import date as date_cls
 from datetime import datetime, time, timedelta, timezone
 import logging
 import re
+import sqlite3
+from time import monotonic
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Query, Request, status
@@ -67,6 +69,15 @@ _RECENT_TURN_STACK_TRACE_PATTERN = re.compile(
 )
 _DEFAULT_DAILY_HISTORY_TIMEZONE = "Asia/Shanghai"
 _DAILY_HISTORY_DEFAULT_LIMIT = 160
+# Streaming PARTIAL persistence throttle: flush after this many tokens or
+# this many seconds since the last flush, whichever comes first. Terminal
+# states (completed/failed/cancelled) always persist immediately.
+_STREAM_PARTIAL_FLUSH_TOKEN_COUNT = 50
+_STREAM_PARTIAL_FLUSH_INTERVAL_SECONDS = 0.2
+# Strong references to fire-and-forget post-reply tasks. asyncio only keeps
+# a weak reference to tasks, so without this set a scheduled archive job can
+# be garbage collected mid-flight and silently never complete.
+_POST_REPLY_TASKS: set["asyncio.Task[None]"] = set()
 
 
 @router.post("", response_model=ChatAcceptedResponse)
@@ -107,7 +118,7 @@ async def get_daily_chat_history(
     start_iso = _datetime_to_utc_iso(start_utc)
     end_iso = _datetime_to_utc_iso(end_utc)
 
-    with database(request).connect() as conn:
+    with database(request).session() as conn:
         rows = conn.execute(
             """
             SELECT
@@ -225,7 +236,7 @@ def _load_recent_turns(
     current_message_id: str,
 ) -> tuple[PromptRecentTurn, ...]:
     try:
-        with database(request).connect() as conn:
+        with database(request).session() as conn:
             rows = conn.execute(
                 """
                 SELECT id, role, content, created_at
@@ -308,7 +319,7 @@ def _create_chat_records(
     request: Request, *, conversation_id: str, message_id: str, agent_run_id: str, user_message: str
 ) -> None:
     now = utc_now_iso()
-    with database(request).connect() as conn:
+    with database(request).session() as conn:
         with conn:
             conn.execute(
                 """INSERT INTO conversations (id, title, status, created_at, updated_at)
@@ -327,6 +338,57 @@ def _create_chat_records(
             )
 
 
+class _StreamPartialPersister:
+    """Throttled PARTIAL-state writer for the streaming assistant message.
+
+    The previous implementation opened a new SQLite connection, rewrote the
+    full message body and committed once PER TOKEN on the event loop thread —
+    O(n²) character copies and one fsync per token for long replies, blocking
+    every concurrent SSE stream. This reuses a single connection for the
+    stream's lifetime and flushes at most every
+    _STREAM_PARTIAL_FLUSH_TOKEN_COUNT tokens /
+    _STREAM_PARTIAL_FLUSH_INTERVAL_SECONDS seconds. Terminal states still go
+    through _update_assistant_message immediately.
+    """
+
+    def __init__(self, request: Request, message_id: str) -> None:
+        self._database = database(request)
+        self._message_id = message_id
+        self._conn: sqlite3.Connection | None = None
+        self._pending_tokens = 0
+        self._last_flush = monotonic()
+
+    def note_token(self, chunks: list[str]) -> None:
+        self._pending_tokens += 1
+        if (
+            self._pending_tokens < _STREAM_PARTIAL_FLUSH_TOKEN_COUNT
+            and monotonic() - self._last_flush < _STREAM_PARTIAL_FLUSH_INTERVAL_SECONDS
+        ):
+            return
+        self._flush(chunks)
+
+    def _flush(self, chunks: list[str]) -> None:
+        conn = self._conn
+        if conn is None:
+            conn = self._conn = self._database.connect()
+        with conn:
+            conn.execute(
+                "UPDATE messages SET content = ?, status = ?, updated_at = ? WHERE id = ?",
+                ("".join(chunks), MessageStatus.PARTIAL.value, utc_now_iso(), self._message_id),
+            )
+        self._pending_tokens = 0
+        self._last_flush = monotonic()
+
+    def close(self) -> None:
+        conn = self._conn
+        self._conn = None
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:  # pragma: no cover - best-effort cleanup
+                logger.debug("Closing stream partial persister connection failed", exc_info=True)
+
+
 async def _persisting_stream(request: Request, state: AgentState) -> AsyncIterator[AgentSseEventBase]:
     if not claim_chat_run(request, state):
         yield AgentErrorEvent(
@@ -337,6 +399,7 @@ async def _persisting_stream(request: Request, state: AgentState) -> AsyncIterat
         return
     assistant_message_id = new_id()
     _insert_assistant_message(request, state, assistant_message_id)
+    partial_persister = _StreamPartialPersister(request, assistant_message_id)
     token_chunks: list[str] = []
     final_status = AgentRunStatus.SUCCESS.value
     error_code = None
@@ -349,7 +412,7 @@ async def _persisting_stream(request: Request, state: AgentState) -> AsyncIterat
             async for event in agent_runtime(request).run(state):
                 if isinstance(event, AgentTokenEvent):
                     token_chunks.append(event.text)
-                    _update_assistant_message(request, assistant_message_id, "".join(token_chunks), MessageStatus.PARTIAL.value)
+                    partial_persister.note_token(token_chunks)
                     yield event
                 elif isinstance(event, AgentDoneEvent):
                     terminal_event_seen = True
@@ -430,6 +493,7 @@ async def _persisting_stream(request: Request, state: AgentState) -> AsyncIterat
             final_state_persisted = True
         raise
     finally:
+        partial_persister.close()
         pop_chat_run(request, state.agent_run_id)
 
 
@@ -492,7 +556,13 @@ def _schedule_post_reply_work(request: Request, state: AgentState, assistant_mes
             final_text,
         )
     )
-    task.add_done_callback(_log_post_reply_task_result)
+    _POST_REPLY_TASKS.add(task)
+    task.add_done_callback(_finalize_post_reply_task)
+
+
+def _finalize_post_reply_task(task: "asyncio.Task[None]") -> None:
+    _POST_REPLY_TASKS.discard(task)
+    _log_post_reply_task_result(task)
 
 
 async def _complete_assistant_message_background(
@@ -558,11 +628,11 @@ async def _create_continuity_proposals(
             agent_run_id=state.agent_run_id,
             model_client=chat_model_client(request, AgentId.REFLECTION_AGENT.value),
         )
-    except Exception as exc:
+    except Exception:
         logger.warning(
-            "Continuity proposal generation skipped for agent_run_id=%s: %s",
+            "Continuity proposal generation skipped for agent_run_id=%s",
             state.agent_run_id,
-            exc,
+            exc_info=True,
         )
         return
 
@@ -579,7 +649,14 @@ async def _create_continuity_proposals(
                 try:
                     confirmed = service.confirm_proposal(proposal.id)
                 except Exception:
-                    confirmed = proposal
+                    # Explicit failure branch: auto-confirm failed, so fall
+                    # through and surface the proposal for manual confirmation
+                    # instead of silently pretending nothing happened.
+                    logger.warning(
+                        "Continuity proposal auto-confirm failed for proposal_id=%s; leaving it pending manual confirmation.",
+                        proposal.id,
+                        exc_info=True,
+                    )
                 else:
                     action = record_agent_action(
                         request,
@@ -604,7 +681,6 @@ async def _create_continuity_proposals(
                     )
                     yield agent_action_event(state.agent_run_id, action)
                     continue
-                proposal = confirmed
             yield AgentContinuityProposalEvent(
                 agent_run_id=state.agent_run_id,
                 proposal_id=proposal.id,
@@ -622,7 +698,7 @@ async def _create_continuity_proposals(
 
 def _insert_assistant_message(request: Request, state: AgentState, assistant_message_id: str) -> None:
     now = utc_now_iso()
-    with database(request).connect() as conn:
+    with database(request).session() as conn:
         with conn:
             conn.execute(
                 """INSERT INTO messages (id, conversation_id, role, content, status, created_at, updated_at)
@@ -633,7 +709,7 @@ def _insert_assistant_message(request: Request, state: AgentState, assistant_mes
 
 
 def _update_assistant_message(request: Request, message_id: str, content: str, status: str) -> None:
-    with database(request).connect() as conn:
+    with database(request).session() as conn:
         conn.execute(
             "UPDATE messages SET content = ?, status = ?, updated_at = ? WHERE id = ?",
             (content, status, utc_now_iso(), message_id),
@@ -645,7 +721,7 @@ def _update_agent_run(
     request: Request, state: AgentState, assistant_message_id: str, status_value: str, *, error_code: str | None, error_message: str | None
 ) -> None:
     now = utc_now_iso()
-    with database(request).connect() as conn:
+    with database(request).session() as conn:
         with conn:
             conn.execute(
                 """UPDATE agent_runs SET assistant_message_id = ?, status = ?, intent = ?, error_code = ?, error_message = ?, updated_at = ?

@@ -154,7 +154,7 @@ def finalize_unstreamed_chat_run(
     error_code: str = "stream_not_started_or_expired",
 ) -> bool:
     now = utc_now_iso()
-    with database(request).connect() as conn:
+    with database(request).session() as conn:
         with conn:
             row = conn.execute(
                 "SELECT status, assistant_message_id FROM agent_runs WHERE id = ?",
@@ -289,7 +289,7 @@ def audit_reason(request: Request | AppContext, **values: str | None) -> str:
 
 def set_active_vault_id(request: Request | AppContext, vault_id: str) -> None:
     request.app.state.active_vault_id = vault_id
-    with database(request).connect() as conn:
+    with database(request).session() as conn:
         with conn:
             VaultRepository(conn).set_active(vault_id)
 
@@ -298,7 +298,7 @@ def active_vault_id(request: Request | AppContext) -> str:
     current = getattr(request.app.state, "active_vault_id", None)
     if current:
         return str(current)
-    with database(request).connect() as conn:
+    with database(request).session() as conn:
         row = VaultRepository(conn).get_active()
     if row is None:
         raise AppError(
@@ -312,7 +312,7 @@ def active_vault_id(request: Request | AppContext) -> str:
 
 def active_vault_root(request: Request | AppContext) -> str:
     vault_id = active_vault_id(request)
-    with database(request).connect() as conn:
+    with database(request).session() as conn:
         try:
             return str(VaultRepository(conn).get(vault_id)["root_path"])
         except KeyError as exc:

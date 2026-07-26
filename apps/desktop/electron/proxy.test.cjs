@@ -337,6 +337,82 @@ describe("Electron API proxy allowlist", () => {
     });
   });
 
+  it("allows every graph fact action including reject", async () => {
+    global.fetch = vi.fn(async () => createJsonResponse({ ok: true }));
+    const proxy = createProxyManager({
+      baseUrl: "http://127.0.0.1:8765",
+      sessionToken: "test-session-token",
+    });
+
+    // Regression guard: confirm/wrong/archive/sensitive-block were allowed but
+    // the sibling reject route was missing from the allowlist regex, so the
+    // renderer received renderer_api_route_not_allowed for it.
+    for (const action of ["confirm", "reject", "wrong", "archive", "sensitive-block"]) {
+      await proxy.proxyApiRequest(`/api/memory/graph/facts/fact-1/${action}`, { method: "POST", body: "{}" });
+    }
+    expect(global.fetch).toHaveBeenCalledTimes(5);
+
+    await expect(proxy.proxyApiRequest("/api/memory/graph/facts/fact-1/purge", { method: "POST", body: "{}" })).rejects.toMatchObject({
+      code: "renderer_api_route_not_allowed",
+    });
+  });
+
+  it("allows the previously missing renderer-facing routes", async () => {
+    global.fetch = vi.fn(async () => createJsonResponse({ ok: true }));
+    const proxy = createProxyManager({
+      baseUrl: "http://127.0.0.1:8765",
+      sessionToken: "test-session-token",
+    });
+
+    const allowedCases = [
+      ["GET", "/api/chat/runs/run-1/stream"],
+      ["GET", "/api/chat/stream/run-1"],
+      ["GET", "/api/checkpoints/checkpoint-1"],
+      ["GET", "/api/diagnostics/negotiation-stats"],
+      ["POST", "/api/memory/diary/search"],
+      ["GET", "/api/memory/diary/diary-1"],
+      ["POST", "/api/memory/feedback"],
+      ["GET", "/api/memory/hygiene/preview"],
+      ["POST", "/api/memory/hygiene/actions"],
+      ["PUT", "/api/settings/embedding-key"],
+      ["PUT", "/api/settings/embedding-config"],
+      ["POST", "/api/settings/embedding-test"],
+      ["GET", "/api/settings/agent-models"],
+      ["PUT", "/api/settings/agent-models"],
+      ["PUT", "/api/settings/agent-models/chat_agent/model-config"],
+      ["PUT", "/api/settings/agent-models/chat_agent/model-key"],
+      ["PUT", "/api/settings/agent-model-config"],
+      ["PUT", "/api/settings/agent-model-key"],
+      ["POST", "/api/settings/agent-model-test"],
+      ["PATCH", "/api/tasks/task-1"],
+      ["POST", "/api/vaults/bind"],
+      ["GET", "/api/wiki/pages"],
+      ["POST", "/api/wiki/pages"],
+      ["GET", "/api/wiki/graph"],
+      ["POST", "/api/wiki/import/preview"],
+      ["POST", "/api/wiki/query-archives/lint"],
+    ];
+    for (const [method, path] of allowedCases) {
+      const body = method === "GET" ? undefined : "{}";
+      await proxy.proxyApiRequest(path, { method, body });
+    }
+    expect(global.fetch).toHaveBeenCalledTimes(allowedCases.length);
+
+    const deniedCases = [
+      ["DELETE", "/api/tasks/task-1"],
+      ["GET", "/api/settings/embedding-key"],
+      ["POST", "/api/wiki/graph"],
+      ["DELETE", "/api/memory/diary/diary-1"],
+      ["GET", "/api/vaults/bind"],
+    ];
+    for (const [method, path] of deniedCases) {
+      await expect(proxy.proxyApiRequest(path, { method, body: method === "GET" ? undefined : "{}" })).rejects.toMatchObject({
+        code: "renderer_api_route_not_allowed",
+      });
+    }
+    expect(global.fetch).toHaveBeenCalledTimes(allowedCases.length);
+  });
+
   it("allows only chat run event routes for SSE streams", async () => {
     global.fetch = vi.fn(async () => createJsonResponse({ ok: true }));
     const proxy = createProxyManager({

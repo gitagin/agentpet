@@ -14,5 +14,5 @@ async def trigger_habit_loop(
     trigger_request: HabitLoopTriggerRequest,
     request: Request,
 ) -> HabitLoopTriggerResponse:
-    with database(request).connect() as conn:
+    with database(request).session() as conn:
         return HabitLoopTriggerService(conn).trigger(timezone_name=trigger_request.timezone)

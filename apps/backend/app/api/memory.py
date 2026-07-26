@@ -1,7 +1,7 @@
 import json
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, Query, Request, status
 
 from ..errors import AppError
 from ..models.api import (
@@ -210,7 +210,7 @@ async def get_local_asset_stats(request: Request) -> LocalAssetStatsResponse:
         vault_id = None
         vault_root = None
 
-    with database(request).connect() as conn:
+    with database(request).session() as conn:
         stats = LocalAssetStatsService(conn, vault_id=vault_id, vault_root=vault_root).summarize()
     return LocalAssetStatsResponse(
         vault_configured=stats.vault_configured,
@@ -229,14 +229,14 @@ async def get_local_asset_stats(request: Request) -> LocalAssetStatsResponse:
 @router.get("/profile-projection", response_model=MemoryProfileProjectionResponse)
 async def get_memory_profile_projection(request: Request, limit: int = 120) -> MemoryProfileProjectionResponse:
     capped_limit = max(1, min(limit, 300))
-    with database(request).connect() as conn:
+    with database(request).session() as conn:
         projection = MemoryProfileProjectionService(conn).build(limit=capped_limit)
     return _memory_profile_projection_response(projection)
 
 
 @router.get("/profile-projection/items/{item_id}", response_model=MemoryProfileDetailResponse)
 async def get_memory_profile_projection_item(item_id: str, request: Request) -> MemoryProfileDetailResponse:
-    with database(request).connect() as conn:
+    with database(request).session() as conn:
         detail = MemoryProfileProjectionService(conn).get_detail(item_id)
     if detail is None:
         raise AppError(
@@ -260,7 +260,7 @@ async def apply_memory_profile_projection_action(
             status_code=status.HTTP_400_BAD_REQUEST,
         )
 
-    with database(request).connect() as conn:
+    with database(request).session() as conn:
         projection_service = MemoryProfileProjectionService(conn)
         target = projection_service.resolve_target(item_id)
         detail = projection_service.get_detail(item_id)
@@ -301,7 +301,7 @@ async def list_memory_receipts(
     limit: int = 50,
 ) -> MemoryReceiptResponse:
     capped_limit = max(1, min(limit, 100))
-    with database(request).connect() as conn:
+    with database(request).session() as conn:
         receipt = MemoryReceiptService(conn).build(agent_run_id=agent_run_id, limit=capped_limit)
     return _memory_receipt_response(receipt)
 
@@ -309,7 +309,7 @@ async def list_memory_receipts(
 @router.get("/graph-projection", response_model=MemoryGraphProjectionResponse)
 async def get_memory_graph_projection(request: Request, max_nodes: int = 40) -> MemoryGraphProjectionResponse:
     capped_nodes = max(5, min(max_nodes, 80))
-    with database(request).connect() as conn:
+    with database(request).session() as conn:
         projection = MemoryGraphProjectionService(conn).build(max_nodes=capped_nodes)
     return _memory_graph_projection_response(projection)
 
@@ -317,13 +317,16 @@ async def get_memory_graph_projection(request: Request, max_nodes: int = 40) -> 
 @router.get("/graph/facts", response_model=MemoryGraphFactListResponse)
 async def list_memory_graph_facts(
     request: Request,
-    status: str | None = None,
+    # Renamed from `status` to avoid shadowing fastapi.status inside the
+    # handler; the query parameter name stays `status` via the alias.
+    status_filter: str | None = Query(default=None, alias="status"),
     query: str | None = None,
     limit: int = 50,
 ) -> MemoryGraphFactListResponse:
+    capped_limit = max(1, min(limit, 300))
     store = memory_graph_store(request)
     try:
-        facts = store.list_facts(status=status, query=query, limit=limit)
+        facts = store.list_facts(status=status_filter, query=query, limit=capped_limit)
     finally:
         store.close()
     return MemoryGraphFactListResponse(facts=[_graph_fact_response(fact) for fact in facts])
@@ -332,15 +335,16 @@ async def list_memory_graph_facts(
 @router.get("/graph/export-preview", response_model=MemoryGraphExportPreviewResponse)
 async def export_memory_graph_preview(
     request: Request,
-    format: str = "markdown",
-    status: str | None = None,
+    export_format: str = Query(default="markdown", alias="format"),
+    status_filter: str | None = Query(default=None, alias="status"),
     query: str | None = None,
     limit: int = 100,
 ) -> MemoryGraphExportPreviewResponse:
-    preview_format = "json" if format == "json" else "markdown"
+    preview_format = "json" if export_format == "json" else "markdown"
+    capped_limit = max(1, min(limit, 500))
     store = memory_graph_store(request)
     try:
-        facts = store.list_facts(status=status, query=query, limit=limit)
+        facts = store.list_facts(status=status_filter, query=query, limit=capped_limit)
     finally:
         store.close()
     items = [_graph_export_item(fact) for fact in facts]
@@ -354,7 +358,7 @@ async def export_memory_graph_preview(
         reason=audit_reason(
             request,
             format=preview_format,
-            status=status or "all",
+            status=status_filter or "all",
             item_count=str(len(items)),
         ),
     )
@@ -587,9 +591,10 @@ async def list_companion_context_reports(
     agent_run_id: str | None = None,
     limit: int = 20,
 ) -> CompanionRetrievalReportListResponse:
+    capped_limit = max(1, min(limit, 100))
     store = companion_retrieval_report_store(request)
     try:
-        reports = store.list_reports(agent_run_id=agent_run_id, limit=limit)
+        reports = store.list_reports(agent_run_id=agent_run_id, limit=capped_limit)
     finally:
         store.close()
     return CompanionRetrievalReportListResponse(
@@ -606,7 +611,7 @@ async def get_weekly_memory_review(
     window_days = max(1, min(days, 31))
     item_limit = max(1, min(limit, 100))
     cutoff = (datetime.now(timezone.utc) - timedelta(days=window_days)).isoformat()
-    with database(request).connect() as conn:
+    with database(request).session() as conn:
         candidate_rows = conn.execute(
             """
             SELECT *
@@ -1443,12 +1448,12 @@ def _safe_export_value(value: str) -> str:
     return value
 
 
-def _graph_lifecycle_status(status: str) -> str | None:
-    if status == MemoryFactStatus.QUARANTINED.value:
+def _graph_lifecycle_status(fact_status: str) -> str | None:
+    if fact_status == MemoryFactStatus.QUARANTINED.value:
         return "candidate"
-    if status in {MemoryFactStatus.WRONG.value, MemoryFactStatus.SENSITIVE_BLOCKED.value}:
+    if fact_status in {MemoryFactStatus.WRONG.value, MemoryFactStatus.SENSITIVE_BLOCKED.value}:
         return "rejected"
-    if status in {
+    if fact_status in {
         MemoryFactStatus.CANDIDATE.value,
         MemoryFactStatus.ACTIVE.value,
         MemoryFactStatus.STALE.value,
@@ -1457,7 +1462,7 @@ def _graph_lifecycle_status(status: str) -> str | None:
         MemoryFactStatus.REJECTED.value,
         MemoryFactStatus.SUPERSEDED.value,
     }:
-        return status
+        return fact_status
     return None
 
 
@@ -1481,7 +1486,7 @@ def _memory_feedback_action_metadata(feedback_request: MemoryFeedbackRequest, re
 
 
 def _link_memory_feedback_event_to_action(request: Request, *, feedback_event_id: str, action_id: str) -> None:
-    with database(request).connect() as conn:
+    with database(request).session() as conn:
         with conn:
             conn.execute(
                 "UPDATE memory_feedback_events SET agent_action_id = ? WHERE id = ?",
@@ -1516,7 +1521,7 @@ def _memory_review_candidate_item(row) -> MemoryReviewItemResponse:
         source=str(row["source_track"]),
         allowed_actions=_memory_review_allowed_actions(
             target_type="candidate",
-            status=str(row["status"]),
+            review_status=str(row["status"]),
             memory_kind=str(row["memory_kind"]),
         ),
     )
@@ -1551,7 +1556,7 @@ def _memory_review_fact_item(row) -> MemoryReviewItemResponse:
         source=str(row["source_type"]),
         allowed_actions=_memory_review_allowed_actions(
             target_type="fact",
-            status=lifecycle_status,
+            review_status=lifecycle_status,
             memory_kind=str(memory_kind or ""),
         ),
     )
@@ -1574,9 +1579,9 @@ def _memory_review_category(
     return "kept"
 
 
-def _memory_review_allowed_actions(*, target_type: str, status: str, memory_kind: str) -> list[str]:
+def _memory_review_allowed_actions(*, target_type: str, review_status: str, memory_kind: str) -> list[str]:
     actions = ["keep", "edit", "forget", "only_this_week"]
-    if target_type == "candidate" and status in {"candidate", "quarantined"}:
+    if target_type == "candidate" and review_status in {"candidate", "quarantined"}:
         actions.append("forget")
     if memory_kind == "project_context":
         actions.append("mark_completed")

@@ -1,5 +1,5 @@
 from .common import *
-from .utility import _asset_markdown, _base_import_metadata, _html_to_text, _is_binary_asset, _is_hidden_relative, _read_text_file, _resolve_import_path, _supplied_web_content, _title_from_url, _unique
+from .utility import _asset_markdown, _base_import_metadata, _is_binary_asset, _is_hidden_relative, _read_text_file, _resolve_import_path, _supplied_web_content, _title_from_url, _unique
 
 def _import_preview_request(request: WikiSourceImportPreviewRequest) -> WikiIngestPreviewRequest:
     if request.source_kind == "file":

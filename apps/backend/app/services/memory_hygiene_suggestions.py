@@ -7,7 +7,6 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Literal
 
-from app.models.enums import MemoryFactStatus
 from app.services.memory_hygiene import TERMINAL_CANDIDATE_STATUSES, TERMINAL_FACT_STATUSES
 from app.services.memory_lifecycle import MemoryLifecycleService
 from app.services.memory_policy import evaluate_memory_content

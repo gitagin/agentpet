@@ -9,7 +9,7 @@ def _source_summary_markdown(
 ) -> str:
     summary = _summary_from_source(request.content)
     lines = [
-        f"## 来源摘要",
+        "## 来源摘要",
         "",
         f"- 来源类型：`{request.source_type}`",
         f"- 来源哈希：`{source_hash}`",

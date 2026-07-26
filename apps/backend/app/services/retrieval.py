@@ -29,6 +29,19 @@ from app.services.write_policy import detect_sensitive_reason
 
 
 logger = logging.getLogger(__name__)
+
+# Over-fetch factor for retrieval channels: pull a wider candidate pool than
+# top_k so fusion/rerank has material to work with, bounded to keep per-query
+# cost predictable.
+_CANDIDATE_POOL_MULTIPLIER = 4
+_CANDIDATE_POOL_MIN = 8
+_CANDIDATE_POOL_MAX = 40
+
+
+def candidate_pool_size(top_k: int) -> int:
+    return min(max(top_k * _CANDIDATE_POOL_MULTIPLIER, _CANDIDATE_POOL_MIN), _CANDIDATE_POOL_MAX)
+
+
 _VALID_RETRIEVAL_MODES = ("fts", "vector", "hybrid")
 _VALID_SOURCE_SCOPES = ("all", "personal_memory", "daily_chat", "knowledge_base")
 _LOCAL_PRIVACY_STATE_KEY = "local_privacy_mode"
@@ -78,12 +91,12 @@ class RetrievalService:
         return MigrationRunner(self.database).apply()
 
     def bind_vault(self, root_path: str, *, name: str | None = None) -> str:
-        with self.database.connect() as conn:
+        with self.database.session() as conn:
             with conn:
                 return VaultRepository(conn).upsert(root_path, name=name)
 
     def rebuild_index(self, vault_id: str) -> RebuildIndexResult:
-        with self.database.connect() as conn:
+        with self.database.session() as conn:
             vault = VaultRepository(conn).get(vault_id)
             job_repo = IndexJobRepository(conn)
             note_repo = NoteRepository(conn)
@@ -133,7 +146,10 @@ class RetrievalService:
         query: str,
         top_k: int = 8,
         source_scope: str = "all",
-        mode: str = "hybrid",
+        # Documented production default. hybrid/vector remain explicit opt-in:
+        # they never passed the retrieval quality gate (see docs/portfolio/
+        # claim-evidence-index.md, TASK-1215 Defer).
+        mode: str = "fts",
     ) -> MemorySearchResponse:
         if mode not in _VALID_RETRIEVAL_MODES:
             raise InvalidRetrievalModeError()
@@ -141,7 +157,7 @@ class RetrievalService:
             raise InvalidRetrievalSourceScopeError()
 
         total_started = perf_counter_ns()
-        with self.database.connect() as conn:
+        with self.database.session() as conn:
             local_privacy = _local_privacy_enabled(conn)
             sensitive_reason = detect_sensitive_reason(query)
             requested_channels = _channels_for_mode(mode)
@@ -187,7 +203,7 @@ class RetrievalService:
                         candidates = self.vector_index.search(
                             query=semantic_query,
                             vault_id=vault_id,
-                            top_k=min(max(top_k * 4, 8), 40),
+                            top_k=candidate_pool_size(top_k),
                             local_privacy=local_privacy,
                         )
                         completed_channels.append("vector")
@@ -226,7 +242,7 @@ class RetrievalService:
                     NoteRepository(conn).search(
                         vault_id=vault_id,
                         query=plan.lexical_query,
-                        top_k=min(max(top_k * 4, 8), 40),
+                        top_k=candidate_pool_size(top_k),
                     ),
                     vault_id=vault_id,
                 )
@@ -240,7 +256,7 @@ class RetrievalService:
                     NoteRepository(conn).search_daily_chat_by_date(
                             vault_id=vault_id,
                             query=plan.lexical_query,
-                            top_k=min(max(top_k * 4, 8), 40),
+                            top_k=candidate_pool_size(top_k),
                     ),
                     vault_id=vault_id,
                 )
@@ -362,7 +378,7 @@ class RetrievalService:
         )
 
     def reconcile_vector_index(self, vault_id: str):
-        with self.database.connect() as conn:
+        with self.database.session() as conn:
             return self._reconcile_vector_index_with_conn(conn, vault_id=vault_id)
 
     def _reconcile_vector_index_with_conn(self, conn, *, vault_id: str):
@@ -622,6 +638,13 @@ def _candidate_policy_allows(
     try:
         return bool(candidate_filter(result))
     except Exception:
+        # Fail closed, but never silently: a broken filter previously made
+        # every candidate disappear with no trace in the logs.
+        logger.warning(
+            "candidate_filter raised while evaluating note_id=%s; treating candidate as disallowed.",
+            getattr(result, "note_id", "<unknown>"),
+            exc_info=True,
+        )
         return False
 
 

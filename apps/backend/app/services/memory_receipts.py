@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from app.services.memory_policy import evaluate_memory_content
-from app.services.memory_taxonomy import LOW_CONFIDENCE_THRESHOLD, LifecycleStatus, MemoryKind, MemoryScope, RiskTier
+from app.services.memory_taxonomy import LOW_CONFIDENCE_THRESHOLD, MemoryKind, MemoryScope, RiskTier
 from app.utils.time import utc_now_iso
 
 

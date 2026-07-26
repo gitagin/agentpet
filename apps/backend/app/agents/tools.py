@@ -131,7 +131,10 @@ class AgentToolInput(BaseModel):
 class SearchMemoryInput(AgentToolInput):
     query: str = Field(min_length=1, description="需要从知识库中检索的关键词或问题")
     top_k: int = Field(default=5, ge=1, le=20, description="最多返回的片段数量")
-    mode: str = Field(default="fts", description="检索模式，v0.1 使用 fts")
+    # 保留 mode 字段是刻意的"容忍并覆盖"安全语义：模型传任何值（包括
+    # hybrid）都会被实现强制为 fts，而不是让整次工具调用校验失败。
+    # 见 test_retrieval_fusion.py::test_retrieval_agent_scope_wrapper_forces_proven_fts_mode。
+    mode: str = Field(default="fts", description="检索模式；当前版本固定使用 fts，传入其他值会被强制为 fts")
     source_scope: Literal[
         "all",
         "personal_memory",

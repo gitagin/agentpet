@@ -65,13 +65,16 @@ logs/
 tests/fixtures/tmp/
 tests/smoke_output/
 
+# Local verification output
+verification-report.txt
+
 # OS/editor
 .DS_Store
 Thumbs.db
 .idea/
 .vscode/
-"" 
-"# Local agent and project config" 
+
+# Local agent and project config
 AGENTS.md
 CHANGELOG.md
 CLAUDE.md

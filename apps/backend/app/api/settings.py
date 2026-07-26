@@ -11,7 +11,6 @@ from ..models.api import (
     AgentModelKeyRequest,
     AgentModelsRequest,
     AgentModelsResponse,
-    AgentModelHealth,
     EmbeddingConfigRequest,
     EmbeddingConfigResponse,
     EmbeddingKeyRequest,
@@ -66,7 +65,7 @@ def _refresh_vector_index(request: Request, background_tasks: BackgroundTasks) -
     if retrieval is None or not bool(getattr(vector_index, "available", False)):
         return
     try:
-        with database(request).connect() as conn:
+        with database(request).session() as conn:
             row = conn.execute(
                 """
                 SELECT vaults.id
@@ -121,7 +120,7 @@ async def get_settings_status(
         default_model=defaults.embedding_model,
         default_dimensions=defaults.embedding_dimensions,
     )
-    with database(request).connect() as conn:
+    with database(request).session() as conn:
         vault_configured = conn.execute("SELECT 1 FROM vaults LIMIT 1").fetchone() is not None
     return SettingsStatusResponse(
         model_provider=model_config.provider,

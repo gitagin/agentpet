@@ -8,11 +8,13 @@ import logging
 import os
 import sys
 import sqlite3
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
 from app.config import DEFAULT_CHAT_MODEL, get_settings
+from app.storage.database import CONNECT_TIMEOUT_SECONDS, configure_connection
 from app.models.api import (
     AgentModelHealth,
     AutomationSettingsRequest,
@@ -223,6 +225,14 @@ class LocalCredentialStore:
         return self.root / f"{digest}{suffix}"
 
 
+# Legacy data migrations are idempotent cleanups of old rows; probing
+# sqlite_master and rescanning on every SettingsStore construction (which
+# happens per chat message) is wasted work. Run them once per database path
+# per process. Connection-injected stores (tests) always run them.
+_DATA_MIGRATIONS_DONE: set[str] = set()
+_DATA_MIGRATIONS_LOCK = threading.Lock()
+
+
 class SettingsStore:
     def __init__(
         self,
@@ -230,19 +240,37 @@ class SettingsStore:
         credential_store: CredentialStore | None = None,
     ):
         self._owns_connection = not isinstance(db, sqlite3.Connection)
-        self.conn = sqlite3.connect(db) if self._owns_connection else db
-        self.conn.row_factory = sqlite3.Row
+        if self._owns_connection:
+            # Route through the shared connection configuration: SQLite's
+            # foreign_keys flag is per-connection, so a bare sqlite3.connect
+            # here would silently give this store weaker integrity semantics
+            # than every Database.connect() consumer of the same file.
+            self.conn = configure_connection(sqlite3.connect(db, timeout=CONNECT_TIMEOUT_SECONDS))
+        else:
+            self.conn = db
+            self.conn.row_factory = sqlite3.Row
         if credential_store is not None:
             self.credentials = credential_store
         elif isinstance(db, sqlite3.Connection):
             self.credentials = InMemoryCredentialStore()
         else:
             self.credentials = LocalCredentialStore.for_database(db)
-        self._run_data_migrations()
+        self._run_data_migrations_once(db)
 
     def close(self) -> None:
         if self._owns_connection:
             self.conn.close()
+
+    def _run_data_migrations_once(self, db: str | Path | sqlite3.Connection) -> None:
+        if isinstance(db, sqlite3.Connection):
+            self._run_data_migrations()
+            return
+        key = str(Path(db).resolve())
+        with _DATA_MIGRATIONS_LOCK:
+            if key in _DATA_MIGRATIONS_DONE:
+                return
+            self._run_data_migrations()
+            _DATA_MIGRATIONS_DONE.add(key)
 
     def _run_data_migrations(self) -> None:
         if self._table_exists("agent_model_configs"):

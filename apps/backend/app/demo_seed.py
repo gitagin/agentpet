@@ -62,7 +62,7 @@ def seed_demo_environment(demo_root: str | Path) -> DemoSeedManifest:
 
     retrieval = RetrievalService(database)
     vault_id = retrieval.bind_vault(str(vault_root), name="Agent Pet Demo Vault")
-    with database.connect() as conn:
+    with database.session() as conn:
         with conn:
             VaultRepository(conn).set_active(vault_id)
     index_result = retrieval.rebuild_index(vault_id)

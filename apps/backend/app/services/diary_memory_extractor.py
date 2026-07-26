@@ -103,7 +103,7 @@ class DiaryMemoryObject:
     importance: float
     confidence: float
     status: MemoryFactStatus
-    type: str = DEFAULT_DIARY_MEMORY_TYPE
+    type: str = DEFAULT_DIARY_MEMORY_TYPE  # noqa: A003 - serialized field name, part of the diary object contract
 
 
 class DiaryMemoryExtractor:
