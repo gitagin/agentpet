@@ -180,6 +180,41 @@ Expected Electron behavior:
 - Sidecar status and user-facing errors are shown in Chinese.
 - Closing the control console hides it; exiting from the pet menu or tray exits the app and stops the managed sidecar.
 
+## Windows Packaged Runtime Verification
+
+Build the frozen backend and unpacked Windows application before running the
+runtime gates:
+
+```powershell
+Push-Location .\apps\desktop
+npm run package:win:dir
+Pop-Location
+```
+
+Verify the packaged frozen sidecar over 20 real start/stop cycles, followed by
+an occupied-port fallback cycle:
+
+```powershell
+.\scripts\verify-frozen-sidecar-lifecycle.ps1 -Cycles 20
+```
+
+The script removes Python locations from the child `PATH`, checks `/api/health`,
+asserts that no Python child process is created, stops the full process tree,
+and verifies that every selected port is released. It writes the latest report
+to `output\verification\frozen-sidecar-lifecycle.json`.
+
+Verify the actual packaged Electron executable with port 8765 held by an
+unrelated listener:
+
+```powershell
+.\scripts\verify-packaged-app-smoke.ps1
+```
+
+This gate starts `release\win-unpacked\Agent Pet.exe`, requires the packaged
+sidecar to choose another port, checks its health and persisted log path, and
+then verifies that the Electron and sidecar process trees are gone. The latest
+report is `output\verification\packaged-app-smoke.json`.
+
 ## 5–7 Minute Interview Demo
 
 Use this path when recording or reviewing the complete vertical slice. The preparation command creates an isolated SQLite database and Vault below `.tmp\agent-pet-demo`; it never reads or binds a real personal Vault. It preloads three diary entries, five long-term facts, one project note, two tasks, and auditable seed actions.
@@ -235,7 +270,7 @@ Use this chain when validating the developer-machine flow by hand:
 10. Search known Markdown content.
 11. Create, confirm, and reject memory proposals.
 12. Create, complete, and cancel tasks.
-13. Send `提醒我明天下午三点测试桌面记忆助手` or `提醒我30分钟后测试桌面记忆助手` and confirm the Chat task event and task list show reminder time, `北京时间`, and reminder status.
+13. Send `提醒我明天下午三点测试 Agent Pet` or `提醒我30分钟后测试 Agent Pet` and confirm the Chat task event and task list show reminder time, `北京时间`, and reminder status.
 14. For a near-term reminder, wait until it is due and reload tasks; the backend should mark the reminder `triggered`, and Electron should show one system notification for that triggered reminder.
 15. Send Chat messages that trigger search/memory/task behavior and confirm SSE status/tool events are visible in the UI.
 16. Export diagnostics and confirm database, Vault, index jobs, tasks, and app state are visible.
@@ -376,6 +411,40 @@ Still using the isolated or backed-up Vault:
 5. Run ingest preview, review and selected-target apply; applied files must exactly match reviewed targets.
 6. Run lint against a malformed test page and confirm it reports missing template/source/trigger/log/revision/link requirements without destructive unreviewed repair.
 7. Open the result in Obsidian and verify navigation; record before/after and revert evidence without personal content.
+
+## Optional Vector Retrieval Acceptance
+
+FTS is the complete production-default path. The `vector` dependency group is
+an explicit opt-in and is not required to start the backend, index Markdown,
+search, chat, manage memory, or run the backend test suite. CI job
+`backend-base-install` installs `apps/backend` without extras, asserts that
+`qdrant_client`, `langchain_qdrant`, and `kuzu` are absent, and then runs the
+full non-live-model pytest suite.
+
+The scale gate uses an actual Qdrant Server because the embedded Qdrant client
+is a brute-force test implementation and cannot demonstrate HNSW behavior. Run
+the same gate as CI against an isolated server:
+
+```powershell
+Push-Location apps/backend
+python -m pip install -e ".[vector]"
+python -m app.evals.vector_query_scaling `
+  --qdrant-url http://127.0.0.1:6333 `
+  --collection-sizes 2048 32768 `
+  --dimensions 64 `
+  --warmup-queries 20 `
+  --measured-queries 80 `
+  --output ../../output/evals/fix-backlog-16/vector-query-scaling.json
+Pop-Location
+```
+
+The benchmark excludes collection construction, optimizer time, and the one
+full generation-integrity validation. It measures the steady-state production
+`LangChainQdrantVectorIndex.search()` path, alternates small/large query order,
+and passes only when the p95 latency-growth ratio is at most 65% of the linear
+collection-size ratio. CI retains the JSON report as the
+`fix-backlog-16-vector-query-scaling` artifact. This is performance evidence,
+not a semantic-quality or vector-promotion claim.
 
 ## Recall Quality Human Gate
 

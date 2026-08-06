@@ -1,4 +1,5 @@
 import type { StreamHandlerInput } from "../streamDispatcher";
+import { PET_BUBBLE_ACTION_WATCHDOG_TIMEOUT_MS } from "../chatTiming";
 
 export function statusHandler({ messageId, payload, context }: StreamHandlerInput) {
   const { petChat } = context;
@@ -9,7 +10,7 @@ export function statusHandler({ messageId, payload, context }: StreamHandlerInpu
     petChat.scheduleStreamWatchdog(
       "正在整理",
       "我在查资料，马上回来。",
-      14000,
+      PET_BUBBLE_ACTION_WATCHDOG_TIMEOUT_MS,
       () => petChat.failStream(messageId, "没有等到回复", "这次没有等到可显示的回复，本轮已停止。"),
     );
   }

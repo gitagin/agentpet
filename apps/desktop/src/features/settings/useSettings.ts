@@ -108,18 +108,19 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
     dispatch({ type: "setGlobalModelSaveStatus", status: "loading" });
     onNotice(null);
     try {
-      const config = await api.updateSettings({
+      const config = await api.saveModelConfig(
         provider,
-        base_url: draft.base_url.trim(),
-        model: draft.model.trim(),
-      });
+        draft.base_url.trim(),
+        draft.model.trim(),
+      );
       if (draft.api_key.trim()) {
         await api.saveModelKey(config.provider, draft.api_key.trim());
       }
+      const health = await api.getModelHealth();
       dispatch({ type: "saveGlobalModelSuccess", config });
       onNotice({
         tone: "success",
-        message: `默认对话能力已更新，${config.agents_using_global} 类高级能力将使用此配置。`,
+        message: `默认对话能力已更新，${health.agents_fallback_to_global} 类高级能力将使用此配置。`,
       });
     } catch (error) {
       dispatch({ type: "setGlobalModelSaveStatus", status: "error" });

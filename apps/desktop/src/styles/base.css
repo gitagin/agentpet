@@ -8,8 +8,8 @@
   text-rendering: optimizeLegibility;
   --text: var(--color-text);
   --muted: var(--color-text-soft);
-  --brand: var(--color-primary);
-  --brand-strong: var(--color-primary-strong);
+  --brand: var(--color-primary-action);
+  --brand-strong: var(--color-primary-action-strong);
   --success: var(--color-success);
   --warning: var(--color-warning);
   --danger: var(--color-danger);
@@ -119,8 +119,14 @@ button.secondary:hover {
 }
 
 button.danger {
-  border-color: var(--danger);
-  background: var(--danger);
+  border-color: var(--color-danger-action);
+  background: var(--color-danger-action);
+  color: #ffffff;
+}
+
+button.danger:hover:not(:disabled) {
+  border-color: var(--color-danger-action-strong);
+  background: var(--color-danger-action-strong);
 }
 
 input,

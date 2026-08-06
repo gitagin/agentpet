@@ -179,16 +179,21 @@ TASK-0102 和 TASK-0103 的人工证据仍缺失；过去的跳过决定不能�
 ## Verified 2026-07-13 claim boundary
 
 - Simple social chat may use a fast path.
-- The bounded multi-role path has typed specialist and Reviewer contracts.
+- The bounded negotiation path has typed Orchestrator, single retrieval
+  dispatch, and Synthesizer contracts. Domain-specific memory and Wiki draft
+  review is not an independent global Reviewer gate.
 - Router, merger, budgets, Policy Guard, Executor, ledger, and terminal
   ownership are deterministic components rather than Agents.
 - SQLite and Markdown are authoritative; FTS is the production-safe Agent
   default, while vector generations are optional derived acceleration.
-- Read-only parallelism is opt-in and retains sequential fallback.
+- Specialist dispatch is sequential: the Orchestrator may dispatch exactly one
+  read-only retrieval specialist per round. There is no Supervisor graph or
+  parallel specialist path in the shipped runtime.
 - High-risk action resume uses a minimized persisted decision boundary and
   authenticated approval; Renderer receives no token or raw checkpoint state.
 - TASK-1215 remains Defer for final hybrid/reranker promotion.
-- TASK-1216 has narrowed functional L4 confirmation only; live-provider,
-  packaged executable, viewport/DPI, and full-scope L4 claims remain excluded.
+- The packaged executable has current local smoke evidence. A clean Windows VM,
+  physical multi-display DPI matrix, live-provider quality campaign, and
+  full-scope L4 claims remain excluded.
 
 Public wording is indexed in `docs/portfolio/claim-evidence-index.md`.

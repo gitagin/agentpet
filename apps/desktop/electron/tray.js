@@ -38,7 +38,7 @@ function createTrayManager({
     }
 
     tray = new Tray(icon.resize({ width: 16, height: 16 }));
-    tray.setToolTip("桌面记忆助手");
+    tray.setToolTip("Agent Pet");
     tray.setContextMenu(
       Menu.buildFromTemplate([
         {

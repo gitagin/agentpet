@@ -15,7 +15,7 @@ import type {
 import { VaultBindingSection } from "./VaultBindingSection";
 import { productCopy } from "../../productCopy";
 
-type SettingsPanelProps = {
+export type SettingsPanelModel = {
   api: DesktopApi;
   globalModelDraft: GlobalModelDraft;
   globalModelSaveStatus: AsyncStatus;
@@ -45,7 +45,12 @@ type SettingsPanelProps = {
   onResetMemoryState: () => void;
 };
 
-export function SettingsPanel({
+type SettingsPanelProps = {
+  model: SettingsPanelModel;
+};
+
+export function SettingsPanel({ model }: SettingsPanelProps) {
+  const {
   api,
   globalModelDraft,
   globalModelSaveStatus,
@@ -73,7 +78,7 @@ export function SettingsPanel({
   onRebuildIndex,
   resettingMemoryState,
   onResetMemoryState,
-}: SettingsPanelProps) {
+  } = model;
   return (
     <section id="settings-panel" className="settings-panel-compact settings-panel-grid" aria-label="设置">
       <section className="settings-intro" aria-label="设置引导">

@@ -18,6 +18,7 @@ from app.services.memory_activation import (
     activation_item_from_graph_fact,
     rank_activation_decisions,
 )
+from app.storage.database import open_database_connection
 from app.services.memory_graph import MemoryGraphFact, MemoryGraphStore
 from app.services.memory_permissions import permissions_from_activation_decision, style_hint_from_text
 from app.services.memory_policy import evaluate_memory_content
@@ -122,7 +123,7 @@ class CompanionRetrievalService:
         if telemetry_db is None and graph_store is not None:
             telemetry_db = graph_store.conn
         self._owns_connection = not isinstance(telemetry_db, sqlite3.Connection)
-        self.conn = sqlite3.connect(telemetry_db or ":memory:") if self._owns_connection else telemetry_db
+        self.conn = open_database_connection(telemetry_db or ":memory:")
         self.conn.row_factory = sqlite3.Row
 
     def close(self) -> None:
@@ -652,7 +653,7 @@ class CompanionRetrievalReportStore:
 
     def __init__(self, db: str | Path | sqlite3.Connection | None = None) -> None:
         self._owns_connection = not isinstance(db, sqlite3.Connection)
-        self.conn = sqlite3.connect(db or ":memory:") if self._owns_connection else db
+        self.conn = open_database_connection(db or ":memory:")
         self.conn.row_factory = sqlite3.Row
 
     def close(self) -> None:

@@ -24,10 +24,10 @@ describe("homeboard layout contract", () => {
       /@media \(max-width:\s*1180px\)\s*\{[\s\S]*\.control-desktop-grid\s*\{[^}]*grid-template-columns:\s*minmax\(190px,\s*240px\)\s*minmax\(330px,\s*1fr\)\s*minmax\(210px,\s*260px\);/,
     );
     expect(dashboardStyles).toContain("@media (max-width: 820px)");
-    expect(electronWindows).toMatch(/stageWindow\s*=\s*new BrowserWindow\(\{[\s\S]*width:\s*1100,[\s\S]*height:\s*720,[\s\S]*minWidth:\s*900,[\s\S]*minHeight:\s*600,/);
-    expect(electronWindows).toMatch(/controlWindow\s*=\s*new BrowserWindow\(\{[\s\S]*width:\s*1200,[\s\S]*height:\s*820,[\s\S]*minWidth:\s*960,[\s\S]*minHeight:\s*640,/);
-    expect(electronWindows).toMatch(/agentWindow\s*=\s*new BrowserWindow\(\{[\s\S]*width:\s*980,[\s\S]*height:\s*740,[\s\S]*minWidth:\s*760,[\s\S]*minHeight:\s*560,/);
-    expect(electronWindows).toMatch(/featureWindow\s*=\s*new BrowserWindow\(\{[\s\S]*width:\s*980,[\s\S]*height:\s*740,[\s\S]*minWidth:\s*760,[\s\S]*minHeight:\s*560,/);
+    expect(electronWindows).toMatch(/stageWindow\s*=\s*createAppWindow\(\{[\s\S]*?width:\s*1100,[\s\S]*?height:\s*720,[\s\S]*?minWidth:\s*900,[\s\S]*?minHeight:\s*600,/);
+    expect(electronWindows).toMatch(/controlWindow\s*=\s*createAppWindow\(\{[\s\S]*?width:\s*1200,[\s\S]*?height:\s*820,[\s\S]*?minWidth:\s*960,[\s\S]*?minHeight:\s*640,/);
+    expect(electronWindows).toMatch(/agentWindow\s*=\s*createAppWindow\(\{[\s\S]*?width:\s*980,[\s\S]*?height:\s*740,[\s\S]*?minWidth:\s*760,[\s\S]*?minHeight:\s*560,/);
+    expect(electronWindows).toMatch(/featureWindow\s*=\s*createAppWindow\(\{[\s\S]*?width:\s*980,[\s\S]*?height:\s*740,[\s\S]*?minWidth:\s*760,[\s\S]*?minHeight:\s*560,/);
     expect(dashboardStyles).toContain("Default design baselines: stageWindow 1100x720; controlWindow 1200x820;");
     expect(dashboardStyles).toContain("featureWindow/agentWindow 980x740");
     expect(dashboardStyles).toContain("User-resize safety floors, not the visual baseline: stageWindow 900x600;");
@@ -58,6 +58,21 @@ describe("homeboard layout contract", () => {
     );
     expect(dashboardStyles).toMatch(
       /\.control-vital-orb\s*\{[^}]*width:\s*clamp\(50px,\s*9dvh,\s*82px\);[^}]*height:\s*clamp\(50px,\s*9dvh,\s*82px\);/,
+    );
+    expect(dashboardStyles).toMatch(
+      /\.control-memory-entry:focus-visible\s*\{[^}]*outline:\s*2px solid var\(--focus-ring\);[^}]*outline-offset:\s*3px;/,
+    );
+    expect(dashboardStyles).not.toMatch(
+      /\.control-journal-card textarea,\s*\.control-goal-form input\s*\{[^}]*outline:\s*none;/,
+    );
+  });
+
+  it("keeps long status labels inside their fixed cards", () => {
+    expect(dashboardStyles).toMatch(
+      /\.control-status-left small,\s*\.control-status-right small\s*\{[^}]*min-width:\s*0;[^}]*max-width:\s*100%;[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/,
+    );
+    expect(dashboardStyles).toMatch(
+      /\.control-status-left > span,\s*\.control-status-right > span\s*\{[^}]*min-width:\s*0;[^}]*overflow:\s*hidden;/,
     );
   });
 });

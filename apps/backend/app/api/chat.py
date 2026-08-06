@@ -5,6 +5,7 @@ from datetime import datetime, time, timedelta, timezone
 import logging
 import re
 import sqlite3
+from threading import Lock as ThreadLock
 from time import monotonic
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -31,6 +32,7 @@ from ..services.memory_policy import evaluate_memory_content
 from ..services.prompt_context_types import PromptRecentTurn
 from ..models.common import new_id
 from ..models.enums import AgentId, AgentRunStatus, ConversationStatus, MessageRole, MessageStatus
+from ..storage.database import Database
 from ..utils.time import utc_now_iso
 from .wiring import (
     AppContext,
@@ -74,6 +76,9 @@ _DAILY_HISTORY_DEFAULT_LIMIT = 160
 # states (completed/failed/cancelled) always persist immediately.
 _STREAM_PARTIAL_FLUSH_TOKEN_COUNT = 50
 _STREAM_PARTIAL_FLUSH_INTERVAL_SECONDS = 0.2
+# Keep room for the initial INSERT and one terminal UPDATE when the caller
+# produces a slow 800-token response (the backlog's write-count bound).
+_STREAM_MAX_PARTIAL_FLUSHES = 18
 # Strong references to fire-and-forget post-reply tasks. asyncio only keeps
 # a weak reference to tasks, so without this set a scheduled archive job can
 # be garbage collected mid-flight and silently never complete.
@@ -338,6 +343,112 @@ def _create_chat_records(
             )
 
 
+def recover_interrupted_chat_runs(database_instance: Database) -> int:
+    """Close chat runs/messages left open when the previous process stopped.
+
+    The in-memory run registry is intentionally not persisted. On startup,
+    every persisted RUNNING run and assistant PARTIAL message therefore needs
+    an explicit terminal state so the next client cannot observe a ghost
+    stream forever.
+    """
+    now = utc_now_iso()
+    recovered_runs = 0
+    recovered_messages = 0
+    with database_instance.session() as conn:
+        running_runs = conn.execute(
+            """
+            SELECT id, conversation_id, assistant_message_id
+            FROM agent_runs
+            WHERE status = ?
+            """,
+            (AgentRunStatus.RUNNING.value,),
+        ).fetchall()
+        for row in running_runs:
+            assistant_message_id = row["assistant_message_id"] or new_id()
+            message_exists = conn.execute(
+                "SELECT 1 FROM messages WHERE id = ?",
+                (assistant_message_id,),
+            ).fetchone()
+            if message_exists is None:
+                conn.execute(
+                    """
+                    INSERT INTO messages (
+                        id, conversation_id, role, content, status, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        assistant_message_id,
+                        row["conversation_id"],
+                        MessageRole.ASSISTANT.value,
+                        "",
+                        MessageStatus.CANCELLED.value,
+                        now,
+                        now,
+                    ),
+                )
+            else:
+                recovered_messages += conn.execute(
+                    """
+                    UPDATE messages
+                    SET status = ?, updated_at = ?
+                    WHERE id = ? AND role = ? AND status = ?
+                    """,
+                    (
+                        MessageStatus.CANCELLED.value,
+                        now,
+                        assistant_message_id,
+                        MessageRole.ASSISTANT.value,
+                        MessageStatus.PARTIAL.value,
+                    ),
+                ).rowcount
+            recovered_runs += conn.execute(
+                """
+                UPDATE agent_runs
+                SET assistant_message_id = ?, status = ?, error_code = ?,
+                    error_message = ?, updated_at = ?
+                WHERE id = ? AND status = ?
+                """,
+                (
+                    assistant_message_id,
+                    AgentRunStatus.CANCELLED.value,
+                    "process_interrupted",
+                    "应用重启时，未完成的回复流已安全取消。",
+                    now,
+                    row["id"],
+                    AgentRunStatus.RUNNING.value,
+                ),
+            ).rowcount
+            conn.execute(
+                "UPDATE conversations SET updated_at = ? WHERE id = ?",
+                (now, row["conversation_id"]),
+            )
+
+        # A process can stop after the run row was finalized but before the
+        # assistant message update. Close any remaining assistant partials as
+        # well, including rows from an older application version.
+        recovered_messages += conn.execute(
+            """
+            UPDATE messages
+            SET status = ?, updated_at = ?
+            WHERE role = ? AND status = ?
+            """,
+            (
+                MessageStatus.CANCELLED.value,
+                now,
+                MessageRole.ASSISTANT.value,
+                MessageStatus.PARTIAL.value,
+            ),
+        ).rowcount
+    recovered = recovered_runs + recovered_messages
+    if recovered:
+        logger.warning(
+            "Recovered interrupted chat persistence: runs=%s messages=%s",
+            recovered_runs,
+            recovered_messages,
+        )
+    return recovered
+
+
 class _StreamPartialPersister:
     """Throttled PARTIAL-state writer for the streaming assistant message.
 
@@ -346,47 +457,75 @@ class _StreamPartialPersister:
     O(n²) character copies and one fsync per token for long replies, blocking
     every concurrent SSE stream. This reuses a single connection for the
     stream's lifetime and flushes at most every
-    _STREAM_PARTIAL_FLUSH_TOKEN_COUNT tokens /
-    _STREAM_PARTIAL_FLUSH_INTERVAL_SECONDS seconds. Terminal states still go
-    through _update_assistant_message immediately.
+     _STREAM_PARTIAL_FLUSH_TOKEN_COUNT tokens /
+     _STREAM_PARTIAL_FLUSH_INTERVAL_SECONDS seconds. Terminal states use the
+     same connection and are flushed immediately.
     """
 
     def __init__(self, request: Request, message_id: str) -> None:
         self._database = database(request)
         self._message_id = message_id
         self._conn: sqlite3.Connection | None = None
+        self._session = None
+        self._thread_lock = ThreadLock()
         self._pending_tokens = 0
+        self._partial_flushes = 0
         self._last_flush = monotonic()
 
-    def note_token(self, chunks: list[str]) -> None:
+    async def note_token(self, chunks: list[str]) -> None:
         self._pending_tokens += 1
         if (
-            self._pending_tokens < _STREAM_PARTIAL_FLUSH_TOKEN_COUNT
-            and monotonic() - self._last_flush < _STREAM_PARTIAL_FLUSH_INTERVAL_SECONDS
+            self._partial_flushes >= _STREAM_MAX_PARTIAL_FLUSHES
+            or (
+                self._pending_tokens < _STREAM_PARTIAL_FLUSH_TOKEN_COUNT
+                and monotonic() - self._last_flush < _STREAM_PARTIAL_FLUSH_INTERVAL_SECONDS
+            )
         ):
             return
-        self._flush(chunks)
+        await self._flush(chunks)
 
-    def _flush(self, chunks: list[str]) -> None:
-        conn = self._conn
-        if conn is None:
-            conn = self._conn = self._database.connect()
-        with conn:
-            conn.execute(
-                "UPDATE messages SET content = ?, status = ?, updated_at = ? WHERE id = ?",
-                ("".join(chunks), MessageStatus.PARTIAL.value, utc_now_iso(), self._message_id),
-            )
+    async def persist_terminal(self, content: str, status_value: str) -> None:
+        await asyncio.to_thread(self._write_sync, content, status_value)
+        self._pending_tokens = 0
+
+    async def _flush(self, chunks: list[str]) -> None:
+        await self.persist_terminal("".join(chunks), MessageStatus.PARTIAL.value)
         self._pending_tokens = 0
         self._last_flush = monotonic()
 
-    def close(self) -> None:
-        conn = self._conn
-        self._conn = None
-        if conn is not None:
+    def _write_sync(self, content: str, status_value: str) -> None:
+        # The connection is deliberately shared for one stream. All accesses
+        # happen under a lock because to_thread may use different workers.
+        with self._thread_lock:
+            if self._session is None:
+                self._session = self._database.session(check_same_thread=False)
+                self._conn = self._session.__enter__()
+            assert self._conn is not None
             try:
-                conn.close()
-            except Exception:  # pragma: no cover - best-effort cleanup
-                logger.debug("Closing stream partial persister connection failed", exc_info=True)
+                self._conn.execute(
+                    "UPDATE messages SET content = ?, status = ?, updated_at = ? WHERE id = ?",
+                    (content, status_value, utc_now_iso(), self._message_id),
+                )
+                self._conn.commit()
+            except BaseException:
+                self._conn.rollback()
+                raise
+            if status_value == MessageStatus.PARTIAL.value:
+                self._partial_flushes += 1
+
+    async def close(self) -> None:
+        await asyncio.to_thread(self._close_sync)
+
+    def _close_sync(self) -> None:
+        with self._thread_lock:
+            session = self._session
+            self._session = None
+            self._conn = None
+            if session is not None:
+                try:
+                    session.__exit__(None, None, None)
+                except Exception:  # pragma: no cover - best-effort cleanup
+                    logger.debug("Closing stream partial persister connection failed", exc_info=True)
 
 
 async def _persisting_stream(request: Request, state: AgentState) -> AsyncIterator[AgentSseEventBase]:
@@ -412,7 +551,7 @@ async def _persisting_stream(request: Request, state: AgentState) -> AsyncIterat
             async for event in agent_runtime(request).run(state):
                 if isinstance(event, AgentTokenEvent):
                     token_chunks.append(event.text)
-                    partial_persister.note_token(token_chunks)
+                    await partial_persister.note_token(token_chunks)
                     yield event
                 elif isinstance(event, AgentDoneEvent):
                     terminal_event_seen = True
@@ -421,12 +560,20 @@ async def _persisting_stream(request: Request, state: AgentState) -> AsyncIterat
                         final_status = AgentRunStatus.FAILED.value
                         error_code = "empty_response"
                         error_message = "后端返回了完成事件，但没有生成可显示回复。"
-                        yield _fail_message(request, state, assistant_message_id, "".join(token_chunks), error_code, error_message)
+                        yield await _fail_message(
+                            request,
+                            state,
+                            assistant_message_id,
+                            "".join(token_chunks),
+                            error_code,
+                            error_message,
+                            persister=partial_persister,
+                        )
                         break
                     final_status = AgentRunStatus.SUCCESS.value
                     error_code = None
                     error_message = None
-                    _update_assistant_message(request, assistant_message_id, final_text, MessageStatus.COMPLETED.value)
+                    await partial_persister.persist_terminal(final_text, MessageStatus.COMPLETED.value)
                     if not _post_reply_work_blocked(state):
                         _schedule_post_reply_work(request, state, assistant_message_id, final_text)
                     yield AgentReplyReadyEvent(
@@ -440,7 +587,10 @@ async def _persisting_stream(request: Request, state: AgentState) -> AsyncIterat
                     terminal_event_seen = True
                     error_code, error_message = public_agent_error(event.code)
                     final_status = AgentRunStatus.FAILED.value
-                    _update_assistant_message(request, assistant_message_id, "".join(token_chunks), MessageStatus.FAILED.value)
+                    await partial_persister.persist_terminal(
+                        "".join(token_chunks),
+                        MessageStatus.FAILED.value,
+                    )
                     yield AgentErrorEvent(
                         agent_run_id=state.agent_run_id,
                         code=error_code,
@@ -453,13 +603,29 @@ async def _persisting_stream(request: Request, state: AgentState) -> AsyncIterat
             terminal_event_seen = True
             final_status = AgentRunStatus.FAILED.value
             error_code, error_message = public_agent_error(getattr(exc, "code", None))
-            yield _fail_message(request, state, assistant_message_id, "".join(token_chunks), error_code, error_message)
+            yield await _fail_message(
+                request,
+                state,
+                assistant_message_id,
+                "".join(token_chunks),
+                error_code,
+                error_message,
+                persister=partial_persister,
+            )
 
         if not terminal_event_seen:
             final_status = AgentRunStatus.FAILED.value
             error_code = "stream_ended_without_terminal_event"
             error_message = "回复流结束时没有收到完成或错误事件。"
-            yield _fail_message(request, state, assistant_message_id, "".join(token_chunks), error_code, error_message)
+            yield await _fail_message(
+                request,
+                state,
+                assistant_message_id,
+                "".join(token_chunks),
+                error_code,
+                error_message,
+                persister=partial_persister,
+            )
 
         _persist_stream_terminal_state(
             request,
@@ -475,9 +641,7 @@ async def _persisting_stream(request: Request, state: AgentState) -> AsyncIterat
             final_status = AgentRunStatus.CANCELLED.value
             error_code = "stream_cancelled"
             error_message = "客户端中断了回复流。"
-            _update_assistant_message(
-                request,
-                assistant_message_id,
+            await partial_persister.persist_terminal(
                 "".join(token_chunks),
                 MessageStatus.CANCELLED.value,
             )
@@ -493,7 +657,7 @@ async def _persisting_stream(request: Request, state: AgentState) -> AsyncIterat
             final_state_persisted = True
         raise
     finally:
-        partial_persister.close()
+        await partial_persister.close()
         pop_chat_run(request, state.agent_run_id)
 
 
@@ -585,8 +749,29 @@ def _log_post_reply_task_result(task: asyncio.Task[None]) -> None:
         logger.warning("Post-reply chat memory task failed", exc_info=True)
 
 
-def _fail_message(request: Request, state: AgentState, assistant_message_id: str, content: str, code: str, _message: str) -> AgentErrorEvent:
-    _update_assistant_message(request, assistant_message_id, content, MessageStatus.FAILED.value)
+async def shutdown_post_reply_tasks() -> None:
+    """Cancel and await post-reply jobs before the application shuts down."""
+    tasks = tuple(_POST_REPLY_TASKS)
+    for task in tasks:
+        task.cancel()
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
+async def _fail_message(
+    request: Request,
+    state: AgentState,
+    assistant_message_id: str,
+    content: str,
+    code: str,
+    _message: str,
+    *,
+    persister: _StreamPartialPersister | None = None,
+) -> AgentErrorEvent:
+    if persister is None:
+        _update_assistant_message(request, assistant_message_id, content, MessageStatus.FAILED.value)
+    else:
+        await persister.persist_terminal(content, MessageStatus.FAILED.value)
     safe_code, safe_message = public_agent_error(code)
     return AgentErrorEvent(agent_run_id=state.agent_run_id, code=safe_code, message=safe_message)
 

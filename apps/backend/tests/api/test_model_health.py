@@ -67,14 +67,14 @@ def test_health_global_only(client: TestClient) -> None:
     assert {detail["model"] for detail in payload["agent_details"]} == {"global-model"}
 
 
-def test_update_settings_reports_agents_using_global(client: TestClient) -> None:
+def test_model_config_and_health_have_single_purpose_endpoints(client: TestClient) -> None:
     key = client.put(
         "/api/settings/model-key",
         headers=auth(),
         json={"provider": "openai-compatible", "api_key": "sk-global-secret"},
     )
-    update = client.patch(
-        "/api/settings",
+    update = client.put(
+        "/api/settings/model-config",
         headers=auth(),
         json={
             "provider": "openai-compatible",
@@ -87,8 +87,13 @@ def test_update_settings_reports_agents_using_global(client: TestClient) -> None
     assert key.status_code == 200
     assert update.status_code == 200
     assert health.status_code == 200
-    assert "agents_using_global" in update.json()
-    assert update.json()["agents_using_global"] == health.json()["agents_fallback_to_global"]
+    assert update.json() == {
+        "provider": "openai-compatible",
+        "base_url": "https://model.example.test/v1",
+        "model": "global-model",
+        "status": "configured",
+    }
+    assert health.json()["agents_fallback_to_global"] == 5
 
 
 def test_health_mixed(client: TestClient) -> None:

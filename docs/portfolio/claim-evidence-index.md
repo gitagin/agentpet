@@ -1,36 +1,30 @@
 # Claim Evidence Index
 
-Status: narrowed public claims pending final user wording approval.
+Status: current repository claims with direct code or test evidence.
 
 The simple social chat may use a fast path. SQLite and Markdown are authoritative;
 vector indexes are optional derived acceleration.
 
-| Public claim | Qualification | Evidence |
+| Public claim | Qualification | Repository evidence |
 | --- | --- | --- |
-| Local-first Windows companion | Local sidecar and data stores; configured remote models still receive approved non-private requests | `README.md`; `docs/current-specification.md` |
-| Real bounded LangGraph multi-role workflow | Role contracts are bounded; deterministic components are not called Agents | TASK-1208, TASK-1209, TASK-1211 evidence |
-| Read-only parallel specialist retrieval | Opt-in only; sequential fallback remains default | TASK-1210 measured overlap evidence |
-| Local RAG with accepted citations | Production Agent default remains FTS | TASK-1207 grounding evidence |
-| Persistent high-risk decision resume | Deterministic pending-action checkpoint gate; not a second native LangGraph saver | TASK-1214 checkpoint evidence |
-| Deterministic action safety | Policy Guard, Executor, ledger, idempotency, and Verifier are deterministic boundaries | TASK-1212 evidence |
-| Measured retrieval candidates | Synthetic corpus results, not general product accuracy | TASK-1204, TASK-1206, TASK-1215 reports |
-| Narrowed desktop usability | User manually confirmed the tested FTS/action/HITL/privacy paths | TASK-1216 narrowed L4 sign-off |
+| Local-first Windows companion | Local sidecar and authoritative local stores; configured remote models may receive policy-approved non-private requests | `apps/backend/app/sidecar_entry.py`; `apps/backend/app/storage/database.py`; `apps/desktop/electron/sidecar.js` |
+| Bounded model-backed workflow | Model-backed roles are bounded; routing, policy, execution, budgets, and terminal ownership are deterministic | `apps/backend/app/agents/graph_runtime.py`; `apps/backend/app/agents/contracts.py`; `apps/backend/tests/test_agent_runtime_negotiation.py` |
+| Evidence-gated local retrieval | FTS is the production default; accepted evidence is filtered before prompt use and rendered citations are validated | `apps/backend/app/agents/retrieval/compression.py`; `apps/backend/tests/test_retrieval_grounding.py` |
+| Persistent high-risk decision resume | Deterministic pending-action checkpoint gate; not a second native LangGraph saver | `apps/backend/app/agents/checkpointer.py`; `apps/backend/tests/test_agent_checkpoint_integration.py`; `apps/backend/tests/test_agent_interrupt_resume.py` |
+| Deterministic action safety | Policy Guard, Executor, ledger, idempotency, and Verifier are deterministic boundaries | `apps/backend/app/agents/nodes/policy_guard.py`; `apps/backend/app/agents/nodes/executor.py`; `apps/backend/tests/test_agent_action_lifecycle.py` |
+| Reproducible retrieval evaluation | Fixed synthetic corpus and executable evaluator; generated measurements are not general product-accuracy claims | `apps/backend/tests/evals/retrieval/retrieval-corpus-v1.json`; `apps/backend/app/evals/retrieval_eval.py`; `apps/backend/tests/test_retrieval_quality_eval.py` |
+| Qdrant query scaling | Localhost p95 performance only; excludes embedding, collection construction, optimizer time, answer quality, and network latency | `output/evals/fix-backlog-16/vector-query-scaling.json`; `apps/backend/app/evals/vector_query_scaling.py`; `apps/backend/tests/test_vector_query_scaling.py` |
 
-## Frozen retrieval context
+## Retrieval evidence boundary
 
-- Date: 2026-07-12.
-- Corpus: `agent-pet-retrieval-synthetic-v1.0.0`.
-- Cases: 60 synthetic labelled cases and 120 chunks.
-- Run count: one deterministic local comparison per mode.
-- Provider/model: no remote provider; deterministic local vector control.
-- FTS: Recall@10 `0.496`, MRR@10 `0.520`, no-evidence accuracy `0.800`.
-- Vector: Recall@10 `0.628`, MRR@10 `0.694762`, no-evidence accuracy `0.000`.
-- Hybrid RRF: Recall@10 `0.672`, MRR@10 `0.720683`, no-evidence accuracy `0.000`.
-- Keyword-free Recall@10 delta versus FTS: `+0.226667`.
-- Exact-query Recall@10 regression versus FTS: `0.000`.
-- Identity reranker nDCG delta: `0.000`; decision: `Defer`.
-
-TASK-1215 did not pass its final retrieval gate. TASK-1216 is Partial (Narrowed
-Scope): automated checks and narrowed manual functional paths passed, while
-live-provider, packaged executable, viewport/DPI, and full hybrid claims remain
-outside accepted public wording.
+- The corpus is synthetic and versioned in the repository.
+- FTS is the production default.
+- The deterministic local feature-hash vector and identity reranker are
+  diagnostic controls, not semantic or learned models.
+- Citation tests prove deterministic acceptance and rejection behavior; they do
+  not establish live-model answer quality.
+- Quantitative retrieval results may be reported only from a retained evaluator
+  output whose configuration hash, corpus version, and command are available.
+- Live-provider quality, packaged usability, viewport/DPI behavior, and optional
+  hybrid promotion remain outside public claims until their acceptance evidence
+  exists.

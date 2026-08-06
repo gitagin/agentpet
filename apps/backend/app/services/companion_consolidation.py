@@ -7,6 +7,7 @@ from pathlib import Path
 
 from app.models.common import new_id
 from app.services.memory_graph import MemoryFactCandidate, MemoryGraphStore
+from app.storage.database import open_database_connection
 from app.utils.hash import sha256_hex
 from app.utils.time import utc_now_iso
 from app.services.memory_policy import evaluate_memory_content
@@ -35,13 +36,14 @@ class CompanionConsolidationService:
         graph_store: MemoryGraphStore,
     ) -> None:
         self._owns_connection = not isinstance(db, sqlite3.Connection)
-        self.conn = sqlite3.connect(db) if self._owns_connection else db
+        self.conn = open_database_connection(db)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA foreign_keys = ON")
         self.vault_id = vault_id
         self.graph_store = graph_store
 
     def close(self) -> None:
+        self.graph_store.close()
         if self._owns_connection:
             self.conn.close()
 

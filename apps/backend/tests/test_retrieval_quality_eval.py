@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import math
+import re
 import sqlite3
 from collections import Counter
 from pathlib import Path
@@ -30,6 +32,7 @@ from app.evals.retrieval_eval import (
 
 
 DATASET_PATH = Path(__file__).parent / "evals" / "retrieval" / "retrieval-corpus-v1.json"
+REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 REQUIRED_ARTIFACTS = {
     "artifact-hashes.json",
     "corpus-manifest.md",
@@ -37,12 +40,16 @@ REQUIRED_ARTIFACTS = {
     "fts-baseline.json",
     "slice-results.md",
 }
+VECTOR_EXTRA_UNAVAILABLE = pytest.mark.skipif(
+    importlib.util.find_spec("qdrant_client") is None,
+    reason="all-mode retrieval evaluation requires the optional vector extra",
+)
 REQUIRED_COMPARISON_ARTIFACTS = {
     "artifact-hashes.json",
     "latency-and-cost.md",
     "mode-comparison.json",
     "per-slice-quality.md",
-    "reranker-decision.md",
+    "identity-control.md",
 }
 
 
@@ -79,12 +86,12 @@ def test_frozen_dataset_satisfies_slice_label_and_privacy_contract() -> None:
             assert case.expected_source_scope == "none"
 
 
-def test_keyword_free_slice_has_no_meaningful_lexical_overlap() -> None:
+def test_no_ascii_keyword_overlap_slice_has_no_meaningful_ascii_overlap() -> None:
     corpus = load_corpus(DATASET_PATH)
     chunks_by_id = corpus.chunks_by_id
 
     for case in corpus.cases:
-        if case.primary_slice != "keyword_free_semantic":
+        if case.primary_slice != "no_ascii_keyword_overlap":
             continue
         query_terms = _meaningful_ascii_terms(case.query)
         evidence_terms: set[str] = set()
@@ -262,7 +269,7 @@ def test_fts_baseline_is_isolated_reproducible_and_writes_complete_artifacts(
 
     slices = {result["primary_slice"]: result for result in report_a["slice_results"]}
     assert slices["exact_keyword_identifier"]["recall_at_10"] == 1.0
-    assert (slices["keyword_free_semantic"]["recall_at_10"] or 0.0) < 0.05
+    assert (slices["no_ascii_keyword_overlap"]["recall_at_10"] or 0.0) < 0.05
     assert slices["permission_inactive_sensitive"]["no_evidence_accuracy"] == 1.0
     assert report_a["failure_count"] > 0
     assert report_a["latency"]["warmup_query_count"] == 3
@@ -323,6 +330,7 @@ def _runtime_chunk_ids(database_path: Path) -> set[str]:
     return {str(row[0]) for row in rows}
 
 
+@VECTOR_EXTRA_UNAVAILABLE
 def test_all_mode_comparison_uses_one_snapshot_reports_every_stage_and_defers_reranker(
     tmp_path: Path,
 ) -> None:
@@ -333,12 +341,12 @@ def test_all_mode_comparison_uses_one_snapshot_reports_every_stage_and_defers_re
         run_count=1,
     )
 
-    assert report["schema_version"] == "retrieval-mode-comparison.v1"
+    assert report["schema_version"] == "retrieval-mode-comparison.v2"
     assert list(report["modes"]) == [
         "fts",
         "vector",
         "hybrid_rrf",
-        "hybrid_rrf_plus_reranker",
+        "hybrid_rrf_identity_control",
     ]
     shared_hash = report["shared_invariants_sha256"]
     expected_case_ids = [case.case_id for case in load_corpus(DATASET_PATH).cases]
@@ -369,20 +377,22 @@ def test_all_mode_comparison_uses_one_snapshot_reports_every_stage_and_defers_re
             for stage in mode["latency"]["stages"].values()
         )
     assert report["modes"]["hybrid_rrf"]["metrics"] == report["modes"][
-        "hybrid_rrf_plus_reranker"
+        "hybrid_rrf_identity_control"
     ]["metrics"]
-    assert report["reranker_decision"]["decision"] == "defer"
-    assert report["reranker_decision"]["ndcg_delta"] == 0.0
-    assert report["reranker_decision"]["bootstrap_ci_lower"] == 0.0
+    assert report["identity_control"]["status"] == "diagnostic_only"
+    assert report["identity_control"]["adoption_eligible"] is False
+    assert report["identity_control"]["ndcg_delta"] == 0.0
+    assert report["final_gates"]["status"] == "aspirational"
     assert report["selected_default"]["agent_mode"] == "fts"
     assert set(path.name for path in (tmp_path / "output").iterdir()) == REQUIRED_COMPARISON_ARTIFACTS
 
     manifest = json.loads((tmp_path / "output" / "artifact-hashes.json").read_text(encoding="utf-8"))
-    assert manifest["schema_version"] == "retrieval-eval-artifact-hashes.v2"
+    assert manifest["schema_version"] == "retrieval-eval-artifact-hashes.v3"
     for filename, expected_hash in manifest["artifacts"].items():
         assert hashlib.sha256((tmp_path / "output" / filename).read_bytes()).hexdigest() == expected_hash
 
 
+@VECTOR_EXTRA_UNAVAILABLE
 def test_all_mode_vector_fixture_never_receives_gold_ids_or_rationales_and_is_reproducible(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -417,7 +427,7 @@ def test_all_mode_vector_fixture_never_receives_gold_ids_or_rationales_and_is_re
             second["modes"][mode_id]
         ), mode_id
     assert first["comparisons"] == second["comparisons"]
-    assert first["reranker_decision"] == second["reranker_decision"]
+    assert first["identity_control"] == second["identity_control"]
 
 
 def test_strict_mode_contract_rejects_fallback_results() -> None:
@@ -433,3 +443,15 @@ def test_strict_mode_contract_rejects_fallback_results() -> None:
 
     assert success is False
     assert reason == "required_channel_missing"
+
+
+def test_portfolio_retrieval_claims_point_to_current_repository_evidence() -> None:
+    claim_index = REPOSITORY_ROOT / "docs" / "portfolio" / "claim-evidence-index.md"
+    portfolio_files = tuple((REPOSITORY_ROOT / "docs" / "portfolio").glob("*.md"))
+    combined = "\n".join(path.read_text(encoding="utf-8") for path in portfolio_files)
+
+    evidence_paths = re.findall(r"`((?:apps|docs)/[^`]+|README\.md)`", claim_index.read_text(encoding="utf-8"))
+    assert evidence_paths
+    assert [path for path in evidence_paths if not (REPOSITORY_ROOT / path).exists()] == []
+    assert re.search(r"keyword[-_ ]free", combined, flags=re.IGNORECASE) is None
+    assert re.search(r"(?:0\.496|0\.628|0\.672|0\.226667)", combined) is None

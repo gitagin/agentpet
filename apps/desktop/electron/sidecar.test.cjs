@@ -1,13 +1,30 @@
 const { EventEmitter } = require("node:events");
 const Module = require("node:module");
+const path = require("node:path");
 
 const sidecarPath = require.resolve("./sidecar.js");
 const originalModuleLoad = Module._load;
+const originalResourcesPathDescriptor = Object.getOwnPropertyDescriptor(process, "resourcesPath");
+const trackedEnvironment = new Map(
+  [
+    "AGENT_PET_BACKEND_DIR",
+    "AGENT_PET_PYTHON",
+    "AGENT_PET_READY_TIMEOUT_MS",
+    "AGENT_PET_SIDECAR_EXECUTABLE",
+  ].map((name) => [name, process.env[name]]),
+);
 
-function createElectronMock({ notificationsSupported = false } = {}) {
+function createElectronMock({ notificationsSupported = false, isPackaged = false } = {}) {
   return {
     app: {
+      isPackaged,
       getAppPath: vi.fn(() => "/workspace/apps/desktop"),
+      getPath: vi.fn((name) => {
+        if (name === "logs") {
+          return "/workspace/logs";
+        }
+        throw new Error(`unexpected Electron path: ${name}`);
+      }),
     },
     BrowserWindow: {
       getAllWindows: vi.fn(() => []),
@@ -18,6 +35,14 @@ function createElectronMock({ notificationsSupported = false } = {}) {
       }),
       { isSupported: vi.fn(() => notificationsSupported) },
     ),
+  };
+}
+
+function createFsMock(existsSync = () => true) {
+  return {
+    existsSync: vi.fn(existsSync),
+    mkdirSync: vi.fn(),
+    appendFileSync: vi.fn(),
   };
 }
 
@@ -35,27 +60,6 @@ function createServerMock(available) {
           const error = new Error("address already in use");
           error.code = "EADDRINUSE";
           server.emit("error", error);
-        });
-      });
-      server.close = vi.fn((callback) => callback());
-      return server;
-    }),
-  };
-}
-
-function createPortSearchServerMock(occupiedPorts) {
-  return {
-    createServer: vi.fn(() => {
-      const server = new EventEmitter();
-      server.listen = vi.fn((port) => {
-        queueMicrotask(() => {
-          if (occupiedPorts.has(port)) {
-            const error = new Error("address already in use");
-            error.code = "EADDRINUSE";
-            server.emit("error", error);
-            return;
-          }
-          server.emit("listening");
         });
       });
       server.close = vi.fn((callback) => callback());
@@ -93,19 +97,55 @@ function createHealthyHttpMock(healthPayload = { status: "ok" }) {
   };
 }
 
-function createChildProcessMock() {
-  return {
-    spawn: vi.fn(() => {
-      const child = new EventEmitter();
-      child.pid = 4321;
-      child.killed = false;
-      child.kill = vi.fn(() => {
-        child.killed = true;
-        queueMicrotask(() => child.emit("exit", 1, null));
-      });
+function createMockChild(pid) {
+  const child = new EventEmitter();
+  child.pid = pid;
+  child.killed = false;
+  child.exitCode = null;
+  child.signalCode = null;
+  child.stdout = new EventEmitter();
+  child.stderr = new EventEmitter();
+  child.kill = vi.fn((signal) => {
+    child.killed = true;
+    child.signalCode = signal ?? null;
+    queueMicrotask(() => emitChildExit(child, 1, signal ?? null));
+    return true;
+  });
+  return child;
+}
+
+function emitChildExit(child, code = 0, signal = null) {
+  child.exitCode = code;
+  child.signalCode = signal;
+  child.emit("exit", code, signal);
+}
+
+function createChildProcessMock({ autoHandshake = true, runtimePort = 8765 } = {}) {
+  const backendChildren = [];
+  const killerChildren = [];
+  let nextPid = 4300;
+  const spawn = vi.fn((command) => {
+    const child = createMockChild(nextPid += 1);
+    if (command === "taskkill") {
+      killerChildren.push(child);
       return child;
-    }),
-  };
+    }
+
+    backendChildren.push(child);
+    if (autoHandshake) {
+      queueMicrotask(() => {
+        child.stdout.emit(
+          "data",
+          Buffer.from(
+            `AGENT_PET_SIDECAR_RUNTIME {"host":"127.0.0.1","port":${runtimePort},"pid":${child.pid}}\n`,
+          ),
+        );
+      });
+    }
+    return child;
+  });
+
+  return { spawn, backendChildren, killerChildren };
 }
 
 function loadSidecarWithMocks(mocks) {
@@ -133,13 +173,43 @@ function createManager(createSidecarManager, overrides = {}) {
     managedSidecarDataDir: "/tmp/agent-pet-test",
     state: { isQuitting: false },
     showControlWindow: vi.fn(),
+    platform: "win32",
     ...overrides,
   });
+}
+
+function setResourcesPath(value) {
+  Object.defineProperty(process, "resourcesPath", {
+    configurable: true,
+    value,
+  });
+}
+
+function restoreProcessState() {
+  if (originalResourcesPathDescriptor) {
+    Object.defineProperty(process, "resourcesPath", originalResourcesPathDescriptor);
+  } else {
+    delete process.resourcesPath;
+  }
+  for (const [name, value] of trackedEnvironment) {
+    if (value === undefined) {
+      delete process.env[name];
+    } else {
+      process.env[name] = value;
+    }
+  }
 }
 
 async function flushMicrotasks() {
   await Promise.resolve();
   await Promise.resolve();
+  await Promise.resolve();
+}
+
+async function stopManagedSidecar(manager, child) {
+  manager.stopSidecar();
+  emitChildExit(child, 0, null);
+  await flushMicrotasks();
 }
 
 describe("createSidecarManager", () => {
@@ -148,13 +218,15 @@ describe("createSidecarManager", () => {
     vi.restoreAllMocks();
     delete require.cache[sidecarPath];
     Module._load = originalModuleLoad;
+    restoreProcessState();
   });
 
-  it("reports PORT_IN_USE when the preferred and all fallback ports are occupied by non-backends", async () => {
+  it("reports structured port exhaustion from the atomic Python binder", async () => {
+    const childProcess = createChildProcessMock({ autoHandshake: false });
     const { createSidecarManager } = loadSidecarWithMocks({
       electron: createElectronMock(),
-      "node:child_process": createChildProcessMock(),
-      "node:fs": { existsSync: vi.fn(() => true) },
+      "node:child_process": childProcess,
+      "node:fs": createFsMock(),
       "node:http": createFailingHttpMock("health endpoint unavailable"),
       "node:net": createServerMock(false),
     });
@@ -162,23 +234,34 @@ describe("createSidecarManager", () => {
 
     await manager.startSidecar();
     await flushMicrotasks();
+    const child = childProcess.backendChildren[0];
+    child.stderr.emit(
+      "data",
+      Buffer.from(
+        'AGENT_PET_SIDECAR_ERROR {"code":"PORT_IN_USE","message":"no available sidecar port"}\n',
+      ),
+    );
+    emitChildExit(child, 2, null);
 
     expect(manager.getPublicSidecarStatus()).toMatchObject({
       state: "error",
       managed: false,
       pid: null,
       health: null,
+      logPath: path.join("/workspace/logs", "sidecar", "agent-pet-sidecar.log"),
       error: {
         code: "PORT_IN_USE",
+        message: expect.stringContaining("agent-pet-sidecar.log"),
       },
     });
   });
 
   it("reuses a foreign healthy backend as degraded instead of ready", async () => {
+    const childProcess = createChildProcessMock();
     const { createSidecarManager } = loadSidecarWithMocks({
       electron: createElectronMock(),
-      "node:child_process": createChildProcessMock(),
-      "node:fs": { existsSync: vi.fn(() => true) },
+      "node:child_process": childProcess,
+      "node:fs": createFsMock(),
       "node:http": createHealthyHttpMock({ status: "ok" }),
       "node:net": createServerMock(false),
     });
@@ -187,6 +270,7 @@ describe("createSidecarManager", () => {
     await manager.startSidecar();
     await flushMicrotasks();
 
+    expect(childProcess.spawn).not.toHaveBeenCalled();
     expect(manager.getPublicSidecarStatus()).toMatchObject({
       state: "degraded",
       managed: false,
@@ -199,15 +283,15 @@ describe("createSidecarManager", () => {
     });
   });
 
-  it("searches upward for a free port when the preferred one is blocked by a non-backend", async () => {
-    const childProcess = createChildProcessMock();
+  it("lets the Python entrypoint retain a fallback port and then updates the shared runtime", async () => {
+    const childProcess = createChildProcessMock({ runtimePort: 8767 });
     const runtime = { host: "127.0.0.1", port: 8765, baseUrl: "http://127.0.0.1:8765" };
     const { createSidecarManager } = loadSidecarWithMocks({
       electron: createElectronMock(),
       "node:child_process": childProcess,
-      "node:fs": { existsSync: vi.fn(() => true) },
+      "node:fs": createFsMock(),
       "node:http": createFailingHttpMock("not a backend"),
-      "node:net": createPortSearchServerMock(new Set([8765, 8766])),
+      "node:net": createServerMock(false),
     });
     const manager = createManager(createSidecarManager, { runtime });
 
@@ -215,32 +299,93 @@ describe("createSidecarManager", () => {
     await flushMicrotasks();
 
     expect(childProcess.spawn).toHaveBeenCalledWith(
-      expect.any(String),
-      ["-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8767"],
+      "python",
+      [
+        "-m",
+        "app.sidecar_entry",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8765",
+        "--port-search-range",
+        "20",
+      ],
       expect.objectContaining({
-        env: expect.objectContaining({ AGENT_PET_BACKEND_PORT: "8767" }),
+        env: expect.objectContaining({ AGENT_PET_BACKEND_PORT: "8765" }),
+        stdio: ["ignore", "pipe", "pipe"],
       }),
     );
-    // 共享运行时被就地更新，proxy/get-sidecar-config 会跟着切换。
     expect(runtime).toMatchObject({ port: 8767, baseUrl: "http://127.0.0.1:8767" });
     expect(manager.getPublicSidecarStatus()).toMatchObject({
       state: "starting",
       managed: true,
-      pid: 4321,
       port: 8767,
       baseUrl: "http://127.0.0.1:8767",
     });
 
-    // 停掉就绪轮询，避免真实定时器泄漏到后续测试。
-    manager.stopSidecar();
+    await stopManagedSidecar(manager, childProcess.backendChildren[0]);
   });
 
-  it("reports BACKEND_NOT_FOUND when no backend entrypoint exists", async () => {
+  it("uses python -m app.sidecar_entry only in development", async () => {
+    process.env.AGENT_PET_PYTHON = "custom-python";
     const childProcess = createChildProcessMock();
     const { createSidecarManager } = loadSidecarWithMocks({
-      electron: createElectronMock(),
+      electron: createElectronMock({ isPackaged: false }),
       "node:child_process": childProcess,
-      "node:fs": { existsSync: vi.fn(() => false) },
+      "node:fs": createFsMock(),
+      "node:http": createFailingHttpMock(),
+      "node:net": createServerMock(true),
+    });
+    const manager = createManager(createSidecarManager);
+
+    await manager.startSidecar();
+    await flushMicrotasks();
+
+    expect(childProcess.spawn).toHaveBeenCalledWith(
+      "custom-python",
+      expect.arrayContaining(["-m", "app.sidecar_entry"]),
+      expect.objectContaining({ cwd: expect.any(String), windowsHide: true }),
+    );
+    await stopManagedSidecar(manager, childProcess.backendChildren[0]);
+  });
+
+  it("prefers the bundled executable in a packaged app", async () => {
+    const resourcesPath = path.resolve("/opt/agent-pet/resources");
+    const executablePath = path.join(resourcesPath, "sidecar", "agent-pet-sidecar.exe");
+    setResourcesPath(resourcesPath);
+    const childProcess = createChildProcessMock();
+    const { createSidecarManager } = loadSidecarWithMocks({
+      electron: createElectronMock({ isPackaged: true }),
+      "node:child_process": childProcess,
+      "node:fs": createFsMock((candidate) => candidate === executablePath),
+      "node:http": createFailingHttpMock(),
+      "node:net": createServerMock(true),
+    });
+    const manager = createManager(createSidecarManager);
+
+    await manager.startSidecar();
+    await flushMicrotasks();
+
+    expect(childProcess.spawn).toHaveBeenCalledWith(
+      executablePath,
+      ["--host", "127.0.0.1", "--port", "8765", "--port-search-range", "20"],
+      expect.objectContaining({ cwd: path.dirname(executablePath) }),
+    );
+    expect(childProcess.spawn).not.toHaveBeenCalledWith(
+      expect.stringMatching(/python/i),
+      expect.anything(),
+      expect.anything(),
+    );
+    await stopManagedSidecar(manager, childProcess.backendChildren[0]);
+  });
+
+  it("reports an actionable packaged-app error without falling back to Python", async () => {
+    setResourcesPath(path.resolve("/opt/agent-pet/resources"));
+    const childProcess = createChildProcessMock();
+    const { createSidecarManager } = loadSidecarWithMocks({
+      electron: createElectronMock({ isPackaged: true }),
+      "node:child_process": childProcess,
+      "node:fs": createFsMock(() => false),
       "node:http": createFailingHttpMock(),
       "node:net": createServerMock(true),
     });
@@ -252,6 +397,159 @@ describe("createSidecarManager", () => {
     expect(childProcess.spawn).not.toHaveBeenCalled();
     expect(manager.getPublicSidecarStatus()).toMatchObject({
       state: "error",
+      managed: false,
+      error: {
+        code: "SIDECAR_EXECUTABLE_NOT_FOUND",
+        message: expect.stringMatching(/agent-pet-sidecar\.exe.*agent-pet-sidecar\.log/s),
+      },
+    });
+  });
+
+  it("persists both stdout and stderr to the discoverable log", async () => {
+    const fsMock = createFsMock();
+    const childProcess = createChildProcessMock({ autoHandshake: false });
+    const { createSidecarManager } = loadSidecarWithMocks({
+      electron: createElectronMock(),
+      "node:child_process": childProcess,
+      "node:fs": fsMock,
+      "node:http": createFailingHttpMock(),
+      "node:net": createServerMock(true),
+    });
+    const manager = createManager(createSidecarManager);
+
+    await manager.startSidecar();
+    const child = childProcess.backendChildren[0];
+    child.stdout.emit(
+      "data",
+      Buffer.from(
+        `AGENT_PET_SIDECAR_RUNTIME {"host":"127.0.0.1","port":8765,"pid":${child.pid}}\nstdout marker\n`,
+      ),
+    );
+    child.stderr.emit("data", Buffer.from("stderr marker\n"));
+    await flushMicrotasks();
+
+    const logText = fsMock.appendFileSync.mock.calls
+      .map(([, value]) => (Buffer.isBuffer(value) ? value.toString("utf8") : String(value)))
+      .join("");
+    expect(logText).toContain("stdout marker");
+    expect(logText).toContain("stderr marker");
+    expect(manager.getPublicSidecarStatus().logPath).toBe(
+      path.join("/workspace/logs", "sidecar", "agent-pet-sidecar.log"),
+    );
+    await stopManagedSidecar(manager, child);
+  });
+
+  it("reports READINESS_TIMEOUT after the deadline but keeps the backend running", async () => {
+    vi.useFakeTimers();
+    const childProcess = createChildProcessMock();
+    const { createSidecarManager } = loadSidecarWithMocks({
+      electron: createElectronMock(),
+      "node:child_process": childProcess,
+      "node:fs": createFsMock(),
+      "node:http": createFailingHttpMock("health check failed"),
+      "node:net": createServerMock(true),
+    });
+    const manager = createManager(createSidecarManager);
+
+    await manager.startSidecar();
+    await flushMicrotasks();
+    await vi.advanceTimersByTimeAsync(31_000);
+    await flushMicrotasks();
+
+    const child = childProcess.backendChildren[0];
+    expect(child.kill).not.toHaveBeenCalled();
+    expect(manager.getPublicSidecarStatus()).toMatchObject({
+      state: "starting",
+      managed: true,
+      pid: child.pid,
+      health: null,
+      error: {
+        code: "READINESS_TIMEOUT",
+      },
+    });
+
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(manager.getPublicSidecarStatus().state).toBe("starting");
+    await stopManagedSidecar(manager, child);
+  });
+
+  it("uses taskkill /T /F for a managed Windows sidecar", async () => {
+    const childProcess = createChildProcessMock();
+    const { createSidecarManager } = loadSidecarWithMocks({
+      electron: createElectronMock(),
+      "node:child_process": childProcess,
+      "node:fs": createFsMock(),
+      "node:http": createFailingHttpMock(),
+      "node:net": createServerMock(true),
+    });
+    const manager = createManager(createSidecarManager);
+
+    await manager.startSidecar();
+    await flushMicrotasks();
+    const child = childProcess.backendChildren[0];
+    manager.stopSidecar();
+
+    expect(childProcess.spawn).toHaveBeenCalledWith(
+      "taskkill",
+      ["/pid", String(child.pid), "/T", "/F"],
+      { stdio: "ignore", windowsHide: true },
+    );
+    emitChildExit(child, 0, null);
+    expect(manager.getPublicSidecarStatus()).toMatchObject({
+      state: "stopped",
+      managed: false,
+      pid: null,
+      error: null,
+    });
+  });
+
+  it("completes 20 mocked start-stop cycles without retaining process state", async () => {
+    const childProcess = createChildProcessMock();
+    const { createSidecarManager } = loadSidecarWithMocks({
+      electron: createElectronMock(),
+      "node:child_process": childProcess,
+      "node:fs": createFsMock(),
+      "node:http": createFailingHttpMock(),
+      "node:net": createServerMock(true),
+    });
+    const manager = createManager(createSidecarManager);
+
+    for (let cycle = 0; cycle < 20; cycle += 1) {
+      await manager.startSidecar();
+      await flushMicrotasks();
+      const child = childProcess.backendChildren[cycle];
+      expect(child).toBeDefined();
+      manager.stopSidecar();
+      emitChildExit(child, 0, null);
+      await flushMicrotasks();
+      expect(manager.getPublicSidecarStatus()).toMatchObject({
+        state: "stopped",
+        managed: false,
+        pid: null,
+        error: null,
+      });
+    }
+
+    expect(childProcess.backendChildren).toHaveLength(20);
+    expect(childProcess.killerChildren).toHaveLength(20);
+  });
+
+  it("reports BACKEND_NOT_FOUND when the development entrypoint is absent", async () => {
+    const childProcess = createChildProcessMock();
+    const { createSidecarManager } = loadSidecarWithMocks({
+      electron: createElectronMock(),
+      "node:child_process": childProcess,
+      "node:fs": createFsMock(() => false),
+      "node:http": createFailingHttpMock(),
+      "node:net": createServerMock(true),
+    });
+    const manager = createManager(createSidecarManager);
+
+    await manager.startSidecar();
+
+    expect(childProcess.spawn).not.toHaveBeenCalled();
+    expect(manager.getPublicSidecarStatus()).toMatchObject({
+      state: "error",
       health: null,
       error: {
         code: "BACKEND_NOT_FOUND",
@@ -259,54 +557,11 @@ describe("createSidecarManager", () => {
     });
   });
 
-  it("reports READINESS_TIMEOUT after the deadline but keeps the backend running and keeps waiting", async () => {
-    vi.useFakeTimers();
-    const childProcess = createChildProcessMock();
-    const { createSidecarManager } = loadSidecarWithMocks({
-      electron: createElectronMock(),
-      "node:child_process": childProcess,
-      "node:fs": { existsSync: vi.fn(() => true) },
-      "node:http": createFailingHttpMock("health check failed"),
-      "node:net": createServerMock(true),
-    });
-    const manager = createManager(createSidecarManager);
-
-    await manager.startSidecar();
-    await vi.advanceTimersByTimeAsync(31_000);
-    await flushMicrotasks();
-
-    expect(childProcess.spawn).toHaveBeenCalledWith(
-      expect.any(String),
-      ["-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8765"],
-      expect.objectContaining({
-        cwd: expect.any(String),
-        windowsHide: true,
-      }),
-    );
-    // 超时只提示，不杀正在冷启动的进程。
-    const child = childProcess.spawn.mock.results[0].value;
-    expect(child.kill).not.toHaveBeenCalled();
-    expect(manager.getPublicSidecarStatus()).toMatchObject({
-      state: "starting",
-      managed: true,
-      pid: 4321,
-      health: null,
-      error: {
-        code: "READINESS_TIMEOUT",
-      },
-    });
-
-    // 超时后不放弃：状态保持 starting，轮询继续（1s 慢频率）。
-    expect(childProcess.spawn).toHaveBeenCalledTimes(1);
-    await vi.advanceTimersByTimeAsync(5_000);
-    expect(manager.getPublicSidecarStatus().state).toBe("starting");
-  });
-
-  it("dedupes reminder notifications and evicts the oldest ids beyond the cap", async () => {
+  it("dedupes reminder notifications and evicts the oldest ids beyond the cap", () => {
     const { createSidecarManager } = loadSidecarWithMocks({
       electron: createElectronMock({ notificationsSupported: true }),
       "node:child_process": createChildProcessMock(),
-      "node:fs": { existsSync: vi.fn(() => true) },
+      "node:fs": createFsMock(),
       "node:http": createFailingHttpMock(),
       "node:net": createServerMock(true),
     });
@@ -319,7 +574,6 @@ describe("createSidecarManager", () => {
       expect(manager.showReminderNotification({ reminder_id: `reminder-${index}`, title: "t" }).status).toBe("shown");
     }
 
-    // 集合上限 500：最早的 reminder-0 已被逐出，可再次投递；新近的仍然去重。
     expect(manager.showReminderNotification({ reminder_id: "reminder-0", title: "t" }).status).toBe("shown");
     expect(manager.showReminderNotification({ reminder_id: "reminder-500", title: "t" }).status).toBe("duplicate");
   });

@@ -761,7 +761,7 @@ describe("MemoryWindowView", () => {
 
   it("requires confirmation before profile drawer actions", async () => {
     const api = createApi([memoryFact()], localAssetStats, profileWithPreference);
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const nativeConfirm = vi.spyOn(window, "confirm");
 
     renderView(api);
     openArchiveTab();
@@ -770,13 +770,15 @@ describe("MemoryWindowView", () => {
     const drawer = await screen.findByRole("dialog", { name: "记忆详情" });
     fireEvent.click(within(drawer).getByRole("button", { name: "撤回" }));
 
-    expect(confirm).toHaveBeenCalledWith("撤回后，我不会再把这条作为当前画像使用。确定继续吗？");
+    const confirmation = screen.getByRole("dialog", { name: "确认更新这条记忆吗？" });
+    expect(confirmation).toHaveTextContent("撤回后，我不会再把这条作为当前画像使用。确定继续吗？");
     expect(api.submitMemoryProfileAction).not.toHaveBeenCalled();
+    expect(nativeConfirm).not.toHaveBeenCalled();
+    fireEvent.click(within(confirmation).getByRole("button", { name: "取消" }));
   });
 
   it("submits confirmed profile actions and refreshes the profile", async () => {
     const api = createApi([memoryFact()], localAssetStats, profileWithPreference);
-    vi.spyOn(window, "confirm").mockReturnValue(true);
 
     renderView(api);
     openArchiveTab();
@@ -784,6 +786,9 @@ describe("MemoryWindowView", () => {
     fireEvent.click(await screen.findByRole("button", { name: "查看记忆详情：回答保持简洁" }));
     const drawer = await screen.findByRole("dialog", { name: "记忆详情" });
     fireEvent.click(within(drawer).getByRole("button", { name: "标记不准确" }));
+    fireEvent.click(within(
+      screen.getByRole("dialog", { name: "确认更新这条记忆吗？" }),
+    ).getByRole("button", { name: "确认更新" }));
 
     await waitFor(() =>
       expect(api.submitMemoryProfileAction).toHaveBeenCalledWith(
@@ -808,10 +813,12 @@ describe("MemoryWindowView", () => {
 
     (api.getMemoryProfileDetail as ReturnType<typeof vi.fn>).mockResolvedValue(profilePreferenceDetail);
     (api.submitMemoryProfileAction as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("target_id memory_candidates"));
-    vi.spyOn(window, "confirm").mockReturnValue(true);
     fireEvent.click(await screen.findByRole("button", { name: "查看记忆详情：回答保持简洁" }));
     const drawer = await screen.findByRole("dialog", { name: "记忆详情" });
     fireEvent.click(within(drawer).getByRole("button", { name: "撤回" }));
+    fireEvent.click(within(
+      screen.getByRole("dialog", { name: "确认更新这条记忆吗？" }),
+    ).getByRole("button", { name: "确认更新" }));
 
     expect(await screen.findByText("这次没有改动记忆，请稍后重试。")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "查看记忆详情：回答保持简洁" })).toBeInTheDocument();
@@ -1106,7 +1113,7 @@ describe("MemoryWindowView", () => {
 
   it("requires confirmation before applying a hygiene suggestion", async () => {
     const api = createApi([memoryFact()], localAssetStats, emptyProfileProjection, hygienePreview);
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const nativeConfirm = vi.spyOn(window, "confirm");
 
     renderView(api);
     const decayPanel = openDecayTab();
@@ -1114,20 +1121,25 @@ describe("MemoryWindowView", () => {
     const panel = await screen.findByLabelText("整理建议");
     fireEvent.click(within(panel).getByRole("button", { name: "归档" }));
 
-    expect(confirm).toHaveBeenCalledWith("确定要应用这条整理建议吗？这会更新记忆状态。");
+    const confirmation = screen.getByRole("dialog", { name: "确认应用整理建议吗？" });
+    expect(confirmation).toHaveTextContent("这会更新对应的记忆状态，并记录本次整理操作。");
     expect(api.applyMemoryHygieneSuggestion).not.toHaveBeenCalled();
+    expect(nativeConfirm).not.toHaveBeenCalled();
+    fireEvent.click(within(confirmation).getByRole("button", { name: "取消" }));
   });
 
   it("applies one hygiene suggestion with confirmed true and refreshes memory views", async () => {
     const api = createApi([memoryFact()], localAssetStats, profileWithPreference, hygienePreview);
     const onRefresh = vi.fn();
-    vi.spyOn(window, "confirm").mockReturnValue(true);
 
     renderView(api, onRefresh);
     const decayPanel = openDecayTab();
     fireEvent.click(within(decayPanel).getByRole("button", { name: "扫描整理建议" }));
     const panel = await screen.findByLabelText("整理建议");
     fireEvent.click(within(panel).getByRole("button", { name: "归档" }));
+    fireEvent.click(within(
+      screen.getByRole("dialog", { name: "确认应用整理建议吗？" }),
+    ).getByRole("button", { name: "确认应用" }));
 
     await waitFor(() => expect(api.applyMemoryHygieneSuggestion).toHaveBeenCalledWith("hyg_safe_1", true));
     await waitFor(() => expect(api.getMemoryHygienePreview).toHaveBeenCalledTimes(2));
@@ -1142,13 +1154,15 @@ describe("MemoryWindowView", () => {
     (api.applyMemoryHygieneSuggestion as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
       new Error("source_text Authorization token C:\\secret"),
     );
-    vi.spyOn(window, "confirm").mockReturnValue(true);
 
     const { container } = renderView(api);
     const decayPanel = openDecayTab();
     fireEvent.click(within(decayPanel).getByRole("button", { name: "扫描整理建议" }));
     const panel = await screen.findByLabelText("整理建议");
     fireEvent.click(within(panel).getByRole("button", { name: "归档" }));
+    fireEvent.click(within(
+      screen.getByRole("dialog", { name: "确认应用整理建议吗？" }),
+    ).getByRole("button", { name: "确认应用" }));
 
     expect(await within(panel).findByText("这次没有完成整理，请稍后重试。")).toBeInTheDocument();
     expect(within(panel).getByText("临时状态已过期")).toBeInTheDocument();

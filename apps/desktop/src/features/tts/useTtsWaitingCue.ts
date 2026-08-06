@@ -348,10 +348,11 @@ export function useTtsWaitingCue({
   }, [cueSpeed, disposeCue, enabled, fallbackProvider, prefetch, provider, promptList, speed, stop, voice, volume]);
 
   useEffect(() => {
+    const cache = cacheRef.current;
     return () => {
       stop("unmount");
-      cacheRef.current.forEach(disposeCue);
-      cacheRef.current.clear();
+      cache.forEach(disposeCue);
+      cache.clear();
     };
   }, [disposeCue, stop]);
 

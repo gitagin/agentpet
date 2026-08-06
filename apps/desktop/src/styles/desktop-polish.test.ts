@@ -3,6 +3,47 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const polishStyles = readFileSync(resolve(__dirname, "desktop-polish.css"), "utf8");
+const themeStyles = readFileSync(resolve(__dirname, "theme.css"), "utf8");
+const baseStyles = readFileSync(resolve(__dirname, "base.css"), "utf8");
+
+describe("desktop polish interaction contract", () => {
+  it("keeps action fills readable and preserves local tool-button styling", () => {
+    expect(themeStyles).toContain("--color-primary-action: #ad456a;");
+    expect(themeStyles).toContain("--color-primary-action-strong: #8e2f54;");
+    expect(themeStyles).toContain("--color-danger-action: #a33d50;");
+    expect(baseStyles).toContain("--brand: var(--color-primary-action);");
+    expect(baseStyles).toContain("--brand-strong: var(--color-primary-action-strong);");
+    expect(baseStyles).toMatch(
+      /button\.danger\s*\{[^}]*background:\s*var\(--color-danger-action\);[^}]*color:\s*#ffffff;/,
+    );
+    expect(polishStyles).toMatch(
+      /\.control-home-shell button:not\(:where\([^)]*\.control-memory-entry[^)]*\)\)\s*\{[^}]*linear-gradient\(135deg,\s*var\(--color-primary-action\),\s*var\(--color-primary-action-strong\)\);/,
+    );
+    expect(polishStyles).toMatch(
+      /\.feature-shell button:not\(:where\([^)]*\.danger[^)]*\)\)/,
+    );
+    expect(polishStyles).toMatch(
+      /\.feature-shell button:not\(\.secondary\):not\(\.ghost-button\):not\(\.danger\)/,
+    );
+    expect(polishStyles).toMatch(
+      /\.control-home-shell \.control-memory-actions button\s*\{[^}]*border-color:\s*rgba\(255,\s*255,\s*255,\s*0\.12\);[^}]*background:\s*rgba\(255,\s*255,\s*255,\s*0\.06\);[^}]*box-shadow:\s*none;/,
+    );
+    expect(polishStyles).not.toContain("button:not(.secondary):not(.bottom-nav-button)");
+  });
+
+  it("keeps keyboard focus and long journal entries visible", () => {
+    expect(themeStyles).toContain("--focus-ring: #f58da5;");
+    expect(themeStyles).toContain("--motion-standard: 160ms cubic-bezier(0.2, 0.82, 0.2, 1);");
+    expect(themeStyles).toContain("--shadow-primary-glow:");
+    expect(themeStyles).toContain("--text-muted: var(--color-text-muted);");
+    expect(polishStyles).not.toMatch(
+      /\.control-journal-card textarea\s*\{[^}]*overflow:\s*hidden;/,
+    );
+    expect(polishStyles).not.toMatch(
+      /body\[data-window-mode="memory"\] \.memory-(?:star|flow)-tools (?:input|select)\s*\{[^}]*outline:\s*none;/,
+    );
+  });
+});
 
 describe("desktop polish navigation contract", () => {
   it("keeps every route dock centered and fitted to its nav buttons", () => {
@@ -134,6 +175,43 @@ describe("desktop polish memory workspace boundary contract", () => {
 });
 
 describe("desktop polish detail contract", () => {
+  it("keeps home feedback visible and preserves the companion-first compact layout", () => {
+    expect(polishStyles).toContain("Compact home layout");
+    expect(polishStyles).toMatch(
+      /\.control-home-shell > \.notice\s*\{[^}]*z-index:\s*70;[^}]*width:\s*min\(480px,\s*calc\(100vw - 32px\)\);[^}]*clip-path:\s*none;[^}]*white-space:\s*normal;[^}]*pointer-events:\s*auto;/,
+    );
+    expect(polishStyles).toMatch(
+      /\.control-home-shell > \.notice\s*\{[^}]*max-height:\s*min\(112px,\s*calc\(100dvh - 32px\)\);[^}]*gap:\s*8px;[^}]*padding:\s*8px 12px;[^}]*font-size:\s*12px;[^}]*line-height:\s*1\.35;/,
+    );
+    expect(polishStyles).not.toMatch(
+      /\.control-home-shell > \.notice\s*\{[^}]*clip-path:\s*inset\(50%\);/,
+    );
+    expect(polishStyles).toMatch(
+      /\.control-date-card strong\s*\{[^}]*display:\s*grid;[^}]*align-content:\s*center;[^}]*gap:\s*1px;[^}]*overflow:\s*hidden;[^}]*font-size:\s*clamp\(18px,\s*2\.45dvh,\s*22px\);/,
+    );
+    expect(polishStyles).toMatch(
+      /\.control-date-card strong span\s*\{[^}]*text-overflow:\s*clip;[^}]*white-space:\s*nowrap;/,
+    );
+    expect(polishStyles).toMatch(
+      /\.control-date-card strong span:last-child\s*\{[^}]*color:\s*rgba\(255,\s*248,\s*250,\s*0\.64\);[^}]*font-size:\s*0\.72em;[^}]*font-weight:\s*650;/,
+    );
+    expect(polishStyles).toMatch(
+      /Compact home layout[\s\S]*@media \(max-width:\s*760px\)\s*\{[\s\S]*\.control-desktop-grid\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\);[^}]*grid-template-rows:\s*minmax\(190px,\s*1fr\) clamp\(120px,\s*28dvh,\s*172px\);[^}]*overflow:\s*hidden;/,
+    );
+    expect(polishStyles).toMatch(
+      /Compact home layout[\s\S]*@media \(max-width:\s*760px\)\s*\{[\s\S]*\.control-left-rail\s*\{[^}]*grid-column:\s*1;[^}]*grid-row:\s*2;[^}]*width:\s*100%;[^}]*max-width:\s*none;[^}]*grid-template-columns:[^}]*176px[^}]*overflow-x:\s*auto;[^}]*scroll-snap-type:\s*x proximity;/,
+    );
+    expect(polishStyles).toMatch(
+      /\.control-left-rail,\s*\.control-right-rail\s*\{[^}]*width:\s*100%;[^}]*min-width:\s*0;[^}]*max-width:\s*100%;/,
+    );
+    expect(polishStyles).toMatch(
+      /Compact home layout[\s\S]*@media \(max-width:\s*760px\)\s*\{[\s\S]*\.control-home-shell \.control-status-left,\s*\.control-home-shell \.control-status-right\s*\{[^}]*display:\s*none;/,
+    );
+    expect(polishStyles).toMatch(
+      /\.control-home-shell:has\(> \.notice\)\s*\{[^}]*grid-template-rows:\s*48px minmax\(44px,\s*auto\) minmax\(0,\s*1fr\);/,
+    );
+  });
+
   it("keeps the home stage inside explicit safety zones instead of negative offsets", () => {
     expect(polishStyles).toContain("Product Design stage safety zones");
     expect(polishStyles).toMatch(
@@ -365,6 +443,12 @@ describe("desktop polish detail contract", () => {
     );
     expect(polishStyles).toMatch(
       /\.feature-shell \.memory-profile-group-head strong,\s*\.feature-shell \.memory-profile-item strong,\s*\.feature-shell \.memory-profile-filtered > summary\s*\{[^}]*color:\s*var\(--feature-ink\);/,
+    );
+  });
+
+  it("honors reduced-transparency preferences after route polish overrides", () => {
+    expect(polishStyles).toMatch(
+      /@media \(prefers-reduced-transparency:\s*reduce\)\s*\{[\s\S]*backdrop-filter:\s*none !important;[\s\S]*background:\s*#1e1d24 !important;/,
     );
   });
 });

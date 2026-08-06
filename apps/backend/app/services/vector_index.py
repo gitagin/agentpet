@@ -27,6 +27,11 @@ _NORMALIZATION = "l2-v1"
 _ALIAS_PREFIX = "agent_pet_vector"
 _POINT_NAMESPACE = uuid5(NAMESPACE_URL, "agent-pet/vector-points/v1")
 _BATCH_SIZE = 64
+# Qdrant Server defaults to a 20 MiB plain-index threshold. Server-backed
+# vector collections build HNSW after 1 MiB; the acceptance benchmark uses the
+# real server because qdrant-client's embedded implementation is brute-force.
+_HNSW_INDEXING_THRESHOLD_KB = 1024
+_VAULT_ID_PAYLOAD_FIELD = "metadata.vault_id"
 _SAFE_REASONS = {
     "active_generation_missing",
     "credential_store_unavailable",
@@ -219,6 +224,10 @@ class LangChainQdrantVectorIndex:
         self._lock = threading.RLock()
         self._last_sync: dict[str, VectorSyncResult] = {}
         self._blocked_vaults: dict[str, str] = {}
+        # Full validation walks every payload and hashes every document.
+        # Cache it by immutable generation metadata so it is not repeated for
+        # every query. A cheap exact count check still detects drift.
+        self._validated_collections: dict[tuple[str, str, str, int], bool] = {}
 
     @property
     def available(self) -> bool:
@@ -237,6 +246,10 @@ class LangChainQdrantVectorIndex:
         local_privacy: bool = False,
     ) -> VectorSyncResult:
         with self._lock:
+            # Reconciliation may reuse or replace a generation.  Any cached
+            # validation belongs to the previous snapshot and must not be
+            # carried across this lifecycle boundary.
+            self._validated_collections.clear()
             if not self.available:
                 return self._record_sync(
                     vault_id,
@@ -397,7 +410,7 @@ class LangChainQdrantVectorIndex:
             if metadata is None or not self._metadata_matches_config(metadata, vault_id):
                 self._blocked_vaults[vault_id] = "index_drift"
                 raise VectorIndexUnavailableError("index_drift")
-            if not self._validate_collection_from_metadata(physical, metadata):
+            if not self._collection_is_valid_for_search(physical, metadata):
                 self._blocked_vaults[vault_id] = "index_corrupt"
                 raise VectorIndexUnavailableError("index_corrupt")
 
@@ -723,10 +736,20 @@ class LangChainQdrantVectorIndex:
             created = client.create_collection(
                 collection_name=collection_name,
                 vectors_config=models.VectorParams(size=dimensions, distance=models.Distance.COSINE),
+                optimizers_config=models.OptimizersConfigDiff(
+                    indexing_threshold=_HNSW_INDEXING_THRESHOLD_KB,
+                ),
                 metadata=metadata,
             )
             if not created:
                 raise VectorIndexUnavailableError("qdrant_unavailable")
+            if not _is_embedded_qdrant_client(client):
+                client.create_payload_index(
+                    collection_name=collection_name,
+                    field_name=_VAULT_ID_PAYLOAD_FIELD,
+                    field_schema=models.PayloadSchemaType.KEYWORD,
+                    wait=True,
+                )
         except VectorIndexUnavailableError:
             raise
         except Exception as exc:
@@ -846,6 +869,37 @@ class LangChainQdrantVectorIndex:
             return _records_hash(records) == str(metadata.get("corpus_hash") or "")
         except Exception:
             return False
+
+    def _collection_is_valid_for_search(
+        self,
+        collection_name: str,
+        metadata: dict[str, object],
+    ) -> bool:
+        """Validate a generation once, then use O(1) drift checks per query."""
+        generation = str(metadata.get("generation") or "")
+        fingerprint = str(metadata.get("fingerprint") or "")
+        corpus_hash = str(metadata.get("corpus_hash") or "")
+        point_count = _nonnegative_int(metadata.get("point_count"))
+        if not generation or not fingerprint or not corpus_hash or point_count is None:
+            return False
+        key = (collection_name, generation, corpus_hash, point_count)
+        cached = self._validated_collections.get(key)
+        if cached:
+            try:
+                actual_count = self._client_instance().count(
+                    collection_name=collection_name,
+                    exact=True,
+                ).count
+            except Exception:
+                return False
+            if int(actual_count) == point_count:
+                return True
+            self._validated_collections.pop(key, None)
+
+        valid = self._validate_collection_from_metadata(collection_name, metadata)
+        if valid:
+            self._validated_collections[key] = True
+        return valid
 
     def _validate_collection_count(
         self,
@@ -1233,6 +1287,23 @@ def _records_hash(records: Sequence[Any]) -> str:
             )
         )
     return sha256_hex("\n".join(sorted(rows)))
+
+
+def _is_embedded_qdrant_client(client: Any) -> bool:
+    current = client
+    seen: set[int] = set()
+    for _ in range(4):
+        identity = id(current)
+        if identity in seen:
+            break
+        seen.add(identity)
+        nested = getattr(current, "_client", None)
+        if nested is None or nested is current:
+            break
+        current = nested
+    type_name = type(current).__name__.casefold()
+    module_name = type(current).__module__.casefold()
+    return type_name == "qdrantlocal" or ".local." in module_name
 
 
 def _normalize_vector(vector: Sequence[float], normalization: str) -> list[float]:

@@ -1,62 +1,12 @@
 from __future__ import annotations
 
-from enum import Enum
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
-AGENT_CONTRACT_VERSION = "agent-contracts.v1"
-
-
 class _ContractModel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
-
-
-
-class IndependentAgentRoleId(str, Enum):
-    RETRIEVAL = "vault_retrieval"
-    MEMORY = "structured_memory"
-    ANALYST_PLANNER = "analyst_planner"
-    REVIEWER = "reviewer"
-    ACTION_PROPOSAL = "action_proposal"
-    VERIFIER = "verifier"
-    SYNTHESIZER = "synthesizer"
-
-
-class AgentToolId(str, Enum):
-    SEARCH_VAULT_FTS = "search_vault_fts"
-    SEARCH_VAULT_VECTOR = "search_vault_vector"
-    SEARCH_ACTIVE_MEMORY = "search_active_memory"
-    SEARCH_DIARY_OBJECTS = "search_diary_objects"
-    SEARCH_DAILY_CHAT = "search_daily_chat"
-    SEARCH_SQLITE_GRAPH = "search_sqlite_graph"
-    ACTION_SCHEMA_LOOKUP = "action_schema_lookup"
-    READ_TASK_RECEIPT_STATE = "read_task_receipt_state"
-    READ_LEDGER_RECEIPT_STATE = "read_ledger_receipt_state"
-    READ_MEMORY_RECEIPT_STATE = "read_memory_receipt_state"
-    READ_VAULT_RECEIPT_STATE = "read_vault_receipt_state"
-
-
-
-class RetrievalProvenance(_ContractModel):
-    channel: str = Field(min_length=1, max_length=64)
-    rank: int = Field(ge=1)
-    score_component: float = Field(ge=0.0)
-
-
-class EvidenceEnvelope(_ContractModel):
-    schema_version: Literal["evidence-envelope.v1"] = "evidence-envelope.v1"
-    citation_id: str = Field(pattern=r"^citation:[A-Za-z0-9:_-]+$")
-    source: str = Field(min_length=1, max_length=512)
-    chunk_id: str = Field(min_length=1, max_length=256)
-    permitted_excerpt: str = Field(min_length=1, max_length=4_000)
-    lifecycle_status: Literal["active", "indexed", "historical_approved"]
-    confidence: float = Field(ge=0.0, le=1.0)
-    retrieval_provenance: tuple[RetrievalProvenance, ...]
-
-
-
 
 class ActionProposal(_ContractModel):
     schema_version: Literal["action-proposal.v1"] = "action-proposal.v1"
@@ -207,29 +157,6 @@ class ReflectionProposalBatch(_ContractModel):
         if len(ids) != len(set(ids)):
             raise ValueError("reflection proposal IDs must be unique")
         return self
-
-
-class AgentResultEnvelope(_ContractModel):
-    schema_version: Literal["agent-result-envelope.v1"] = "agent-result-envelope.v1"
-    task_id: str = Field(min_length=1, max_length=128)
-    role_id: IndependentAgentRoleId
-    status: Literal["success", "failed", "fallback"]
-    output_schema: str = Field(min_length=1, max_length=128)
-    output: dict[str, Any] = Field(default_factory=dict)
-    citation_ids: tuple[str, ...] = ()
-    receipt_refs: tuple[str, ...] = ()
-    safe_error_code: str | None = Field(default=None, max_length=128)
-    calls_used: int = Field(default=1, ge=0, le=2)
-    input_tokens: int | None = Field(default=None, ge=0, le=8_000)
-    output_tokens: int | None = Field(default=None, ge=0, le=2_500)
-    estimated_cost_usd: float | None = Field(default=None, ge=0.0, le=0.04)
-
-    @field_validator("output")
-    @classmethod
-    def _no_raw_reasoning_or_prompt(cls, value: dict[str, Any]) -> dict[str, Any]:
-        _reject_forbidden_keys(value)
-        return value
-
 
 
 # Single source of truth for the negotiation planning-round bound

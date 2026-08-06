@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app.api import memory as memory_api
+from app.models.enums import MemoryFactStatus
 from app.services.agent_actions import AgentActionCreate, AgentActionStore
 from app.services.memory_candidates import MemoryCandidateCreate, MemoryEvidenceCreate
 from app.services.memory_graph import MemoryFactCandidate
@@ -745,10 +746,25 @@ def test_profile_action_failure_response_is_safe(client_factory, tmp_path: Path,
         assert action_count == 0
 
 
-def test_profile_action_marks_graph_fact_inaccurate_safely(client_factory, tmp_path: Path) -> None:
+def test_profile_action_marks_graph_fact_inaccurate_safely(client_factory, tmp_path: Path, monkeypatch) -> None:
     with client_factory(data_dir=tmp_path / "data") as client:
         fact_id = create_preference_fact(client, object_value="fact detail marker")
         item = profile_item_for(client, "fact detail marker")
+        transition_calls: list[dict[str, object]] = []
+        lifecycle_factory = memory_api.memory_lifecycle_service
+
+        class RecordingLifecycleService:
+            def __init__(self, request) -> None:
+                self.inner = lifecycle_factory(request)
+
+            def transition(self, **kwargs):
+                transition_calls.append(kwargs)
+                return self.inner.transition(**kwargs)
+
+            def close(self) -> None:
+                self.inner.close()
+
+        monkeypatch.setattr(memory_api, "memory_lifecycle_service", RecordingLifecycleService)
 
         response = client.post(
             f"/api/memory/profile-projection/items/{item['id']}/actions",
@@ -757,6 +773,14 @@ def test_profile_action_marks_graph_fact_inaccurate_safely(client_factory, tmp_p
         )
 
         assert response.status_code == 200
+        assert transition_calls == [
+            {
+                "target_type": "fact",
+                "target_id": fact_id,
+                "to_status": MemoryFactStatus.WRONG,
+                "reason": "user_marked_wrong",
+            }
+        ]
         assert_no_profile_action_leaks(response.json(), fact_id)
         with sqlite3.connect(client.app.state.database.path) as conn:
             row = conn.execute("SELECT status FROM memory_graph_facts WHERE id = ?", (fact_id,)).fetchone()

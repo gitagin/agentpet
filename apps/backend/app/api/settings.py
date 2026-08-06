@@ -18,13 +18,11 @@ from ..models.api import (
     ModelConfigRequest,
     ModelConfigResponse,
     ModelHealthResponse,
-    SettingsPatchRequest,
     ModelKeyRequest,
     ModelKeyResponse,
     ModelTestRequest,
     ModelTestResponse,
     SettingsStatusResponse,
-    SettingsUpdateResponse,
     TtsKeyRequest,
     TtsKeyResponse,
     TtsSettingsRequest,
@@ -105,10 +103,13 @@ async def get_settings_status(
     store: SettingsStore = Depends(settings_store_dependency),
 ) -> SettingsStatusResponse:
     defaults = get_settings()
-    model_status = store.get_model_key_status()
-    embedding_status = store.get_embedding_key_status()
-    automation = store.get_automation_settings()
-    tts_settings = store.get_tts_settings()
+    try:
+        model_status = store.get_model_key_status()
+        embedding_status = store.get_embedding_key_status()
+        automation = store.get_automation_settings()
+        tts_settings = store.get_tts_settings()
+    except CredentialStoreError as exc:
+        _raise_credential_store_error(exc)
     model_config = store.get_model_config(
         default_provider=model_status.provider or "openai-compatible",
         default_base_url=defaults.model_base_url,
@@ -213,58 +214,6 @@ async def set_model_key(
         provider=status.provider or model_key.provider,
         status="configured",
         masked=status.masked or "****",
-    )
-
-
-@router.patch("", response_model=SettingsUpdateResponse)
-async def update_settings(
-    request: SettingsPatchRequest,
-    store: SettingsStore = Depends(settings_store_dependency),
-) -> SettingsUpdateResponse:
-    defaults = get_settings()
-    current_status = store.get_model_key_status()
-    current_model = store.get_model_config(
-        default_provider=current_status.provider or "openai-compatible",
-        default_base_url=defaults.model_base_url,
-        default_model=defaults.chat_model,
-    )
-    model_updated = any(value is not None for value in (request.provider, request.base_url, request.model))
-    if model_updated:
-        provider = request.provider or current_model.provider
-        _ensure_supported_provider(provider)
-        saved = store.set_model_config(
-            provider=provider,
-            base_url=request.base_url or current_model.base_url,
-            model=request.model or current_model.model,
-        )
-    else:
-        saved = current_model
-
-    current_automation = store.get_automation_settings()
-    automation_updated = request.use_negotiation is not None or request.max_rounds is not None
-    automation = current_automation
-    if automation_updated:
-        automation = store.set_automation_settings(
-            AutomationSettingsRequest(
-                auto_chat_diary=current_automation.auto_chat_diary,
-                auto_structured_memory=current_automation.auto_structured_memory,
-                auto_long_term_memory=current_automation.auto_long_term_memory,
-                auto_wiki_organize=current_automation.auto_wiki_organize,
-                local_privacy_mode=current_automation.local_privacy_mode,
-                proactive_trigger_frequency=current_automation.proactive_trigger_frequency,
-                use_negotiation=current_automation.use_negotiation if request.use_negotiation is None else request.use_negotiation,
-                max_rounds=current_automation.max_rounds if request.max_rounds is None else request.max_rounds,
-            )
-        )
-
-    health = store.get_model_health_status()
-    return SettingsUpdateResponse(
-        provider=saved.provider,
-        base_url=saved.base_url,
-        model=saved.model,
-        status="configured" if current_status.configured or model_updated else "missing_key",
-        agents_using_global=health.agents_fallback_to_global,
-        automation=automation,
     )
 
 
@@ -459,7 +408,6 @@ async def set_agent_models(
 
 
 @router.put("/agent-models/{agent_id}/config", response_model=AgentModelConfigResponse)
-@router.put("/agent-models/{agent_id}/model-config", response_model=AgentModelConfigResponse)
 async def set_agent_model_config(
     agent_id: str,
     model_config: AgentModelConfigRequest,
@@ -485,7 +433,6 @@ async def set_agent_model_config(
 
 
 @router.put("/agent-models/{agent_id}/key", response_model=AgentModelConfigResponse)
-@router.put("/agent-models/{agent_id}/model-key", response_model=AgentModelConfigResponse)
 async def set_agent_model_key(
     agent_id: str,
     model_key: AgentModelKeyRequest,
@@ -534,55 +481,6 @@ async def set_agent_model_key(
         configured=key_status.configured,
         masked=key_status.masked,
     )
-
-
-@router.put("/agent-model-config", response_model=AgentModelConfigResponse)
-async def set_agent_model_config_legacy(
-    model_config: AgentModelConfigRequest,
-    store: SettingsStore = Depends(settings_store_dependency),
-) -> AgentModelConfigResponse:
-    agent_id = _require_agent_id(model_config.agent_id)
-    return await set_agent_model_config(agent_id, model_config, store)
-
-
-@router.put("/agent-model-key", response_model=ModelKeyResponse)
-async def set_agent_model_key_legacy(
-    model_key: AgentModelKeyRequest,
-    store: SettingsStore = Depends(settings_store_dependency),
-) -> ModelKeyResponse:
-    agent_id = _require_agent_id(model_key.agent_id)
-    defaults = get_settings()
-    existing_config = store.get_agent_model_config(
-        agent_id,
-        default_provider="openai-compatible",
-        default_base_url=defaults.model_base_url,
-        default_model=defaults.chat_model,
-    )
-    provider = model_key.provider or (existing_config.provider if existing_config else "openai-compatible")
-    _ensure_supported_provider(provider)
-    try:
-        status_value = store.set_agent_model_key(
-            agent_id=agent_id,
-            provider=provider,
-            api_key=model_key.api_key,
-        )
-    except ConfigurationError as exc:
-        _raise_configuration_error(exc)
-    except CredentialStoreError as exc:
-        _raise_credential_store_error(exc)
-    return ModelKeyResponse(
-        provider=status_value.provider or provider,
-        status="configured",
-        masked=status_value.masked or "****",
-    )
-
-
-@router.post("/agent-model-test", response_model=ModelTestResponse)
-async def test_agent_model_connection_legacy(
-    request: ModelTestRequest,
-    store: SettingsStore = Depends(settings_store_dependency),
-) -> ModelTestResponse:
-    return await test_model_connection(request, store)
 
 
 @router.post("/model-test", response_model=ModelTestResponse)

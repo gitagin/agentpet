@@ -503,7 +503,7 @@ class FakeToolCallingChatModel:
         self.calls.append((user_message, system_prompt, [tool.name for tool in tools]))
         by_name = {tool.name: tool for tool in tools}
         if self.tool_name == "search_memory":
-            await by_name["search_memory"].ainvoke({"query": "Ada", "top_k": 5, "mode": "fts"})
+            await by_name["search_memory"].ainvoke({"query": "Ada", "top_k": 5})
         elif self.tool_name == "propose_memory":
             await by_name["propose_memory"].ainvoke(
                 {
@@ -614,7 +614,7 @@ class FakeRegistryChatModel:
         self.calls.append((user_message, system_prompt, tool_names))
         by_name = {tool.name: tool for tool in tools}
         if self.tool_name == "search_memory":
-            await by_name["search_memory"].ainvoke({"query": "Ada", "top_k": 5, "mode": "fts"})
+            await by_name["search_memory"].ainvoke({"query": "Ada", "top_k": 5})
         elif self.tool_name == "propose_memory":
             await by_name["propose_memory"].ainvoke(
                 {

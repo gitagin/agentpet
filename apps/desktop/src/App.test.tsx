@@ -164,6 +164,7 @@ const sidecarStatus: DesktopSidecarStatus = {
   baseUrl: "http://127.0.0.1:8765",
   host: "127.0.0.1",
   port: 8765,
+  logPath: "C:\\logs\\agent-pet-sidecar.log",
   managed: true,
   pid: 1234,
   updatedAt: "2026-05-24T00:00:00.000Z",
@@ -883,10 +884,10 @@ describe("App", () => {
 
     render(<App />);
 
-    await waitFor(() => expect(screen.getByLabelText("桌面记忆助手桌宠")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByLabelText("Agent Pet 桌宠")).toBeInTheDocument());
     expect(screen.getByLabelText("mock pet stage")).toBeInTheDocument();
     expect(screen.getByLabelText("mock pet chat overlay")).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "桌面记忆助手" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Agent Pet" })).not.toBeInTheDocument();
   });
 
   it("renders the homeboard from the stage home route", async () => {
@@ -1155,7 +1156,7 @@ describe("App", () => {
 
     render(<App />);
 
-    await waitFor(() => expect(screen.getByLabelText("桌面记忆助手桌宠")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByLabelText("Agent Pet 桌宠")).toBeInTheDocument());
     expect(window.agentDesktop.getWindowMode).toHaveBeenCalledTimes(1);
   });
 

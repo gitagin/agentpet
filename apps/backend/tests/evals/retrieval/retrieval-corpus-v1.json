@@ -537,7 +537,7 @@
     },
     {
       "case_id": "SEM-001",
-      "primary_slice": "keyword_free_semantic",
+      "primary_slice": "no_ascii_keyword_overlap",
       "fixture_source": "synthetic://agent-pet/retrieval-v1/doc-semantic-night",
       "query": "How bright ought the interface be once daylight ends?",
       "expected_relevant_chunk_ids": ["chunk-semantic-night-01", "chunk-semantic-night-02", "chunk-semantic-night-03", "chunk-semantic-night-04", "chunk-semantic-night-05"],
@@ -545,12 +545,12 @@
       "requested_source_scope": "knowledge_base",
       "expected_source_scope": "knowledge_base",
       "answer_label": "answerable",
-      "tags": ["semantic", "keyword_free", "display"],
+      "tags": ["semantic", "lexical_nonoverlap", "display"],
       "rationale": "Intent matches restrained nighttime presentation with zero meaningful lexical overlap."
     },
     {
       "case_id": "SEM-002",
-      "primary_slice": "keyword_free_semantic",
+      "primary_slice": "no_ascii_keyword_overlap",
       "fixture_source": "synthetic://agent-pet/retrieval-v1/doc-semantic-night",
       "query": "Should the screen look intense when the sun is gone?",
       "expected_relevant_chunk_ids": ["chunk-semantic-night-01", "chunk-semantic-night-02", "chunk-semantic-night-03", "chunk-semantic-night-04", "chunk-semantic-night-05"],
@@ -558,12 +558,12 @@
       "requested_source_scope": "knowledge_base",
       "expected_source_scope": "knowledge_base",
       "answer_label": "answerable",
-      "tags": ["semantic", "keyword_free", "display"],
+      "tags": ["semantic", "lexical_nonoverlap", "display"],
       "rationale": "Question paraphrases low nighttime luminance without sharing meaningful evidence terms."
     },
     {
       "case_id": "SEM-003",
-      "primary_slice": "keyword_free_semantic",
+      "primary_slice": "no_ascii_keyword_overlap",
       "fixture_source": "synthetic://agent-pet/retrieval-v1/doc-semantic-night",
       "query": "What appearance is preferred after sunset?",
       "expected_relevant_chunk_ids": ["chunk-semantic-night-01", "chunk-semantic-night-02", "chunk-semantic-night-03", "chunk-semantic-night-04", "chunk-semantic-night-05"],
@@ -571,12 +571,12 @@
       "requested_source_scope": "knowledge_base",
       "expected_source_scope": "knowledge_base",
       "answer_label": "answerable",
-      "tags": ["semantic", "keyword_free", "display"],
+      "tags": ["semantic", "lexical_nonoverlap", "display"],
       "rationale": "Sunset appearance paraphrases the same synthetic policy without meaningful term overlap."
     },
     {
       "case_id": "SEM-004",
-      "primary_slice": "keyword_free_semantic",
+      "primary_slice": "no_ascii_keyword_overlap",
       "fixture_source": "synthetic://agent-pet/retrieval-v1/doc-semantic-offline",
       "query": "Will it still function when the internet connection disappears?",
       "expected_relevant_chunk_ids": ["chunk-semantic-offline-01", "chunk-semantic-offline-02", "chunk-semantic-offline-03", "chunk-semantic-offline-04", "chunk-semantic-offline-05"],
@@ -584,12 +584,12 @@
       "requested_source_scope": "knowledge_base",
       "expected_source_scope": "knowledge_base",
       "answer_label": "answerable",
-      "tags": ["semantic", "keyword_free", "offline"],
+      "tags": ["semantic", "lexical_nonoverlap", "offline"],
       "rationale": "Connectivity-loss question maps to device retention without meaningful lexical overlap."
     },
     {
       "case_id": "SEM-005",
-      "primary_slice": "keyword_free_semantic",
+      "primary_slice": "no_ascii_keyword_overlap",
       "fixture_source": "synthetic://agent-pet/retrieval-v1/doc-semantic-offline",
       "query": "Can I keep using it aboard an airplane with networking disabled?",
       "expected_relevant_chunk_ids": ["chunk-semantic-offline-01", "chunk-semantic-offline-02", "chunk-semantic-offline-03", "chunk-semantic-offline-04", "chunk-semantic-offline-05"],
@@ -597,12 +597,12 @@
       "requested_source_scope": "knowledge_base",
       "expected_source_scope": "knowledge_base",
       "answer_label": "answerable",
-      "tags": ["semantic", "keyword_free", "offline"],
+      "tags": ["semantic", "lexical_nonoverlap", "offline"],
       "rationale": "Airplane scenario paraphrases local availability without reusing evidence vocabulary."
     },
     {
       "case_id": "SEM-006",
-      "primary_slice": "keyword_free_semantic",
+      "primary_slice": "no_ascii_keyword_overlap",
       "fixture_source": "synthetic://agent-pet/retrieval-v1/doc-semantic-offline",
       "query": "Does losing Wi-Fi stop access to saved material?",
       "expected_relevant_chunk_ids": ["chunk-semantic-offline-01", "chunk-semantic-offline-02", "chunk-semantic-offline-03", "chunk-semantic-offline-04", "chunk-semantic-offline-05"],
@@ -610,12 +610,12 @@
       "requested_source_scope": "knowledge_base",
       "expected_source_scope": "knowledge_base",
       "answer_label": "answerable",
-      "tags": ["semantic", "keyword_free", "offline"],
+      "tags": ["semantic", "lexical_nonoverlap", "offline"],
       "rationale": "Wi-Fi loss paraphrases device-bound persistence with zero meaningful lexical overlap."
     },
     {
       "case_id": "SEM-007",
-      "primary_slice": "keyword_free_semantic",
+      "primary_slice": "no_ascii_keyword_overlap",
       "fixture_source": "synthetic://agent-pet/retrieval-v1/doc-semantic-concise",
       "query": "Does the owner favor short progress reports?",
       "expected_relevant_chunk_ids": ["chunk-semantic-concise-01", "chunk-semantic-concise-02", "chunk-semantic-concise-03", "chunk-semantic-concise-04", "chunk-semantic-concise-05"],
@@ -623,12 +623,12 @@
       "requested_source_scope": "knowledge_base",
       "expected_source_scope": "knowledge_base",
       "answer_label": "answerable",
-      "tags": ["semantic", "keyword_free", "communication"],
+      "tags": ["semantic", "lexical_nonoverlap", "communication"],
       "rationale": "Short-report intent maps to compact communication without shared meaningful tokens."
     },
     {
       "case_id": "SEM-008",
-      "primary_slice": "keyword_free_semantic",
+      "primary_slice": "no_ascii_keyword_overlap",
       "fixture_source": "synthetic://agent-pet/retrieval-v1/doc-semantic-concise",
       "query": "Are project check-ins supposed to avoid long explanations?",
       "expected_relevant_chunk_ids": ["chunk-semantic-concise-01", "chunk-semantic-concise-02", "chunk-semantic-concise-03", "chunk-semantic-concise-04", "chunk-semantic-concise-05"],
@@ -636,12 +636,12 @@
       "requested_source_scope": "knowledge_base",
       "expected_source_scope": "knowledge_base",
       "answer_label": "answerable",
-      "tags": ["semantic", "keyword_free", "communication"],
+      "tags": ["semantic", "lexical_nonoverlap", "communication"],
       "rationale": "Avoiding long explanations paraphrases concise digests without lexical overlap."
     },
     {
       "case_id": "SEM-009",
-      "primary_slice": "keyword_free_semantic",
+      "primary_slice": "no_ascii_keyword_overlap",
       "fixture_source": "synthetic://agent-pet/retrieval-v1/doc-semantic-concise",
       "query": "How much detail belongs in routine updates?",
       "expected_relevant_chunk_ids": ["chunk-semantic-concise-01", "chunk-semantic-concise-02", "chunk-semantic-concise-03", "chunk-semantic-concise-04", "chunk-semantic-concise-05"],
@@ -649,12 +649,12 @@
       "requested_source_scope": "knowledge_base",
       "expected_source_scope": "knowledge_base",
       "answer_label": "answerable",
-      "tags": ["semantic", "keyword_free", "communication"],
+      "tags": ["semantic", "lexical_nonoverlap", "communication"],
       "rationale": "Detail-level question targets succinct communication with zero meaningful overlap."
     },
     {
       "case_id": "SEM-010",
-      "primary_slice": "keyword_free_semantic",
+      "primary_slice": "no_ascii_keyword_overlap",
       "fixture_source": "synthetic://agent-pet/retrieval-v1/doc-semantic-reversible",
       "query": "What happens if someone regrets a machine-made modification?",
       "expected_relevant_chunk_ids": ["chunk-semantic-reversible-01", "chunk-semantic-reversible-02", "chunk-semantic-reversible-03", "chunk-semantic-reversible-04", "chunk-semantic-reversible-05"],
@@ -662,12 +662,12 @@
       "requested_source_scope": "knowledge_base",
       "expected_source_scope": "knowledge_base",
       "answer_label": "answerable",
-      "tags": ["semantic", "keyword_free", "rollback"],
+      "tags": ["semantic", "lexical_nonoverlap", "rollback"],
       "rationale": "Regret scenario paraphrases reversible automation without meaningful shared terms."
     },
     {
       "case_id": "SEM-011",
-      "primary_slice": "keyword_free_semantic",
+      "primary_slice": "no_ascii_keyword_overlap",
       "fixture_source": "synthetic://agent-pet/retrieval-v1/doc-semantic-reversible",
       "query": "Can an accidental change be rolled back?",
       "expected_relevant_chunk_ids": ["chunk-semantic-reversible-01", "chunk-semantic-reversible-02", "chunk-semantic-reversible-03", "chunk-semantic-reversible-04", "chunk-semantic-reversible-05"],
@@ -675,12 +675,12 @@
       "requested_source_scope": "knowledge_base",
       "expected_source_scope": "knowledge_base",
       "answer_label": "answerable",
-      "tags": ["semantic", "keyword_free", "rollback"],
+      "tags": ["semantic", "lexical_nonoverlap", "rollback"],
       "rationale": "Rollback wording maps to snapshots and undo without exact meaningful tokens."
     },
     {
       "case_id": "SEM-012",
-      "primary_slice": "keyword_free_semantic",
+      "primary_slice": "no_ascii_keyword_overlap",
       "fixture_source": "synthetic://agent-pet/retrieval-v1/doc-semantic-reversible",
       "query": "Is there a way to restore the earlier version?",
       "expected_relevant_chunk_ids": ["chunk-semantic-reversible-01", "chunk-semantic-reversible-02", "chunk-semantic-reversible-03", "chunk-semantic-reversible-04", "chunk-semantic-reversible-05"],
@@ -688,12 +688,12 @@
       "requested_source_scope": "knowledge_base",
       "expected_source_scope": "knowledge_base",
       "answer_label": "answerable",
-      "tags": ["semantic", "keyword_free", "rollback"],
+      "tags": ["semantic", "lexical_nonoverlap", "rollback"],
       "rationale": "Earlier-version restoration paraphrases recoverable snapshots without lexical overlap."
     },
     {
       "case_id": "SEM-013",
-      "primary_slice": "keyword_free_semantic",
+      "primary_slice": "no_ascii_keyword_overlap",
       "fixture_source": "synthetic://agent-pet/retrieval-v1/doc-semantic-consent",
       "query": "May the assistant erase files on its own?",
       "expected_relevant_chunk_ids": ["chunk-semantic-consent-01", "chunk-semantic-consent-02", "chunk-semantic-consent-03", "chunk-semantic-consent-04", "chunk-semantic-consent-05"],
@@ -701,12 +701,12 @@
       "requested_source_scope": "knowledge_base",
       "expected_source_scope": "knowledge_base",
       "answer_label": "answerable",
-      "tags": ["semantic", "keyword_free", "consent"],
+      "tags": ["semantic", "lexical_nonoverlap", "consent"],
       "rationale": "Autonomous erase question maps to explicit consent without meaningful shared terms."
     },
     {
       "case_id": "SEM-014",
-      "primary_slice": "keyword_free_semantic",
+      "primary_slice": "no_ascii_keyword_overlap",
       "fixture_source": "synthetic://agent-pet/retrieval-v1/doc-semantic-consent",
       "query": "Can dangerous cleanup proceed before the person agrees?",
       "expected_relevant_chunk_ids": ["chunk-semantic-consent-01", "chunk-semantic-consent-02", "chunk-semantic-consent-03", "chunk-semantic-consent-04", "chunk-semantic-consent-05"],
@@ -714,12 +714,12 @@
       "requested_source_scope": "knowledge_base",
       "expected_source_scope": "knowledge_base",
       "answer_label": "answerable",
-      "tags": ["semantic", "keyword_free", "consent"],
+      "tags": ["semantic", "lexical_nonoverlap", "consent"],
       "rationale": "Agreement question paraphrases the deterministic confirmation boundary."
     },
     {
       "case_id": "SEM-015",
-      "primary_slice": "keyword_free_semantic",
+      "primary_slice": "no_ascii_keyword_overlap",
       "fixture_source": "synthetic://agent-pet/retrieval-v1/doc-semantic-consent",
       "query": "Who decides whether a risky removal is allowed?",
       "expected_relevant_chunk_ids": ["chunk-semantic-consent-01", "chunk-semantic-consent-02", "chunk-semantic-consent-03", "chunk-semantic-consent-04", "chunk-semantic-consent-05"],
@@ -727,7 +727,7 @@
       "requested_source_scope": "knowledge_base",
       "expected_source_scope": "knowledge_base",
       "answer_label": "answerable",
-      "tags": ["semantic", "keyword_free", "consent"],
+      "tags": ["semantic", "lexical_nonoverlap", "consent"],
       "rationale": "Decision authority paraphrases explicit permission without evidence vocabulary."
     },
     {

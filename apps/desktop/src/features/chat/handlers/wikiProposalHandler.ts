@@ -3,6 +3,7 @@ import {
   normalizeChatWikiProposal,
 } from "../../../services/chatWikiProposals";
 import type { StreamHandlerInput } from "../streamDispatcher";
+import { PET_BUBBLE_ACTION_WATCHDOG_TIMEOUT_MS } from "../chatTiming";
 
 export function wikiProposalHandler({ messageId, sseEvent, payload, context }: StreamHandlerInput) {
   const { petChat, appendChatEvent, upsertChatWikiProposal } = context;
@@ -25,7 +26,7 @@ export function wikiProposalHandler({ messageId, sseEvent, payload, context }: S
     petChat.scheduleStreamWatchdog(
       "还在想",
       "资料整理确认已展示，这次需要多等一会儿。",
-      14000,
+      PET_BUBBLE_ACTION_WATCHDOG_TIMEOUT_MS,
       () => petChat.failStream(messageId, "没有等到回复", "资料整理确认已展示，但这次没有等到可显示的回复。"),
     );
   }

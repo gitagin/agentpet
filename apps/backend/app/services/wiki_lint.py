@@ -14,6 +14,7 @@ from app.models.api import (
     WikiPageWriteRequest,
     WikiResearchQuestion,
 )
+from app.storage.database import open_database_connection
 from app.utils.time import utc_now_iso
 from app.services.wiki import WIKI_PAGE_TEMPLATE_SECTIONS, WIKI_ROOT, WikiService
 from app.storage.markdown import read_markdown
@@ -51,7 +52,7 @@ class WikiLintService:
         wiki: WikiService | None = None,
     ) -> None:
         self._owns_connection = not isinstance(db, sqlite3.Connection)
-        self.conn = sqlite3.connect(db) if self._owns_connection else db
+        self.conn = open_database_connection(db)
         self.conn.row_factory = sqlite3.Row
         self.vault_id = vault_id
         self.vault_root = Path(vault_root)

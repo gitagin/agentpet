@@ -332,7 +332,15 @@ def test_invalid_retrieval_mode_returns_stable_api_validation(
     client_factory,
     tmp_path: Path,
 ) -> None:
+    vault = tmp_path / "api-vault"
+    vault.mkdir()
     with client_factory(data_dir=tmp_path / "api-data") as client:
+        bound = client.post(
+            "/api/vaults/init",
+            headers=auth_headers(),
+            json={"path": str(vault), "create_if_missing": False, "confirmed": True},
+        )
+        assert bound.status_code == 200
         response = client.post(
             "/api/memory/search",
             headers=auth_headers(),

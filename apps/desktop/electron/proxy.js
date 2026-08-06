@@ -2,6 +2,42 @@
 // 与 sidecar 冷启动到可服务的常见耗时同数量级。
 const CONNECTION_RETRY_ATTEMPTS = 12;
 const CONNECTION_RETRY_DELAY_MS = 250;
+const proxyRouteArtifact = require("./proxy-routes.generated.json");
+const GENERATED_PROXY_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"]);
+
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function compileOpenApiPath(pathTemplate) {
+  if (typeof pathTemplate !== "string" || !pathTemplate.startsWith("/api/")) {
+    throw new Error(`Invalid generated renderer proxy path: ${String(pathTemplate)}`);
+  }
+  const pattern = pathTemplate
+    .split("/")
+    .map((segment) => (/^\{[^/{}]+\}$/.test(segment) ? "[^/]+" : escapeRegex(segment)))
+    .join("/");
+  return new RegExp(`^${pattern}$`);
+}
+
+function createAllowedProxyRoutes(artifact = proxyRouteArtifact) {
+  if (artifact?.schemaVersion !== 1 || !Array.isArray(artifact.routes)) {
+    throw new Error("Generated renderer proxy routes use an unsupported schema.");
+  }
+  return artifact.routes.map((route) => {
+    if (
+      !Array.isArray(route.methods) ||
+      route.methods.length === 0 ||
+      route.methods.some((method) => !GENERATED_PROXY_METHODS.has(method))
+    ) {
+      throw new Error(`Generated renderer proxy route has invalid methods: ${String(route.path)}`);
+    }
+    return {
+      methods: new Set(route.methods),
+      pattern: compileOpenApiPath(route.path),
+    };
+  });
+}
 
 function createProxyManager({ baseUrl, getBaseUrl, sessionToken }) {
   const activeSseStreams = new Map();
@@ -59,96 +95,6 @@ function createProxyManager({ baseUrl, getBaseUrl, sessionToken }) {
     }
 
     return target;
-  }
-
-  function createAllowedProxyRoutes() {
-    return [
-      { methods: ["GET"], pattern: /^\/api\/health$/ },
-      { methods: ["POST"], pattern: /^\/api\/chat$/ },
-      { methods: ["GET"], pattern: /^\/api\/chat\/daily-history$/ },
-      { methods: ["GET"], pattern: /^\/api\/chat\/runs\/[^/]+\/events$/ },
-      { methods: ["GET"], pattern: /^\/api\/chat\/runs\/[^/]+\/stream$/ },
-      { methods: ["GET"], pattern: /^\/api\/chat\/stream\/[^/]+$/ },
-      { methods: ["GET"], pattern: /^\/api\/checkpoints\/pending$/ },
-      { methods: ["GET"], pattern: /^\/api\/checkpoints\/[^/]+$/ },
-      { methods: ["POST"], pattern: /^\/api\/checkpoints\/[^/]+\/decision$/ },
-      { methods: ["GET"], pattern: /^\/api\/agent\/actions$/ },
-      { methods: ["POST"], pattern: /^\/api\/agent\/actions\/[^/]+\/revert$/ },
-      { methods: ["GET"], pattern: /^\/api\/growth\/snapshot$/ },
-      { methods: ["POST"], pattern: /^\/api\/habit-loop\/trigger$/ },
-      { methods: ["POST"], pattern: /^\/api\/memory\/search$/ },
-      { methods: ["GET"], pattern: /^\/api\/memory\/profile-projection$/ },
-      { methods: ["GET"], pattern: /^\/api\/memory\/graph-projection$/ },
-      { methods: ["GET"], pattern: /^\/api\/memory\/profile-projection\/items\/profile_[A-Za-z0-9_-]+$/ },
-      { methods: ["POST"], pattern: /^\/api\/memory\/profile-projection\/items\/profile_[A-Za-z0-9_-]+\/actions$/ },
-      { methods: ["GET"], pattern: /^\/api\/memory\/receipts$/ },
-      { methods: ["GET"], pattern: /^\/api\/memory\/local-assets$/ },
-      { methods: ["GET", "POST"], pattern: /^\/api\/memory\/proposals$/ },
-      { methods: ["POST"], pattern: /^\/api\/memory\/proposals\/[^/]+\/(confirm|reject)$/ },
-      { methods: ["GET"], pattern: /^\/api\/memory\/graph\/facts$/ },
-      { methods: ["POST"], pattern: /^\/api\/memory\/graph\/facts\/[^/]+\/(confirm|reject|wrong|archive|sensitive-block)$/ },
-      { methods: ["GET"], pattern: /^\/api\/memory\/graph\/export-preview$/ },
-      { methods: ["POST"], pattern: /^\/api\/memory\/diary\/search$/ },
-      { methods: ["GET"], pattern: /^\/api\/memory\/diary\/[^/]+$/ },
-      { methods: ["POST"], pattern: /^\/api\/memory\/feedback$/ },
-      { methods: ["GET"], pattern: /^\/api\/memory\/hygiene\/preview$/ },
-      { methods: ["POST"], pattern: /^\/api\/memory\/hygiene\/actions$/ },
-      { methods: ["POST"], pattern: /^\/api\/memory\/companion\/consolidation\/runs$/ },
-      { methods: ["GET"], pattern: /^\/api\/memory\/companion\/context-reports$/ },
-      { methods: ["GET"], pattern: /^\/api\/memory\/reviews\/weekly$/ },
-      { methods: ["POST"], pattern: /^\/api\/memory\/reviews\/weekly\/actions$/ },
-      { methods: ["GET"], pattern: /^\/api\/memory\/retrospectives$/ },
-      { methods: ["POST"], pattern: /^\/api\/memory\/retrospectives\/report$/ },
-      { methods: ["GET"], pattern: /^\/api\/today\/snapshot$/ },
-      { methods: ["GET"], pattern: /^\/api\/continuity\/state$/ },
-      { methods: ["GET"], pattern: /^\/api\/continuity\/proposals$/ },
-      { methods: ["POST"], pattern: /^\/api\/continuity\/proposals\/[^/]+\/(confirm|reject)$/ },
-      { methods: ["GET", "POST"], pattern: /^\/api\/tasks$/ },
-      { methods: ["GET"], pattern: /^\/api\/tasks\/today$/ },
-      { methods: ["GET"], pattern: /^\/api\/tasks\/current$/ },
-      { methods: ["GET"], pattern: /^\/api\/tasks\/[^/]+\/(steps|logs)$/ },
-      { methods: ["PATCH"], pattern: /^\/api\/tasks\/[^/]+$/ },
-      { methods: ["POST"], pattern: /^\/api\/tasks\/[^/]+\/(complete|cancel|approve|reject)$/ },
-      { methods: ["GET"], pattern: /^\/api\/diagnostics\/export$/ },
-      { methods: ["GET"], pattern: /^\/api\/diagnostics\/negotiation-stats$/ },
-      { methods: ["POST"], pattern: /^\/api\/diagnostics\/reset-local-state$/ },
-      { methods: ["POST"], pattern: /^\/api\/diagnostics\/reset-memory-state$/ },
-      { methods: ["GET", "PATCH"], pattern: /^\/api\/settings$/ },
-      { methods: ["GET", "PUT"], pattern: /^\/api\/settings\/automation$/ },
-      { methods: ["GET", "PUT"], pattern: /^\/api\/settings\/tts$/ },
-      { methods: ["PUT"], pattern: /^\/api\/settings\/tts-key$/ },
-      { methods: ["PUT"], pattern: /^\/api\/settings\/model-key$/ },
-      { methods: ["PUT"], pattern: /^\/api\/settings\/model-config$/ },
-      { methods: ["GET"], pattern: /^\/api\/settings\/model-health$/ },
-      { methods: ["POST"], pattern: /^\/api\/settings\/model-test$/ },
-      { methods: ["PUT"], pattern: /^\/api\/settings\/embedding-key$/ },
-      { methods: ["PUT"], pattern: /^\/api\/settings\/embedding-config$/ },
-      { methods: ["POST"], pattern: /^\/api\/settings\/embedding-test$/ },
-      { methods: ["GET", "PUT"], pattern: /^\/api\/settings\/agent-models$/ },
-      { methods: ["PUT"], pattern: /^\/api\/settings\/agent-models\/[^/]+\/(config|key|model-config|model-key)$/ },
-      { methods: ["PUT"], pattern: /^\/api\/settings\/agent-model-config$/ },
-      { methods: ["PUT"], pattern: /^\/api\/settings\/agent-model-key$/ },
-      { methods: ["POST"], pattern: /^\/api\/settings\/agent-model-test$/ },
-      { methods: ["POST"], pattern: /^\/api\/tts\/synthesize$/ },
-      { methods: ["DELETE"], pattern: /^\/api\/tts\/cache$/ },
-      { methods: ["GET"], pattern: /^\/api\/vaults\/status$/ },
-      { methods: ["POST"], pattern: /^\/api\/vaults\/init$/ },
-      { methods: ["POST"], pattern: /^\/api\/vaults\/bind$/ },
-      { methods: ["POST"], pattern: /^\/api\/vaults\/[^/]+\/index$/ },
-      { methods: ["POST"], pattern: /^\/api\/wiki\/ingest\/(preview|apply|confirm|review)$/ },
-      { methods: ["POST"], pattern: /^\/api\/wiki\/import\/preview$/ },
-      { methods: ["GET"], pattern: /^\/api\/wiki\/(schema|index|log|graph)$/ },
-      { methods: ["GET", "POST"], pattern: /^\/api\/wiki\/pages$/ },
-      { methods: ["POST"], pattern: /^\/api\/wiki\/synthesize$/ },
-      { methods: ["GET", "POST"], pattern: /^\/api\/wiki\/query-archives$/ },
-      { methods: ["POST"], pattern: /^\/api\/wiki\/query-archives\/lint$/ },
-      { methods: ["GET"], pattern: /^\/api\/wiki\/query-archives\/[^/]+$/ },
-      { methods: ["POST"], pattern: /^\/api\/wiki\/lint$/ },
-      { methods: ["POST"], pattern: /^\/api\/wiki\/diagnostics\/queue$/ },
-    ].map((route) => ({
-      methods: new Set(route.methods),
-      pattern: route.pattern,
-    }));
   }
 
   function createProxyRouteDeniedError(method, target) {
@@ -292,6 +238,12 @@ function createProxyManager({ baseUrl, getBaseUrl, sessionToken }) {
         signal: controller.signal,
       });
 
+      // sender 可能在 fetch resolve 与 reader.read() 注册 abort 监听之间销毁。
+      // 此时 signal 已经 aborted，继续 read 会让某些流实现永久等待。
+      if (controller.signal.aborted) {
+        return;
+      }
+
       if (!response.ok || !response.body) {
         const errorBody = await response.text();
         sendSseEvent(sender, "agent-pet:sse-error", streamId, {
@@ -343,5 +295,6 @@ function createProxyManager({ baseUrl, getBaseUrl, sessionToken }) {
 }
 
 module.exports = {
+  compileOpenApiPath,
   createProxyManager,
 };

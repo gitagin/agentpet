@@ -4,12 +4,21 @@ import re
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
+from threading import Lock
 from typing import Callable, Iterator
 
 # SQLite busy timeout: with WAL enabled, writers are exclusive. The stdlib
 # default of 5s is too tight when background jobs and streaming writes
 # overlap; 30s keeps "database is locked" errors out of normal operation.
 CONNECT_TIMEOUT_SECONDS = 30.0
+BUSY_TIMEOUT_MILLISECONDS = int(CONNECT_TIMEOUT_SECONDS * 1000)
+
+_WAL_INITIALIZED_PATHS: set[str] = set()
+_WAL_INITIALIZATION_LOCK = Lock()
+
+
+def _database_path_key(path: str | Path) -> str:
+    return str(Path(path).resolve())
 
 
 def configure_connection(conn: sqlite3.Connection) -> sqlite3.Connection:
@@ -21,8 +30,49 @@ def configure_connection(conn: sqlite3.Connection) -> sqlite3.Connection:
     """
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
-    conn.execute("PRAGMA journal_mode = WAL")
+    # sqlite3.connect(timeout=...) installs a busy handler too, but make the
+    # effective value explicit so connections created by callers/tests share
+    # the same contention policy.
+    conn.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MILLISECONDS}")
     return conn
+
+
+def open_database_connection(
+    db: str | Path | sqlite3.Connection,
+    *,
+    check_same_thread: bool = True,
+) -> sqlite3.Connection:
+    """Open every service-owned SQLite connection with shared semantics.
+
+    Long-lived service objects cannot use ``Database.session()`` because they
+    retain a connection across method calls. They still must share the same
+    timeout, row factory, foreign-key and WAL policy. ``:memory:`` is kept as a
+    real in-memory database for isolated services and tests; WAL is not
+    supported for that SQLite mode.
+    """
+    if isinstance(db, sqlite3.Connection):
+        return configure_connection(db)
+    if str(db) == ":memory:":
+        return configure_connection(
+            sqlite3.connect(
+                ":memory:",
+                timeout=CONNECT_TIMEOUT_SECONDS,
+                check_same_thread=check_same_thread,
+            )
+        )
+    return Database(db).connect(check_same_thread=check_same_thread)
+
+
+def _initialize_wal_mode_once(path: str | Path, conn: sqlite3.Connection) -> None:
+    """Enable WAL once per database path; it is a persistent database flag."""
+    key = _database_path_key(path)
+    with _WAL_INITIALIZATION_LOCK:
+        if key in _WAL_INITIALIZED_PATHS:
+            return
+        mode = str(conn.execute("PRAGMA journal_mode = WAL").fetchone()[0]).lower()
+        if mode != "wal":
+            raise RuntimeError(f"SQLite WAL mode could not be enabled for {path}: {mode}")
+        _WAL_INITIALIZED_PATHS.add(key)
 
 
 class Database:
@@ -36,7 +86,7 @@ class Database:
             self._on_path_access(self)
         return self._path
 
-    def connect(self) -> sqlite3.Connection:
+    def connect(self, *, check_same_thread: bool = True) -> sqlite3.Connection:
         """Open a configured connection.
 
         The caller owns the connection lifetime and must close it.
@@ -45,16 +95,30 @@ class Database:
         leaked one file descriptor per call site.
         """
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(self._path, timeout=CONNECT_TIMEOUT_SECONDS)
-        return configure_connection(conn)
+        conn = sqlite3.connect(
+            self._path,
+            timeout=CONNECT_TIMEOUT_SECONDS,
+            check_same_thread=check_same_thread,
+        )
+        try:
+            configure_connection(conn)
+            _initialize_wal_mode_once(self._path, conn)
+        except BaseException:
+            conn.close()
+            raise
+        return conn
 
     @contextmanager
-    def session(self) -> Iterator[sqlite3.Connection]:
+    def session(self, *, check_same_thread: bool = True) -> Iterator[sqlite3.Connection]:
         """Scoped connection: commit on success, rollback on error, always close."""
-        conn = self.connect()
+        conn = self.connect(check_same_thread=check_same_thread)
         try:
-            with conn:
-                yield conn
+            yield conn
+        except BaseException:
+            conn.rollback()
+            raise
+        else:
+            conn.commit()
         finally:
             conn.close()
 
@@ -70,11 +134,8 @@ class MigrationRunner:
         self.database = database
         self.migrations_dir = Path(migrations_dir) if migrations_dir else self._default_dir()
 
-    _DESTRUCTIVE_STATEMENT_RE = re.compile(r"\b(DROP\s+(TABLE|COLUMN|INDEX)|DELETE\s+FROM)\b", re.IGNORECASE)
-
     def apply(self) -> list[str]:
         applied: list[str] = []
-        destructive_applied = False
         with self.database.session() as conn:
             conn.execute(
                 """
@@ -105,15 +166,9 @@ class MigrationRunner:
                         (version,),
                     )
                 applied.append(version)
-                if self._DESTRUCTIVE_STATEMENT_RE.search(script):
-                    destructive_applied = True
-            # Previously EVERY new migration triggered a full-database VACUUM
-            # at startup. The secure-delete scrub only matters when a
-            # migration actually removed data, so purge only for destructive
-            # scripts; purge_deleted_content() stays available as an explicit
-            # maintenance entry point.
-            if destructive_applied:
-                self._purge_deleted_content(conn)
+                # Database migrations must remain bounded and non-destructive
+                # with respect to freed pages.  Secure scrubbing is exposed by
+                # purge_deleted_content() as an explicit maintenance action.
         return applied
 
     def purge_deleted_content(self) -> None:

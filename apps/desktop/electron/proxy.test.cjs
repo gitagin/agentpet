@@ -1,4 +1,5 @@
 const { createProxyManager } = require("./proxy.js");
+const proxyRouteArtifact = require("./proxy-routes.generated.json");
 
 function createJsonResponse(body = {}, init = {}) {
   return new Response(JSON.stringify(body), {
@@ -17,6 +18,25 @@ describe("Electron API proxy allowlist", () => {
   afterEach(() => {
     global.fetch = originalFetch;
     vi.restoreAllMocks();
+  });
+
+  it("allows every OpenAPI-generated route and rejects paths outside the artifact", () => {
+    const proxy = createProxyManager({
+      baseUrl: "http://127.0.0.1:8765",
+      sessionToken: "test-session-token",
+    });
+
+    for (const route of proxyRouteArtifact.routes) {
+      const concretePath = route.path.replace(/\{[^/{}]+\}/g, "sample-id-123");
+      const target = new URL(concretePath, "http://127.0.0.1:8765");
+      for (const method of route.methods) {
+        expect(() => proxy.assertAllowedProxyRoute(method, target)).not.toThrow();
+      }
+    }
+
+    expect(() =>
+      proxy.assertAllowedProxyRoute("GET", new URL("/api/not-declared", "http://127.0.0.1:8765")),
+    ).toThrowError(expect.objectContaining({ code: "renderer_api_route_not_allowed" }));
   });
 
   it("allows listed routes and preserves auth:false for public health checks", async () => {
@@ -247,13 +267,6 @@ describe("Electron API proxy allowlist", () => {
         path: "/api/memory/profile-projection/export",
       },
     });
-    await expect(proxy.proxyApiRequest("/api/memory/profile-projection/items/candidate-raw-id", { method: "GET" })).rejects.toMatchObject({
-      code: "renderer_api_route_not_allowed",
-      details: {
-        method: "GET",
-        path: "/api/memory/profile-projection/items/candidate-raw-id",
-      },
-    });
     expect(global.fetch).toHaveBeenCalledTimes(5);
   });
 
@@ -379,11 +392,9 @@ describe("Electron API proxy allowlist", () => {
       ["POST", "/api/settings/embedding-test"],
       ["GET", "/api/settings/agent-models"],
       ["PUT", "/api/settings/agent-models"],
-      ["PUT", "/api/settings/agent-models/chat_agent/model-config"],
-      ["PUT", "/api/settings/agent-models/chat_agent/model-key"],
-      ["PUT", "/api/settings/agent-model-config"],
-      ["PUT", "/api/settings/agent-model-key"],
-      ["POST", "/api/settings/agent-model-test"],
+      ["PUT", "/api/settings/agent-models/chat_agent/config"],
+      ["PUT", "/api/settings/agent-models/chat_agent/key"],
+      ["POST", "/api/settings/model-test"],
       ["PATCH", "/api/tasks/task-1"],
       ["POST", "/api/vaults/bind"],
       ["GET", "/api/wiki/pages"],
@@ -404,6 +415,11 @@ describe("Electron API proxy allowlist", () => {
       ["POST", "/api/wiki/graph"],
       ["DELETE", "/api/memory/diary/diary-1"],
       ["GET", "/api/vaults/bind"],
+      ["PUT", "/api/settings/agent-models/chat_agent/model-config"],
+      ["PUT", "/api/settings/agent-models/chat_agent/model-key"],
+      ["PUT", "/api/settings/agent-model-config"],
+      ["PUT", "/api/settings/agent-model-key"],
+      ["POST", "/api/settings/agent-model-test"],
     ];
     for (const [method, path] of deniedCases) {
       await expect(proxy.proxyApiRequest(path, { method, body: method === "GET" ? undefined : "{}" })).rejects.toMatchObject({

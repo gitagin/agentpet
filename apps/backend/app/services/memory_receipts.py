@@ -9,6 +9,7 @@ from pathlib import Path
 
 from app.services.memory_policy import evaluate_memory_content
 from app.services.memory_taxonomy import LOW_CONFIDENCE_THRESHOLD, MemoryKind, MemoryScope, RiskTier
+from app.storage.database import open_database_connection
 from app.utils.time import utc_now_iso
 
 
@@ -38,7 +39,7 @@ class MemoryReceiptService:
 
     def __init__(self, db: str | Path | sqlite3.Connection):
         self._owns_connection = not isinstance(db, sqlite3.Connection)
-        self.conn = sqlite3.connect(db) if self._owns_connection else db
+        self.conn = open_database_connection(db)
         self.conn.row_factory = sqlite3.Row
 
     def close(self) -> None:

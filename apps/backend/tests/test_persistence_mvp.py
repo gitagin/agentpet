@@ -84,7 +84,7 @@ def test_model_key_is_persisted_and_never_returned_plaintext(client: TestClient)
         config_row = conn.execute("SELECT * FROM model_config WHERE id = 1").fetchone()
 
     assert columns == {"provider", "masked", "credential_ref", "created_at", "updated_at"}
-    assert row["masked"] == "****alue"
+    assert row["masked"] is None
     assert row["credential_ref"]
     assert config_row["base_url"] == "https://example.test/v1"
     assert config_row["model"] == "demo-model"
@@ -156,7 +156,7 @@ def test_model_test_success_uses_saved_config(
 
 def test_agent_model_settings_are_persisted_per_agent(client: TestClient) -> None:
     config_response = client.put(
-        "/api/settings/agent-models/chat_agent/model-config",
+        "/api/settings/agent-models/chat_agent/config",
         headers=auth(),
         json={
             "provider": "openai-compatible",
@@ -165,12 +165,12 @@ def test_agent_model_settings_are_persisted_per_agent(client: TestClient) -> Non
         },
     )
     key_response = client.put(
-        "/api/settings/agent-models/chat_agent/model-key",
+        "/api/settings/agent-models/chat_agent/key",
         headers=auth(),
         json={"provider": "openai-compatible", "api_key": "sk-chat-secret"},
     )
     second_config = client.put(
-        "/api/settings/agent-models/task_agent/model-config",
+        "/api/settings/agent-models/task_agent/config",
         headers=auth(),
         json={
             "provider": "openai-compatible",
@@ -207,15 +207,17 @@ def test_agent_model_settings_are_persisted_per_agent(client: TestClient) -> Non
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         config_rows = conn.execute(
-            "SELECT agent_id, base_url, model FROM agent_model_config ORDER BY agent_id"
+            """
+            SELECT agent_id, provider, base_url, model, masked, credential_ref
+            FROM agent_model_configs
+            ORDER BY agent_id
+            """
         ).fetchall()
-        key_row = conn.execute(
-            "SELECT agent_id, provider, masked, credential_ref FROM agent_model_keys"
-        ).fetchone()
+        key_row = next(row for row in config_rows if row["agent_id"] == "chat_agent")
 
     assert [row["agent_id"] for row in config_rows] == ["action_agent", "chat_agent"]
     assert key_row["agent_id"] == "chat_agent"
-    assert key_row["masked"] == "****cret"
+    assert key_row["masked"] is None
     assert key_row["credential_ref"]
     assert b"sk-chat-secret" not in db_path.read_bytes()
 
@@ -270,7 +272,7 @@ def test_agent_model_bulk_put_updates_current_configs_and_global_defaults(
 
 def test_legacy_continuity_agent_model_config_maps_to_reflection_agent(client: TestClient) -> None:
     response = client.put(
-        "/api/settings/agent-models/continuity_agent/model-config",
+        "/api/settings/agent-models/continuity_agent/config",
         headers=auth(),
         json={
             "provider": "openai-compatible",
@@ -302,7 +304,7 @@ def test_agent_model_endpoints_map_legacy_agent_ids(client: TestClient) -> None:
         },
     )
     config_response = client.put(
-        "/api/settings/agent-models/context_retrieval_agent/model-config",
+        "/api/settings/agent-models/context_retrieval_agent/config",
         headers=auth(),
         json={
             "provider": "openai-compatible",
@@ -526,7 +528,7 @@ def test_model_test_accepts_agent_id_and_uses_agent_credentials(
         json={"provider": "openai-compatible", "api_key": "sk-global-secret"},
     )
     client.put(
-        "/api/settings/agent-models/task_agent/model-config",
+        "/api/settings/agent-models/task_agent/config",
         headers=auth(),
         json={
             "provider": "openai-compatible",
@@ -535,7 +537,7 @@ def test_model_test_accepts_agent_id_and_uses_agent_credentials(
         },
     )
     client.put(
-        "/api/settings/agent-models/task_agent/model-key",
+        "/api/settings/agent-models/task_agent/key",
         headers=auth(),
         json={"provider": "openai-compatible", "api_key": "sk-task-secret"},
     )
@@ -604,7 +606,7 @@ def test_model_test_recovers_after_agent_provider_is_corrected(
     )
 
     corrected_config = client.put(
-        "/api/settings/agent-models/chat_agent/model-config",
+        "/api/settings/agent-models/chat_agent/config",
         headers=auth(),
         json={
             "provider": "OpenAI Compatible",
@@ -613,7 +615,7 @@ def test_model_test_recovers_after_agent_provider_is_corrected(
         },
     )
     corrected_key = client.put(
-        "/api/settings/agent-models/chat_agent/model-key",
+        "/api/settings/agent-models/chat_agent/key",
         headers=auth(),
         json={"provider": "OpenAI Compatible", "api_key": "sk-correct-secret"},
     )
@@ -640,7 +642,7 @@ def test_model_test_recovers_after_agent_provider_is_corrected(
 
 def test_agent_model_config_rejects_unsupported_provider(client: TestClient) -> None:
     config_response = client.put(
-        "/api/settings/agent-models/chat_agent/model-config",
+        "/api/settings/agent-models/chat_agent/config",
         headers=auth(),
         json={
             "provider": "mimo-v2.5",
@@ -649,7 +651,7 @@ def test_agent_model_config_rejects_unsupported_provider(client: TestClient) -> 
         },
     )
     key_response = client.put(
-        "/api/settings/agent-models/chat_agent/model-key",
+        "/api/settings/agent-models/chat_agent/key",
         headers=auth(),
         json={"provider": "mimo-v2.5", "api_key": "sk-test-secret"},
     )
@@ -1007,7 +1009,7 @@ def test_reset_local_state_clears_user_state_and_credentials(
         json={"provider": "openai-compatible", "api_key": "sk-reset-secret"},
     ).status_code == 200
     assert client.put(
-        "/api/settings/agent-models/chat_agent/model-config",
+        "/api/settings/agent-models/chat_agent/config",
         headers=auth(),
         json={
             "provider": "openai-compatible",
@@ -1016,7 +1018,7 @@ def test_reset_local_state_clears_user_state_and_credentials(
         },
     ).status_code == 200
     assert client.put(
-        "/api/settings/agent-models/chat_agent/model-key",
+        "/api/settings/agent-models/chat_agent/key",
         headers=auth(),
         json={"provider": "openai-compatible", "api_key": "sk-chat-reset-secret"},
     ).status_code == 200
@@ -1068,7 +1070,6 @@ def test_reset_local_state_clears_user_state_and_credentials(
         assert conn.execute("SELECT COUNT(*) FROM messages").fetchone()[0] == 2
         assert conn.execute("SELECT COUNT(*) FROM model_keys").fetchone()[0] == 1
         assert conn.execute("SELECT COUNT(*) FROM agent_model_configs").fetchone()[0] == 1
-        assert conn.execute("SELECT COUNT(*) FROM agent_model_keys").fetchone()[0] == 1
 
     response = client.post(
         "/api/diagnostics/reset-local-state",

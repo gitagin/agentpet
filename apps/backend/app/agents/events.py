@@ -12,7 +12,6 @@ from app.models.event_payloads import (
     AgentActionDecisionFields,
     AgentMemoryProposalFields,
     AgentTaskFields,
-    AgentTraceAgentId,
     AgentTraceCounts,
     AgentTracePhase,
     AgentTraceReasonCode,
@@ -23,7 +22,6 @@ from app.models.event_payloads import (
     ContinuityProposalFields,
     agent_trace_safe_summary,
 )
-from .contracts import IndependentAgentRoleId
 
 
 class AgentSseEventBase(BaseModel):
@@ -45,7 +43,13 @@ class AgentTraceEventBase(AgentSseEventBase):
     )
     branch_id: Literal["foreground"] = "foreground"
     stage_id: Literal["negotiation"] = "negotiation"
-    agent_id: AgentTraceAgentId
+    # Keep the allowlisted ids readable while preserving unknown values for
+    # telemetry instead of misattributing them to the orchestrator.
+    agent_id: str = Field(
+        min_length=1,
+        max_length=96,
+        pattern=r"^[A-Za-z0-9_.:-]+$",
+    )
     phase: AgentTracePhase
     status: AgentTraceStatus
     round: int = Field(ge=0)
@@ -130,34 +134,6 @@ class AgentReplyReadyEvent(AgentEventBase):
     text: str = ""
 
 
-class AgentBranchEvent(AgentSseEventBase):
-    model_config = ConfigDict(extra="forbid")
-
-    event: Literal["agent_branch"] = "agent_branch"
-    contract_version: Literal["agent-branch.v1"] = "agent-branch.v1"
-    run_id: str = Field(
-        min_length=1,
-        max_length=128,
-        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$",
-    )
-    branch_id: str = Field(
-        min_length=1,
-        max_length=128,
-        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]*$",
-    )
-    work_item_id: str = Field(min_length=1, max_length=128)
-    attempt: int = Field(default=1, ge=1, le=2)
-    role_id: IndependentAgentRoleId
-    status: Literal["started", "success", "failed", "fallback", "timed_out", "cancelled"]
-    sequence: int = Field(ge=1)
-    duration_ms: int = Field(default=0, ge=0)
-    safe_error_code: str | None = Field(
-        default=None,
-        max_length=128,
-        pattern=r"^[a-z][a-z0-9_]*$",
-    )
-
-
 class NegotiationStepEvent(AgentTraceEventBase):
     event: Literal["negotiation_step"] = "negotiation_step"
 
@@ -218,7 +194,6 @@ AgentEvent = Annotated[
     | AgentWikiProposalEvent
     | AgentTaskEvent
     | AgentReplyReadyEvent
-    | AgentBranchEvent
     | AgentDoneEvent
     | NegotiationStepEvent
     | NegotiationDoneEvent

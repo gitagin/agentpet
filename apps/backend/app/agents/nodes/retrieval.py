@@ -101,7 +101,6 @@ async def _aggregate_memory_retrieval_node(
             response = await observed_toolset.search_memory(
                 query=query,
                 top_k=MEMORY_CONTEXT_LIMIT,
-                mode="fts",
                 source_scope=scope,
             )
         except Exception:
@@ -334,7 +333,6 @@ async def _fallback_daily_chat_context(
         response = await observed_toolset.search_memory(
             query=semantic.query or state.user_message,
             top_k=5,
-            mode="fts",
             source_scope="daily_chat",
         )
     except Exception:
@@ -360,7 +358,6 @@ async def _fallback_scoped_retrieval(
         search_response = await observed_toolset.search_memory(
             query=semantic.query or state.user_message,
             top_k=5,
-            mode="fts",
             source_scope=semantic.source_scope,
         )
     except Exception:

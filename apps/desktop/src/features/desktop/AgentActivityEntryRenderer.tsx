@@ -12,40 +12,46 @@ import {
 
 type AgentActivityEntryRendererProps = {
   entry: AgentActivityLogEntry;
-  revertingAgentActionIds: Set<string>;
-  memoryProposalActionIds: Set<string>;
-  continuityActionIds: Set<string>;
+  busy: {
+    revertingAgentActionIds: Set<string>;
+    memoryProposalActionIds: Set<string>;
+    continuityActionIds: Set<string>;
+  };
   formatIssueSeverity: (severity: string) => string;
-  onRevertAgentAction: (action: AgentAction) => void;
-  onRevealAgentActionTarget: (relativePath: string, mode: DesktopVaultRevealMode) => void;
-  onActOnMemoryProposal: (proposalId: string, action: "confirm" | "reject") => void;
-  onActOnContinuityProposal: (proposalId: string, action: "confirm" | "reject") => void;
-  onConfirmChatWikiProposal: (messageId: string, proposalId: string) => void;
-  onRejectChatWikiProposal: (messageId: string, proposalId: string) => void;
-  onToggleChatWikiProposalTarget: (
-    messageId: string,
-    proposalId: string,
-    targetPath: string,
-    selected: boolean,
-  ) => void;
-  onApplyChatWikiProposal: (messageId: string, proposalId: string) => void;
+  actions: {
+    onRevertAgentAction: (action: AgentAction) => void;
+    onRevealAgentActionTarget: (relativePath: string, mode: DesktopVaultRevealMode) => void;
+    onActOnMemoryProposal: (proposalId: string, action: "confirm" | "reject") => void;
+    onActOnContinuityProposal: (proposalId: string, action: "confirm" | "reject") => void;
+    onConfirmChatWikiProposal: (messageId: string, proposalId: string) => void;
+    onRejectChatWikiProposal: (messageId: string, proposalId: string) => void;
+    onToggleChatWikiProposalTarget: (
+      messageId: string,
+      proposalId: string,
+      targetPath: string,
+      selected: boolean,
+    ) => void;
+    onApplyChatWikiProposal: (messageId: string, proposalId: string) => void;
+  };
 };
 
 export function AgentActivityEntryRenderer({
   entry,
-  revertingAgentActionIds,
-  memoryProposalActionIds,
-  continuityActionIds,
+  busy,
   formatIssueSeverity,
-  onRevertAgentAction,
-  onRevealAgentActionTarget,
-  onActOnMemoryProposal,
-  onActOnContinuityProposal,
-  onConfirmChatWikiProposal,
-  onRejectChatWikiProposal,
-  onToggleChatWikiProposalTarget,
-  onApplyChatWikiProposal,
+  actions,
 }: AgentActivityEntryRendererProps) {
+  const { revertingAgentActionIds, memoryProposalActionIds, continuityActionIds } = busy;
+  const {
+    onRevertAgentAction,
+    onRevealAgentActionTarget,
+    onActOnMemoryProposal,
+    onActOnContinuityProposal,
+    onConfirmChatWikiProposal,
+    onRejectChatWikiProposal,
+    onToggleChatWikiProposalTarget,
+    onApplyChatWikiProposal,
+  } = actions;
   if (entry.kind === "agent_action") {
     return (
       <AgentActionActivityCard

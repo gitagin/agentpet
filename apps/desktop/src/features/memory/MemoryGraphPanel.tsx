@@ -398,7 +398,7 @@ export function MemoryGraphPanel({ projection, loading, error, onRefresh }: Memo
   const [typeFilter, setTypeFilter] = useState<"all" | MemoryGraphNodeType>("all");
   const [showAll, setShowAll] = useState(false);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
-  const nodes = projection?.nodes || [];
+  const nodes = useMemo(() => projection?.nodes || [], [projection?.nodes]);
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const filteredNodes = useMemo(
     () =>

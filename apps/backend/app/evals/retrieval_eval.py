@@ -20,7 +20,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping, Sequence
 
 from app.repositories.storage import SearchResult
-from app.services.reranking import RerankerResponse, evaluate_reranker_adoption
+from app.services.reranking import RerankerResponse
 from app.services.retrieval import RetrievalService, _classify_source_scope
 from app.services.vector_index import LangChainQdrantVectorIndex, VectorIndexConfig
 from app.storage.database import Database
@@ -35,7 +35,7 @@ PROMPT_TOP_K = 5
 WARMUP_QUERY_COUNT = 3
 PRIMARY_SLICE_MINIMUMS = {
     "exact_keyword_identifier": 10,
-    "keyword_free_semantic": 15,
+    "no_ascii_keyword_overlap": 15,
     "chinese_conversational": 8,
     "cross_expression_zh_en": 5,
     "temporal_date_entity": 7,
@@ -119,21 +119,21 @@ OUTPUT_REPORT_NAMES = (
     "slice-results.md",
 )
 OUTPUT_HASH_MANIFEST_NAME = "artifact-hashes.json"
-COMPARISON_SCHEMA_VERSION = "retrieval-mode-comparison.v1"
-COMPARISON_EVALUATOR_VERSION = "retrieval-eval.v2"
+COMPARISON_SCHEMA_VERSION = "retrieval-mode-comparison.v2"
+COMPARISON_EVALUATOR_VERSION = "retrieval-eval.v3"
 COMPARISON_MODES = (
     "fts",
     "vector",
     "hybrid_rrf",
-    "hybrid_rrf_plus_reranker",
+    "hybrid_rrf_identity_control",
 )
 COMPARISON_OUTPUT_NAMES = (
     "latency-and-cost.md",
     "mode-comparison.json",
     "per-slice-quality.md",
-    "reranker-decision.md",
+    "identity-control.md",
 )
-COMPARISON_HASH_SCHEMA_VERSION = "retrieval-eval-artifact-hashes.v2"
+COMPARISON_HASH_SCHEMA_VERSION = "retrieval-eval-artifact-hashes.v3"
 LOCAL_VECTOR_MODEL = "deterministic-local-feature-hash-v1"
 LOCAL_VECTOR_DIMENSIONS = 256
 LOCAL_VECTOR_SCORE_DECIMALS = 4
@@ -773,7 +773,7 @@ def run_mode_comparison(
         _ModeSpec("vector", "vector", ("vector",)),
         _ModeSpec("hybrid_rrf", "hybrid", ("fts", "vector")),
         _ModeSpec(
-            "hybrid_rrf_plus_reranker",
+            "hybrid_rrf_identity_control",
             "hybrid",
             ("fts", "vector"),
             reranker_enabled=True,
@@ -897,7 +897,7 @@ def run_mode_comparison(
             "mode_id": spec.mode_id,
             "service_mode": spec.service_mode,
             "required_channels": list(spec.required_channels),
-            "reranker": "deterministic_identity_control" if spec.reranker_enabled else "disabled",
+            "reranker": "diagnostic_identity_control" if spec.reranker_enabled else "disabled",
             "vector_model": LOCAL_VECTOR_MODEL,
             "vector_dimensions": LOCAL_VECTOR_DIMENSIONS,
             "external_provider": False,
@@ -935,11 +935,10 @@ def run_mode_comparison(
         }
 
     comparisons = _build_mode_comparisons(mode_reports)
-    reranker_decision = _comparison_reranker_decision(mode_reports)
-    final_gate_passed = bool(
-        comparisons["hybrid_rrf_vs_fts"]["keyword_free_gate_passed"]
+    identity_control = _identity_control_observation(mode_reports)
+    comparison_controls_passed = bool(
+        comparisons["hybrid_rrf_vs_fts"]["no_ascii_overlap_gate_passed"]
         and comparisons["hybrid_rrf_vs_fts"]["exact_non_regression_gate_passed"]
-        and reranker_decision["decision"] == "adopt"
     )
     report: dict[str, Any] = {
         "schema_version": COMPARISON_SCHEMA_VERSION,
@@ -970,21 +969,26 @@ def run_mode_comparison(
         },
         "modes": mode_reports,
         "comparisons": comparisons,
-        "reranker_decision": reranker_decision,
+        "identity_control": identity_control,
         "selected_default": {
             "agent_mode": "fts",
             "fallback_mode": "fts",
             "decision": "retain",
             "reasons": [
                 "deterministic feature-hash vectors are evaluation controls, not a production semantic model",
-                "identity reranker failed the fixed quality-improvement gate",
+                "the identity reranker is a diagnostic control, not an adoption candidate",
                 "TASK-1207 evidence and citation gates are not yet evaluated",
             ],
         },
         "final_gates": {
             "requested": require_final_gates,
-            "passed": final_gate_passed,
-            "reason": "production promotion remains deferred pending quality and TASK-1207 gates",
+            "status": "aspirational",
+            "passed": False,
+            "control_results_passed": comparison_controls_passed,
+            "reason": (
+                "production promotion requires a real embedding/reranker candidate and TASK-1207 evidence; "
+                "deterministic character-hash controls cannot satisfy this aspirational gate"
+            ),
         },
     }
     _write_comparison_artifacts(output_dir=output_dir.resolve(), report=report)
@@ -1151,37 +1155,32 @@ def _latency_summary(values: Sequence[float]) -> dict[str, Any]:
 def _build_mode_comparisons(mode_reports: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
     fts = mode_reports["fts"]
     hybrid = mode_reports["hybrid_rrf"]
-    reranked = mode_reports["hybrid_rrf_plus_reranker"]
-    keyword_delta = _slice_metric(hybrid, "keyword_free_semantic", "recall_at_10") - _slice_metric(
-        fts, "keyword_free_semantic", "recall_at_10"
+    identity_control = mode_reports["hybrid_rrf_identity_control"]
+    overlap_delta = _slice_metric(hybrid, "no_ascii_keyword_overlap", "recall_at_10") - _slice_metric(
+        fts, "no_ascii_keyword_overlap", "recall_at_10"
     )
     exact_regression = _slice_metric(fts, "exact_keyword_identifier", "recall_at_10") - _slice_metric(
         hybrid, "exact_keyword_identifier", "recall_at_10"
     )
-    reranker_ndcg_delta = float(reranked["metrics"]["ndcg_at_10"] or 0.0) - float(
+    identity_ndcg_delta = float(identity_control["metrics"]["ndcg_at_10"] or 0.0) - float(
         hybrid["metrics"]["ndcg_at_10"] or 0.0
     )
-    reranker_recall_regression = float(hybrid["metrics"]["recall_at_10"] or 0.0) - float(
-        reranked["metrics"]["recall_at_10"] or 0.0
+    identity_recall_regression = float(hybrid["metrics"]["recall_at_10"] or 0.0) - float(
+        identity_control["metrics"]["recall_at_10"] or 0.0
     )
     return {
         "hybrid_rrf_vs_fts": {
-            "keyword_free_recall_at_10_delta": _rounded(keyword_delta),
-            "keyword_free_gate_threshold": 0.15,
-            "keyword_free_gate_passed": keyword_delta + 1e-12 >= 0.15,
+            "no_ascii_overlap_recall_at_10_delta": _rounded(overlap_delta),
+            "no_ascii_overlap_gate_threshold": 0.15,
+            "no_ascii_overlap_gate_passed": overlap_delta + 1e-12 >= 0.15,
             "exact_query_recall_at_10_regression": _rounded(exact_regression),
             "exact_non_regression_threshold": 0.02,
             "exact_non_regression_gate_passed": exact_regression - 1e-12 <= 0.02,
         },
-        "reranker_vs_hybrid_rrf": {
-            "ndcg_at_10_delta": _rounded(reranker_ndcg_delta),
-            "ndcg_gate_threshold": 0.05,
-            "ndcg_gate_passed": reranker_ndcg_delta + 1e-12 >= 0.05,
-            "recall_at_10_regression": _rounded(reranker_recall_regression),
-            "recall_non_regression_threshold": 0.02,
-            "recall_non_regression_gate_passed": reranker_recall_regression - 1e-12 <= 0.02,
-            "citation_precision_delta": None,
-            "citation_precision_status": "not_evaluated_until_TASK-1207",
+        "identity_control_vs_hybrid_rrf": {
+            "diagnostic_only": True,
+            "ndcg_at_10_delta": _rounded(identity_ndcg_delta),
+            "recall_at_10_regression": _rounded(identity_recall_regression),
         },
     }
 
@@ -1193,57 +1192,31 @@ def _slice_metric(report: Mapping[str, Any], primary_slice: str, metric: str) ->
     return float(result[metric] or 0.0)
 
 
-def _comparison_reranker_decision(
+def _identity_control_observation(
     mode_reports: Mapping[str, Mapping[str, Any]],
 ) -> dict[str, Any]:
     baseline = mode_reports["hybrid_rrf"]
-    candidate = mode_reports["hybrid_rrf_plus_reranker"]
-    baseline_cases = {result["case_id"]: result for result in baseline["case_results"]}
-    paired_deltas = [
-        float(result["ndcg_at_10"] or 0.0)
-        - float(baseline_cases[result["case_id"]]["ndcg_at_10"] or 0.0)
-        for result in candidate["case_results"]
-        if result["answer_label"] == "answerable"
-    ]
-    safety_violation_count = sum(
-        int(candidate["safety"].get(name) or 0)
-        for name in (
-            "inaccessible_memory_leakage",
-            "expected_excluded_id_leakage",
-            "cross_vault_leakage",
-            "fabricated_citations",
-        )
-    )
-    reranker_latency = candidate["latency"]["stages"]["reranker"]
-    total_latency = candidate["latency"]["stages"]["total"]
-    decision = evaluate_reranker_adoption(
-        candidate_enabled=True,
-        baseline_ndcg=float(baseline["metrics"]["ndcg_at_10"] or 0.0),
-        candidate_ndcg=float(candidate["metrics"]["ndcg_at_10"] or 0.0),
-        baseline_recall=float(baseline["metrics"]["recall_at_10"] or 0.0),
-        candidate_recall=float(candidate["metrics"]["recall_at_10"] or 0.0),
-        paired_ndcg_deltas=paired_deltas,
-        safety_violation_count=safety_violation_count,
-        reranker_p95_ms=float(reranker_latency["p95"]),
-        reranker_hard_max_ms=float(reranker_latency["hard_max"]),
-        hybrid_total_p95_ms=float(total_latency["p95"]),
-        hybrid_total_hard_max_ms=float(total_latency["hard_max"]),
-        is_external=False,
-        bootstrap_samples=10_000,
-        bootstrap_seed=1206,
-    )
-    value = asdict(decision)
-    value.update(
-        {
-            "candidate": "deterministic-identity-control",
-            "production_enabled": False,
-            "external_provider": False,
-            "external_request_count": 0,
-            "transmitted_bytes": 0,
-            "external_cost_usd": 0.0,
-        }
-    )
-    return value
+    control = mode_reports["hybrid_rrf_identity_control"]
+    return {
+        "schema_version": "identity-reranker-control.v1",
+        "candidate": "deterministic-identity-control",
+        "status": "diagnostic_only",
+        "adoption_eligible": False,
+        "production_enabled": False,
+        "ndcg_delta": _rounded(
+            float(control["metrics"]["ndcg_at_10"] or 0.0)
+            - float(baseline["metrics"]["ndcg_at_10"] or 0.0)
+        ),
+        "recall_regression": _rounded(
+            float(baseline["metrics"]["recall_at_10"] or 0.0)
+            - float(control["metrics"]["recall_at_10"] or 0.0)
+        ),
+        "reason": "identity control preserves input order and cannot support an adoption conclusion",
+        "external_provider": False,
+        "external_request_count": 0,
+        "transmitted_bytes": 0,
+        "external_cost_usd": 0.0,
+    }
 
 
 def score_grounding_hooks(
@@ -1381,7 +1354,7 @@ def _validate_dataset_contract(corpus: RetrievalCorpus, fixture_text_parts: Sequ
                     raise EvaluationContractError(
                         f"expected source scope mismatch for {case.case_id} and {chunk_id}"
                     )
-        if case.primary_slice == "keyword_free_semantic":
+        if case.primary_slice == "no_ascii_keyword_overlap":
             query_terms = _meaningful_ascii_terms(case.query)
             evidence_terms: set[str] = set()
             for chunk_id in case.expected_relevant_chunk_ids:
@@ -1390,7 +1363,8 @@ def _validate_dataset_contract(corpus: RetrievalCorpus, fixture_text_parts: Sequ
             overlap = query_terms & evidence_terms
             if overlap:
                 raise EvaluationContractError(
-                    f"keyword-free case {case.case_id} has meaningful lexical overlap: {sorted(overlap)}"
+                    f"lexical non-overlap case {case.case_id} has meaningful ASCII term overlap: "
+                    f"{sorted(overlap)}"
                 )
     fixture_text = "\n".join(fixture_text_parts)
     for pattern in PROHIBITED_FIXTURE_PATTERNS:
@@ -1691,7 +1665,7 @@ def _evaluate_final_gates(
                 "reason": "retrieval-only baseline does not execute routes, tools, policy, or confirmation",
             },
             {
-                "name": "keyword_free_recall_at_10_delta_vs_fts",
+                "name": "no_ascii_overlap_recall_at_10_delta_vs_fts",
                 "value": None,
                 "comparator": "gte",
                 "threshold": 0.15,
@@ -1765,7 +1739,7 @@ def _write_comparison_artifacts(*, output_dir: Path, report: Mapping[str, Any]) 
         "mode-comparison.json": output_dir / "mode-comparison.json",
         "per-slice-quality.md": output_dir / "per-slice-quality.md",
         "latency-and-cost.md": output_dir / "latency-and-cost.md",
-        "reranker-decision.md": output_dir / "reranker-decision.md",
+        "identity-control.md": output_dir / "identity-control.md",
     }
     _atomic_write_text(
         paths["mode-comparison.json"],
@@ -1773,7 +1747,7 @@ def _write_comparison_artifacts(*, output_dir: Path, report: Mapping[str, Any]) 
     )
     _atomic_write_text(paths["per-slice-quality.md"], _render_comparison_slices(report))
     _atomic_write_text(paths["latency-and-cost.md"], _render_latency_and_cost(report))
-    _atomic_write_text(paths["reranker-decision.md"], _render_reranker_decision(report))
+    _atomic_write_text(paths["identity-control.md"], _render_identity_control(report))
     artifact_hashes = {name: _sha256_file(path) for name, path in sorted(paths.items())}
     _atomic_write_text(
         output_dir / OUTPUT_HASH_MANIFEST_NAME,
@@ -1845,8 +1819,9 @@ def _render_comparison_slices(report: Mapping[str, Any]) -> str:
             "",
             "## Fixed promotion checks",
             "",
-            f"- Keyword-free Recall@10 delta: {comparison['keyword_free_recall_at_10_delta']:.4f} "
-            f"(pass: {str(comparison['keyword_free_gate_passed']).lower()})",
+            f"- No-ASCII-keyword-overlap Recall@10 delta: "
+            f"{comparison['no_ascii_overlap_recall_at_10_delta']:.4f} "
+            f"(pass: {str(comparison['no_ascii_overlap_gate_passed']).lower()})",
             f"- Exact-query Recall@10 regression: {comparison['exact_query_recall_at_10_regression']:.4f} "
             f"(pass: {str(comparison['exact_non_regression_gate_passed']).lower()})",
             "- Failed cases remain listed in mode-comparison.json; no query was removed from averages.",
@@ -1883,25 +1858,21 @@ def _render_latency_and_cost(report: Mapping[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _render_reranker_decision(report: Mapping[str, Any]) -> str:
-    decision = report["reranker_decision"]
-    reasons = decision["reasons"] or ["all fixed gates passed"]
+def _render_identity_control(report: Mapping[str, Any]) -> str:
+    control = report["identity_control"]
     lines = [
-        "# TASK-1206 Reranker Decision",
+        "# Identity Reranker Diagnostic Control",
         "",
-        f"- Candidate: `{decision['candidate']}`",
-        f"- Decision: **{str(decision['decision']).title()}**",
-        f"- Production enabled: {str(decision['production_enabled']).lower()}",
-        f"- nDCG@10 delta: {_display_metric(decision['ndcg_delta'])}",
-        f"- Recall@10 regression: {_display_metric(decision['recall_regression'])}",
-        f"- Paired bootstrap 95% CI: {_display_metric(decision['bootstrap_ci_lower'])} to "
-        f"{_display_metric(decision['bootstrap_ci_upper'])}",
+        f"- Control: `{control['candidate']}`",
+        f"- Status: **{str(control['status']).replace('_', ' ').title()}**",
+        f"- Adoption eligible: {str(control['adoption_eligible']).lower()}",
+        f"- Production enabled: {str(control['production_enabled']).lower()}",
+        f"- nDCG@10 delta: {_display_metric(control['ndcg_delta'])}",
+        f"- Recall@10 regression: {_display_metric(control['recall_regression'])}",
         "- External requests / bytes / USD: 0 / 0 / 0",
         "",
-        "## Reasons",
-        "",
+        f"Reason: {control['reason']}",
     ]
-    lines.extend(f"- `{reason}`" for reason in reasons)
     lines.extend(
         [
             "",
@@ -2178,7 +2149,7 @@ def _failure_owner(case: EvaluationCase, reasons: Sequence[str]) -> str:
     if safety_reasons & set(reasons):
         return "TASK-1207"
     if case.primary_slice in {
-        "keyword_free_semantic",
+        "no_ascii_keyword_overlap",
         "chinese_conversational",
         "cross_expression_zh_en",
         "temporal_date_entity",
@@ -2406,7 +2377,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "case_count": report["corpus"]["case_count"],
             "modes": list(report["modes"]),
             "selected_agent_default": report["selected_default"]["agent_mode"],
-            "reranker_decision": report["reranker_decision"]["decision"],
+            "identity_control_status": report["identity_control"]["status"],
             "shared_invariants_sha256": report["shared_invariants_sha256"],
             "final_gates_requested": report["final_gates"]["requested"],
             "final_gates_passed": report["final_gates"]["passed"],

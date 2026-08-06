@@ -5,6 +5,7 @@ import type { PetChatBubbleController } from "../chat/usePetChatBubble";
 import { normalizePetInputMode, type PetInputMode } from "../chat/petInputModes";
 import type { DesktopStageRouteMode, DesktopWindowMode } from "../desktop/desktopWindowModes";
 import { readRendererUiState, writeRendererUiState } from "../../services/rendererUiState";
+import { useLatestCallback } from "../../hooks/useLatestCallback";
 import type { SpritePetDragDirection } from "./spritePetState";
 
 type PetShortcutMotion = "idle" | "opening" | "closing";
@@ -40,7 +41,6 @@ export function usePetWindowController({
   const petShellRef = useRef<HTMLElement | null>(null);
   const petShortcutMotionTimerRef = useRef<number | null>(null);
   const petDragRef = useRef<PetDragState | null>(null);
-  const openPetInputModeRef = useRef<(mode: PetInputMode) => void>(() => undefined);
 
   function clearPetShortcutMotionTimer() {
     if (petShortcutMotionTimerRef.current !== null) {
@@ -153,7 +153,7 @@ export function usePetWindowController({
     settlePetShortcutMotion();
     petChat.showInput();
   }
-  openPetInputModeRef.current = openPetInputMode;
+  const handlePetInputModeRequested = useLatestCallback(openPetInputMode);
 
   function closePetShortcutMenu() {
     completePetEntryHint();
@@ -253,10 +253,10 @@ export function usePetWindowController({
       if (!normalizedMode) {
         return;
       }
-      openPetInputModeRef.current(normalizedMode);
+      handlePetInputModeRequested(normalizedMode);
     });
     return unsubscribe;
-  }, [windowMode]);
+  }, [handlePetInputModeRequested, windowMode]);
 
   useEffect(() => {
     const cancelPetDrag = () => {

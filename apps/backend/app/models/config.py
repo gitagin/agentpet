@@ -49,14 +49,6 @@ class ModelConfigRequest(BaseModel):
     model: str = Field(default=DEFAULT_CHAT_MODEL, min_length=1)
 
 
-class SettingsPatchRequest(BaseModel):
-    provider: str | None = Field(default=None, min_length=1)
-    base_url: str | None = Field(default=None, min_length=1)
-    model: str | None = Field(default=None, min_length=1)
-    use_negotiation: bool | None = None
-    max_rounds: int | None = Field(default=None, ge=2, le=10)
-
-
 class AgentModelConfigRequest(ModelConfigRequest):
     agent_id: AgentId | None = None
     enabled: bool = True
@@ -240,11 +232,6 @@ class TtsCacheClearResponse(BaseModel):
     status: str = "cleared"
     cleared_entries: int = 0
     cleared_bytes: int = 0
-
-
-class SettingsUpdateResponse(ModelConfigResponse):
-    agents_using_global: int
-    automation: AutomationSettingsResponse | None = None
 
 
 class VaultStatusResponse(BaseModel):

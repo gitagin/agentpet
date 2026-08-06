@@ -1,145 +1,138 @@
-"""Contract test: every backend API route is reachable through the Electron
-renderer proxy allowlist, and the allowlist carries no dead entries.
+"""Drift guard for the OpenAPI-derived Electron renderer proxy routes.
 
-Why this exists
----------------
-The renderer can only reach the backend through the hand-maintained regex
-allowlist in ``apps/desktop/electron/proxy.js``. That list has drifted twice
-in project history (the checkpoint-decision incident recorded in
-``docs/portfolio/case-study.md``, then a 27-route gap found in the 2026-07
-review, including ``graph/facts/{id}/reject`` while its four sibling actions
-were allowed). Each drift shows up at runtime as
-``renderer_api_route_not_allowed`` long after the backend work shipped.
-
-This test turns the relationship into a build-time contract:
-
-1. every route declared by a FastAPI ``@router.<method>`` decorator must be
-   matched by at least one allowlist entry (unless explicitly exempted), and
-2. every allowlist entry must match at least one backend route, so stale
-   patterns (e.g. the historical ``(config|key)`` group that no longer
-   matched the real ``model-config``/``model-key`` paths) are flagged
-   instead of silently rotting.
-
-The long-term fix is generating both sides from ``/openapi.json`` (fix
-backlog item #9); until then this test is the drift guard.
+``apps/backend/openapi.json`` is the route source of truth. The desktop
+generator turns it into a versioned JSON artifact consumed by ``proxy.js``;
+routes intentionally unavailable to the renderer live in a separate,
+justified exemption document. These tests keep all three in lockstep.
 """
 
 from __future__ import annotations
 
-import re
+import hashlib
+import json
 from pathlib import Path
+from typing import Any
 
-BACKEND_API_DIR = Path(__file__).resolve().parents[1] / "app" / "api"
-PROXY_JS_PATH = Path(__file__).resolve().parents[2] / "desktop" / "electron" / "proxy.js"
+BACKEND_ROOT = Path(__file__).resolve().parents[1]
+DESKTOP_ROOT = Path(__file__).resolve().parents[2] / "desktop"
+OPENAPI_PATH = BACKEND_ROOT / "openapi.json"
+PROXY_ROUTES_PATH = DESKTOP_ROOT / "electron" / "proxy-routes.generated.json"
+EXEMPTIONS_PATH = DESKTOP_ROOT / "electron" / "proxy-route-exemptions.json"
 
-# Routes that intentionally must NOT be reachable from the renderer.
-# Add entries as ("METHOD", "/api/full/path/{param}") template strings.
-RENDERER_EXEMPT_ROUTES: frozenset[tuple[str, str]] = frozenset()
-
-_ROUTER_PREFIX_RE = re.compile(r'APIRouter\(\s*prefix="([^"]*)"')
-_ROUTE_DECORATOR_RE = re.compile(
-    r'@router\.(get|post|put|patch|delete)\(\s*\n?\s*"([^"]*)"', re.MULTILINE
+ARTIFACT_SCHEMA_VERSION = 1
+EXEMPTIONS_SCHEMA_VERSION = 1
+OPENAPI_METHODS = frozenset(
+    {"get", "post", "put", "patch", "delete", "head", "options", "trace"}
 )
-_ALLOWLIST_ENTRY_RE = re.compile(
-    r"\{\s*methods:\s*\[([^\]]+)\],\s*pattern:\s*/(.+?)/\s*\}"
-)
-_PATH_PARAM_RE = re.compile(r"\{(\w+)\}")
+Route = tuple[str, str]
 
 
-def collect_backend_routes() -> list[tuple[str, str, str]]:
-    """Return (source_file, METHOD, /api/... template) for every route."""
-    routes: list[tuple[str, str, str]] = []
-    for source in sorted(BACKEND_API_DIR.glob("*.py")):
-        text = source.read_text(encoding="utf-8")
-        prefix_match = _ROUTER_PREFIX_RE.search(text)
-        prefix = prefix_match.group(1) if prefix_match else ""
-        for match in _ROUTE_DECORATOR_RE.finditer(text):
-            method = match.group(1).upper()
-            routes.append((source.name, method, f"/api{prefix}{match.group(2)}"))
-    return routes
+def load_json(path: Path) -> dict[str, Any]:
+    value = json.loads(path.read_text(encoding="utf-8"))
+    assert isinstance(value, dict), f"{path} must contain a JSON object"
+    return value
 
 
-def collect_allowlist_entries() -> list[tuple[str, frozenset[str], re.Pattern[str]]]:
-    """Return (raw_pattern, methods, compiled_pattern) from proxy.js."""
-    text = PROXY_JS_PATH.read_text(encoding="utf-8")
-    entries = []
-    for match in _ALLOWLIST_ENTRY_RE.finditer(text):
-        methods = frozenset(
-            part.strip().strip('"') for part in match.group(1).split(",")
+def collect_openapi_routes(document: dict[str, Any]) -> set[Route]:
+    paths = document.get("paths")
+    assert isinstance(paths, dict), "openapi.json must contain a paths object"
+    return {
+        (method.upper(), path)
+        for path, path_item in paths.items()
+        if path.startswith("/api/") and isinstance(path_item, dict)
+        for method in path_item
+        if method.lower() in OPENAPI_METHODS
+    }
+
+
+def collect_generated_routes(document: dict[str, Any]) -> set[Route]:
+    routes = document.get("routes")
+    assert isinstance(routes, list), "generated proxy routes must be an array"
+    expanded: set[Route] = set()
+    for route in routes:
+        assert isinstance(route, dict)
+        path = route.get("path")
+        methods = route.get("methods")
+        assert isinstance(path, str) and path.startswith("/api/")
+        assert isinstance(methods, list) and methods
+        for method in methods:
+            assert isinstance(method, str)
+            key = (method, path)
+            assert key not in expanded, f"duplicate generated proxy route: {key}"
+            expanded.add(key)
+    return expanded
+
+
+def collect_exemptions(document: dict[str, Any]) -> set[Route]:
+    routes = document.get("routes")
+    assert isinstance(routes, list), "proxy route exemptions must be an array"
+    exemptions: set[Route] = set()
+    for route in routes:
+        assert isinstance(route, dict)
+        method = route.get("method")
+        path = route.get("path")
+        reason = route.get("reason")
+        assert isinstance(method, str)
+        assert isinstance(path, str) and path.startswith("/api/")
+        assert isinstance(reason, str) and reason.strip(), (
+            f"renderer proxy exemption {method} {path} needs a justification"
         )
-        entries.append((match.group(2), methods, re.compile(match.group(2))))
-    return entries
+        key = (method, path)
+        assert key not in exemptions, f"duplicate renderer proxy exemption: {key}"
+        exemptions.add(key)
+    return exemptions
 
 
-def sample_concrete_path(template: str) -> str:
-    """Substitute path params with values compatible with allowlist regexes."""
-
-    def replace(match: re.Match[str]) -> str:
-        if "profile-projection" in template:
-            # The allowlist intentionally restricts these ids to profile_*.
-            return "profile_abc123"
-        return "sample-id-123"
-
-    return _PATH_PARAM_RE.sub(replace, template)
+def route_contract_drift(
+    declared: set[Route], allowed: set[Route], exempt: set[Route]
+) -> tuple[set[Route], set[Route], set[Route]]:
+    covered = allowed | exempt
+    return declared - covered, covered - declared, allowed & exempt
 
 
-def test_every_backend_route_is_allowlisted_or_exempt() -> None:
-    routes = collect_backend_routes()
-    entries = collect_allowlist_entries()
-    assert routes, "route extraction found nothing — parser or layout changed"
-    assert entries, "allowlist extraction found nothing — proxy.js format changed"
+def test_generated_proxy_artifact_tracks_openapi_snapshot() -> None:
+    openapi_text = OPENAPI_PATH.read_text(encoding="utf-8").replace("\r\n", "\n")
+    openapi = json.loads(openapi_text)
+    artifact = load_json(PROXY_ROUTES_PATH)
 
-    missing: list[str] = []
-    for source, method, template in routes:
-        if (method, template) in RENDERER_EXEMPT_ROUTES:
-            continue
-        concrete = sample_concrete_path(template)
-        allowed = any(
-            method in methods and pattern.fullmatch(concrete)
-            for _raw, methods, pattern in entries
-        )
-        if not allowed:
-            missing.append(f"{method} {template}  (declared in {source})")
+    assert artifact.get("schemaVersion") == ARTIFACT_SCHEMA_VERSION
+    source = artifact.get("source")
+    assert isinstance(source, dict)
+    assert source.get("openapiVersion") == openapi.get("openapi")
+    assert source.get("apiVersion") == openapi.get("info", {}).get("version")
+    assert source.get("sha256") == hashlib.sha256(openapi_text.encode()).hexdigest(), (
+        "proxy-routes.generated.json is stale; run `npm run generate:api-contracts` "
+        "from apps/desktop"
+    )
 
+
+def test_every_openapi_route_is_generated_or_explicitly_exempt() -> None:
+    declared = collect_openapi_routes(load_json(OPENAPI_PATH))
+    allowed = collect_generated_routes(load_json(PROXY_ROUTES_PATH))
+    exemptions_document = load_json(EXEMPTIONS_PATH)
+    assert exemptions_document.get("schemaVersion") == EXEMPTIONS_SCHEMA_VERSION
+    exempt = collect_exemptions(exemptions_document)
+
+    missing, stale, overlap = route_contract_drift(declared, allowed, exempt)
     assert not missing, (
-        "Backend routes missing from the renderer proxy allowlist "
-        "(add them to apps/desktop/electron/proxy.js or to "
-        "RENDERER_EXEMPT_ROUTES with a justification):\n  "
-        + "\n  ".join(missing)
+        "Backend routes missing from generated renderer routes or exemptions:\n  "
+        + "\n  ".join(f"{method} {path}" for method, path in sorted(missing))
     )
-
-
-def test_allowlist_has_no_dead_entries() -> None:
-    routes = collect_backend_routes()
-    entries = collect_allowlist_entries()
-
-    concrete_routes = [
-        (method, sample_concrete_path(template)) for _s, method, template in routes
-    ]
-    dead: list[str] = []
-    for raw, methods, pattern in entries:
-        matches_any = any(
-            method in methods and pattern.fullmatch(concrete)
-            for method, concrete in concrete_routes
-        )
-        if not matches_any:
-            dead.append(f"[{', '.join(sorted(methods))}] /{raw}/")
-
-    assert not dead, (
-        "Allowlist entries that match no backend route (stale pattern or "
-        "removed endpoint — fix or delete them):\n  " + "\n  ".join(dead)
-    )
-
-
-def test_exemption_list_stays_honest() -> None:
-    """Every exemption must still correspond to a real backend route."""
-    declared = {(method, template) for _s, method, template in collect_backend_routes()}
-    stale = [
-        f"{method} {template}"
-        for method, template in sorted(RENDERER_EXEMPT_ROUTES)
-        if (method, template) not in declared
-    ]
     assert not stale, (
-        "RENDERER_EXEMPT_ROUTES entries no longer exist in the backend "
-        "(remove them):\n  " + "\n  ".join(stale)
+        "Generated renderer routes or exemptions no longer exist in OpenAPI:\n  "
+        + "\n  ".join(f"{method} {path}" for method, path in sorted(stale))
     )
+    assert not overlap, (
+        "Routes cannot be both renderer-allowed and exempt:\n  "
+        + "\n  ".join(f"{method} {path}" for method, path in sorted(overlap))
+    )
+
+
+def test_contract_drift_check_rejects_new_missing_and_stale_routes() -> None:
+    declared = {("GET", "/api/existing"), ("POST", "/api/new")}
+    allowed = {("GET", "/api/existing"), ("DELETE", "/api/removed")}
+    missing, stale, overlap = route_contract_drift(declared, allowed, set())
+
+    assert missing == {("POST", "/api/new")}
+    assert stale == {("DELETE", "/api/removed")}
+    assert overlap == set()

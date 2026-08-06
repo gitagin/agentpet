@@ -629,7 +629,7 @@ async def task_service_dependency(request: Request) -> AsyncIterator[TaskService
 
 
 def settings_store(request: Request | AppContext) -> SettingsStore:
-    return SettingsStore(database(request).path)
+    return SettingsStore(database(request))
 
 
 async def settings_store_dependency(request: Request) -> AsyncIterator[SettingsStore]:

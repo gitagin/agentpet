@@ -41,14 +41,14 @@ echo ==== [5/7] pytest -m "not live_model" ==== >> "%LOG%"
 pytest -m "not live_model" >> "%LOG%" 2>&1
 echo [5/7] exitcode=%errorlevel% >> "%LOG%"
 
-echo [6/7] desktop npm install + api types...
+echo [6/7] desktop npm install + generated API contracts...
 echo. >> "%LOG%"
-echo ==== [6/7] npm install + generate:api-types ==== >> "%LOG%"
+echo ==== [6/7] npm install + generate:api-contracts ==== >> "%LOG%"
 cd ..\desktop
 call npm install >> "%LOG%" 2>&1
 echo [6/7-install] exitcode=%errorlevel% >> "%LOG%"
-call npm run generate:api-types >> "%LOG%" 2>&1
-echo [6/7-types] exitcode=%errorlevel% >> "%LOG%"
+call npm run generate:api-contracts >> "%LOG%" 2>&1
+echo [6/7-contracts] exitcode=%errorlevel% >> "%LOG%"
 
 echo [7/7] desktop tests + typecheck...
 echo. >> "%LOG%"

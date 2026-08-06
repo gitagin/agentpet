@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+import json
 from pathlib import Path
 import sqlite3
 from typing import Any
@@ -89,8 +90,129 @@ def test_model_key_secret_uses_replaceable_credential_store(tmp_path: Path) -> N
 
     assert "api_key" not in columns
     assert set(columns) == {"provider", "masked", "credential_ref", "created_at", "updated_at"}
-    assert row["masked"] != secret
+    assert row["masked"] is None
     assert secret.encode("utf-8") not in db_path.read_bytes()
+
+
+def test_credential_slots_preserve_historical_reference_formats() -> None:
+    from app.services.settings import (
+        AGENT_CREDENTIAL_SLOT,
+        EMBEDDING_CREDENTIAL_SLOT,
+        MODEL_CREDENTIAL_SLOT,
+        TTS_CREDENTIAL_SLOT,
+    )
+    from app.utils.hash import sha256_hex
+
+    provider = "openai-compatible"
+    assert MODEL_CREDENTIAL_SLOT.ref(provider) == f"model-key:{sha256_hex(provider)}"
+    assert EMBEDDING_CREDENTIAL_SLOT.ref(provider) == f"embedding-key:{sha256_hex(provider)}"
+    assert TTS_CREDENTIAL_SLOT.ref(provider) == f"tts-key:{sha256_hex(provider)}"
+    assert AGENT_CREDENTIAL_SLOT.ref("chat_agent") == "model-key:agent:chat_agent"
+
+
+def test_settings_domains_are_split_and_all_credential_slots_roundtrip(tmp_path: Path) -> None:
+    from app.services.settings import InMemoryCredentialStore, SettingsStore
+
+    services_dir = Path(__file__).parents[1] / "app" / "services"
+    implementation_modules = (
+        "settings_store.py",
+        "settings_types.py",
+        "settings_preferences.py",
+        "settings_models.py",
+    )
+    assert all(
+        len((services_dir / module).read_text(encoding="utf-8").splitlines()) <= 700
+        for module in implementation_modules
+    )
+
+    db_path = migrate_db(tmp_path / "state.sqlite3")
+    credentials = InMemoryCredentialStore()
+    store = SettingsStore(db_path, credential_store=credentials)
+    try:
+        store.set_model_key("openai-compatible", "sk-model-credential")
+        store.set_embedding_key("openai-compatible", "sk-embedding-credential")
+        store.set_tts_key("xiaomi-mimo", "sk-tts-credential")
+        store.set_agent_model_config(
+            agent_id="chat_agent",
+            provider="openai-compatible",
+            base_url="https://example.test/v1",
+            model="chat-model",
+        )
+        store.set_agent_model_key(
+            agent_id="chat_agent",
+            provider="openai-compatible",
+            api_key="sk-agent-credential",
+        )
+
+        assert store.get_model_key("openai-compatible") == "sk-model-credential"
+        assert store.get_embedding_key("openai-compatible") == "sk-embedding-credential"
+        assert store.get_tts_key("xiaomi-mimo") == "sk-tts-credential"
+        assert store.get_agent_model_key(
+            agent_id="chat_agent",
+            provider="openai-compatible",
+        ) == "sk-agent-credential"
+    finally:
+        store.close()
+
+    with sqlite3.connect(db_path) as conn:
+        assert conn.execute("SELECT masked FROM model_keys").fetchone()[0] is None
+        assert conn.execute("SELECT masked FROM embedding_keys").fetchone()[0] is None
+        assert conn.execute("SELECT masked FROM agent_model_configs").fetchone()[0] is None
+        tts_metadata = conn.execute(
+            "SELECT value FROM app_state WHERE key LIKE 'tts_key:%'"
+        ).fetchone()[0]
+    assert "masked" not in json.loads(tts_metadata)
+
+
+def test_dpapi_vault_moved_to_unsupported_platform_is_not_reported_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services import settings
+    from app.services.settings import CredentialStoreError, SettingsStore
+
+    db_path = migrate_db(tmp_path / "state.sqlite3")
+    monkeypatch.setattr(settings, "_dpapi_available", lambda: True)
+    monkeypatch.setattr(settings, "_dpapi_protect", lambda data: b"protected-" + data)
+    windows_store = SettingsStore(db_path)
+    try:
+        windows_store.set_model_key("openai-compatible", "sk-cross-platform")
+    finally:
+        windows_store.close()
+
+    credential_file = next(db_path.with_suffix(".sqlite3.credentials").glob("*.dpapi"))
+    assert json.loads(credential_file.read_text(encoding="ascii"))["scheme"] == "dpapi"
+
+    monkeypatch.setattr(settings, "_dpapi_available", lambda: False)
+    migrated_store = SettingsStore(db_path)
+    try:
+        with pytest.raises(CredentialStoreError, match="当前平台不支持解密"):
+            migrated_store.get_model_key_status()
+    finally:
+        migrated_store.close()
+
+
+def test_settings_api_reports_unsupported_dpapi_platform(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.services import settings
+
+    monkeypatch.setattr(settings, "_dpapi_available", lambda: True)
+    monkeypatch.setattr(settings, "_dpapi_protect", lambda data: b"protected-" + data)
+    configured = client.put(
+        "/api/settings/model-key",
+        headers=_auth(),
+        json={"provider": "openai-compatible", "api_key": "sk-cross-platform-api"},
+    )
+    assert configured.status_code == 200
+
+    monkeypatch.setattr(settings, "_dpapi_available", lambda: False)
+    status_response = client.get("/api/settings", headers=_auth())
+
+    assert status_response.status_code == 503
+    assert "当前平台不支持解密" in status_response.json()["error"]["message"]
+    assert "未配置" not in status_response.text
 
 
 def test_local_credential_store_rejects_unprotected_storage(

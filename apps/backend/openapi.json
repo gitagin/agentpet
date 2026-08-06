@@ -3067,6 +3067,17 @@
         "title": "MemoryGraphExportPreviewResponse",
         "type": "object"
       },
+      "MemoryGraphFactAction": {
+        "enum": [
+          "confirm",
+          "reject",
+          "wrong",
+          "sensitive-block",
+          "archive"
+        ],
+        "title": "MemoryGraphFactAction",
+        "type": "string"
+      },
       "MemoryGraphFactActionResponse": {
         "properties": {
           "fact_id": {
@@ -5952,72 +5963,6 @@
         "title": "RetrospectiveWindow",
         "type": "object"
       },
-      "SettingsPatchRequest": {
-        "properties": {
-          "base_url": {
-            "anyOf": [
-              {
-                "minLength": 1,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Base Url"
-          },
-          "max_rounds": {
-            "anyOf": [
-              {
-                "maximum": 10.0,
-                "minimum": 2.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Max Rounds"
-          },
-          "model": {
-            "anyOf": [
-              {
-                "minLength": 1,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Model"
-          },
-          "provider": {
-            "anyOf": [
-              {
-                "minLength": 1,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Provider"
-          },
-          "use_negotiation": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Use Negotiation"
-          }
-        },
-        "title": "SettingsPatchRequest",
-        "type": "object"
-      },
       "SettingsStatusResponse": {
         "properties": {
           "agent_models": {
@@ -6127,49 +6072,6 @@
           }
         },
         "title": "SettingsStatusResponse",
-        "type": "object"
-      },
-      "SettingsUpdateResponse": {
-        "properties": {
-          "agents_using_global": {
-            "title": "Agents Using Global",
-            "type": "integer"
-          },
-          "automation": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/AutomationSettingsResponse"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "base_url": {
-            "title": "Base Url",
-            "type": "string"
-          },
-          "model": {
-            "title": "Model",
-            "type": "string"
-          },
-          "provider": {
-            "title": "Provider",
-            "type": "string"
-          },
-          "status": {
-            "title": "Status",
-            "type": "string"
-          }
-        },
-        "required": [
-          "provider",
-          "base_url",
-          "model",
-          "status",
-          "agents_using_global"
-        ],
-        "title": "SettingsUpdateResponse",
         "type": "object"
       },
       "TaskApprovalResponse": {
@@ -10447,8 +10349,59 @@
         ]
       }
     },
+    "/api/memory/graph/facts/{fact_id}/actions/{action}": {
+      "post": {
+        "operationId": "apply_memory_graph_fact_action_api_memory_graph_facts__fact_id__actions__action__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "fact_id",
+            "required": true,
+            "schema": {
+              "title": "Fact Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "action",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/MemoryGraphFactAction"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryGraphFactActionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Apply Memory Graph Fact Action",
+        "tags": [
+          "memory"
+        ]
+      }
+    },
     "/api/memory/graph/facts/{fact_id}/archive": {
       "post": {
+        "deprecated": true,
         "operationId": "archive_memory_graph_fact_api_memory_graph_facts__fact_id__archive_post",
         "parameters": [
           {
@@ -10491,6 +10444,7 @@
     },
     "/api/memory/graph/facts/{fact_id}/confirm": {
       "post": {
+        "deprecated": true,
         "operationId": "confirm_memory_graph_fact_api_memory_graph_facts__fact_id__confirm_post",
         "parameters": [
           {
@@ -10533,6 +10487,7 @@
     },
     "/api/memory/graph/facts/{fact_id}/reject": {
       "post": {
+        "deprecated": true,
         "operationId": "reject_memory_graph_fact_api_memory_graph_facts__fact_id__reject_post",
         "parameters": [
           {
@@ -10575,6 +10530,7 @@
     },
     "/api/memory/graph/facts/{fact_id}/sensitive-block": {
       "post": {
+        "deprecated": true,
         "operationId": "sensitive_block_memory_graph_fact_api_memory_graph_facts__fact_id__sensitive_block_post",
         "parameters": [
           {
@@ -10617,6 +10573,7 @@
     },
     "/api/memory/graph/facts/{fact_id}/wrong": {
       "post": {
+        "deprecated": true,
         "operationId": "wrong_memory_graph_fact_api_memory_graph_facts__fact_id__wrong_post",
         "parameters": [
           {
@@ -11328,168 +11285,6 @@
         "tags": [
           "settings"
         ]
-      },
-      "patch": {
-        "operationId": "update_settings_api_settings_patch",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SettingsPatchRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SettingsUpdateResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Update Settings",
-        "tags": [
-          "settings"
-        ]
-      }
-    },
-    "/api/settings/agent-model-config": {
-      "put": {
-        "operationId": "set_agent_model_config_legacy_api_settings_agent_model_config_put",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AgentModelConfigRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AgentModelConfigResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Set Agent Model Config Legacy",
-        "tags": [
-          "settings"
-        ]
-      }
-    },
-    "/api/settings/agent-model-key": {
-      "put": {
-        "operationId": "set_agent_model_key_legacy_api_settings_agent_model_key_put",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AgentModelKeyRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ModelKeyResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Set Agent Model Key Legacy",
-        "tags": [
-          "settings"
-        ]
-      }
-    },
-    "/api/settings/agent-model-test": {
-      "post": {
-        "operationId": "test_agent_model_connection_legacy_api_settings_agent_model_test_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ModelTestRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ModelTestResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Test Agent Model Connection Legacy",
-        "tags": [
-          "settings"
-        ]
       }
     },
     "/api/settings/agent-models": {
@@ -11607,110 +11402,6 @@
     "/api/settings/agent-models/{agent_id}/key": {
       "put": {
         "operationId": "set_agent_model_key_api_settings_agent_models__agent_id__key_put",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "agent_id",
-            "required": true,
-            "schema": {
-              "title": "Agent Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AgentModelKeyRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AgentModelConfigResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Set Agent Model Key",
-        "tags": [
-          "settings"
-        ]
-      }
-    },
-    "/api/settings/agent-models/{agent_id}/model-config": {
-      "put": {
-        "operationId": "set_agent_model_config_api_settings_agent_models__agent_id__model_config_put",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "agent_id",
-            "required": true,
-            "schema": {
-              "title": "Agent Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AgentModelConfigRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AgentModelConfigResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Set Agent Model Config",
-        "tags": [
-          "settings"
-        ]
-      }
-    },
-    "/api/settings/agent-models/{agent_id}/model-key": {
-      "put": {
-        "operationId": "set_agent_model_key_api_settings_agent_models__agent_id__model_key_put",
         "parameters": [
           {
             "in": "path",

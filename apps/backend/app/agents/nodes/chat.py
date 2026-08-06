@@ -147,7 +147,7 @@ async def _fallback_text_search_tool_call(
 
     tool_results: list[AgentToolResult] = []
     observed_toolset = AgentToolSet(retrieval=services.retrieval, observer=tool_results.append)
-    search_response = await observed_toolset.search_memory(query=query or state.user_message, top_k=5, mode="fts")
+    search_response = await observed_toolset.search_memory(query=query or state.user_message, top_k=5)
     if not search_response.results:
         return _local_knowledge_not_found_response(), tool_results
     return _grounded_response_from_search(search_response), tool_results
@@ -185,7 +185,7 @@ async def _fallback_grounded_search(
     tool_results: list[AgentToolResult] = []
     observed_toolset = AgentToolSet(retrieval=services.retrieval, observer=tool_results.append)
     try:
-        search_response = await observed_toolset.search_memory(query=state.user_message, top_k=5, mode="fts")
+        search_response = await observed_toolset.search_memory(query=state.user_message, top_k=5)
     except Exception:
         return "", []
     if not search_response.results:

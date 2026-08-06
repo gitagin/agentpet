@@ -1,22 +1,10 @@
 from __future__ import annotations
 
 import inspect
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping
 from typing import Any
 
-from app.services.chat_model import RoleAgentFactory, create_tool_role_agent
-
-from ..contracts import AgentToolId, ExecutionReceipt, IndependentAgentRoleId, VerificationResult
-from ..prompts.system import role_system_prompt
-
-
-ROLE_ID = IndependentAgentRoleId.VERIFIER
-ALLOWED_TOOLS = (
-    AgentToolId.READ_TASK_RECEIPT_STATE.value,
-    AgentToolId.READ_LEDGER_RECEIPT_STATE.value,
-    AgentToolId.READ_MEMORY_RECEIPT_STATE.value,
-    AgentToolId.READ_VAULT_RECEIPT_STATE.value,
-)
+from ..contracts import ExecutionReceipt, VerificationResult
 
 
 async def verify_execution_receipt(
@@ -75,20 +63,4 @@ async def verify_execution_receipt(
         expected_effect=str(receipt.result.get("expected_effect") or "") or None,
         observed_effect=str(observed.get("observed_effect") or "") or None,
         policy_version="action-policy.v1",
-    )
-
-
-def build_role_agent(
-    *,
-    model: Any,
-    tools: Sequence[Any],
-    agent_factory: RoleAgentFactory | None = None,
-) -> Any:
-    return create_tool_role_agent(
-        model=model,
-        system_prompt=role_system_prompt(ROLE_ID),
-        tools=tools,
-        allowed_tool_names=ALLOWED_TOOLS,
-        output_schema=VerificationResult,
-        agent_factory=agent_factory,
     )

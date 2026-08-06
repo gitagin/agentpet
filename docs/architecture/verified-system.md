@@ -23,7 +23,7 @@ Side-effect request
       -> low-risk approved execution
       -> high-risk persisted checkpoint and human decision
   -> deterministic Executor (idempotency, receipts)
-  -> read-only Verifier role (receipt-bound verification)
+  -> deterministic receipt verifier (authoritative read-back)
 
 Foreground completion
   -> managed Reflection role job (typed proposals only)
@@ -44,7 +44,7 @@ sequential path.
 | Retrieval dispatch | model-backed specialist | approved read tools only |
 | Chat/Synthesizer | model-backed Agent | the only natural-language outlet |
 | Action Proposal | model-backed Agent | typed proposal only; no adapter access |
-| Verifier | model-backed read-only role | receipt-bound verification input |
+| Receipt verifier | deterministic component | authoritative receipt-bound read-back |
 | Reflection | managed model-backed role | typed proposals only |
 | Router, registry, merger | deterministic components | routing, validation, accounting |
 | Policy Guard, Executor, checkpointer | deterministic components | side-effect authorization, execution, idempotency, HITL persistence |

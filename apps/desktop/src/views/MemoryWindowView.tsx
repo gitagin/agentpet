@@ -42,6 +42,8 @@ import type { MemoryAsyncStatus } from "../features/memory/memoryReducer";
 import { memoryTypeLabels, memoryTypes } from "../features/memory/memoryConstants";
 import { productCopy } from "../productCopy";
 import { FeatureWindowShell } from "./FeatureWindowShell";
+import { useLatestCallback } from "../hooks/useLatestCallback";
+import { useConfirmationDialog } from "../hooks/useConfirmationDialog";
 
 type MemoryActivityFilter = "all" | "auto" | "pending" | "reverted" | "failed";
 type MemoryGraphStatusFilter = "all" | "active" | "candidate" | "quarantined" | "archived" | "rejected" | "wrong" | "sensitive_blocked";
@@ -1864,6 +1866,7 @@ export default function MemoryWindowView({
   onRefresh,
   renderEntry,
 }: MemoryWindowViewProps) {
+  const { confirm, confirmationDialog } = useConfirmationDialog();
   const [activeFilter, setActiveFilter] = useState<MemoryActivityFilter>("all");
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<MemoryWorkspaceTabKey>("archive");
   const [searchQuery, setSearchQuery] = useState("");
@@ -2090,27 +2093,32 @@ export default function MemoryWindowView({
     }
   }
 
-  useEffect(() => {
-    const abort = new AbortController();
-    if (activeWorkspaceTab === "archive") {
-      void loadMemoryProfileProjection(abort.signal);
-    } else if (activeWorkspaceTab === "data") {
-      void loadLocalAssets(abort.signal);
-    } else if (activeWorkspaceTab === "graph") {
-      void loadMemoryGraphProjection(abort.signal);
-    } else if (activeWorkspaceTab === "diary") {
-      void loadRetrospectives(abort.signal);
-    } else if (activeWorkspaceTab === "decay") {
-      void loadWeeklyMemoryReview(abort.signal);
+  const loadActiveWorkspace = useLatestCallback((tab: MemoryWorkspaceTabKey, signal: AbortSignal) => {
+    if (tab === "archive") {
+      void loadMemoryProfileProjection(signal);
+    } else if (tab === "data") {
+      void loadLocalAssets(signal);
+    } else if (tab === "graph") {
+      void loadMemoryGraphProjection(signal);
+    } else if (tab === "diary") {
+      void loadRetrospectives(signal);
+    } else if (tab === "decay") {
+      void loadWeeklyMemoryReview(signal);
     }
-    return () => abort.abort();
-  }, [activeWorkspaceTab, api]);
+  });
+  const loadMemoryFactsEvent = useLatestCallback(loadMemoryFacts);
 
   useEffect(() => {
     const abort = new AbortController();
-    void loadMemoryFacts(abort.signal);
+    loadActiveWorkspace(activeWorkspaceTab, abort.signal);
     return () => abort.abort();
-  }, [api, memoryFactStatus, memoryFactQuery]);
+  }, [activeWorkspaceTab, loadActiveWorkspace]);
+
+  useEffect(() => {
+    const abort = new AbortController();
+    void loadMemoryFactsEvent(abort.signal);
+    return () => abort.abort();
+  }, [loadMemoryFactsEvent, memoryFactQuery, memoryFactStatus]);
 
   function rememberReviewArtifact(target: RetrospectiveReportTarget, response: RetrospectiveReportResponse) {
     const kind = reviewKindForTarget(target);
@@ -2230,7 +2238,11 @@ export default function MemoryWindowView({
     if (!memoryProfileDetail) {
       return;
     }
-    const confirmed = window.confirm(profileActionConfirmText(action));
+    const confirmed = await confirm({
+      title: "确认更新这条记忆吗？",
+      message: profileActionConfirmText(action),
+      confirmLabel: "确认更新",
+    });
     if (!confirmed) {
       return;
     }
@@ -2289,7 +2301,11 @@ export default function MemoryWindowView({
   }
 
   async function applyMemoryHygieneSuggestion(item: MemoryHygieneSuggestion) {
-    const confirmed = window.confirm("确定要应用这条整理建议吗？这会更新记忆状态。");
+    const confirmed = await confirm({
+      title: "确认应用整理建议吗？",
+      message: "这会更新对应的记忆状态，并记录本次整理操作。",
+      confirmLabel: "确认应用",
+    });
     if (!confirmed) {
       return;
     }
@@ -2770,22 +2786,25 @@ export default function MemoryWindowView({
   }
 
   return (
-    <FeatureWindowShell
-      eyebrow="记忆"
-      title={productCopy.memoryPage.title}
-      description={productCopy.memoryPage.description}
-      activeTab="记忆"
-      showHeader={false}
-    >
-      <MemoryWorkspaceTabs activeTab={activeWorkspaceTab} onChange={setActiveWorkspaceTab} />
-      <div
-        id={`memory-workspace-panel-${activeWorkspaceTab}`}
-        className={`memory-workspace-tab-panel memory-workspace-tab-panel-${activeWorkspaceTab}`}
-        role="tabpanel"
-        aria-label={`记忆工作台：${activeWorkspaceTabConfig.label}`}
+    <>
+      <FeatureWindowShell
+        eyebrow="记忆"
+        title={productCopy.memoryPage.title}
+        description={productCopy.memoryPage.description}
+        activeTab="记忆"
+        showHeader={false}
       >
-        {renderWorkspacePanel()}
-      </div>
-    </FeatureWindowShell>
+        <MemoryWorkspaceTabs activeTab={activeWorkspaceTab} onChange={setActiveWorkspaceTab} />
+        <div
+          id={`memory-workspace-panel-${activeWorkspaceTab}`}
+          className={`memory-workspace-tab-panel memory-workspace-tab-panel-${activeWorkspaceTab}`}
+          role="tabpanel"
+          aria-label={`记忆工作台：${activeWorkspaceTabConfig.label}`}
+        >
+          {renderWorkspacePanel()}
+        </div>
+      </FeatureWindowShell>
+      {confirmationDialog}
+    </>
   );
 }

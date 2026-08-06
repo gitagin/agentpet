@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import re
 from datetime import datetime, timezone
 from collections.abc import AsyncIterator
 from typing import Any
@@ -208,6 +209,7 @@ class LangGraphAgentRuntime:
         )
 
         match_count = 0
+        retrieval_error: str | None = None
         if self.services.retrieval is not None:
             try:
                 search_response = await self.services.retrieval.search(
@@ -216,19 +218,24 @@ class LangGraphAgentRuntime:
                     mode="fts",
                     source_scope="all",
                 )
-            except Exception:
-                # Keep the user-facing copy unchanged, but stop disguising a
-                # retrieval failure as "0 matches" in the logs.
+            except Exception as exc:
+                # A failed local probe is different from a successful empty
+                # search.  Keep the safe response generic, but expose that
+                # distinction to the user and retain the traceback in logs.
                 logger.warning(
-                    "Local-privacy retrieval probe failed for agent_run_id=%s; reporting zero matches to the user.",
+                    "Local-privacy retrieval probe failed for agent_run_id=%s.",
                     state.agent_run_id,
                     exc_info=True,
                 )
-                match_count = 0
+                retrieval_error = type(exc).__name__
             else:
                 match_count = len(search_response.results)
 
-        response = _local_privacy_response(match_count, state.local_privacy_sensitive_reason)
+        response = _local_privacy_response(
+            match_count,
+            state.local_privacy_sensitive_reason,
+            retrieval_error=retrieval_error,
+        )
         state.response_text = response
         state.status = AgentRunStatus.SUCCESS
         yield AgentTokenEvent(agent_run_id=state.agent_run_id, text=response)
@@ -1023,7 +1030,7 @@ def _append_safe_negotiation_step(
     graph_state: dict[str, Any],
     state: NegotiationState,
     *,
-    agent_id: AgentTraceAgentId,
+    agent_id: str,
     phase: AgentTracePhase,
     status: AgentTraceStatus,
     reason_code: AgentTraceReasonCode,
@@ -1078,7 +1085,7 @@ def _trace_source_scope(state: NegotiationState) -> AgentTraceSourceScope:
     return next(iter(scopes))
 
 
-def _safe_trace_agent_id(value: Any) -> AgentTraceAgentId:
+def _safe_trace_agent_id(value: Any) -> str:
     raw_value = getattr(value, "value", value)
     mapping = {
         AgentTraceAgentId.ORCHESTRATOR.value: AgentTraceAgentId.ORCHESTRATOR,
@@ -1087,10 +1094,14 @@ def _safe_trace_agent_id(value: Any) -> AgentTraceAgentId:
     }
     key = str(raw_value)
     if key not in mapping:
-        # The safe-trace schema only admits the allowlisted ids, but silently
-        # recording an unknown id as ORCHESTRATOR made the telemetry lie.
-        logger.warning("Unknown trace agent id %r; recording as ORCHESTRATOR fallback.", raw_value)
-    return mapping.get(key, AgentTraceAgentId.ORCHESTRATOR)
+        # Preserve the distinction in telemetry.  Normalize arbitrary input
+        # before putting it on the SSE contract so it cannot inject control
+        # characters or unbounded data into logs/UI payloads.
+        normalized = re.sub(r"[^A-Za-z0-9_.:-]+", "_", key).strip("_")[:80] or "empty"
+        unknown = f"unknown:{normalized}"
+        logger.warning("Unknown trace agent id %r; recording as %s.", raw_value, unknown)
+        return unknown
+    return mapping[key].value
 
 
 def _safe_trace_reason_code(reason: str) -> AgentTraceReasonCode:
@@ -1194,8 +1205,19 @@ def _has_empty_search_result(results: list[AgentToolResult]) -> bool:
     )
 
 
-def _local_privacy_response(match_count: int, reason: str | None) -> str:
+def _local_privacy_response(
+    match_count: int,
+    reason: str | None,
+    *,
+    retrieval_error: str | None = None,
+) -> str:
     reason_text = _local_privacy_reason_label(reason)
+    if retrieval_error is not None:
+        return (
+            f"本地隐私模式已接管这条消息（命中：{reason_text}）。"
+            "我没有把原文发送到模型 API，只尝试了本机关键词检索，但检索暂时失败，无法判断是否有匹配记录。"
+            "请稍后重试或打开记忆页检查本地索引状态。"
+        )
     if match_count > 0:
         return (
             f"本地隐私模式已接管这条消息（命中：{reason_text}）。"

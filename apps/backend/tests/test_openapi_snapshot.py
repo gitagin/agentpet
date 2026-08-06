@@ -6,9 +6,9 @@ model changed without regenerating the snapshot — run::
     python -m app.openapi_export
 
 from ``apps/backend`` and commit the updated ``openapi.json`` together with
-the code change. Downstream consumers (generated desktop API types, and
-eventually the Electron proxy allowlist) all derive from that file, so an
-up-to-date snapshot is what keeps them honest.
+the code change. Downstream consumers (generated desktop API types and the
+Electron proxy route artifact) both derive from that file, so an up-to-date
+snapshot is what keeps them honest.
 """
 
 from __future__ import annotations

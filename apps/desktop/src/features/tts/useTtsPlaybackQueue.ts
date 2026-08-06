@@ -523,7 +523,7 @@ export function useTtsPlaybackQueue({
         }
       }
     })();
-  }, [clearProviderWork, publish, resolveProviderForItem, synthesizeWithFallback]);
+  }, [clearProviderWork, disposePrefetchedResult, publish, resolveProviderForItem, synthesizeWithFallback]);
 
   const startNext = useCallback(() => {
     if (currentItemRef.current) {

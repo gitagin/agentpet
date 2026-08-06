@@ -216,7 +216,7 @@ class _CapturingRetrievalModel:
         self.system_prompt = system_prompt or ""
         self.tool_names = [tool.name for tool in tools]
         self.tool_response = await tools[0].ainvoke(
-            {"query": "Project Orchid", "top_k": 5, "mode": "hybrid", "source_scope": "all"}
+            {"query": "Project Orchid", "top_k": 5, "source_scope": "all"}
         )
         return ChatModelRunResult(text="retrieval complete", raw_result=None)
 

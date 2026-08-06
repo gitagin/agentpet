@@ -20,6 +20,7 @@ import type {
 } from "../../types";
 import type { SseEvent } from "../../services/sse";
 import { isWikiProposalStreamEvent } from "../../services/chatWikiProposals";
+import { PET_BUBBLE_ACTION_WATCHDOG_TIMEOUT_MS } from "./chatTiming";
 import { extractSseText, isCitationPayload, parseJson } from "./chatStreamUtils";
 import type { PetChatBubbleController } from "./usePetChatBubble";
 import { agentActionHandler } from "./handlers/agentActionHandler";
@@ -383,7 +384,7 @@ function applyTextOrCitationEvent({ messageId, sseEvent, payload, context }: Str
     petChat.scheduleStreamWatchdog(
       "正在整理",
       "资料多一点，我继续看。",
-      14000,
+      PET_BUBBLE_ACTION_WATCHDOG_TIMEOUT_MS,
       () => petChat.failStream(messageId, "没有等到回复", "这次没有等到可显示的回复，本轮已停止。"),
     );
   }

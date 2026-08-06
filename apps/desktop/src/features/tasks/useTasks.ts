@@ -61,7 +61,7 @@ export function useTasks({ api, pollingEnabled, sidecarReady, onNotice, onTaskSt
       triggeredReminderNotificationIds.current.add(reminderId);
       const result = await notify({
         reminder_id: reminderId,
-        title: task.title || "桌面记忆助手提醒",
+        title: task.title || "Agent Pet 提醒",
         body: task.description || task.source_text || task.remind_at || "提醒已到期。",
       });
       dispatch({

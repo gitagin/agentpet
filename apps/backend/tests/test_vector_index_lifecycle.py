@@ -6,9 +6,13 @@ from uuid import UUID
 
 import pytest
 from langchain_core.embeddings import Embeddings
-from qdrant_client import QdrantClient, models
+
+qdrant_client = pytest.importorskip("qdrant_client")
+QdrantClient = qdrant_client.QdrantClient
+models = qdrant_client.models
 
 from app.repositories.storage import NoteRepository, VaultRepository
+import app.services.vector_index as vector_index_module
 from app.services.vector_index import (
     LangChainQdrantVectorIndex,
     VectorIndexConfig,
@@ -123,6 +127,36 @@ def _records(client: QdrantClient, collection_name: str):
     return records
 
 
+def test_server_generation_enables_hnsw_threshold_and_vault_payload_index(tmp_path: Path) -> None:
+    class RecordingServerClient:
+        def __init__(self) -> None:
+            self.create_kwargs = None
+            self.payload_index_kwargs = None
+
+        def collection_exists(self, collection_name: str) -> bool:
+            return False
+
+        def create_collection(self, **kwargs) -> bool:
+            self.create_kwargs = kwargs
+            return True
+
+        def create_payload_index(self, **kwargs):
+            self.payload_index_kwargs = kwargs
+
+    client = RecordingServerClient()
+    index = _index(tmp_path, client, FakeEmbeddings())
+
+    index._create_generation("server-generation", 8, {"lifecycle_status": "building"})
+
+    assert client.create_kwargs["optimizers_config"].indexing_threshold == 1024
+    assert client.payload_index_kwargs == {
+        "collection_name": "server-generation",
+        "field_name": "metadata.vault_id",
+        "field_schema": models.PayloadSchemaType.KEYWORD,
+        "wait": True,
+    }
+
+
 def test_reconcile_creates_validated_generation_and_is_unchanged_for_same_corpus(tmp_path: Path) -> None:
     _, conn, vault_id = _database(tmp_path)
     try:
@@ -198,6 +232,47 @@ def test_reconcile_creates_validated_generation_and_is_unchanged_for_same_corpus
         assert health["vector_available"] is True
         assert health["active_generation"] == first.generation
         assert health["unavailability_reason"] is None
+    finally:
+        conn.close()
+
+
+def test_repeated_queries_do_not_repeat_full_generation_scroll_or_hash(tmp_path: Path, monkeypatch) -> None:
+    _, conn, vault_id = _database(tmp_path)
+    try:
+        _replace_note(conn, vault_id, "Wiki/Alpha.md", "# Alpha\n\nrepeated validation contract")
+        client = QdrantClient(location=":memory:")
+        index = _index(tmp_path, client, FakeEmbeddings())
+        assert index.reconcile(conn, vault_id).status == "success"
+
+        scroll_calls = 0
+        hash_calls = 0
+        original_scroll = index._scroll_records
+        original_records_hash = vector_index_module._records_hash
+
+        def recording_scroll(collection_name):
+            nonlocal scroll_calls
+            scroll_calls += 1
+            return original_scroll(collection_name)
+
+        def recording_records_hash(records):
+            nonlocal hash_calls
+            hash_calls += 1
+            return original_records_hash(records)
+
+        monkeypatch.setattr(index, "_scroll_records", recording_scroll)
+        monkeypatch.setattr(vector_index_module, "_records_hash", recording_records_hash)
+
+        assert index.search(query="validation", vault_id=vault_id, top_k=3)
+        first_scroll_calls = scroll_calls
+        first_hash_calls = hash_calls
+        assert first_scroll_calls == 1
+        assert first_hash_calls == 1
+
+        for _ in range(5):
+            assert index.search(query="validation", vault_id=vault_id, top_k=3)
+
+        assert scroll_calls == first_scroll_calls
+        assert hash_calls == first_hash_calls
     finally:
         conn.close()
 

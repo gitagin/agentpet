@@ -1,4 +1,5 @@
 import type { StreamHandlerInput } from "../streamDispatcher";
+import { PET_BUBBLE_ACTION_WATCHDOG_TIMEOUT_MS } from "../chatTiming";
 
 export function memoryProposalHandler({ messageId, payload, context }: StreamHandlerInput, proposalId: string) {
   const { petChat, appendChatEvent, upsertChatMemoryProposal, upsertProposalFromPayload } = context;
@@ -20,7 +21,7 @@ export function memoryProposalHandler({ messageId, payload, context }: StreamHan
     petChat.scheduleStreamWatchdog(
       "还在想",
       "记忆确认项已处理，这次需要多等一会儿。",
-      14000,
+      PET_BUBBLE_ACTION_WATCHDOG_TIMEOUT_MS,
       () => petChat.failStream(messageId, "没有等到回复", "记忆确认项已处理，但这次没有等到可显示的回复。"),
     );
   }

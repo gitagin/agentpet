@@ -1,0 +1,599 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "openapiVersion": "3.1.0",
+    "apiVersion": "0.0.1-alpha",
+    "sha256": "8c1a4dd20fdbb5f23272c8991fd177c7c690f3263fc90c39b9346f7c5295b17f"
+  },
+  "routes": [
+    {
+      "path": "/api/agent/actions",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/api/agent/actions/{action_id}/revert",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/chat",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/chat/daily-history",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/api/chat/runs/{agent_run_id}/events",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/api/chat/runs/{agent_run_id}/stream",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/api/chat/stream/{agent_run_id}",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/api/checkpoints/pending",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/api/checkpoints/{checkpoint_id}",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/api/checkpoints/{checkpoint_id}/decision",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/continuity/proposals",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/api/continuity/proposals/{proposal_id}/confirm",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/continuity/proposals/{proposal_id}/reject",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/continuity/state",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/api/diagnostics/export",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/api/diagnostics/negotiation-stats",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/api/diagnostics/reset-local-state",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/diagnostics/reset-memory-state",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/growth/snapshot",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/api/habit-loop/trigger",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/health",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/api/memory/companion/consolidation/runs",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/memory/companion/context-reports",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/api/memory/diary/search",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/memory/diary/{object_id}",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/api/memory/feedback",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/memory/graph-projection",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/api/memory/graph/export-preview",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/api/memory/graph/facts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/api/memory/graph/facts/{fact_id}/actions/{action}",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/memory/graph/facts/{fact_id}/archive",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/memory/graph/facts/{fact_id}/confirm",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/memory/graph/facts/{fact_id}/reject",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/memory/graph/facts/{fact_id}/sensitive-block",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/memory/graph/facts/{fact_id}/wrong",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/memory/hygiene/actions",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/memory/hygiene/preview",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/api/memory/local-assets",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/api/memory/profile-projection",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/api/memory/profile-projection/items/{item_id}",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/api/memory/profile-projection/items/{item_id}/actions",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/memory/proposals",
+      "methods": [
+        "GET",
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/memory/proposals/{proposal_id}/confirm",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/memory/proposals/{proposal_id}/reject",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/memory/receipts",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/api/memory/retrospectives",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/api/memory/retrospectives/report",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/memory/reviews/weekly",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/api/memory/reviews/weekly/actions",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/memory/search",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/settings",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/api/settings/agent-models",
+      "methods": [
+        "GET",
+        "PUT"
+      ]
+    },
+    {
+      "path": "/api/settings/agent-models/{agent_id}/config",
+      "methods": [
+        "PUT"
+      ]
+    },
+    {
+      "path": "/api/settings/agent-models/{agent_id}/key",
+      "methods": [
+        "PUT"
+      ]
+    },
+    {
+      "path": "/api/settings/automation",
+      "methods": [
+        "GET",
+        "PUT"
+      ]
+    },
+    {
+      "path": "/api/settings/embedding-config",
+      "methods": [
+        "PUT"
+      ]
+    },
+    {
+      "path": "/api/settings/embedding-key",
+      "methods": [
+        "PUT"
+      ]
+    },
+    {
+      "path": "/api/settings/embedding-test",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/settings/model-config",
+      "methods": [
+        "PUT"
+      ]
+    },
+    {
+      "path": "/api/settings/model-health",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/api/settings/model-key",
+      "methods": [
+        "PUT"
+      ]
+    },
+    {
+      "path": "/api/settings/model-test",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/settings/tts",
+      "methods": [
+        "GET",
+        "PUT"
+      ]
+    },
+    {
+      "path": "/api/settings/tts-key",
+      "methods": [
+        "PUT"
+      ]
+    },
+    {
+      "path": "/api/tasks",
+      "methods": [
+        "GET",
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/tasks/current",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/api/tasks/today",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/api/tasks/{task_id}",
+      "methods": [
+        "PATCH"
+      ]
+    },
+    {
+      "path": "/api/tasks/{task_id}/approve",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/tasks/{task_id}/cancel",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/tasks/{task_id}/complete",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/tasks/{task_id}/logs",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/api/tasks/{task_id}/reject",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/tasks/{task_id}/steps",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/api/today/snapshot",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/api/tts/cache",
+      "methods": [
+        "DELETE"
+      ]
+    },
+    {
+      "path": "/api/tts/synthesize",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/vaults/bind",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/vaults/init",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/vaults/status",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/api/vaults/{vault_id}/index",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/wiki/diagnostics/queue",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/wiki/graph",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/api/wiki/import/preview",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/wiki/index",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/api/wiki/ingest/apply",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/wiki/ingest/confirm",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/wiki/ingest/preview",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/wiki/ingest/review",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/wiki/lint",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/wiki/log",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/api/wiki/pages",
+      "methods": [
+        "GET",
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/wiki/query-archives",
+      "methods": [
+        "GET",
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/wiki/query-archives/lint",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/wiki/query-archives/{archive_id}",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/api/wiki/schema",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/api/wiki/synthesize",
+      "methods": [
+        "POST"
+      ]
+    }
+  ]
+}

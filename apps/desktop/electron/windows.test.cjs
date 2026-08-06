@@ -75,6 +75,10 @@ function createElectronMock() {
     },
     screen: {
       getCursorScreenPoint: vi.fn(() => ({ x: 0, y: 0 })),
+      getDisplayMatching: vi.fn(() => ({
+        scaleFactor: 1,
+        workArea: { x: 0, y: 0, width: 1920, height: 1080 },
+      })),
       getPrimaryDisplay: vi.fn(() => ({
         workArea: { x: 0, y: 0, width: 1920, height: 1080 },
       })),
@@ -231,7 +235,7 @@ describe("createWindowManager stage window lifecycle", () => {
     expect(electron.BrowserWindow).toHaveBeenCalledOnce();
     expect(featureWindow.loadURL).not.toHaveBeenCalled();
     expect(featureWindow.loadFile).not.toHaveBeenCalled();
-    expect(featureWindow.setTitle).toHaveBeenCalledWith("桌面记忆助手 - 配置");
+    expect(featureWindow.setTitle).toHaveBeenCalledWith("Agent Pet - 配置");
     expect(featureWindow.webContents.send).toHaveBeenCalledWith("agent-pet:show-feature-route", "settings");
     expect(manager.getFeatureWindowMode(featureWindow.webContents)).toBe("settings");
   });
@@ -407,5 +411,74 @@ describe("createWindowManager stage window lifecycle", () => {
 
     expect(petWindow.setIgnoreMouseEvents).toHaveBeenCalledWith(true, { forward: true });
     expect(setTimeoutSpy).toHaveBeenLastCalledWith(expect.any(Function), 500);
+  });
+
+  it.each([1, 1.25, 1.5, 2])(
+    "keeps the visible pet and hit region pixel-aligned at %sx display scale",
+    (scaleFactor) => {
+      const electron = createElectronMock();
+      electron.screen.getDisplayMatching.mockReturnValue({ scaleFactor });
+      const { createWindowManager } = loadWindowsWithMocks({ electron });
+      const manager = createManager(createWindowManager, { isQuitting: false });
+      const petWindow = manager.createPetWindow();
+      const bounds = { x: 240, y: 120, width: petHitboxConfig.window.width, height: petHitboxConfig.window.height };
+      petWindow.getBounds.mockReturnValue(bounds);
+
+      const model = petHitboxConfig.hitboxes.model;
+      const anchor = petHitboxConfig.layout.anchors.model;
+      expect(anchor).toEqual({ horizontal: "center", vertical: "bottom" });
+      const localCenter = {
+        x: Math.round((petHitboxConfig.window.width - model.width) / 2) + model.width / 2,
+        y: petHitboxConfig.window.height - model.bottom - model.height / 2,
+      };
+      electron.screen.getCursorScreenPoint.mockReturnValue({
+        x: bounds.x + localCenter.x,
+        y: bounds.y + localCenter.y,
+      });
+
+      manager.setPetShortcutBarVisible(false);
+      manager.setPetInputDockVisible(false);
+      const status = manager.updatePetMousePassthroughFromCursor();
+
+      expect(status.enabled).toBe(false);
+      expect(status.displayScaleFactor).toBe(scaleFactor);
+      expect(Math.round((electron.screen.getCursorScreenPoint().x - bounds.x) * scaleFactor)).toBe(
+        Math.round(localCenter.x * scaleFactor),
+      );
+      expect(Math.round((electron.screen.getCursorScreenPoint().y - bounds.y) * scaleFactor)).toBe(
+        Math.round(localCenter.y * scaleFactor),
+      );
+    },
+  );
+
+  it("preserves the local hit region while crossing displays with different DPI", () => {
+    const electron = createElectronMock();
+    electron.screen.getDisplayMatching.mockImplementation((bounds) => ({
+      scaleFactor: bounds.x < 1920 ? 1.25 : 2,
+    }));
+    const { createWindowManager } = loadWindowsWithMocks({ electron });
+    const manager = createManager(createWindowManager, { isQuitting: false });
+    const petWindow = manager.createPetWindow();
+    const model = petHitboxConfig.hitboxes.model;
+    const localPoint = {
+      x: Math.round((petHitboxConfig.window.width - model.width) / 2) + model.width / 2,
+      y: petHitboxConfig.window.height - model.bottom - model.height / 2,
+    };
+
+    for (const display of [
+      { bounds: { x: 120, y: 80, width: 560, height: 720 }, scaleFactor: 1.25 },
+      { bounds: { x: 2160, y: 160, width: 560, height: 720 }, scaleFactor: 2 },
+    ]) {
+      petWindow.getBounds.mockReturnValue(display.bounds);
+      electron.screen.getCursorScreenPoint.mockReturnValue({
+        x: display.bounds.x + localPoint.x,
+        y: display.bounds.y + localPoint.y,
+      });
+
+      const status = manager.updatePetMousePassthroughFromCursor();
+
+      expect(status.enabled).toBe(false);
+      expect(status.displayScaleFactor).toBe(display.scaleFactor);
+    }
   });
 });

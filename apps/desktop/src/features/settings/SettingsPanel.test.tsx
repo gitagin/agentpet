@@ -42,32 +42,34 @@ function renderSettingsPanel() {
 
   const rendered = render(
     <SettingsPanel
-      api={{} as DesktopApi}
-      globalModelDraft={globalModelDraft}
-      globalModelSaveStatus="idle"
-      globalModelTestStatus="idle"
-      automationSettingsDraft={automationSettingsDraft}
-      automationSettingsSaveStatus="idle"
-      loadingSettingsStatus={false}
-      vaultId={null}
-      vaultPath=""
-      vaultStatus={null}
-      lastIndexRun={null}
-      indexingVault={false}
-      canSelectVaultDirectory
-      onRefreshSettings={onRefreshSettings}
-      onUpdateGlobalModelDraft={vi.fn()}
-      onSaveGlobalModel={vi.fn()}
-      onTestGlobalModel={onTestGlobalModel}
-      onUpdateAutomationSettingsDraft={onUpdateAutomationSettingsDraft}
-      onSaveAutomationSettings={vi.fn()}
-      onVaultPathChange={vi.fn()}
-      onSelectVaultDirectory={onSelectVaultDirectory}
-      onBindVault={(event) => event.preventDefault()}
-      onLoadVaultStatus={vi.fn()}
-      onRebuildIndex={vi.fn()}
-      resettingMemoryState={false}
-      onResetMemoryState={onResetMemoryState}
+      model={{
+        api: {} as DesktopApi,
+        globalModelDraft,
+        globalModelSaveStatus: "idle",
+        globalModelTestStatus: "idle",
+        automationSettingsDraft,
+        automationSettingsSaveStatus: "idle",
+        loadingSettingsStatus: false,
+        vaultId: null,
+        vaultPath: "",
+        vaultStatus: null,
+        lastIndexRun: null,
+        indexingVault: false,
+        canSelectVaultDirectory: true,
+        onRefreshSettings,
+        onUpdateGlobalModelDraft: vi.fn(),
+        onSaveGlobalModel: vi.fn(),
+        onTestGlobalModel,
+        onUpdateAutomationSettingsDraft,
+        onSaveAutomationSettings: vi.fn(),
+        onVaultPathChange: vi.fn(),
+        onSelectVaultDirectory,
+        onBindVault: (event) => event.preventDefault(),
+        onLoadVaultStatus: vi.fn(),
+        onRebuildIndex: vi.fn(),
+        resettingMemoryState: false,
+        onResetMemoryState,
+      }}
     />,
   );
 

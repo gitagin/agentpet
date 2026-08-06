@@ -101,14 +101,7 @@ export function useTtsOrchestrator({
           description: selectedVoice.description || undefined,
         }
       : null;
-  }, [
-    settings?.voice?.description,
-    settings?.voice?.gender,
-    settings?.voice?.id,
-    settings?.voice?.label,
-    settings?.voice?.locale,
-    settings?.voice?.provider,
-  ]);
+  }, [settings?.voice]);
   const provider = settings?.provider || "system";
   const speed = settings?.speed ?? 1;
   const volume = settings?.volume ?? 1;
@@ -129,8 +122,11 @@ export function useTtsOrchestrator({
     playbackEndRef.current = onEnd || (() => undefined);
   }, []);
 
+  const playbackError = queue.state.error;
+  const stopPlayback = queue.stop;
+
   useEffect(() => {
-    const error = queue.state.error;
+    const error = playbackError;
     if (!error) {
       lastErrorNoticeRef.current = null;
       return;
@@ -144,26 +140,20 @@ export function useTtsOrchestrator({
       tone: "error",
       message: formatTtsPlaybackErrorNotice(error),
     });
-  }, [
-    onNotice,
-    queue.state.error?.code,
-    queue.state.error?.itemId,
-    queue.state.error?.message,
-    queue.state.error?.provider,
-  ]);
+  }, [onNotice, playbackError]);
 
   useEffect(() => {
     const previousMode = previousWindowModeRef.current;
     if (previousMode && previousMode !== windowMode && active) {
-      queue.stop("window_mode_changed");
+      stopPlayback("window_mode_changed");
     }
     previousWindowModeRef.current = windowMode;
-  }, [active, queue.stop, windowMode]);
+  }, [active, stopPlayback, windowMode]);
 
   useEffect(() => {
     const stopIfActive = (reason: string) => {
       if (queue.state.status === "synthesizing" || queue.state.status === "playing") {
-        queue.stop(reason);
+        stopPlayback(reason);
       }
     };
     const handlePageHide = () => stopIfActive("window_hidden");
@@ -175,7 +165,7 @@ export function useTtsOrchestrator({
       window.removeEventListener("pagehide", handlePageHide);
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };
-  }, [queue.state.status, queue.stop]);
+  }, [queue.state.status, stopPlayback]);
 
   return {
     queue,

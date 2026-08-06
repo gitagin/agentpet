@@ -563,7 +563,7 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
       minHeight: PET_WINDOW_HEIGHT,
       maxWidth: PET_WINDOW_WIDTH,
       maxHeight: PET_WINDOW_HEIGHT,
-      title: "桌面记忆助手",
+      title: "Agent Pet",
       frame: false,
       transparent: true,
       backgroundColor: "#00000000",
@@ -658,7 +658,7 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
       height: 820,
       minWidth: 960,
       minHeight: 640,
-      title: "桌面记忆助手控制台",
+      title: "Agent Pet 控制台",
       backgroundColor: "#f7f7f2",
       show: false,
     });
@@ -702,7 +702,7 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
       height: 720,
       minWidth: 900,
       minHeight: 600,
-      title: "桌面记忆助手主舞台",
+      title: "Agent Pet 主舞台",
       backgroundColor: "#f7f7f2",
     });
 
@@ -741,7 +741,7 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
       height: 740,
       minWidth: 760,
       minHeight: 560,
-      title: "桌面记忆助手 - 任务",
+      title: "Agent Pet - 任务",
       alwaysOnTop: false,
       backgroundColor: "#f7f7f2",
       show: false,
@@ -801,7 +801,7 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
     featureWindowMode = normalizedMode;
 
     if (featureWindow && !featureWindow.isDestroyed()) {
-      featureWindow.setTitle(`桌面记忆助手 - ${getFeatureWindowTitle(normalizedMode)}`);
+      featureWindow.setTitle(`Agent Pet - ${getFeatureWindowTitle(normalizedMode)}`);
       // 复用窗口时走 IPC 切路由（与 stage 一致），不再整页 reload 丢渲染端状态。
       const reusedFeatureWindow = featureWindow;
       sendWhenLoaded(reusedFeatureWindow, () => {
@@ -817,7 +817,7 @@ function createWindowManager({ devServerUrl, state, quitApp }) {
       height: 740,
       minWidth: 760,
       minHeight: 560,
-      title: `桌面记忆助手 - ${getFeatureWindowTitle(normalizedMode)}`,
+      title: `Agent Pet - ${getFeatureWindowTitle(normalizedMode)}`,
       backgroundColor: "#f7f7f2",
       show: false,
     });

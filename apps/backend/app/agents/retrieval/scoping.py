@@ -133,7 +133,6 @@ def _guard_search_memory_tools(
         async def search_memory_with_scope(
             query: str,
             top_k: int = 5,
-            mode: str = "fts",
             source_scope: str = "",
             _tool=tool,
             _forced_scope: str = forced_scope,
@@ -143,7 +142,6 @@ def _guard_search_memory_tools(
                 {
                     "query": query,
                     "top_k": top_k,
-                    "mode": "fts",
                     "source_scope": effective_scope,
                 }
             )

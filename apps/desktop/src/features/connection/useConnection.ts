@@ -12,21 +12,23 @@ type Notice = {
 
 type UseConnectionOptions = {
   onNotice: (notice: Notice | null) => void;
-  onSettingsStatus: (response: SettingsStatusResponse) => void;
 };
 
-export function useConnection({ onNotice, onSettingsStatus }: UseConnectionOptions) {
+export function useConnection({ onNotice }: UseConnectionOptions) {
   const [settings, setSettings] = useState<ConnectionSettings>(() => loadConnectionSettings());
   const [sidecarStatus, setSidecarStatus] = useState<DesktopSidecarStatus | null>(null);
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [checkingHealth, setCheckingHealth] = useState(false);
   const [loadingSettingsStatus, setLoadingSettingsStatus] = useState(false);
+  const [settingsStatus, setSettingsStatus] = useState<SettingsStatusResponse | null>(null);
   const [businessAuthStatus, setBusinessAuthStatus] = useState<BusinessAuthStatus>("unknown");
   const [businessAuthMessage, setBusinessAuthMessage] = useState("尚未检查业务接口鉴权。");
   const readyHealthRefreshKey = useRef<string | null>(null);
-  const callbacks = useRef({ onNotice, onSettingsStatus });
+  const callbacks = useRef({ onNotice });
 
-  callbacks.current = { onNotice, onSettingsStatus };
+  useEffect(() => {
+    callbacks.current = { onNotice };
+  }, [onNotice]);
 
   const client = useMemo(() => new ApiClient(settings), [settings]);
   const api = useMemo(() => new DesktopApi(client), [client]);
@@ -47,7 +49,7 @@ export function useConnection({ onNotice, onSettingsStatus }: UseConnectionOptio
     setBusinessAuthMessage("正在检查业务接口鉴权。");
     try {
       const response = await api.getSettingsStatus(options.signal);
-      callbacks.current.onSettingsStatus(response);
+      setSettingsStatus(response);
       setBusinessAuthReady();
       return true;
     } catch (error) {
@@ -100,7 +102,7 @@ export function useConnection({ onNotice, onSettingsStatus }: UseConnectionOptio
     }
     try {
       const response = await api.getSettingsStatus(options.signal);
-      callbacks.current.onSettingsStatus(response);
+      setSettingsStatus(response);
       setBusinessAuthReady();
       if (!options.silent) {
         callbacks.current.onNotice({ tone: "success", message: "设置状态已刷新。" });
@@ -154,7 +156,7 @@ export function useConnection({ onNotice, onSettingsStatus }: UseConnectionOptio
       tone: sidecarStatus.state === "ready" || sidecarStatus.state === "degraded" ? "info" : "error",
       message: getSidecarActionMessage(sidecarStatus),
     });
-  }, [sidecarStatus?.state, sidecarStatus?.error?.code, sidecarStatus?.error?.message]);
+  }, [sidecarStatus]);
 
   useEffect(() => {
     if (sidecarStatus?.health) {
@@ -193,6 +195,7 @@ export function useConnection({ onNotice, onSettingsStatus }: UseConnectionOptio
     setBusinessAuthReady,
     setSettings,
     settings,
+    settingsStatus,
     sidecarStatus,
   };
 }

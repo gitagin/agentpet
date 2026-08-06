@@ -113,59 +113,82 @@ function richActivityEntries(): AgentActivityLogEntry[] {
   ];
 }
 
-function createDashboardProps(
-  overrides: Partial<React.ComponentProps<typeof ControlDashboard>> = {},
-): React.ComponentProps<typeof ControlDashboard> {
-  return {
-    sidecarStatus: null,
-    health: null,
-    notice: null,
-    ttsActive: false,
-    api: {} as React.ComponentProps<typeof ControlDashboard>["api"],
-    firstUseOnboardingPanel: null,
-    controlInput: "",
-    hasConnection: true,
-    streaming: false,
-    onControlInputChange: vi.fn(),
-    onSubmitControlChat: vi.fn((event) => event.preventDefault()),
-    onStopStreaming: vi.fn(),
-    pendingManualActivityCount: 0,
-    agentActionsStatus: "success",
-    hasAgentActivity: true,
-    recentAgentActivityCount: 0,
-    loadingProposals: false,
-    loadingContinuity: false,
-    agentActionsError: "",
-    activityItems: [],
-    onRefreshActivity: vi.fn(),
-    messages: [],
-    agentActivityEntries: [],
-    tasks: [],
-    chatMessageListProps: { messages: [] },
-    workflowItems: [],
-    taskPanelProps: {
-      tasks: [],
-      lastReminderNotification: { status: "idle", detail: "等待到期提醒触发。" },
-      onLocateTask: vi.fn(),
+type DashboardProps = React.ComponentProps<typeof ControlDashboard>;
+type DashboardOverrides = {
+  runtime?: Partial<DashboardProps["runtime"]>;
+  chat?: Partial<DashboardProps["chat"]>;
+  activity?: Partial<DashboardProps["activity"]>;
+  memory?: Partial<DashboardProps["memory"]>;
+  status?: Partial<DashboardProps["status"]>;
+  advancedTools?: DashboardProps["advancedTools"];
+};
+
+function createDashboardProps(overrides: DashboardOverrides = {}): DashboardProps {
+  const base: DashboardProps = {
+    runtime: {
+      sidecarStatus: null,
+      health: null,
+      notice: null,
+      ttsActive: false,
+      api: {} as DashboardProps["runtime"]["api"],
+      firstUseOnboardingPanel: null,
     },
-    continuityState,
-    pendingContinuityCount: 0,
-    onLoadContinuity: vi.fn(),
-    onLocateWorkflowTarget: vi.fn(),
-    modelStatusLabel: "已配置",
-    knowledgeStatusLabel: "已就绪",
+    chat: {
+      input: "",
+      connected: true,
+      streaming: false,
+      messages: [],
+      messageListProps: { messages: [] },
+      onInputChange: vi.fn(),
+      onSubmit: vi.fn((event) => event.preventDefault()),
+      onStop: vi.fn(),
+    },
+    activity: {
+      pendingManualCount: 0,
+      status: "success",
+      hasActivity: true,
+      recentCount: 0,
+      loadingProposals: false,
+      loadingContinuity: false,
+      error: "",
+      items: [],
+      onRefresh: vi.fn(),
+    },
+    memory: {
+      entries: [],
+      tasks: [],
+      taskPanelProps: {
+        tasks: [],
+        lastReminderNotification: { status: "idle", detail: "等待到期提醒触发。" },
+        onLocateTask: vi.fn(),
+      },
+      continuityState,
+      pendingContinuityCount: 0,
+      onLoadContinuity: vi.fn(),
+      onLocateWorkflowTarget: vi.fn(),
+      workflowItems: [],
+    },
+    status: {
+      modelLabel: "已配置",
+      knowledgeLabel: "已就绪",
+    },
     advancedTools: {
       connectionPanel: null,
       wikiWorkflowPanel: null,
       settingsPanel: null,
     },
-    ...overrides,
+  };
+  return {
+    runtime: { ...base.runtime, ...overrides.runtime },
+    chat: { ...base.chat, ...overrides.chat },
+    activity: { ...base.activity, ...overrides.activity },
+    memory: { ...base.memory, ...overrides.memory },
+    status: { ...base.status, ...overrides.status },
+    advancedTools: overrides.advancedTools || base.advancedTools,
   };
 }
 
-function renderDashboard(
-  overrides: Partial<React.ComponentProps<typeof ControlDashboard>> = {},
-) {
+function renderDashboard(overrides: DashboardOverrides = {}) {
   return render(<ControlDashboard {...createDashboardProps(overrides)} />);
 }
 
@@ -188,16 +211,37 @@ describe("ControlDashboard memory review", () => {
 
   it("does not show reference memories or orbit points when memory is empty", () => {
     const { container } = renderDashboard({
-      agentActivityEntries: [],
-      messages: [],
-      tasks: [],
+      memory: { entries: [], tasks: [] },
+      chat: { messages: [] },
     });
 
     const memoryPanel = screen.getByLabelText("记忆回顾");
+    const emptyMemoryState = within(memoryPanel).getByRole("status", { name: "暂无记忆回顾" });
+
+    expect(emptyMemoryState).toHaveTextContent("还没有可回顾的记忆");
     expect(memoryPanel).toHaveTextContent("开始聊天或创建任务后，实时记忆会出现在这里。");
     expect(memoryPanel).not.toHaveTextContent("产品原型讨论");
     expect(memoryPanel).not.toHaveTextContent("午餐时间");
     expect(container.querySelectorAll(".orbit-point")).toHaveLength(0);
+    const dateLabel = container.querySelector(".control-date-card strong");
+    const dateParts = Array.from(dateLabel?.querySelectorAll("span") ?? []).map((part) => part.textContent);
+    expect(dateParts).toHaveLength(2);
+    expect(dateLabel).toHaveAttribute("aria-label", dateParts.join(" "));
+    expect(screen.getByRole("button", { name: "打开新窗口" })).toHaveAttribute("title", "打开新窗口");
+    expect(within(memoryPanel).getByRole("button", { name: "搜索记忆" })).toHaveAttribute("title", "搜索记忆");
+  });
+
+  it("keeps long notices keyboard-scrollable", () => {
+    const { container } = renderDashboard({
+      runtime: {
+        notice: {
+          tone: "error",
+          message: "A long runtime error remains readable and keyboard-scrollable.",
+        },
+      },
+    });
+
+    expect(container.querySelector(".notice")).toHaveAttribute("tabindex", "0");
   });
 
   it("keeps every memory day with full per-day counts and entries", () => {
@@ -307,7 +351,7 @@ describe("ControlDashboard memory review", () => {
   });
 
   it("starts with the latest memory day expanded, expands only one day, and can close all days", () => {
-    renderDashboard({ agentActivityEntries: richActivityEntries() });
+    renderDashboard({ memory: { entries: richActivityEntries() } });
 
     const memoryPanel = screen.getByLabelText("记忆回顾");
     const dayButtons = within(memoryPanel).getAllByRole("button", { name: /记忆记录/ });
@@ -412,9 +456,11 @@ describe("ControlDashboard memory review", () => {
   it("opens the memory drawer and locates the clicked memory card", () => {
     const onLocateWorkflowTarget = vi.fn();
     renderDashboard({
-      agentActivityEntries: richActivityEntries(),
-      activityItems: [<article key="target" id="agent-action-today-1">详情卡</article>],
-      onLocateWorkflowTarget,
+      memory: {
+        entries: richActivityEntries(),
+        onLocateWorkflowTarget,
+      },
+      activity: { items: [<article key="target" id="agent-action-today-1">详情卡</article>] },
     });
 
     fireEvent.click(screen.getByRole("button", { name: "查看今天第一条" }));
@@ -426,9 +472,9 @@ describe("ControlDashboard memory review", () => {
 
   it("renders animated voice waveform and floating memory orbit points", () => {
     const { container, rerender } = renderDashboard({
-      agentActivityEntries: richActivityEntries(),
-      ttsActive: false,
-      streaming: false,
+      memory: { entries: richActivityEntries() },
+      runtime: { ttsActive: false },
+      chat: { streaming: false },
     });
 
     const wave = container.querySelector(".control-voice-wave");
@@ -445,48 +491,10 @@ describe("ControlDashboard memory review", () => {
 
     rerender(
       <ControlDashboard
-        sidecarStatus={null}
-        health={null}
-        notice={null}
-        ttsActive
-        api={{} as React.ComponentProps<typeof ControlDashboard>["api"]}
-        firstUseOnboardingPanel={null}
-        controlInput=""
-        hasConnection
-        streaming={false}
-        onControlInputChange={vi.fn()}
-        onSubmitControlChat={vi.fn((event) => event.preventDefault())}
-        onStopStreaming={vi.fn()}
-        pendingManualActivityCount={0}
-        agentActionsStatus="success"
-        hasAgentActivity
-        recentAgentActivityCount={0}
-        loadingProposals={false}
-        loadingContinuity={false}
-        agentActionsError=""
-        activityItems={[]}
-        onRefreshActivity={vi.fn()}
-        messages={[]}
-        agentActivityEntries={richActivityEntries()}
-        tasks={[]}
-        chatMessageListProps={{ messages: [] }}
-        workflowItems={[]}
-        taskPanelProps={{
-          tasks: [],
-          lastReminderNotification: { status: "idle", detail: "等待到期提醒触发。" },
-          onLocateTask: vi.fn(),
-        }}
-        continuityState={continuityState}
-        pendingContinuityCount={0}
-        onLoadContinuity={vi.fn()}
-        onLocateWorkflowTarget={vi.fn()}
-        modelStatusLabel="已配置"
-        knowledgeStatusLabel="已就绪"
-        advancedTools={{
-          connectionPanel: null,
-          wikiWorkflowPanel: null,
-          settingsPanel: null,
-        }}
+        {...createDashboardProps({
+          runtime: { ttsActive: true },
+          memory: { entries: richActivityEntries() },
+        })}
       />,
     );
 
@@ -503,7 +511,7 @@ describe("ControlDashboard memory review", () => {
     expect(pages.length).toBeGreaterThan(1);
 
     const { container } = renderDashboard({
-      messages: [message("assistant-long", "assistant", longReply)],
+      chat: { messages: [message("assistant-long", "assistant", longReply)] },
     });
     const bubble = container.querySelector(".control-speech-bubble") as HTMLElement;
 
@@ -534,7 +542,7 @@ describe("ControlDashboard memory review", () => {
     const { container, rerender } = render(
       <ControlDashboard
         {...createDashboardProps({
-          messages: [message("assistant-first", "assistant", firstReply)],
+          chat: { messages: [message("assistant-first", "assistant", firstReply)] },
         })}
       />,
     );
@@ -546,7 +554,7 @@ describe("ControlDashboard memory review", () => {
     rerender(
       <ControlDashboard
         {...createDashboardProps({
-          messages: [message("assistant-second", "assistant", secondReply)],
+          chat: { messages: [message("assistant-second", "assistant", secondReply)] },
         })}
       />,
     );

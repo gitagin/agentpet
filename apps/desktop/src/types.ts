@@ -1,3 +1,7 @@
+import type { components as GeneratedApiComponents } from "./types.gen";
+
+type GeneratedApiSchemas = GeneratedApiComponents["schemas"];
+
 export type HealthResponse = {
   status: string;
   version: string;
@@ -45,6 +49,7 @@ export type DesktopSidecarStatus = {
   baseUrl: string;
   host: string;
   port: number;
+  logPath: string;
   managed: boolean;
   pid: number | null;
   updatedAt: string;
@@ -594,7 +599,7 @@ export type WikiIngestReviewFinding = {
 export type WikiIngestReviewResponse = {
   review_id: string;
   run_id: string;
-  status: "reviewed" | "model_not_configured" | "failed" | string;
+  status: GeneratedApiSchemas["WikiIngestReviewResponse"]["status"];
   summary: string;
   findings: WikiIngestReviewFinding[];
   recommended_targets: string[];
@@ -992,7 +997,7 @@ export type MemoryGraphNodeType =
   | "archived"
   | "cleanup";
 
-export type MemoryGraphNodeStatus = "active" | "pending" | "archived" | "hidden";
+export type MemoryGraphNodeStatus = GeneratedApiSchemas["MemoryGraphProjectionNodeResponse"]["status"];
 
 export type MemoryGraphRiskTier = "low" | "hidden";
 
@@ -1409,19 +1414,6 @@ export type TtsCacheClearResponse = {
   status: string;
   cleared_entries: number;
   cleared_bytes: number;
-};
-
-export type SettingsUpdateRequest = {
-  provider?: string;
-  base_url?: string;
-  model?: string;
-  use_negotiation?: boolean;
-  max_rounds?: number;
-};
-
-export type SettingsUpdateResponse = ModelConfigResponse & {
-  agents_using_global: number;
-  automation?: AutomationSettings | null;
 };
 
 export type AgentModelConfigResponse = ModelConfigResponse & {

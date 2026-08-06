@@ -4,6 +4,7 @@ import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
+const repositoryRoot = path.resolve(root, "..", "..");
 const require = createRequire(import.meta.url);
 
 const checks = [];
@@ -14,6 +15,14 @@ function record(name, ok, detail) {
 
 function exists(relativePath) {
   return fs.existsSync(path.join(root, relativePath));
+}
+
+function repositoryFileExists(relativePath) {
+  return fs.existsSync(path.join(repositoryRoot, relativePath));
+}
+
+function readRepositoryFile(relativePath) {
+  return fs.readFileSync(path.join(repositoryRoot, relativePath), "utf8");
 }
 
 function readJson(relativePath) {
@@ -29,7 +38,24 @@ record("Desktop pet hitbox config exists", exists("pet-hitbox.json"), "pet-hitbo
 record("Vite build output exists", exists("dist/index.html"), "dist/index.html");
 record("Windows dir package script exists", Boolean(packageJson.scripts?.["package:win:dir"]), "package:win:dir");
 record("Windows zip package script exists", Boolean(packageJson.scripts?.["package:win:zip"]), "package:win:zip");
+record(
+  "Windows package scripts build the frozen sidecar first",
+  typeof packageJson.scripts?.["build:sidecar"] === "string" &&
+    packageJson.scripts["build:sidecar"].includes("build-sidecar.ps1") &&
+    packageJson.scripts?.["package:win:dir"]?.startsWith("npm run build:sidecar &&") &&
+    packageJson.scripts?.["package:win:zip"]?.startsWith("npm run build:sidecar &&"),
+  JSON.stringify({
+    buildSidecar: packageJson.scripts?.["build:sidecar"],
+    dir: packageJson.scripts?.["package:win:dir"],
+    zip: packageJson.scripts?.["package:win:zip"],
+  }),
+);
 record("electron-builder config exists", Boolean(packageJson.build?.win?.target), "build.win.target");
+record(
+  "electron-builder reuses the installed Electron runtime",
+  packageJson.build?.electronDist === "node_modules/electron/dist",
+  packageJson.build?.electronDist ?? null,
+);
 record(
   "electron-builder targets include dir and zip",
   Array.isArray(packageJson.build?.win?.target) &&
@@ -66,11 +92,31 @@ record(
   "AGENT_PET_BACKEND_DIR",
 );
 record(
-  "Electron runtime searches packaged resources backend and sidecar",
-  /process\.resourcesPath/.test(runtimeText) &&
-    /path\.join\(packagedResourcesPath,\s*["']backend["']\)/.test(runtimeText) &&
-    /path\.join\(packagedResourcesPath,\s*["']sidecar["']\)/.test(runtimeText),
-  "process.resourcesPath/backend and process.resourcesPath/sidecar",
+  "Packaged Electron runtime requires the frozen sidecar executable",
+  /app\.isPackaged/.test(runtimeText) &&
+    /process\.resourcesPath/.test(runtimeText) &&
+    /path\.join\(packagedResourcesPath,\s*["']sidecar["'],\s*SIDECAR_EXECUTABLE_NAME\)/.test(runtimeText) &&
+    /SIDECAR_EXECUTABLE_NOT_FOUND/.test(runtimeText),
+  "process.resourcesPath/sidecar/agent-pet-sidecar.exe",
+);
+record(
+  "Development Electron runtime falls back to the Python sidecar entrypoint",
+  /["']-m["'],\s*["']app\.sidecar_entry["']/.test(runtimeText) &&
+    !/["']-m["'],\s*["']uvicorn["']/.test(runtimeText),
+  "python -m app.sidecar_entry",
+);
+record(
+  "Electron parses the atomic sidecar runtime handshake",
+  /AGENT_PET_SIDECAR_RUNTIME/.test(runtimeText) &&
+    /updateRuntimePort\(runtimePort\)/.test(runtimeText),
+  "AGENT_PET_SIDECAR_RUNTIME -> shared runtime port",
+);
+record(
+  "Electron persists sidecar output and exposes its log path",
+  /app\.getPath\(["']logs["']\)/.test(runtimeText) &&
+    /fs\.appendFileSync\(sidecarLogPath/.test(runtimeText) &&
+    /logPath:\s*sidecarLogPath/.test(runtimeText),
+  "app logs/sidecar/agent-pet-sidecar.log",
 );
 record(
   "Electron runtime keeps sidecar token in environment",
@@ -86,28 +132,42 @@ record(
   "app.getPath(\"userData\") -> AGENT_PET_DATA_DIR unless explicit env overrides exist",
 );
 const extraResources = packageJson.build?.extraResources ?? [];
-const backendResource = Array.isArray(extraResources)
-  ? extraResources.find((entry) => entry?.to === "backend")
+const sidecarResource = Array.isArray(extraResources)
+  ? extraResources.find((entry) => entry?.to === "sidecar")
   : null;
-const backendFilters = backendResource?.filter ?? [];
 record(
-  "electron-builder extraResources includes backend sidecar source",
-  Boolean(backendResource) &&
-    backendResource.from === "../backend" &&
-    backendFilters.includes("app/**/*") &&
-    backendFilters.includes("migrations/**/*") &&
-    backendFilters.includes("pyproject.toml"),
-  JSON.stringify(backendResource ?? null),
+  "electron-builder packages the frozen sidecar directory",
+  Boolean(sidecarResource) && sidecarResource.from === "../backend/dist/agent-pet-sidecar",
+  JSON.stringify(sidecarResource ?? null),
 );
 record(
-  "electron-builder excludes Python environments and generated state",
-  backendFilters.some((filter) => /venv/.test(filter)) &&
-    backendFilters.includes("!**/__pycache__/**") &&
-    backendFilters.includes("!**/.pytest_cache/**") &&
-    backendFilters.includes("!**/*.pyc") &&
-    backendFilters.includes("!**/*.sqlite3") &&
-    backendFilters.includes("!**/*.db"),
-  JSON.stringify(backendFilters),
+  "electron-builder no longer packages backend source as the runtime",
+  !extraResources.some((entry) => entry?.to === "backend" || entry?.from === "../backend"),
+  JSON.stringify(extraResources),
+);
+
+const sidecarSpecPath = "apps/backend/agent-pet-sidecar.spec";
+const buildSidecarScriptPath = "scripts/build-sidecar.ps1";
+const backendProjectPath = "apps/backend/pyproject.toml";
+record(
+  "PyInstaller sidecar spec exists and bundles migrations",
+  repositoryFileExists(sidecarSpecPath) &&
+    /migrations/.test(readRepositoryFile(sidecarSpecPath)) &&
+    /name=["']agent-pet-sidecar["']/.test(readRepositoryFile(sidecarSpecPath)),
+  sidecarSpecPath,
+);
+record(
+  "PowerShell sidecar build script verifies the executable",
+  repositoryFileExists(buildSidecarScriptPath) &&
+    /PyInstaller/.test(readRepositoryFile(buildSidecarScriptPath)) &&
+    /agent-pet-sidecar\.exe/.test(readRepositoryFile(buildSidecarScriptPath)),
+  buildSidecarScriptPath,
+);
+record(
+  "Backend packaging extra declares PyInstaller",
+  repositoryFileExists(backendProjectPath) &&
+    /packaging\s*=\s*\[[\s\S]*?pyinstaller/i.test(readRepositoryFile(backendProjectPath)),
+  backendProjectPath,
 );
 
 let electronBuilderResolved = null;

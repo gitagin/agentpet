@@ -1,5 +1,6 @@
 import { formatTaskStatus, formatTimezoneForUser } from "../../tasks/taskReducer";
 import type { StreamHandlerInput } from "../streamDispatcher";
+import { PET_BUBBLE_ACTION_WATCHDOG_TIMEOUT_MS } from "../chatTiming";
 
 export function taskHandler({ messageId, payload, context }: StreamHandlerInput, taskId: string) {
   const { petChat, addTaskFromChat, appendChatEvent, setMessages, triggerPetTaskStage } = context;
@@ -47,7 +48,7 @@ export function taskHandler({ messageId, payload, context }: StreamHandlerInput,
     petChat.scheduleStreamWatchdog(
       "还在想",
       "提醒已记录，这次需要多等一会儿。",
-      14000,
+      PET_BUBBLE_ACTION_WATCHDOG_TIMEOUT_MS,
       () => petChat.failStream(messageId, "没有等到回复", "提醒已记录，但这次没有等到可显示的回复。"),
     );
   }

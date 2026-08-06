@@ -12,6 +12,8 @@ import {
 } from "./assistantReplyVisibility";
 import type { TtsPlaybackQueueController } from "../tts";
 import type { TtsProviderPlaybackStatus } from "../tts";
+import { useLatestCallback } from "../../hooks/useLatestCallback";
+import { PET_BUBBLE_ERROR_HIDE_DELAY_MS } from "./chatTiming";
 
 type PetChatTtsOptions = {
   enabled: boolean;
@@ -127,7 +129,7 @@ export function usePetChatBubble({
   const pendingTtsFallbackTimerRef = useRef<number | null>(null);
   const visibleTtsPageRef = useRef<{ itemId: string; pageIndex: number; autoAdvance: boolean; hideDelay: number | null } | null>(null);
 
-  useEffect(() => {
+  const syncTtsConfiguration = useLatestCallback(() => {
     const wasEnabled = ttsEnabledRef.current;
     const isEnabled = Boolean(tts?.enabled);
     ttsRef.current = tts;
@@ -148,16 +150,17 @@ export function usePetChatBubble({
         scheduleHide(visibleTtsPage.hideDelay);
       }
     }
-  }, [tts]);
+  });
 
   useEffect(() => {
-    resolvePendingTtsDisplay(tts?.playbackState);
-  }, [
-    tts?.playbackState?.currentItem?.id,
-    tts?.playbackState?.error?.itemId,
-    tts?.playbackState?.status,
-    tts?.playbackState?.updatedAt,
-  ]);
+    syncTtsConfiguration();
+  }, [syncTtsConfiguration, tts]);
+
+  const playbackState = tts?.playbackState;
+  const resolvePlaybackState = useLatestCallback(resolvePendingTtsDisplay);
+  useEffect(() => {
+    resolvePlaybackState(playbackState);
+  }, [playbackState, resolvePlaybackState]);
 
   function clearHideTimer() {
     if (hideTimerRef.current !== null) {
@@ -259,7 +262,7 @@ export function usePetChatBubble({
   function scheduleStreamWatchdog(
     title: string,
     message: string,
-    delayMs = 10000,
+    delayMs = PET_BUBBLE_ERROR_HIDE_DELAY_MS,
     onFinalTimeout?: () => void,
   ) {
     clearStreamWatchdogTimer();
@@ -823,7 +826,7 @@ export function usePetChatBubble({
     clearPendingTtsDisplay();
     clearReplyTts("stream_failed");
     showBubble({ title, message, tone: "error", phase: "complete" });
-    scheduleHide(10000);
+    scheduleHide(PET_BUBBLE_ERROR_HIDE_DELAY_MS);
     setMessages((current) =>
       current.map((chatMessage) =>
         chatMessage.id === messageId && chatMessage.status === "partial"
@@ -941,14 +944,14 @@ export function usePetChatBubble({
     streamStartedAtRef.current = null;
   }
 
-  useEffect(() => {
-    return () => {
-      clearHideTimer();
-      clearPageTimer();
-      clearStreamWatchdogTimer();
-      clearPendingTtsDisplay();
-    };
-  }, []);
+  const cleanup = useLatestCallback(() => {
+    clearHideTimer();
+    clearPageTimer();
+    clearStreamWatchdogTimer();
+    clearPendingTtsDisplay();
+  });
+
+  useEffect(() => () => cleanup(), [cleanup]);
 
   return {
     assistantReplyRef,

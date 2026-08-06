@@ -1,4 +1,5 @@
 import type { StreamHandlerInput } from "../streamDispatcher";
+import { PET_BUBBLE_ERROR_HIDE_DELAY_MS } from "../chatTiming";
 
 export function errorHandler({ messageId, sseEvent, payload, context }: StreamHandlerInput) {
   const { petChat, setMessages } = context;
@@ -10,7 +11,7 @@ export function errorHandler({ messageId, sseEvent, payload, context }: StreamHa
     message: errorMessage,
     tone: "error",
   });
-  petChat.scheduleHide(10000);
+  petChat.scheduleHide(PET_BUBBLE_ERROR_HIDE_DELAY_MS);
   setMessages((current) =>
     current.map((chatMessage) =>
       chatMessage.id === messageId

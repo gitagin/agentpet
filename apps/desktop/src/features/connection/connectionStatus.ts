@@ -2,6 +2,10 @@ import type { DesktopSidecarStatus, HealthResponse } from "../../types";
 
 export type BusinessAuthStatus = "unknown" | "checking" | "ready" | "unauthorized" | "error";
 
+function withSidecarLog(message: string, sidecarStatus: DesktopSidecarStatus): string {
+  return sidecarStatus.logPath ? `${message} 日志：${sidecarStatus.logPath}` : message;
+}
+
 export function formatSidecarStatus(
   sidecarStatus: DesktopSidecarStatus | null,
   health: HealthResponse | null,
@@ -27,14 +31,16 @@ export function getSidecarActionMessage(sidecarStatus: DesktopSidecarStatus): st
       return "约定端口与备选端口都被占用，且占用者不是可用本机服务。请释放约定端口附近的端口后重启桌面端。";
     case "BACKEND_NOT_FOUND":
       return "未找到本机服务目录。请确认 apps/backend/app/main.py 存在，或设置 AGENT_PET_BACKEND_DIR 后重启。";
+    case "SIDECAR_EXECUTABLE_NOT_FOUND":
+      return withSidecarLog("发布包缺少本机服务组件，请重新下载或重新打包应用。", sidecarStatus);
     case "READINESS_FAILED":
-      return "本机服务启动后没有通过健康检查。请查看终端日志，优先检查 Python 依赖、数据库配置和端口占用。";
+      return withSidecarLog("本机服务启动后没有通过健康检查。请查看本机服务日志。", sidecarStatus);
     case "READINESS_TIMEOUT":
       return "本机服务已启动，但在约定时间内未通过健康检查；进程仍在运行、桌面端会继续等待。冷启动或首次建库可能较慢，可稍候或重启应用重试，也可用 AGENT_PET_READY_TIMEOUT_MS 调整提醒时长。";
     case "SPAWN_FAILED":
-      return "无法启动本机服务。请确认 Python 和 uvicorn 可用，或设置 AGENT_PET_PYTHON 指向可用解释器。";
+      return withSidecarLog("无法启动本机服务。请检查发布包完整性、文件权限和本机服务日志。", sidecarStatus);
     case "PROCESS_EXITED":
-      return "本机服务已退出。请查看终端日志中的 Python/FastAPI 报错后再重启桌面端。";
+      return withSidecarLog("本机服务已退出。请查看本机服务日志后再重启桌面端。", sidecarStatus);
     case "PORT_CHECK_FAILED":
       return "桌面端无法检查本机服务端口。请确认本机网络栈正常后重启。";
     default:
@@ -72,6 +78,7 @@ export function formatSidecarErrorCode(code: string): string {
     PORT_IN_USE: "端口被占用",
     PORT_IN_USE_EXISTING_BACKEND: "降级复用已有服务",
     BACKEND_NOT_FOUND: "未找到服务目录",
+    SIDECAR_EXECUTABLE_NOT_FOUND: "发布包缺少服务组件",
     READINESS_FAILED: "健康检查未通过",
     READINESS_TIMEOUT: "就绪等待超时（进程仍在运行）",
     SPAWN_FAILED: "启动服务失败",

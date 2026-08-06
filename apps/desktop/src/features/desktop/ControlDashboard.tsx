@@ -77,41 +77,51 @@ export type ControlWorkflowItem = {
   targetId?: string;
 };
 
-type ControlDashboardProps = {
-  sidecarStatus: DesktopSidecarStatus | null;
-  health: HealthResponse | null;
-  notice: Notice | null;
-  ttsActive: boolean;
-  api: DesktopApi;
-  halfbodyPortraitRef?: Ref<HalfbodyPetPortraitHandle>;
-  firstUseOnboardingPanel: ReactNode;
-  controlInput: string;
-  hasConnection: boolean;
-  streaming: boolean;
-  onControlInputChange: (value: string) => void;
-  onSubmitControlChat: (event: FormEvent) => void;
-  onStopStreaming: () => void;
-  pendingManualActivityCount: number;
-  agentActionsStatus: AsyncStatus;
-  hasAgentActivity: boolean;
-  recentAgentActivityCount: number;
-  loadingProposals: boolean;
-  loadingContinuity: boolean;
-  agentActionsError: string;
-  activityItems: ReactNode[];
-  onRefreshActivity: () => void;
-  messages: ChatMessage[];
-  agentActivityEntries: AgentActivityLogEntry[];
-  tasks: TaskItem[];
-  chatMessageListProps: ComponentProps<typeof ChatMessageList>;
-  workflowItems: ControlWorkflowItem[];
-  taskPanelProps: ComponentProps<typeof TaskPanel>;
-  continuityState: ContinuityStateResponse | null;
-  pendingContinuityCount: number;
-  onLoadContinuity: () => void;
-  onLocateWorkflowTarget: (targetId?: string) => void;
-  modelStatusLabel: string;
-  knowledgeStatusLabel: string;
+export type ControlDashboardProps = {
+  runtime: {
+    sidecarStatus: DesktopSidecarStatus | null;
+    health: HealthResponse | null;
+    notice: Notice | null;
+    ttsActive: boolean;
+    api: DesktopApi;
+    halfbodyPortraitRef?: Ref<HalfbodyPetPortraitHandle>;
+    firstUseOnboardingPanel: ReactNode;
+  };
+  chat: {
+    input: string;
+    connected: boolean;
+    streaming: boolean;
+    messages: ChatMessage[];
+    messageListProps: ComponentProps<typeof ChatMessageList>;
+    onInputChange: (value: string) => void;
+    onSubmit: (event: FormEvent) => void;
+    onStop: () => void;
+  };
+  activity: {
+    pendingManualCount: number;
+    status: AsyncStatus;
+    hasActivity: boolean;
+    recentCount: number;
+    loadingProposals: boolean;
+    loadingContinuity: boolean;
+    error: string;
+    items: ReactNode[];
+    onRefresh: () => void;
+  };
+  memory: {
+    entries: AgentActivityLogEntry[];
+    tasks: TaskItem[];
+    taskPanelProps: ComponentProps<typeof TaskPanel>;
+    continuityState: ContinuityStateResponse | null;
+    pendingContinuityCount: number;
+    onLoadContinuity: () => void;
+    onLocateWorkflowTarget: (targetId?: string) => void;
+    workflowItems: ControlWorkflowItem[];
+  };
+  status: {
+    modelLabel: string;
+    knowledgeLabel: string;
+  };
   advancedTools: AdvancedManagementToolsProps;
 };
 
@@ -174,41 +184,53 @@ const emptyHomeDayRecord: HomeDayRecord = { journal: "", goals: [] };
 const quickPromptOptions = [...productCopy.home.quickPrompts];
 
 export function ControlDashboard({
-  sidecarStatus,
-  health,
-  notice,
-  ttsActive,
-  api,
-  halfbodyPortraitRef,
-  firstUseOnboardingPanel,
-  controlInput,
-  hasConnection,
-  streaming,
-  onControlInputChange,
-  onSubmitControlChat,
-  onStopStreaming,
-  pendingManualActivityCount,
-  agentActionsStatus,
-  hasAgentActivity,
-  recentAgentActivityCount,
-  loadingProposals,
-  loadingContinuity,
-  agentActionsError,
-  activityItems,
-  onRefreshActivity,
-  messages,
-  agentActivityEntries,
-  tasks,
-  chatMessageListProps,
-  taskPanelProps,
-  continuityState,
-  pendingContinuityCount,
-  onLoadContinuity,
-  onLocateWorkflowTarget,
-  modelStatusLabel,
-  knowledgeStatusLabel,
+  runtime,
+  chat,
+  activity,
+  memory,
+  status,
   advancedTools,
 }: ControlDashboardProps) {
+  const {
+    sidecarStatus,
+    health,
+    notice,
+    ttsActive,
+    api,
+    halfbodyPortraitRef,
+    firstUseOnboardingPanel,
+  } = runtime;
+  const {
+    input: controlInput,
+    connected: hasConnection,
+    streaming,
+    messages,
+    messageListProps: chatMessageListProps,
+    onInputChange: onControlInputChange,
+    onSubmit: onSubmitControlChat,
+    onStop: onStopStreaming,
+  } = chat;
+  const {
+    pendingManualCount: pendingManualActivityCount,
+    status: agentActionsStatus,
+    hasActivity: hasAgentActivity,
+    recentCount: recentAgentActivityCount,
+    loadingProposals,
+    loadingContinuity,
+    error: agentActionsError,
+    items: activityItems,
+    onRefresh: onRefreshActivity,
+  } = activity;
+  const {
+    entries: agentActivityEntries,
+    tasks,
+    taskPanelProps,
+    continuityState,
+    pendingContinuityCount,
+    onLoadContinuity,
+    onLocateWorkflowTarget,
+  } = memory;
+  const { modelLabel: modelStatusLabel, knowledgeLabel: knowledgeStatusLabel } = status;
   const composerInputRef = useRef<HTMLInputElement | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
@@ -258,7 +280,8 @@ export function ControlDashboard({
   const visibleGoals = goalComposerOpen
     ? []
     : dayGoals.slice(safeGoalPageIndex * homeGoalsPerPage, safeGoalPageIndex * homeGoalsPerPage + homeGoalsPerPage);
-  const todayLabel = formatTodayLabel(displayDate);
+  const todayDateLabel = formatDayTitle(displayDate);
+  const todayWeekdayLabel = formatWeekdayLabel(displayDate);
   const connectionCopy = hasConnection ? "本地模式 · 已连接" : "本地模式 · 连接中";
   const petMood = continuityState?.current_mood?.trim() || (streaming ? "专注" : hasConnection ? "陪伴中" : "等待");
   const energyCopy =
@@ -528,13 +551,19 @@ export function ControlDashboard({
             <small>{connectionCopy}</small>
           </span>
         </div>
-        <button type="button" className="control-icon-button" aria-label="打开新窗口" onClick={handleOpenStageWindow}>
+        <button
+          type="button"
+          className="control-icon-button"
+          aria-label="打开新窗口"
+          title="打开新窗口"
+          onClick={handleOpenStageWindow}
+        >
           <ExternalLink size={18} />
         </button>
       </header>
 
       {notice ? (
-        <div className={`notice ${notice.tone}`} role="status">
+        <div className={`notice ${notice.tone}`} role="status" tabIndex={0}>
           {notice.tone === "error" ? <CircleAlert size={18} /> : <ShieldCheck size={18} />}
           <span>{notice.message}</span>
         </div>
@@ -543,14 +572,23 @@ export function ControlDashboard({
       <section className="control-desktop-grid" aria-label="Agent Pet 首页">
         <aside className="control-left-rail" aria-label="今日随行">
           <div className="control-date-card">
-            <strong>{todayLabel.replace("星期", " 星期")}</strong>
+            <strong aria-label={`${todayDateLabel} ${todayWeekdayLabel}`}>
+              <span>{todayDateLabel}</span>
+              <span>{todayWeekdayLabel}</span>
+            </strong>
             <span className="control-date-actions">
-              <button type="button" aria-label="查看前一天" onClick={() => setDateOffset((value) => value - 1)}>
+              <button
+                type="button"
+                aria-label="查看前一天"
+                title="查看前一天"
+                onClick={() => setDateOffset((value) => value - 1)}
+              >
                 <ChevronLeft size={18} />
               </button>
               <button
                 type="button"
                 aria-label="回到今天"
+                title="回到今天"
                 onClick={() => setDateOffset(0)}
                 disabled={dateOffset === 0}
               >
@@ -583,6 +621,7 @@ export function ControlDashboard({
                 type="button"
                 className="control-mini-button"
                 aria-label={goalComposerOpen ? "关闭目标创建" : "创建今日目标"}
+                title={goalComposerOpen ? "关闭目标创建" : "创建今日目标"}
                 aria-pressed={goalComposerOpen}
                 onClick={() => {
                   setGoalComposerOpen((open) => !open);
@@ -766,15 +805,26 @@ export function ControlDashboard({
               disabled={streaming}
             />
             <div className="control-composer-tools" aria-label="输入工具">
-              <button type="button" aria-label="添加附件" onClick={() => attachmentInputRef.current?.click()}>
+              <button
+                type="button"
+                aria-label="添加附件"
+                title="添加附件"
+                onClick={() => attachmentInputRef.current?.click()}
+              >
                 <Paperclip size={18} />
               </button>
-              <button type="button" aria-label="添加图片" onClick={() => imageInputRef.current?.click()}>
+              <button
+                type="button"
+                aria-label="添加图片"
+                title="添加图片"
+                onClick={() => imageInputRef.current?.click()}
+              >
                 <Image size={18} />
               </button>
               <button
                 type="button"
                 aria-label="快捷表情"
+                title="快捷短句"
                 aria-expanded={quickPromptsOpen}
                 onClick={() => setQuickPromptsOpen((open) => !open)}
               >
@@ -838,20 +888,39 @@ export function ControlDashboard({
             <div className="control-memory-head">
               <strong>记忆回顾</strong>
               <div className="control-memory-actions" aria-label="记忆工具">
-                <button type="button" aria-label="搜索记忆" onClick={() => navigateToTab("记忆")}>
+                <button
+                  type="button"
+                  aria-label="搜索记忆"
+                  title="搜索记忆"
+                  onClick={() => navigateToTab("记忆")}
+                >
                   <Search size={18} />
                 </button>
-                <button type="button" aria-label={`筛选记忆：${memoryFilter}`} onClick={cycleMemoryFilter}>
+                <button
+                  type="button"
+                  aria-label={`筛选记忆：${memoryFilter}`}
+                  title={`筛选记忆：${memoryFilter}`}
+                  onClick={cycleMemoryFilter}
+                >
                   <ListFilter size={17} />
                 </button>
-                <button type="button" aria-label="更多记忆" onClick={() => toggleDetailDrawer("memories")}>
+                <button
+                  type="button"
+                  aria-label="更多记忆"
+                  title="更多记忆"
+                  onClick={() => toggleDetailDrawer("memories")}
+                >
                   <MoreVertical size={18} />
                 </button>
               </div>
             </div>
             {memoryFilter !== "全部" ? <p className="control-memory-filter">正在查看：{memoryFilter}</p> : null}
 
-            <div className="control-memory-days" aria-label="按日期排列的记忆记录" ref={memoryDaysRef}>
+            <div
+              className={`control-memory-days${displayedMemoryDays.length === 0 ? " is-empty" : ""}`}
+              aria-label="按日期排列的记忆记录"
+              ref={memoryDaysRef}
+            >
               {displayedMemoryDays.length > 0 ? (
                 displayedMemoryDays.map((day) => (
                   <MemoryDay
@@ -868,7 +937,13 @@ export function ControlDashboard({
                   />
                 ))
               ) : (
-                <p className="empty-state control-memory-empty">开始聊天或创建任务后，实时记忆会出现在这里。</p>
+                <div className="control-memory-empty" role="status" aria-label="暂无记忆回顾">
+                  <span className="control-memory-empty-icon" aria-hidden="true">
+                    <BookOpen size={24} />
+                  </span>
+                  <strong>还没有可回顾的记忆</strong>
+                  <p>开始聊天或创建任务后，实时记忆会出现在这里。</p>
+                </div>
               )}
             </div>
 
@@ -1372,8 +1447,8 @@ function formatTimelineTime(value: string, fallback: string): string {
   }).format(new Date(parsed));
 }
 
-function formatTodayLabel(date: Date): string {
-  return `${formatDayTitle(date)} ${new Intl.DateTimeFormat("zh-CN", { weekday: "long" }).format(date)}`;
+function formatWeekdayLabel(date: Date): string {
+  return new Intl.DateTimeFormat("zh-CN", { weekday: "long" }).format(date);
 }
 
 function formatDayTitle(date: Date): string {
@@ -1567,7 +1642,7 @@ function MemoryEntryIcon({ tone }: { tone: MemoryTone }) {
 
 function NotebookAction({ onEdit }: { onEdit: () => void }) {
   return (
-    <button type="button" className="control-mini-button" aria-label="编辑随记" onClick={onEdit}>
+    <button type="button" className="control-mini-button" aria-label="编辑随记" title="编辑随记" onClick={onEdit}>
       <Pencil size={15} />
     </button>
   );

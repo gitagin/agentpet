@@ -51,8 +51,6 @@ import type {
   RetrospectiveReportResponse,
   RetrospectiveResponse,
   SettingsStatusResponse,
-  SettingsUpdateRequest,
-  SettingsUpdateResponse,
   CurrentTaskResponse,
   TaskActionResponse,
   TaskApprovalResponse,
@@ -541,10 +539,6 @@ export class DesktopApi {
       { provider, base_url: baseUrl, model },
       signal,
     );
-  }
-
-  updateSettings(request: SettingsUpdateRequest, signal?: AbortSignal): Promise<SettingsUpdateResponse> {
-    return this.client.patch<SettingsUpdateResponse>("/api/settings", request, signal);
   }
 
   getModelHealth(signal?: AbortSignal): Promise<ModelHealthResponse> {

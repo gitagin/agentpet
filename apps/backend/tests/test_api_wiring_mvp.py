@@ -171,10 +171,16 @@ def enable_automation(
 
 
 def disable_negotiation(client: TestClient) -> None:
-    response = client.patch(
-        "/api/settings",
+    current = client.get("/api/settings/automation", headers=auth())
+    assert current.status_code == 200
+    payload = current.json()
+    payload.pop("updated_at", None)
+    payload.pop("high_risk_confirmation_required", None)
+    payload["use_negotiation"] = False
+    response = client.put(
+        "/api/settings/automation",
         headers=auth(),
-        json={"use_negotiation": False},
+        json=payload,
     )
     assert response.status_code == 200
 
@@ -237,19 +243,23 @@ def test_automation_settings_api_roundtrip(client: TestClient) -> None:
     assert payload["high_risk_confirmation_required"] is True
     assert payload["updated_at"]
 
-    patched = client.patch(
-        "/api/settings",
+    negotiation_payload = payload.copy()
+    negotiation_payload.pop("updated_at", None)
+    negotiation_payload.pop("high_risk_confirmation_required", None)
+    negotiation_payload.update({"use_negotiation": True, "max_rounds": 10})
+    negotiated = client.put(
+        "/api/settings/automation",
         headers=auth(),
-        json={"use_negotiation": True, "max_rounds": 10},
+        json=negotiation_payload,
     )
-    assert patched.status_code == 200
-    assert patched.json()["automation"]["use_negotiation"] is True
-    assert patched.json()["automation"]["max_rounds"] == 10
-    assert patched.json()["automation"]["local_privacy_mode"] is True
-    assert patched.json()["automation"]["proactive_trigger_frequency"] == "high"
+    assert negotiated.status_code == 200
+    assert negotiated.json()["use_negotiation"] is True
+    assert negotiated.json()["max_rounds"] == 10
+    assert negotiated.json()["local_privacy_mode"] is True
+    assert negotiated.json()["proactive_trigger_frequency"] == "high"
 
-    invalid = client.patch(
-        "/api/settings",
+    invalid = client.put(
+        "/api/settings/automation",
         headers=auth(),
         json={"max_rounds": 11},
     )
@@ -257,7 +267,21 @@ def test_automation_settings_api_roundtrip(client: TestClient) -> None:
 
     status = client.get("/api/settings", headers=auth())
     assert status.status_code == 200
-    assert status.json()["automation"] == patched.json()["automation"]
+    assert status.json()["automation"] == negotiated.json()
+
+
+def test_settings_mutations_use_domain_specific_routes(client: TestClient) -> None:
+    legacy = client.patch(
+        "/api/settings",
+        headers=auth(),
+        json={"provider": "openai-compatible"},
+    )
+    assert legacy.status_code == 405
+
+    schema = client.get("/openapi.json").json()
+    assert set(schema["paths"]["/api/settings"]) == {"get"}
+    assert "put" in schema["paths"]["/api/settings/model-config"]
+    assert "put" in schema["paths"]["/api/settings/automation"]
 
 
 def test_tts_settings_api_roundtrip_without_sensitive_state(client: TestClient) -> None:
@@ -1546,12 +1570,12 @@ async def test_persisting_stream_aclose_after_terminal_event_does_not_repeat_upd
 
     assistant_statuses: list[str] = []
     run_statuses: list[str] = []
-    original_update_assistant = chat_api._update_assistant_message
+    original_persist_terminal = chat_api._StreamPartialPersister.persist_terminal
     original_update_run = chat_api._update_agent_run
 
-    def track_assistant_update(request, message_id, content, status_value):
+    async def track_persist_terminal(persister, content, status_value):
         assistant_statuses.append(status_value)
-        original_update_assistant(request, message_id, content, status_value)
+        await original_persist_terminal(persister, content, status_value)
 
     def track_run_update(
         request,
@@ -1574,7 +1598,7 @@ async def test_persisting_stream_aclose_after_terminal_event_does_not_repeat_upd
 
     monkeypatch.setattr(chat_api, "agent_runtime", lambda request: TerminalRuntime())
     monkeypatch.setattr(chat_api, "_schedule_post_reply_work", lambda *args: None)
-    monkeypatch.setattr(chat_api, "_update_assistant_message", track_assistant_update)
+    monkeypatch.setattr(chat_api._StreamPartialPersister, "persist_terminal", track_persist_terminal)
     monkeypatch.setattr(chat_api, "_update_agent_run", track_run_update)
     payload, state = create_unstreamed_chat(client, f"terminal {terminal_kind}")
     events = chat_api._persisting_stream(api_request(client), state)

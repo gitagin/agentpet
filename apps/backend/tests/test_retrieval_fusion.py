@@ -203,7 +203,6 @@ async def test_retrieval_agent_scope_wrapper_forces_proven_fts_mode() -> None:
         {
             "query": "remembered preference",
             "top_k": 7,
-            "mode": "hybrid",
             "source_scope": "all",
         }
     )
@@ -248,7 +247,6 @@ async def test_agent_tool_forces_fts_and_does_not_retry_internal_type_error() ->
         await toolset.search_memory(
             "remembered preference",
             top_k=7,
-            mode="hybrid",
             source_scope="personal_memory",
         )
 
@@ -260,6 +258,16 @@ async def test_agent_tool_forces_fts_and_does_not_retry_internal_type_error() ->
             "source_scope": "personal_memory",
         }
     ]
+
+
+def test_search_memory_tool_schema_rejects_retrieval_mode() -> None:
+    with pytest.raises(ValueError):
+        SearchMemoryInput.model_validate(
+            {
+                "query": "remembered preference",
+                "mode": "hybrid",
+            }
+        )
 
 
 def test_hard_filters_run_before_fusion_and_conflicting_identity_fails_closed() -> None:

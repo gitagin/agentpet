@@ -7,12 +7,10 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from app.agents.contracts import MAX_PLANNING_ROUNDS
 from app.agents.registry import AgentRegistry
 from app.agents.state import AgentInvocationResult, NegotiationState
 from app.models.enums import AgentId
-
-
-MAX_NEGOTIATION_ROUNDS = 2
 
 
 class OrchestratorDecision(BaseModel):
@@ -35,7 +33,7 @@ class OrchestratorNode:
     ) -> None:
         self.model = model
         self.agent_registry = agent_registry
-        self.max_rounds = min(max(int(max_rounds), 1), MAX_NEGOTIATION_ROUNDS)
+        self.max_rounds = min(max(int(max_rounds), 1), MAX_PLANNING_ROUNDS)
         self.confidence_threshold = confidence_threshold
         self.timeout_seconds = max(float(timeout_seconds), 0.001)
 

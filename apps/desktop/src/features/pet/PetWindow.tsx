@@ -30,70 +30,86 @@ function useDevicePixelRatio(enabled: boolean): number {
 }
 
 export type PetWindowProps = {
-  shellRef: RefObject<HTMLElement>;
-  hitboxStyle: CSSProperties;
-  shortcutButtonStyles: CSSProperties[];
-  hitboxDebug: boolean;
-  petChat: PetChatBubbleController;
-  petDragging: boolean;
-  petDragDirection: SpritePetDragDirection;
-  petStage: PetStageView;
-  petCanvasRef: RefObject<HTMLCanvasElement>;
-  ttsSpeaking: boolean;
-  actionKeyOverride: string | null;
-  actionTriggerKey: string | null;
-  petInputMode: PetInputMode;
-  petInputModes: PetInputModeOption[];
-  connected: boolean;
-  streaming: boolean;
-  petShortcutsVisible: boolean;
-  petShortcutMotion: PetShortcutMotion;
-  onBeginPetDrag: PointerEventHandler<HTMLElement>;
-  onMovePetDrag: PointerEventHandler<HTMLElement>;
-  onEndPetDrag: (event?: PointerEvent<HTMLElement>) => void;
-  onTogglePetShortcuts: () => void;
-  onCompletePetEntryHint: () => void;
-  onOpenStage: () => void;
-  onOpenPetInputMode: (mode: PetInputMode) => void;
-  onOpenPetShortcutStage: (mode: "memory" | "settings") => void;
-  onQuitApp: () => void;
-  onSendPetMessage: (event: FormEvent) => void;
-  onStopStreaming: () => void;
-  onFinishPetShortcutMotion: AnimationEventHandler<HTMLElement>;
+  shell: {
+    ref: RefObject<HTMLElement>;
+    hitboxStyle: CSSProperties;
+    hitboxDebug: boolean;
+  };
+  stage: {
+    dragging: boolean;
+    dragDirection: SpritePetDragDirection;
+    view: PetStageView;
+    canvasRef: RefObject<HTMLCanvasElement>;
+    ttsSpeaking: boolean;
+    actionKeyOverride: string | null;
+    actionTriggerKey: string | null;
+    onBeginDrag: PointerEventHandler<HTMLElement>;
+    onMoveDrag: PointerEventHandler<HTMLElement>;
+    onEndDrag: (event?: PointerEvent<HTMLElement>) => void;
+  };
+  chat: {
+    controller: PetChatBubbleController;
+    inputMode: PetInputMode;
+    inputModes: PetInputModeOption[];
+    connected: boolean;
+    streaming: boolean;
+    onOpenInputMode: (mode: PetInputMode) => void;
+    onSendMessage: (event: FormEvent) => void;
+    onStopStreaming: () => void;
+  };
+  shortcuts: {
+    buttonStyles: CSSProperties[];
+    visible: boolean;
+    motion: PetShortcutMotion;
+    onToggle: () => void;
+    onCompleteEntryHint: () => void;
+    onOpenStage: () => void;
+    onOpenShortcutStage: (mode: "memory" | "settings") => void;
+    onQuitApp: () => void;
+    onFinishMotion: AnimationEventHandler<HTMLElement>;
+  };
 };
 
 export function PetWindow({
-  shellRef,
-  hitboxStyle,
-  shortcutButtonStyles,
-  hitboxDebug,
-  petChat,
-  petDragging,
-  petDragDirection,
-  petStage,
-  petCanvasRef,
-  ttsSpeaking,
-  actionKeyOverride,
-  actionTriggerKey,
-  petInputMode,
-  petInputModes,
-  connected,
-  streaming,
-  petShortcutsVisible,
-  petShortcutMotion,
-  onBeginPetDrag,
-  onMovePetDrag,
-  onEndPetDrag,
-  onTogglePetShortcuts,
-  onCompletePetEntryHint,
-  onOpenStage,
-  onOpenPetInputMode,
-  onOpenPetShortcutStage,
-  onQuitApp,
-  onSendPetMessage,
-  onStopStreaming,
-  onFinishPetShortcutMotion,
+  shell,
+  stage,
+  chat,
+  shortcuts,
 }: PetWindowProps) {
+  const { ref: shellRef, hitboxStyle, hitboxDebug } = shell;
+  const {
+    dragging: petDragging,
+    dragDirection: petDragDirection,
+    view: petStage,
+    canvasRef: petCanvasRef,
+    ttsSpeaking,
+    actionKeyOverride,
+    actionTriggerKey,
+    onBeginDrag: onBeginPetDrag,
+    onMoveDrag: onMovePetDrag,
+    onEndDrag: onEndPetDrag,
+  } = stage;
+  const {
+    controller: petChat,
+    inputMode: petInputMode,
+    inputModes: petInputModes,
+    connected,
+    streaming,
+    onOpenInputMode: onOpenPetInputMode,
+    onSendMessage: onSendPetMessage,
+    onStopStreaming,
+  } = chat;
+  const {
+    buttonStyles: shortcutButtonStyles,
+    visible: petShortcutsVisible,
+    motion: petShortcutMotion,
+    onToggle: onTogglePetShortcuts,
+    onCompleteEntryHint: onCompletePetEntryHint,
+    onOpenStage,
+    onOpenShortcutStage: onOpenPetShortcutStage,
+    onQuitApp,
+    onFinishMotion: onFinishPetShortcutMotion,
+  } = shortcuts;
   const petShortcutsInteractive = petShortcutsVisible && petShortcutMotion !== "closing";
   const petShortcutsRendered = petShortcutsVisible || petShortcutMotion === "closing";
   const debugDevicePixelRatio = useDevicePixelRatio(hitboxDebug);
@@ -108,7 +124,7 @@ export function PetWindow({
       ].filter(Boolean).join(" ")}
       ref={shellRef}
       style={hitboxStyle}
-      aria-label="桌面记忆助手桌宠"
+      aria-label="Agent Pet 桌宠"
       onDragStart={(event) => event.preventDefault()}
       onDragOver={(event) => event.preventDefault()}
       onDrop={(event) => event.preventDefault()}

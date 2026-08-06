@@ -497,6 +497,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/memory/graph/facts/{fact_id}/actions/{action}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Apply Memory Graph Fact Action */
+        post: operations["apply_memory_graph_fact_action_api_memory_graph_facts__fact_id__actions__action__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/memory/graph/facts/{fact_id}/archive": {
         parameters: {
             query?: never;
@@ -506,7 +523,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Archive Memory Graph Fact */
+        /**
+         * Archive Memory Graph Fact
+         * @deprecated
+         */
         post: operations["archive_memory_graph_fact_api_memory_graph_facts__fact_id__archive_post"];
         delete?: never;
         options?: never;
@@ -523,7 +543,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Confirm Memory Graph Fact */
+        /**
+         * Confirm Memory Graph Fact
+         * @deprecated
+         */
         post: operations["confirm_memory_graph_fact_api_memory_graph_facts__fact_id__confirm_post"];
         delete?: never;
         options?: never;
@@ -540,7 +563,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Reject Memory Graph Fact */
+        /**
+         * Reject Memory Graph Fact
+         * @deprecated
+         */
         post: operations["reject_memory_graph_fact_api_memory_graph_facts__fact_id__reject_post"];
         delete?: never;
         options?: never;
@@ -557,7 +583,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Sensitive Block Memory Graph Fact */
+        /**
+         * Sensitive Block Memory Graph Fact
+         * @deprecated
+         */
         post: operations["sensitive_block_memory_graph_fact_api_memory_graph_facts__fact_id__sensitive_block_post"];
         delete?: never;
         options?: never;
@@ -574,7 +603,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Wrong Memory Graph Fact */
+        /**
+         * Wrong Memory Graph Fact
+         * @deprecated
+         */
         post: operations["wrong_memory_graph_fact_api_memory_graph_facts__fact_id__wrong_post"];
         delete?: never;
         options?: never;
@@ -852,58 +884,6 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Update Settings */
-        patch: operations["update_settings_api_settings_patch"];
-        trace?: never;
-    };
-    "/api/settings/agent-model-config": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /** Set Agent Model Config Legacy */
-        put: operations["set_agent_model_config_legacy_api_settings_agent_model_config_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/settings/agent-model-key": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /** Set Agent Model Key Legacy */
-        put: operations["set_agent_model_key_legacy_api_settings_agent_model_key_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/settings/agent-model-test": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Test Agent Model Connection Legacy */
-        post: operations["test_agent_model_connection_legacy_api_settings_agent_model_test_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
         patch?: never;
         trace?: never;
     };
@@ -952,40 +932,6 @@ export interface paths {
         get?: never;
         /** Set Agent Model Key */
         put: operations["set_agent_model_key_api_settings_agent_models__agent_id__key_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/settings/agent-models/{agent_id}/model-config": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /** Set Agent Model Config */
-        put: operations["set_agent_model_config_api_settings_agent_models__agent_id__model_config_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/settings/agent-models/{agent_id}/model-key": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /** Set Agent Model Key */
-        put: operations["set_agent_model_key_api_settings_agent_models__agent_id__model_key_put"];
         post?: never;
         delete?: never;
         options?: never;
@@ -2886,6 +2832,11 @@ export interface components {
             /** Redaction Note */
             redaction_note: string;
         };
+        /**
+         * MemoryGraphFactAction
+         * @enum {string}
+         */
+        MemoryGraphFactAction: "confirm" | "reject" | "wrong" | "sensitive-block" | "archive";
         /** MemoryGraphFactActionResponse */
         MemoryGraphFactActionResponse: {
             /** Fact Id */
@@ -3969,19 +3920,6 @@ export interface components {
             /** Wiki Updates */
             wiki_updates?: components["schemas"]["RetrospectiveWikiItem"][];
         };
-        /** SettingsPatchRequest */
-        SettingsPatchRequest: {
-            /** Base Url */
-            base_url?: string | null;
-            /** Max Rounds */
-            max_rounds?: number | null;
-            /** Model */
-            model?: string | null;
-            /** Provider */
-            provider?: string | null;
-            /** Use Negotiation */
-            use_negotiation?: boolean | null;
-        };
         /** SettingsStatusResponse */
         SettingsStatusResponse: {
             /** Agent Models */
@@ -4017,20 +3955,6 @@ export interface components {
              * @default false
              */
             vault_configured: boolean;
-        };
-        /** SettingsUpdateResponse */
-        SettingsUpdateResponse: {
-            /** Agents Using Global */
-            agents_using_global: number;
-            automation?: components["schemas"]["AutomationSettingsResponse"] | null;
-            /** Base Url */
-            base_url: string;
-            /** Model */
-            model: string;
-            /** Provider */
-            provider: string;
-            /** Status */
-            status: string;
         };
         /** TaskApprovalResponse */
         TaskApprovalResponse: {
@@ -6119,6 +6043,38 @@ export interface operations {
             };
         };
     };
+    apply_memory_graph_fact_action_api_memory_graph_facts__fact_id__actions__action__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                fact_id: string;
+                action: components["schemas"]["MemoryGraphFactAction"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryGraphFactActionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     archive_memory_graph_fact_api_memory_graph_facts__fact_id__archive_post: {
         parameters: {
             query?: never;
@@ -6777,138 +6733,6 @@ export interface operations {
             };
         };
     };
-    update_settings_api_settings_patch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SettingsPatchRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["SettingsUpdateResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    set_agent_model_config_legacy_api_settings_agent_model_config_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AgentModelConfigRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AgentModelConfigResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    set_agent_model_key_legacy_api_settings_agent_model_key_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AgentModelKeyRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ModelKeyResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    test_agent_model_connection_legacy_api_settings_agent_model_test_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ModelTestRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ModelTestResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     get_agent_models_api_settings_agent_models_get: {
         parameters: {
             query?: never;
@@ -6998,76 +6822,6 @@ export interface operations {
         };
     };
     set_agent_model_key_api_settings_agent_models__agent_id__key_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                agent_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AgentModelKeyRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AgentModelConfigResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    set_agent_model_config_api_settings_agent_models__agent_id__model_config_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                agent_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["AgentModelConfigRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AgentModelConfigResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    set_agent_model_key_api_settings_agent_models__agent_id__model_key_put: {
         parameters: {
             query?: never;
             header?: never;

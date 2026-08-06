@@ -13,6 +13,8 @@
   --color-primary: #d56f8a;
   --color-primary-strong: #f08aa4;
   --color-primary-soft: rgba(213, 111, 138, 0.18);
+  --color-primary-action: #ad456a;
+  --color-primary-action-strong: #8e2f54;
   --color-info: #7ba7c7;
   --color-info-soft: rgba(123, 167, 199, 0.15);
   --color-success: #62b894;
@@ -21,6 +23,8 @@
   --color-warning-soft: rgba(215, 161, 95, 0.16);
   --color-danger: #df6f7f;
   --color-danger-soft: rgba(223, 111, 127, 0.17);
+  --color-danger-action: #a33d50;
+  --color-danger-action-strong: #852f40;
   --radius-card: 8px;
   --radius-control: 8px;
   --shadow-card-soft: 0 18px 50px rgba(0, 0, 0, 0.38);
@@ -70,6 +74,7 @@
   /* Color */
   --color-active: var(--color-warning);
   --color-text-soft: var(--color-text-muted);
+  --text-muted: var(--color-text-muted);
   --brand-soft: var(--color-primary-soft);
   --success-soft: var(--color-success-soft);
   --warning-soft: var(--color-warning-soft);
@@ -83,7 +88,7 @@
   --warning-border: rgba(215, 161, 95, 0.3);
   --danger-border: rgba(223, 111, 127, 0.32);
   --info-border: rgba(123, 167, 199, 0.3);
-  --focus-ring: rgba(213, 111, 138, 0.34);
+  --focus-ring: #f58da5;
 
   /* Radius */
   --radius-xs: 4px;
@@ -99,6 +104,7 @@
   --shadow-panel: 0 18px 50px rgba(0, 0, 0, 0.34);
   --shadow-popover: var(--shadow-popover-soft);
   --shadow-soft: 0 24px 70px rgba(0, 0, 0, 0.42);
+  --shadow-primary-glow: 0 12px 30px rgba(142, 47, 84, 0.28);
   --glass-blur-soft: blur(4px);
   --glass-blur-panel: blur(6px);
 
@@ -115,6 +121,9 @@
   --space-md: 16px;
   --space-lg: 24px;
   --space-xl: 40px;
+
+  /* Motion */
+  --motion-standard: 160ms cubic-bezier(0.2, 0.82, 0.2, 1);
 
   /* Type */
   --font-sans: "Segoe UI", "Microsoft YaHei", "Noto Sans CJK SC", system-ui, sans-serif;

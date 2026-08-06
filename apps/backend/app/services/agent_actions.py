@@ -10,6 +10,7 @@ from app.models.api import AgentActionResponse, AutomationSettingsRequest, Autom
 from app.models.config import normalize_proactive_trigger_frequency
 from app.models.common import new_id
 from app.services.memory import SafeMarkdownWriter, content_hash_text
+from app.storage.database import open_database_connection
 from app.utils.time import utc_now_iso
 
 LOCAL_PRIVACY_MODE_STATE_KEY = "local_privacy_mode"
@@ -152,7 +153,7 @@ def _target_path_risk(action_type: str, target_paths: list[str] | tuple[str, ...
 class AgentActionStore:
     def __init__(self, db: str | Path | sqlite3.Connection):
         self._owns_connection = not isinstance(db, sqlite3.Connection)
-        self.conn = sqlite3.connect(db) if self._owns_connection else db
+        self.conn = open_database_connection(db)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA foreign_keys = ON")
 

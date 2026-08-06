@@ -14,6 +14,7 @@ from app.services.memory_candidates import (
 )
 from app.services.memory_graph import MemoryFactCandidate, MemoryGraphFact, MemoryGraphStore
 from app.services.memory_taxonomy import LifecycleStatus, MemoryKind, MemoryScope, SourceTrack
+from app.storage.database import open_database_connection
 from app.utils.time import utc_now_iso
 
 
@@ -56,7 +57,7 @@ class MemoryLifecycleTransitionError(ValueError):
 class MemoryLifecycleService:
     def __init__(self, db: str | Path | sqlite3.Connection, *, graph_root: str | Path | None = None) -> None:
         self._owns_connection = not isinstance(db, sqlite3.Connection)
-        self.conn = sqlite3.connect(db) if self._owns_connection else db
+        self.conn = open_database_connection(db)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA foreign_keys = ON")
         self.candidates = MemoryCandidateStore(self.conn)
@@ -65,6 +66,46 @@ class MemoryLifecycleService:
     def close(self) -> None:
         if self._owns_connection:
             self.conn.close()
+
+    def transition(
+        self,
+        *,
+        target_type: MemoryTargetType,
+        target_id: str,
+        to_status: LifecycleStatus | MemoryFactStatus | str,
+        reason: str,
+        superseded_by: str | None = None,
+        source_agent_run_id: str | None = None,
+        source_message_id: str | None = None,
+        agent_action_id: str | None = None,
+    ) -> MemoryLifecycleTransitionResult:
+        """Single transition entry point with target-specific policy kept internal."""
+        if target_type == "candidate":
+            try:
+                candidate_status = LifecycleStatus(
+                    to_status.value if isinstance(to_status, (LifecycleStatus, MemoryFactStatus)) else str(to_status)
+                )
+            except ValueError as exc:
+                raise MemoryLifecycleTransitionError(
+                    f"unsupported_candidate_status:{to_status}"
+                ) from exc
+            return self.transition_candidate(
+                target_id,
+                candidate_status,
+                reason=reason,
+                superseded_by=superseded_by,
+                source_agent_run_id=source_agent_run_id,
+                source_message_id=source_message_id,
+                agent_action_id=agent_action_id,
+            )
+        if target_type == "fact":
+            return self.transition_fact(
+                target_id,
+                to_status,
+                reason=reason,
+                superseded_by=superseded_by,
+            )
+        raise MemoryLifecycleTransitionError(f"unsupported_memory_target_type:{target_type}")
 
     def transition_candidate(
         self,
@@ -107,13 +148,14 @@ class MemoryLifecycleService:
         reason: str,
         superseded_by: str | None = None,
     ) -> MemoryLifecycleTransitionResult:
-        target = _coerce_lifecycle_status(to_status)
+        fact_target = _coerce_fact_status(to_status)
+        target = _fact_lifecycle_status(fact_target)
         fact = self.graph.get(fact_id)
         current = _fact_lifecycle_status(fact.status)
-        _validate_transition(current, target, superseded_by=superseded_by)
+        _validate_fact_transition(current, target, superseded_by=superseded_by)
         self.graph.update_status(
             fact.id,
-            MemoryFactStatus(target.value),
+            fact_target,
             reason=reason,
             superseded_by=superseded_by,
         )
@@ -535,6 +577,27 @@ def _coerce_lifecycle_status(status: LifecycleStatus | MemoryFactStatus | str) -
     if str(status) == MemoryFactStatus.QUARANTINED.value:
         return LifecycleStatus.CANDIDATE
     return LifecycleStatus(str(status))
+
+
+def _coerce_fact_status(status: LifecycleStatus | MemoryFactStatus | str) -> MemoryFactStatus:
+    if isinstance(status, MemoryFactStatus):
+        return status
+    if isinstance(status, LifecycleStatus):
+        return MemoryFactStatus(status.value)
+    return MemoryFactStatus(str(status))
+
+
+def _validate_fact_transition(
+    from_status: LifecycleStatus,
+    to_status: LifecycleStatus,
+    *,
+    superseded_by: str | None,
+) -> None:
+    # Explicit fact moderation may restore archived or rejected facts. Candidate
+    # transitions intentionally retain the stricter no-restore policy.
+    if from_status in {LifecycleStatus.ARCHIVED, LifecycleStatus.REJECTED} and to_status is LifecycleStatus.ACTIVE:
+        return
+    _validate_transition(from_status, to_status, superseded_by=superseded_by)
 
 
 def _fact_lifecycle_status(status: MemoryFactStatus) -> LifecycleStatus:

@@ -8,6 +8,7 @@ from typing import Literal
 
 from app.services.memory_policy import evaluate_memory_content
 from app.services.memory_taxonomy import MemoryKind, MemoryScope, RiskTier, SourceTrack
+from app.storage.database import open_database_connection
 
 
 PromptProfilePermissionGroup = Literal["style_profile", "boundary_profile"]
@@ -93,7 +94,7 @@ class PromptProfileProvider:
         char_budget: int = DEFAULT_PROFILE_CHAR_BUDGET,
     ) -> None:
         self._owns_connection = not isinstance(db, sqlite3.Connection)
-        self.conn = sqlite3.connect(db) if self._owns_connection else db
+        self.conn = open_database_connection(db)
         self.conn.row_factory = sqlite3.Row
         self.item_limit = max(1, min(int(item_limit), 20))
         self.char_budget = max(0, int(char_budget))

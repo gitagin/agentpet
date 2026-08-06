@@ -10,6 +10,7 @@ from typing import Any
 
 from app.models.common import new_id
 from app.services.memory_policy import evaluate_memory_content
+from app.storage.database import open_database_connection
 from app.utils.hash import sha256_hex
 from app.utils.time import utc_now_iso
 
@@ -88,7 +89,7 @@ class ContinuityService:
 
     def __init__(self, db: str | Path | sqlite3.Connection):
         self._owns_connection = not isinstance(db, sqlite3.Connection)
-        self.conn = sqlite3.connect(db) if self._owns_connection else db
+        self.conn = open_database_connection(db)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA foreign_keys = ON")
 

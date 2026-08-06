@@ -11,6 +11,7 @@ from app.services.memory_hygiene import TERMINAL_CANDIDATE_STATUSES, TERMINAL_FA
 from app.services.memory_lifecycle import MemoryLifecycleService
 from app.services.memory_policy import evaluate_memory_content
 from app.services.memory_taxonomy import LifecycleStatus, MemoryKind, MemoryScope, RiskTier
+from app.storage.database import open_database_connection
 
 
 MemoryHygieneSuggestionType = Literal[
@@ -65,7 +66,7 @@ class MemoryHygieneSuggestionService:
         now_provider: Callable[[], datetime] | None = None,
     ) -> None:
         self._owns_connection = not isinstance(db, sqlite3.Connection)
-        self.conn = sqlite3.connect(db) if self._owns_connection else db
+        self.conn = open_database_connection(db)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA foreign_keys = ON")
         self.lifecycle = MemoryLifecycleService(self.conn)

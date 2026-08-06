@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .api import api_router
 from .api.health import router as health_router
+from .api.chat import recover_interrupted_chat_runs, shutdown_post_reply_tasks
 from .api.services.factory import AppContext, expire_chat_runs
 from .config import get_settings
 from .errors import register_error_handlers
@@ -15,6 +16,7 @@ from .scheduler import APSchedulerReminderScheduler, ReminderSchedulerProtocol
 from .services.health import component_health_from_vector_index
 from .services.retrieval import RetrievalService
 from .services.retrieval_factory import build_vector_index
+from .services.settings import initialize_settings_store
 from .agents.reflection_graph import ReflectionJobManager
 from .services.tasks import TaskService, TaskStore
 from .storage.database import Database, MigrationRunner
@@ -66,6 +68,7 @@ def create_app() -> FastAPI:
                 await cleanup_task
             except asyncio.CancelledError:
                 pass
+            await shutdown_post_reply_tasks()
             await app.state.reflection_jobs.shutdown()
             expire_chat_runs(AppContext(app), force=True)
             if isinstance(scheduler, ReminderSchedulerProtocol):
@@ -136,6 +139,8 @@ def ensure_app_services(app: FastAPI) -> None:
             MigrationRunner(database).apply()
         else:
             ensure_schema(database)
+        initialize_settings_store(database)
+        recover_interrupted_chat_runs(database)
         vector_index = build_vector_index(database.path, settings)
         retrieval_service = RetrievalService(database, vector_index=vector_index)
         app.state.retrieval_service = retrieval_service
