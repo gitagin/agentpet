@@ -40,7 +40,12 @@ from .nodes.retrieval import _retrieval_node
 from .prompts.system import _semantic_system_prompt
 from .registry import AgentRegistry, default_agent_registry
 from .retrieval.router import _chat_agent_tool_names
-from .retrieval.scoping import _force_search_memory_source_scope, _select_retrieval_entry_node, _semantic_from_memory_route
+from .retrieval.scoping import (
+    _force_search_memory_source_scope,
+    _retrieval_top_k_for_state,
+    _select_retrieval_entry_node,
+    _semantic_from_memory_route,
+)
 from .runtime_helpers import _chat_system_prompt, _continuity_signal, _continuity_signal_event
 from .semantic import _fallback_classifier, _fallback_semantic_analysis, _parse_classifier_analysis
 from .services import AgentRuntimeServices, ToolCallingChatModelProtocol
@@ -676,7 +681,15 @@ class LangGraphAgentRuntime:
         chat_model = self._model_for(agent_id)
         if isinstance(chat_model, ToolCallingChatModelProtocol):
             tools_for_agent = observed_toolset.allowed_tools(tools)
-            tools_for_agent = _force_search_memory_source_scope(tools_for_agent, system_prompt)
+            tools_for_agent = _force_search_memory_source_scope(
+                tools_for_agent,
+                system_prompt,
+                forced_top_k=(
+                    _retrieval_top_k_for_state(state)
+                    if agent_id == AgentId.RETRIEVAL_AGENT
+                    else None
+                ),
+            )
             result = await chat_model.complete_with_tools(
                 user_message=state.user_message,
                 system_prompt=system_prompt,

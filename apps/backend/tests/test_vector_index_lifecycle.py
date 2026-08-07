@@ -211,6 +211,24 @@ def test_reconcile_creates_validated_generation_and_is_unchanged_for_same_corpus
         assert search[0].content_hash == payload["content_hash"]
         assert search[0].vault_id == vault_id
         assert search[0].generation == first.generation
+        assert index.search(
+            query="lifecycle",
+            vault_id=vault_id,
+            top_k=3,
+            chunk_ids=(authoritative_id,),
+        )[0].chunk_id == authoritative_id
+        assert index.search(
+            query="lifecycle",
+            vault_id=vault_id,
+            top_k=3,
+            chunk_ids=("missing-chunk",),
+        ) == []
+        assert index.search(
+            query="lifecycle",
+            vault_id=vault_id,
+            top_k=3,
+            chunk_ids=(),
+        ) == []
 
         embed_call_count = len(embeddings.document_calls)
         second = index.reconcile(conn, vault_id)

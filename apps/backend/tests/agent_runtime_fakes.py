@@ -130,18 +130,28 @@ class FakePersonalEmptyDailyRetrieval:
     ) -> MemorySearchResponse:
         self.calls.append((query, top_k, mode, source_scope))
         if source_scope == "daily_chat":
+            snippets = (
+                "用户说自己喜欢苹果。",
+                "用户问了北京天气。",
+                "用户询问昨天的重要记录。",
+                "用户要求回顾 5 月 4 日的聊天。",
+                "用户希望被称为测试员。",
+                "用户给助手取名为零。",
+                "用户说自己喜欢旅游，并询问了旅行推荐。",
+            )
             return MemorySearchResponse(
                 results=[
                     MemorySearchResult(
-                        note_id="daily-1",
-                        chunk_id="daily-chunk-1",
+                        note_id=f"daily-{index}",
+                        chunk_id=f"daily-chunk-{index}",
                         relative_path="Memories/Daily/2026/05/第1周_05-01至05-07/星期一/2026-05-04.md",
                         title="2026-05-04 聊天记忆",
-                        heading="10:00:00",
-                        snippet="用户说自己喜欢苹果。",
+                        heading=f"{9 + index:02d}:00:00",
+                        snippet=snippet,
                         score=0.8,
                         source_scope="daily_chat",
                     )
+                    for index, snippet in enumerate(snippets[:top_k], start=1)
                 ]
             )
         return MemorySearchResponse(results=[])

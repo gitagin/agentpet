@@ -134,10 +134,7 @@ if (!hasSingleInstanceLock) {
   });
   const tray = createTrayManager({
     createPetWindow: windows.createPetWindow,
-    showControlWindow: windows.showControlWindow,
     showStageWindow: windows.showStageWindow,
-    showAgentWindow: windows.showAgentWindow,
-    showFeatureWindow: windows.showFeatureWindow,
     showPetInputMode: windows.showPetInputMode,
     quitApp,
   });

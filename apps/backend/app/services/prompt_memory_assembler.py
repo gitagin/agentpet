@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Sequence
 
 from app.agents.immediate_understanding import ImmediateUnderstanding, immediate_understanding_context_block
@@ -9,6 +9,7 @@ from app.agents.state import ActionPlan, SemanticAnalysisResult
 from app.models.api import MemoryRecallPermissions, MemorySearchResult
 from app.services.memory_permissions import (
     MemoryPromptSections,
+    MemoryPromptUsage,
     ensure_recall_permissions,
     split_recall_prompt_sections,
 )
@@ -17,6 +18,7 @@ from app.services.prompt_profile_provider import PromptProfileItem
 
 
 PROMPT_MEMORY_TELEMETRY_SCHEMA = "prompt_memory_telemetry_v1"
+_PROMPT_CHAR_BUDGET_FILTER_REASON = "prompt_char_budget_exceeded"
 PROMPT_MEMORY_DROP_REASONS = frozenset(
     {
         "char_budget_exceeded",
@@ -100,6 +102,49 @@ class PromptMemoryAssembly:
     telemetry: PromptMemoryTelemetry
 
 
+@dataclass(slots=True)
+class _RecallSectionBuilder:
+    key: str
+    title: str
+    header: str
+    char_budget: int
+    line_prefix: str = ""
+    values: list[str] = field(default_factory=list)
+    candidate_count: int = 0
+    dropped_count: int = 0
+
+    def register_candidate(self) -> None:
+        self.candidate_count += 1
+
+    def can_append(self, value: str) -> bool:
+        return len(self._content((*self.values, value))) <= max(0, self.char_budget)
+
+    def append(self, value: str) -> None:
+        self.values.append(value)
+
+    def drop(self) -> None:
+        self.dropped_count += 1
+
+    def to_section(self) -> PromptMemorySection | None:
+        if self.candidate_count == 0:
+            return None
+        content = self._content(tuple(self.values)) if self.values else ""
+        return PromptMemorySection(
+            key=self.key,
+            title=self.title,
+            content=content,
+            item_count=len(self.values),
+            char_budget=max(0, self.char_budget),
+            used_chars=len(content),
+            dropped_count=self.dropped_count,
+            drop_reasons=("char_budget_exceeded",) if self.dropped_count else (),
+        )
+
+    def _content(self, values: Sequence[str]) -> str:
+        rendered = "\n".join(f"{self.line_prefix}{value}" for value in values)
+        return f"{self.header}\n{rendered}"
+
+
 class PromptMemoryAssembler:
     def __init__(self, budget: PromptMemoryBudgetConfig | None = None) -> None:
         self.budget = budget or PromptMemoryBudgetConfig()
@@ -113,7 +158,9 @@ class PromptMemoryAssembler:
 
         recall_prompt_text = ""
         if recall_sections is not None:
-            recall_prompt_text, recall_prompt_sections = self._format_recall_sections(recall_sections)
+            recall_prompt_text, recall_sections, recall_prompt_sections = self._format_recall_sections(
+                recall_sections
+            )
             sections.extend(self._classified_memory_sections(recall_sections))
             sections.extend(recall_prompt_sections)
 
@@ -210,60 +257,91 @@ class PromptMemoryAssembler:
     def _format_recall_sections(
         self,
         sections: MemoryPromptSections,
-    ) -> tuple[str, list[PromptMemorySection]]:
-        blocks: list[str] = []
-        prompt_sections: list[PromptMemorySection] = []
-        section_specs = (
-            (
+    ) -> tuple[str, MemoryPromptSections, list[PromptMemorySection]]:
+        builders = (
+            _RecallSectionBuilder(
                 "style_only",
                 "Style memory",
-                "Style memory (tone only; do not mention as facts):\n"
-                + "\n".join(f"- {hint}" for hint in sections.style_hints)
-                if sections.style_hints
-                else "",
-                len(sections.style_hints),
+                "Style memory (tone only; do not mention as facts):",
                 self.budget.style_only_chars,
+                line_prefix="- ",
             ),
-            (
+            _RecallSectionBuilder(
                 "recall_answer_context",
                 "Answer context",
-                "Answer context (may be used as answer evidence):\n"
-                + "\n".join(sections.answer_context_lines)
-                if sections.answer_context_lines
-                else "",
-                len(sections.answer_context_lines),
+                "Answer context (may be used as answer evidence):",
                 self.budget.recall_answer_context_chars,
             ),
-            (
+            _RecallSectionBuilder(
                 "proactive_mentions",
                 "Proactive mention candidates",
-                "Proactive mention candidates (may be directly mentioned if useful):\n"
-                + "\n".join(sections.proactive_mention_lines)
-                if sections.proactive_mention_lines
-                else "",
-                len(sections.proactive_mention_lines),
+                "Proactive mention candidates (may be directly mentioned if useful):",
                 self.budget.proactive_mentions_chars,
             ),
-            (
+            _RecallSectionBuilder(
                 "action_suggestions",
                 "Action suggestion support",
-                "Action suggestion support (may support suggestions):\n"
-                + "\n".join(sections.action_suggestion_lines)
-                if sections.action_suggestion_lines
-                else "",
-                len(sections.action_suggestion_lines),
+                "Action suggestion support (may support suggestions):",
                 self.budget.action_suggestions_chars,
             ),
         )
-        for key, title, content, item_count, char_budget in section_specs:
-            section = self._section(key, title, content, item_count=item_count, char_budget=char_budget)
-            if section is None:
+        values_by_flag = {
+            "used_for_style": iter(sections.style_hints),
+            "used_for_answer_context": iter(sections.answer_context_lines),
+            "used_for_proactive_mention": iter(sections.proactive_mention_lines),
+            "used_for_action_suggestion": iter(sections.action_suggestion_lines),
+        }
+        builders_by_flag = {
+            "used_for_style": builders[0],
+            "used_for_answer_context": builders[1],
+            "used_for_proactive_mention": builders[2],
+            "used_for_action_suggestion": builders[3],
+        }
+        updated_usages: list[MemoryPromptUsage] = []
+        for usage in sections.usages:
+            entries: list[tuple[_RecallSectionBuilder, str]] = []
+            for flag, values in values_by_flag.items():
+                if not getattr(usage, flag):
+                    continue
+                builder = builders_by_flag[flag]
+                builder.register_candidate()
+                entries.append((builder, next(values)))
+
+            if not entries or all(builder.can_append(value) for builder, value in entries):
+                for builder, value in entries:
+                    builder.append(value)
+                updated_usages.append(usage)
                 continue
-            prompt_sections.append(section)
-            blocks.append(section.content)
+
+            for builder, _ in entries:
+                builder.drop()
+            updated_usages.append(
+                replace(
+                    usage,
+                    used_for_style=False,
+                    used_for_answer_context=False,
+                    used_for_proactive_mention=False,
+                    used_for_action_suggestion=False,
+                    filtered_reason=_PROMPT_CHAR_BUDGET_FILTER_REASON,
+                )
+            )
+
+        bounded_sections = MemoryPromptSections(
+            style_hints=tuple(builders[0].values),
+            answer_context_lines=tuple(builders[1].values),
+            proactive_mention_lines=tuple(builders[2].values),
+            action_suggestion_lines=tuple(builders[3].values),
+            usages=tuple(updated_usages),
+        )
+        prompt_sections = [section for builder in builders if (section := builder.to_section()) is not None]
+        blocks = [section.content for section in prompt_sections if section.content]
         if not blocks:
-            return "No recalled item has permission to enter the reply prompt.", prompt_sections
-        return "\n\n".join(blocks), prompt_sections
+            return (
+                "No recalled item has permission to enter the reply prompt.",
+                bounded_sections,
+                prompt_sections,
+            )
+        return "\n\n".join(blocks), bounded_sections, prompt_sections
 
     def _classified_memory_sections(self, sections: MemoryPromptSections) -> list[PromptMemorySection]:
         activated_lines: list[str] = []

@@ -61,6 +61,12 @@ def _retrieval_query(state: AgentState, semantic: SemanticAnalysisResult) -> str
     return state.user_message
 
 
+def _retrieval_top_k_for_state(state: AgentState) -> int:
+    if state.memory_route is None:
+        return 5
+    return state.memory_route.retrieval_top_k
+
+
 def _semantic_from_memory_route(route: MemoryRoute, state: AgentState) -> SemanticAnalysisResult:
     source_scope = _source_scope_from_memory_route(route)
     if state.route and state.route.intent == AgentIntent.SEARCH_MEMORY and source_scope in {"none", "knowledge_base"}:
@@ -112,15 +118,22 @@ def _memory_aggregation_scopes(state: AgentState, semantic: SemanticAnalysisResu
 def _force_search_memory_source_scope(
     tools: list[StructuredTool],
     system_prompt: str,
+    *,
+    forced_top_k: int | None = None,
 ) -> list[StructuredTool]:
     source_scope = _source_scope_from_prompt(system_prompt)
-    return _guard_search_memory_tools(tools, forced_source_scope=source_scope)
+    return _guard_search_memory_tools(
+        tools,
+        forced_source_scope=source_scope,
+        forced_top_k=forced_top_k,
+    )
 
 
 def _guard_search_memory_tools(
     tools: list[StructuredTool],
     *,
     forced_source_scope: str | None = None,
+    forced_top_k: int | None = None,
 ) -> list[StructuredTool]:
     wrapped = []
     for tool in tools:
@@ -136,12 +149,13 @@ def _guard_search_memory_tools(
             source_scope: str = "",
             _tool=tool,
             _forced_scope: str = forced_scope,
+            _forced_top_k: int | None = forced_top_k,
         ):
             effective_scope = _forced_scope or source_scope or "all"
             response = await _tool.ainvoke(
                 {
                     "query": query,
-                    "top_k": top_k,
+                    "top_k": _forced_top_k if _forced_top_k is not None else top_k,
                     "source_scope": effective_scope,
                 }
             )

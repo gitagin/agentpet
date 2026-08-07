@@ -4,6 +4,7 @@ import json
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, replace
+from datetime import date, datetime
 from time import perf_counter_ns
 
 from app.models.api import MemorySearchResponse, MemorySearchResult
@@ -150,6 +151,7 @@ class RetrievalService:
         # they never passed the retrieval quality gate (see docs/portfolio/
         # claim-evidence-index.md, TASK-1215 Defer).
         mode: str = "fts",
+        now: date | datetime | None = None,
     ) -> MemorySearchResponse:
         if mode not in _VALID_RETRIEVAL_MODES:
             raise InvalidRetrievalModeError()
@@ -167,6 +169,7 @@ class RetrievalService:
                 requested_channels=requested_channels,
                 local_privacy=local_privacy,
                 sensitive=sensitive_reason is not None,
+                now=now,
             )
             plan_telemetry = build_retrieval_plan_telemetry(plan, original_query=query)
             vector_health = self._vector_health(vault_id)
@@ -192,6 +195,33 @@ class RetrievalService:
             vector_adapter_ms = 0.0
             fts_search_ms = 0.0
             vector_requested = "vector" in requested_channels
+            daily_date_range = plan.date_range if source_scope == "daily_chat" else None
+            date_constrained_daily = daily_date_range is not None
+            # Date filtering needs a broad candidate pool, while the public result
+            # count remains bounded by the caller's top_k contract.
+            candidate_limit = (
+                _CANDIDATE_POOL_MAX if date_constrained_daily else candidate_pool_size(top_k)
+            )
+            result_limit = top_k
+            note_repository = NoteRepository(conn)
+            daily_date_results = None
+            daily_date_search_ms = 0.0
+            daily_chunk_ids = None
+            if daily_date_range is not None:
+                daily_date_started = perf_counter_ns()
+                daily_date_results = _authoritative_fts_results(
+                    conn,
+                    note_repository.search_daily_chat_by_date_range(
+                        vault_id=vault_id,
+                        start_date=daily_date_range.start,
+                        end_date=daily_date_range.end,
+                        top_k=candidate_limit,
+                    ),
+                    vault_id=vault_id,
+                )
+                daily_date_search_ms = _elapsed_ms(daily_date_started)
+                daily_chunk_ids = tuple(result.chunk_id for result in daily_date_results)
+
             vector_allowed = "vector" in plan.requested_channels
             if vector_requested and vector_allowed:
                 if self.vector_index is None:
@@ -200,22 +230,36 @@ class RetrievalService:
                     semantic_query = plan.semantic_variants[0] if plan.semantic_variants else plan.lexical_query
                     vector_started = perf_counter_ns()
                     try:
-                        candidates = self.vector_index.search(
-                            query=semantic_query,
-                            vault_id=vault_id,
-                            top_k=candidate_pool_size(top_k),
-                            local_privacy=local_privacy,
-                        )
+                        vector_search_kwargs: dict[str, object] = {
+                            "query": semantic_query,
+                            "vault_id": vault_id,
+                            "top_k": candidate_limit,
+                            "local_privacy": local_privacy,
+                        }
+                        if daily_chunk_ids is not None:
+                            vector_search_kwargs["chunk_ids"] = daily_chunk_ids
+                        candidates = self.vector_index.search(**vector_search_kwargs)
                         completed_channels.append("vector")
-                        vector_results = _authoritative_vector_results(
+                        authoritative_vector_results = _authoritative_vector_results(
                             conn,
                             candidates,
                             vault_id=vault_id,
                             active_generation=_optional_text(vector_health.get("active_generation")),
                         )
-                        if candidates and not vector_results:
+                        if daily_chunk_ids is None:
+                            vector_results = authoritative_vector_results
+                        else:
+                            allowed_chunk_ids = set(daily_chunk_ids)
+                            vector_results = [
+                                result
+                                for result in authoritative_vector_results
+                                if result.chunk_id in allowed_chunk_ids
+                            ]
+                        if candidates and not authoritative_vector_results:
                             fallback_reason = "vector_candidates_rejected"
-                        elif not candidates:
+                        elif not candidates and (daily_chunk_ids is None or daily_chunk_ids):
+                            fallback_reason = "vector_no_results"
+                        elif daily_chunk_ids and not vector_results:
                             fallback_reason = "vector_no_results"
                     except VectorIndexUnavailableError as exc:
                         fallback_reason = exc.reason
@@ -234,34 +278,33 @@ class RetrievalService:
                     finally:
                         vector_adapter_ms = _elapsed_ms(vector_started)
 
-            fts_required = "fts" in requested_channels or not vector_results
+            valid_empty_vector_scope = (
+                daily_chunk_ids == ()
+                and "vector" in completed_channels
+                and fallback_reason is None
+            )
+            fts_required = (
+                "fts" in requested_channels
+                or (not vector_results and not valid_empty_vector_scope)
+            )
             if fts_required:
-                fts_started = perf_counter_ns()
-                fts_results = _authoritative_fts_results(
-                    conn,
-                    NoteRepository(conn).search(
+                if daily_date_results is not None:
+                    fts_results = daily_date_results
+                    fts_search_ms = daily_date_search_ms
+                else:
+                    fts_started = perf_counter_ns()
+                    search_results = note_repository.search(
                         vault_id=vault_id,
                         query=plan.lexical_query,
-                        top_k=candidate_pool_size(top_k),
-                    ),
-                    vault_id=vault_id,
-                )
-                fts_search_ms = _elapsed_ms(fts_started)
+                        top_k=candidate_limit,
+                    )
+                    fts_results = _authoritative_fts_results(
+                        conn,
+                        search_results,
+                        vault_id=vault_id,
+                    )
+                    fts_search_ms = _elapsed_ms(fts_started)
                 completed_channels.append("fts")
-
-            if source_scope == "daily_chat" and fts_required:
-                date_started = perf_counter_ns()
-                date_results = _authoritative_fts_results(
-                    conn,
-                    NoteRepository(conn).search_daily_chat_by_date(
-                            vault_id=vault_id,
-                            query=plan.lexical_query,
-                            top_k=candidate_pool_size(top_k),
-                    ),
-                    vault_id=vault_id,
-                )
-                fts_results = _merge_search_results(fts_results, date_results)
-                fts_search_ms = round(fts_search_ms + _elapsed_ms(date_started), 6)
 
             fusion_channels = {}
             if fts_results:
@@ -276,21 +319,28 @@ class RetrievalService:
                 ]
             fusion_started = perf_counter_ns()
             reranker_enabled = bool(getattr(self.reranker, "enabled", False))
-            fusion_limit = min(40, max(top_k, 20 if reranker_enabled else top_k))
+            fusion_limit = min(
+                _CANDIDATE_POOL_MAX,
+                max(result_limit, 20 if reranker_enabled else result_limit),
+            )
             fusion = reciprocal_rank_fusion(
                 fusion_channels,
                 approved_scopes=plan.source_scopes,
                 top_k=fusion_limit,
                 required_vault_id=vault_id,
             )
-            fusion_ms = _elapsed_ms(fusion_started)
+            fusion_ms = round(
+                _elapsed_ms(fusion_started)
+                + (daily_date_search_ms if daily_date_results is not None and not fts_required else 0.0),
+                6,
+            )
             rerank_outcome = apply_reranker(
                 query=plan.lexical_query,
                 candidates=fusion.candidates,
                 reranker=self.reranker,
                 remote_provider_approved=False,
             )
-            results = rerank_outcome.candidates[:top_k]
+            results = rerank_outcome.candidates[:result_limit]
             effective_mode = _effective_mode(
                 requested_mode=mode,
                 completed_channels=completed_channels,
@@ -765,17 +815,6 @@ def _sanitize_snippet(snippet: str) -> str:
             continue
         lines.append(stripped)
     return " ".join(lines)
-
-
-def _merge_search_results(primary, date_results):
-    merged = list(primary)
-    seen = {result.chunk_id for result in merged}
-    for result in date_results:
-        if result.chunk_id in seen:
-            continue
-        seen.add(result.chunk_id)
-        merged.append(result)
-    return merged
 
 
 def _elapsed_ms(started_ns: int) -> float:

@@ -18,7 +18,15 @@ from ..events import AgentContextBudgetEvent
 from ..events_helpers import _agent_state, _append_status, _emit_tool_results, _events, _record_node_error
 from ..prompts.system import _knowledge_retrieval_system_prompt, _memory_retrieval_system_prompt
 from ..retrieval.compression import UNTRUSTED_EVIDENCE_SYSTEM_POLICY
-from ..retrieval.scoping import _context_source_scope, _effective_retrieval_source_scope, _memory_aggregation_scopes, _retrieval_query, _source_scope_label, _stage_for_source_scope
+from ..retrieval.scoping import (
+    _context_source_scope,
+    _effective_retrieval_source_scope,
+    _memory_aggregation_scopes,
+    _retrieval_query,
+    _retrieval_top_k_for_state,
+    _source_scope_label,
+    _stage_for_source_scope,
+)
 from ..services import AgentRuntimeServices
 from ..semantic import _fallback_semantic_analysis
 from ..state import AgentState, SemanticAnalysisResult
@@ -266,7 +274,12 @@ async def _split_retrieval_node(
                 update_state_scope=update_state_scope,
             )
             if not has_tool_result(tool_results, "search_memory"):
-                response, fallback_results = await _fallback_scoped_retrieval(services, state, scoped_semantic)
+                response, fallback_results = await _fallback_scoped_retrieval(
+                    services,
+                    state,
+                    scoped_semantic,
+                    top_k=_retrieval_top_k_for_state(state),
+                )
                 _emit_tool_results(graph_state, fallback_results)
                 await _maybe_emit_daily_chat_fallback(
                     graph_state, services, state, scoped_semantic, fallback_results,
@@ -277,7 +290,12 @@ async def _split_retrieval_node(
             state.response_text = "" if has_tool_result(tool_results, "search_memory") else response
             return graph_state
 
-        _, tool_results = await _fallback_scoped_retrieval(services, state, scoped_semantic)
+        _, tool_results = await _fallback_scoped_retrieval(
+            services,
+            state,
+            scoped_semantic,
+            top_k=_retrieval_top_k_for_state(state),
+        )
         _emit_tool_results(graph_state, tool_results)
         await _maybe_emit_daily_chat_fallback(
             graph_state, services, state, scoped_semantic, tool_results,
@@ -349,6 +367,8 @@ async def _fallback_scoped_retrieval(
     services: AgentRuntimeServices,
     state: AgentState,
     semantic: SemanticAnalysisResult,
+    *,
+    top_k: int = 5,
 ) -> tuple[str, list[AgentToolResult]]:
     if services.retrieval is None:
         return "", []
@@ -357,7 +377,7 @@ async def _fallback_scoped_retrieval(
     try:
         search_response = await observed_toolset.search_memory(
             query=semantic.query or state.user_message,
-            top_k=5,
+            top_k=top_k,
             source_scope=semantic.source_scope,
         )
     except Exception:

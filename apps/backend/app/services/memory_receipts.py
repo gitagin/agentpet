@@ -142,6 +142,7 @@ class MemoryReceiptService:
                 SUM(CASE WHEN used_for_answer_context = 1 THEN 1 ELSE 0 END) AS answer_count,
                 SUM(CASE WHEN used_for_style = 1 THEN 1 ELSE 0 END) AS style_count,
                 SUM(CASE WHEN filtered_reason IS NOT NULL AND filtered_reason != '' THEN 1 ELSE 0 END) AS filtered_count,
+                SUM(CASE WHEN filtered_reason = 'prompt_char_budget_exceeded' THEN 1 ELSE 0 END) AS budget_filtered_count,
                 MAX(created_at) AS created_at
             FROM memory_activation_events
             WHERE agent_run_id = ?
@@ -154,6 +155,7 @@ class MemoryReceiptService:
         answer_count = int(row["answer_count"] or 0)
         style_count = int(row["style_count"] or 0)
         filtered_count = int(row["filtered_count"] or 0)
+        budget_filtered_count = int(row["budget_filtered_count"] or 0)
         created_at = str(row["created_at"] or utc_now_iso())
         if answer_count > 0 or style_count > 0:
             if answer_count > 0:
@@ -170,13 +172,20 @@ class MemoryReceiptService:
                 )
             )
         if filtered_count > 0:
+            policy_filtered_count = filtered_count - budget_filtered_count
+            if budget_filtered_count and policy_filtered_count:
+                filtered_detail = "它们因为权限、状态、安全或本次回答的上下文容量限制而未被采用。"
+            elif budget_filtered_count:
+                filtered_detail = "它们因为本次回答可用的上下文容量有限而未被采用。"
+            else:
+                filtered_detail = "它们因为权限、状态或安全原因被跳过。"
             items.append(
                 MemoryReceiptItem(
                     id=_receipt_id("activation_filtered", agent_run_id),
                     kind="filtered",
                     title="有些记忆没有用于回答",
-                    detail="它们因为权限、状态或安全原因被跳过。",
-                    safety_note="敏感细节已隐藏。",
+                    detail=filtered_detail,
+                    safety_note="敏感细节已隐藏。" if policy_filtered_count else None,
                     created_at=created_at,
                 )
             )

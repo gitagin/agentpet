@@ -218,6 +218,56 @@ async def test_retrieval_agent_scope_wrapper_forces_proven_fts_mode() -> None:
 
 
 @pytest.mark.asyncio
+async def test_retrieval_agent_scope_wrapper_forces_route_result_budget() -> None:
+    calls: list[dict[str, object]] = []
+
+    async def search_memory(
+        query: str,
+        top_k: int = 5,
+        mode: str = "fts",
+        source_scope: str = "all",
+    ) -> dict[str, object]:
+        calls.append(
+            {
+                "query": query,
+                "top_k": top_k,
+                "mode": mode,
+                "source_scope": source_scope,
+            }
+        )
+        return {"results": [], "metadata": {}}
+
+    tool = StructuredTool.from_function(
+        coroutine=search_memory,
+        name="search_memory",
+        description="Test-only memory search.",
+        args_schema=SearchMemoryInput,
+    )
+    wrapped = _force_search_memory_source_scope(
+        [tool],
+        "Use search_memory with source_scope='daily_chat'.",
+        forced_top_k=20,
+    )
+
+    await wrapped[0].ainvoke(
+        {
+            "query": "yesterday",
+            "top_k": 5,
+            "source_scope": "all",
+        }
+    )
+
+    assert calls == [
+        {
+            "query": "yesterday",
+            "top_k": 20,
+            "mode": "fts",
+            "source_scope": "daily_chat",
+        }
+    ]
+
+
+@pytest.mark.asyncio
 async def test_agent_tool_forces_fts_and_does_not_retry_internal_type_error() -> None:
     class BrokenScopedRetrieval:
         def __init__(self) -> None:

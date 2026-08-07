@@ -4,10 +4,7 @@ const path = require("node:path");
 
 function createTrayManager({
   createPetWindow,
-  showControlWindow,
   showStageWindow,
-  showAgentWindow,
-  showFeatureWindow,
   showPetInputMode,
   quitApp,
 }) {
@@ -53,14 +50,14 @@ function createTrayManager({
         },
         { type: "separator" },
         { label: "显示桌宠", click: () => createPetWindow() },
-        { label: "打开主舞台", click: showStageWindow },
-        { label: "打开聊天窗口", click: () => showFeatureWindow("chat") },
-        { label: "打开任务工作台", click: showAgentWindow },
-        { label: "打开记忆整理", click: () => showFeatureWindow("memory") },
-        { label: "打开成长记录", click: () => showFeatureWindow("growth") },
-        { label: "打开知识库", click: () => showFeatureWindow("world") },
-        { label: "打开设置", click: () => showFeatureWindow("settings") },
-        { label: "打开控制台", click: showControlWindow },
+        { label: "打开主舞台", click: () => showStageWindow("stage") },
+        { label: "打开聊天窗口", click: () => showStageWindow("chat") },
+        { label: "打开任务工作台", click: () => showStageWindow("agent") },
+        { label: "打开记忆整理", click: () => showStageWindow("memory") },
+        { label: "打开成长记录", click: () => showStageWindow("growth") },
+        { label: "打开知识库", click: () => showStageWindow("world") },
+        { label: "打开设置", click: () => showStageWindow("settings") },
+        { label: "打开控制台", click: () => showStageWindow("stage") },
         { type: "separator" },
         {
           label: "退出应用",

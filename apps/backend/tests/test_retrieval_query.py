@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import date
+from datetime import date, datetime, timezone
 
 import pytest
 from pydantic import ValidationError
@@ -166,6 +166,28 @@ def test_approved_context_only_resolves_pronoun_and_relative_date() -> None:
     assert any("2026-07-11" in variant for variant in plan.semantic_variants)
     assert all("TASK-1205" in variant for variant in plan.semantic_variants)
     assert all("Index Plan" in variant for variant in plan.semantic_variants)
+
+
+@pytest.mark.parametrize(
+    ("expression", "expected"),
+    [
+        ("前天", date(2026, 8, 4)),
+        ("昨天", date(2026, 8, 5)),
+        ("今天", date(2026, 8, 6)),
+        ("后天", date(2026, 8, 8)),
+    ],
+)
+def test_relative_date_uses_asia_shanghai_calendar_day(expression: str, expected: date) -> None:
+    utc_time_after_shanghai_midnight = datetime(2026, 8, 5, 17, 0, tzinfo=timezone.utc)
+
+    plan = build_retrieval_plan(
+        f"我{expression}和你聊了什么",
+        now=utc_time_after_shanghai_midnight,
+    )
+
+    assert plan.date_range is not None
+    assert plan.date_range.start == expected
+    assert plan.date_range.end == expected
 
 
 def test_approved_context_is_narrow_and_rejects_raw_conversation_fields() -> None:

@@ -6,10 +6,12 @@ import type { PetBubblePhase, PetBubbleState, PetBubbleTone } from "./chatTypes"
 import { petStreamFinalTimeoutMs } from "./chatTypes";
 import {
   createAssistantReplyTextFilter,
-  filterAssistantReplyText,
   normalizeVisibleAssistantReplyText,
-  stripAssistantHiddenReplyText,
 } from "./assistantReplyVisibility";
+import {
+  extractAssistantActionDirectives,
+  stripAssistantActionDirectivesFromMarkdown,
+} from "./assistantActionDirectives";
 import type { TtsPlaybackQueueController } from "../tts";
 import type { TtsProviderPlaybackStatus } from "../tts";
 import { useLatestCallback } from "../../hooks/useLatestCallback";
@@ -101,6 +103,7 @@ export function usePetChatBubble({
   const [petReplyText, setPetReplyText] = useState("");
   const petInputRef = useRef<HTMLInputElement | null>(null);
   const petReplyScrollRef = useRef<HTMLDivElement | null>(null);
+  const assistantRawReplyRef = useRef("");
   const assistantReplyRef = useRef("");
   const assistantHiddenReplyTextsRef = useRef<string[]>([]);
   const assistantReplyFilterRef = useRef(createAssistantReplyTextFilter());
@@ -232,13 +235,14 @@ export function usePetChatBubble({
 
   function showReply(text: string, phase: Extract<PetBubblePhase, "speaking" | "complete"> = "speaking") {
     clearHideTimer();
-    const visibleText = stripAssistantHiddenReplyText(text);
+    const visibleText = normalizeVisibleAssistantReplyText(stripAssistantActionDirectivesFromMarkdown(text));
     setPetReplyText(visibleText);
     setPetBubble({ visible: true, title: "", message: visibleText, tone: "reply", phase });
     followReplyToBottom();
   }
 
   function appendAssistantReplyText(text: string): string {
+    assistantRawReplyRef.current = `${assistantRawReplyRef.current}${text}`;
     const visibleText = assistantReplyFilterRef.current.append(text);
     const hiddenTexts = assistantReplyFilterRef.current.takeHiddenTexts();
     if (hiddenTexts.length > 0) {
@@ -252,10 +256,12 @@ export function usePetChatBubble({
   }
 
   function setAssistantReplyText(text: string): string {
+    assistantRawReplyRef.current = text;
     assistantReplyFilterRef.current.reset();
-    const { visibleText, hiddenTexts } = filterAssistantReplyText(text);
-    assistantReplyRef.current = visibleText;
-    assistantHiddenReplyTextsRef.current = hiddenTexts;
+    assistantReplyRef.current = normalizeVisibleAssistantReplyText(
+      stripAssistantActionDirectivesFromMarkdown(text),
+    );
+    assistantHiddenReplyTextsRef.current = extractAssistantActionDirectives(text);
     return assistantReplyRef.current;
   }
 
@@ -917,6 +923,7 @@ export function usePetChatBubble({
   }
 
   function resetStreamState(messageId?: string) {
+    assistantRawReplyRef.current = "";
     assistantReplyRef.current = "";
     assistantHiddenReplyTextsRef.current = [];
     assistantReplyFilterRef.current.reset();
@@ -954,6 +961,7 @@ export function usePetChatBubble({
   useEffect(() => () => cleanup(), [cleanup]);
 
   return {
+    assistantRawReplyRef,
     assistantReplyRef,
     assistantHiddenReplyTextsRef,
     appendAssistantReplyText,

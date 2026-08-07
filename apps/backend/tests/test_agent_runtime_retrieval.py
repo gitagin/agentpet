@@ -273,7 +273,7 @@ def test_langgraph_falls_back_to_daily_chat_as_weak_evidence_when_personal_memor
     assert fallback_status.source_scopes == ["daily_chat"]
     assert first_event(events, "citation").citation.source_scope == "daily_chat"
     assert any(getattr(event, "stage", None) == "daily_chat_fallback" for event in events)
-    assert_langgraph_events(events, ["citation", "token", "done"])
+    assert_langgraph_events(events, ["citation"] * 5 + ["token", "done"])
 
 
 def test_langgraph_forces_date_recall_to_daily_chat_even_when_semantic_model_misroutes() -> None:
@@ -310,10 +310,42 @@ def test_langgraph_forces_date_recall_to_daily_chat_even_when_semantic_model_mis
 
     retrieval, chat_model, events = asyncio.run(run_case())
 
-    assert retrieval.calls == [("我在5月4号说了什么事情吗？", 5, "fts", "daily_chat")]
+    assert retrieval.calls == [("我在5月4号说了什么事情吗？", 20, "fts", "daily_chat")]
     assert "上下文范围：daily_chat" in chat_model.calls[-1][0]
     assert "用户说自己喜欢苹果" in chat_model.calls[-1][0]
-    assert_langgraph_events(events, ["citation", "token", "done"])
+    assert "用户说自己喜欢旅游" in chat_model.calls[-1][0]
+    assert_langgraph_events(events, ["citation"] * 7 + ["token", "done"])
+
+
+def test_langgraph_routes_relative_date_recall_to_daily_chat_without_semantic_agent() -> None:
+    async def run_case():
+        retrieval = FakePersonalEmptyDailyRetrieval()
+        retrieval_model = FakeRegistryChatModel(None, "memory checked")
+        chat_model = FakeRegistryChatModel(None, "## 昨天回顾\n\n- 你聊到了苹果。")
+        runtime = LangGraphAgentRuntime(
+            AgentRuntimeServices(
+                retrieval=retrieval,
+                model_registry=AgentModelRegistry(
+                    {
+                        AgentId.RETRIEVAL_AGENT: retrieval_model,
+                        AgentId.CHAT_AGENT: chat_model,
+                    }
+                ),
+                automation_settings=SimpleNamespace(use_negotiation=False),
+            )
+        )
+
+        events = [event async for event in runtime.run(make_state("我昨天和你聊了什么"))]
+        return retrieval, chat_model, events
+
+    retrieval, chat_model, events = asyncio.run(run_case())
+
+    assert retrieval.calls == [("我昨天和你聊了什么", 20, "fts", "daily_chat")]
+    assert "用户说自己喜欢苹果" in chat_model.calls[-1][0]
+    assert "用户说自己喜欢旅游" in chat_model.calls[-1][0]
+    assert first_event(events, "citation").citation.source_scope == "daily_chat"
+    assert first_event(events, "done").text.startswith("## 昨天回顾")
+    assert_langgraph_events(events, ["citation"] * 7 + ["token", "done"])
 
 
 def test_langgraph_aggregates_and_compresses_companion_memory_route_scopes() -> None:

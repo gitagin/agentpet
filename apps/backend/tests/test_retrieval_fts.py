@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -267,6 +268,88 @@ def test_daily_chat_date_query_matches_daily_file_even_without_keyword_overlap(t
     assert "我喜欢苹果" in response.results[0].snippet
     assert "conversation_id" not in response.results[0].snippet
     assert "agent_run_id" not in response.results[0].snippet
+
+
+@pytest.mark.parametrize("mode", ["fts", "hybrid", "vector"])
+def test_relative_date_query_uses_shanghai_day_and_only_returns_that_daily_file(
+    tmp_path: Path,
+    mode: str,
+) -> None:
+    vault = tmp_path / "vault"
+    for day, topic in ((5, "旅行计划"), (6, "我昨天和你聊了什么")):
+        daily_path = vault / "Memories" / "Daily" / "2026" / "08" / "第1周_08-01至08-07" / f"星期{day}"
+        daily_path.mkdir(parents=True)
+        (daily_path / f"2026-08-{day:02d}.md").write_text(
+            f"# 2026-08-{day:02d} 聊天记忆\n\n- 用户问题：{topic}\n- 桌宠回答：已记录。\n",
+            encoding="utf-8",
+        )
+    db = Database(tmp_path / "app.db")
+    service = RetrievalService(db)
+    service.initialize()
+    vault_id = service.bind_vault(str(vault))
+    service.rebuild_index(vault_id)
+
+    response = service.search(
+        vault_id=vault_id,
+        query="我昨天和你聊了什么",
+        top_k=5,
+        source_scope="daily_chat",
+        mode=mode,
+        now=datetime(2026, 8, 5, 17, 0, tzinfo=timezone.utc),
+    )
+
+    assert response.results
+    assert {
+        result.relative_path for result in response.results
+    } == {"Memories/Daily/2026/08/第1周_08-01至08-07/星期5/2026-08-05.md"}
+    assert "旅行计划" in response.results[0].snippet
+
+
+@pytest.mark.parametrize("mode", ["fts", "hybrid", "vector"])
+def test_date_constrained_daily_chat_honors_top_k_and_supports_a_larger_route_budget(
+    tmp_path: Path,
+    mode: str,
+) -> None:
+    vault = tmp_path / "vault"
+    daily_path = vault / "Memories" / "Daily" / "2026" / "08" / "第1周_08-01至08-07" / "星期三"
+    daily_path.mkdir(parents=True)
+    conversations = [
+        f"## 1{index}:00:00\n\n- 用户问题：当天话题{index}\n- 桌宠回答：当天回答{index}。"
+        for index in range(1, 8)
+    ]
+    (daily_path / "2026-08-05.md").write_text(
+        "# 2026-08-05 聊天记忆\n\n" + "\n\n".join(conversations) + "\n",
+        encoding="utf-8",
+    )
+    db = Database(tmp_path / "app.db")
+    service = RetrievalService(db)
+    service.initialize()
+    vault_id = service.bind_vault(str(vault))
+    service.rebuild_index(vault_id)
+
+    limited = service.search(
+        vault_id=vault_id,
+        query="我昨天和你聊了什么",
+        top_k=5,
+        source_scope="daily_chat",
+        mode=mode,
+        now=datetime(2026, 8, 6, 12, 0, tzinfo=timezone.utc),
+    )
+    complete = service.search(
+        vault_id=vault_id,
+        query="我昨天和你聊了什么",
+        top_k=20,
+        source_scope="daily_chat",
+        mode=mode,
+        now=datetime(2026, 8, 6, 12, 0, tzinfo=timezone.utc),
+    )
+
+    combined_snippets = "\n".join(result.snippet for result in complete.results)
+    assert len(limited.results) == 5
+    assert len(complete.results) >= 7
+    assert len(complete.results) <= 20
+    assert all(f"当天话题{index}" in combined_snippets for index in range(1, 8))
+    assert complete.metadata["fusion"]["selected_count"] == len(complete.results)
 
 
 def test_hybrid_search_falls_back_to_fts_when_vector_index_unavailable(tmp_path: Path) -> None:

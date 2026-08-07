@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
 from typing import Any, Literal, Mapping, Sequence
+from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -15,6 +16,8 @@ RETRIEVAL_PLAN_TELEMETRY_VERSION = "retrieval-plan-telemetry.v1"
 MAX_QUERY_CHARS = 2_000
 MAX_SEMANTIC_VARIANTS = 3
 MAX_FILTERS = 8
+DEFAULT_RETRIEVAL_TIMEZONE = "Asia/Shanghai"
+_RETRIEVAL_TIMEZONE = ZoneInfo(DEFAULT_RETRIEVAL_TIMEZONE)
 
 RetrievalSourceScope = Literal[
     "personal_memory",
@@ -508,10 +511,11 @@ def _anchor_date(context: ApprovedRetrievalContext, now: date | datetime | None)
     if context.reference_date is not None:
         return context.reference_date
     if isinstance(now, datetime):
-        return now.date()
+        current = now if now.tzinfo is not None else now.replace(tzinfo=_RETRIEVAL_TIMEZONE)
+        return current.astimezone(_RETRIEVAL_TIMEZONE).date()
     if isinstance(now, date):
         return now
-    return datetime.now(timezone.utc).date()
+    return datetime.now(_RETRIEVAL_TIMEZONE).date()
 
 
 def _extract_date_range(query: str, *, anchor_date: date) -> RetrievalDateRange | None:
@@ -542,6 +546,9 @@ def _extract_date_range(query: str, *, anchor_date: date) -> RetrievalDateRange 
     if "前天" in query or "day before yesterday" in lowered:
         target = anchor_date - timedelta(days=2)
         relative = (target, target, "前天" if "前天" in query else "day before yesterday")
+    elif "后天" in query or "day after tomorrow" in lowered:
+        target = anchor_date + timedelta(days=2)
+        relative = (target, target, "后天" if "后天" in query else "day after tomorrow")
     elif "昨天" in query or re.search(r"\byesterday\b", lowered):
         target = anchor_date - timedelta(days=1)
         relative = (target, target, "昨天" if "昨天" in query else "yesterday")
@@ -616,7 +623,19 @@ def _context_variants(
                 break
     if date_range is not None and date_range.expressions:
         expression = date_range.expressions[0]
-        if expression in {"前天", "昨天", "明天", "今天", "今日", "day before yesterday", "yesterday", "tomorrow", "today"}:
+        if expression in {
+            "前天",
+            "昨天",
+            "今天",
+            "今日",
+            "明天",
+            "后天",
+            "day before yesterday",
+            "yesterday",
+            "today",
+            "tomorrow",
+            "day after tomorrow",
+        }:
             resolved_date = date_range.start.isoformat()
             variants.append(query.replace(expression, f"{expression} ({resolved_date})", 1))
             resolution_count += 1

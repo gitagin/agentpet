@@ -4,6 +4,7 @@ import json
 import re
 import sqlite3
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 
 from app.models.common import new_id
@@ -329,12 +330,14 @@ class NoteRepository:
                     return results
         return results
 
-    def search_daily_chat_by_date(self, *, vault_id: str, query: str, top_k: int = 8) -> list[SearchResult]:
-        month_day = _extract_month_day(query)
-        if month_day is None:
-            return []
-        month, day = month_day
-        filename_suffix = "-%02d-%02d.md" % (month, day)
+    def search_daily_chat_by_date_range(
+        self,
+        *,
+        vault_id: str,
+        start_date: date,
+        end_date: date,
+        top_k: int = 8,
+    ) -> list[SearchResult]:
         rows = self.conn.execute(
             """
             SELECT
@@ -346,8 +349,9 @@ class NoteRepository:
                 content
             FROM note_chunks
             WHERE vault_id = ?
-              AND relative_path LIKE ? ESCAPE '~'
               AND relative_path LIKE 'Memories/Daily/%'
+              AND substr(relative_path, -13, 10) BETWEEN ? AND ?
+              AND substr(relative_path, -3) = '.md'
             ORDER BY
                 relative_path,
                 CASE
@@ -357,7 +361,7 @@ class NoteRepository:
                 chunk_index
             LIMIT ?
             """,
-            (vault_id, _to_like_pattern(filename_suffix), top_k),
+            (vault_id, start_date.isoformat(), end_date.isoformat(), top_k),
         ).fetchall()
         return [
             SearchResult(
@@ -471,17 +475,6 @@ def _make_like_snippet(*, content: str, query: str, title: str, heading: str | N
             suffix = "..." if end < len(source) else ""
             return f"{prefix}{source[start:index]}[{source[index:index + len(query)]}]{source[index + len(query):end]}{suffix}"
     return content[:120]
-
-
-def _extract_month_day(query: str) -> tuple[int, int] | None:
-    match = re.search(r"(?:\d{4}\s*年\s*)?(\d{1,2})\s*月\s*(\d{1,2})\s*(?:号|日)?", query)
-    if match is None:
-        return None
-    month = int(match.group(1))
-    day = int(match.group(2))
-    if not (1 <= month <= 12 and 1 <= day <= 31):
-        return None
-    return month, day
 
 
 def _make_daily_date_snippet(content: str) -> str:

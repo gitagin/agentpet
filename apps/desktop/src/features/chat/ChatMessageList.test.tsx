@@ -71,6 +71,57 @@ describe("ChatMessageList", () => {
     expect(container.querySelector(".message-row.assistant .message-bubble.assistant")).toHaveTextContent("先缓一下，我在。");
   });
 
+  it("renders assistant Markdown as readable semantic structure", () => {
+    const messages: ChatMessage[] = [
+      {
+        id: "assistant-markdown",
+        role: "assistant",
+        content: [
+          "## 8 月 5 日",
+          "",
+          "* **旅行**：聊了夏季目的地",
+          "  * *偏好*：更喜欢慢旅行",
+          "* **称呼**：你希望我叫你测试员",
+          "",
+          "```ts",
+          "const plan = {",
+          '  city: "威海",',
+          "};",
+          "```",
+          "",
+          "[查看资料](https://example.com/memory_(daily))",
+        ].join("\n"),
+        status: "completed",
+      },
+    ];
+
+    const { container } = render(<ChatMessageList messages={messages} />);
+
+    expect(screen.getByRole("heading", { level: 2, name: "8 月 5 日" })).toBeInTheDocument();
+    expect(screen.getAllByRole("list")).toHaveLength(2);
+    expect(screen.getByText("旅行").tagName).toBe("STRONG");
+    expect(screen.getByText("偏好").tagName).toBe("EM");
+    expect(screen.getByRole("link", { name: "查看资料" })).toHaveAttribute("target", "_blank");
+    expect(container.querySelector("pre code")?.textContent).toContain('  city: "威海",');
+    expect(container.querySelector(".message-content")).toBeInTheDocument();
+  });
+
+  it("does not interpret assistant raw HTML", () => {
+    const messages: ChatMessage[] = [
+      {
+        id: "assistant-html",
+        role: "assistant",
+        content: "正常内容<script>window.alert('unsafe')</script>",
+        status: "completed",
+      },
+    ];
+
+    const { container } = render(<ChatMessageList messages={messages} />);
+
+    expect(container.querySelector("script")).not.toBeInTheDocument();
+    expect(container.querySelector(".message-content")).toHaveTextContent("正常内容window.alert");
+  });
+
   it("hides system messages and keeps assistant trace details collapsed", () => {
     const messages: ChatMessage[] = [
       {
@@ -240,35 +291,50 @@ describe("ChatMessageList", () => {
     expect(screen.queryByRole("region", { name: "聊天进度" })).not.toBeInTheDocument();
   });
 
-  it("does not show assistant parenthetical stage directions", () => {
+  it("keeps ordinary parentheses in assistant Markdown", () => {
     const messages: ChatMessage[] = [
       {
         id: "assistant-1",
         role: "assistant",
-        content: "你好（微笑）我在这里 (thinking) 别担心",
+        content: "这是一条说明（仅供参考）。",
         status: "completed",
       },
     ];
 
-    render(<ChatMessageList messages={messages} />);
+    const { container } = render(<ChatMessageList messages={messages} />);
 
-    expect(screen.getByText("你好我在这里 别担心")).toBeInTheDocument();
-    expect(screen.queryByText(/微笑|thinking/)).not.toBeInTheDocument();
+    expect(container.querySelector(".message-content")).toHaveTextContent("这是一条说明（仅供参考）。");
   });
 
-  it("does not show assistant single-star stage directions", () => {
+  it("renders single-star Markdown emphasis", () => {
     const messages: ChatMessage[] = [
       {
         id: "assistant-1",
         role: "assistant",
-        content: "你好*微笑*我在这里",
+        content: "这是 *斜体内容*，不应被动作过滤器删除。",
         status: "completed",
       },
     ];
 
     render(<ChatMessageList messages={messages} />);
 
-    expect(screen.getByText("你好我在这里")).toBeInTheDocument();
-    expect(screen.queryByText(/微笑|\*/)).not.toBeInTheDocument();
+    expect(screen.getByText("斜体内容").tagName).toBe("EM");
+  });
+
+  it("hides recognized pet action directives without changing surrounding Markdown", () => {
+    const messages: ChatMessage[] = [
+      {
+        id: "assistant-1",
+        role: "assistant",
+        content: "(smile)你好（抱枕），这是 *斜体内容*。*smile*",
+        status: "completed",
+      },
+    ];
+
+    const { container } = render(<ChatMessageList messages={messages} />);
+
+    expect(container.querySelector(".message-content")).toHaveTextContent("你好，这是 斜体内容。");
+    expect(screen.getByText("斜体内容").tagName).toBe("EM");
+    expect(container.textContent).not.toMatch(/smile|抱枕/);
   });
 });

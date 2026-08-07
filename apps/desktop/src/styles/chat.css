@@ -779,6 +779,134 @@
   white-space: pre-wrap;
 }
 
+.message-list .message-content {
+  min-width: 0;
+  color: inherit;
+  font-size: 14px;
+  font-weight: 560;
+  line-height: 1.68;
+  overflow-wrap: anywhere;
+}
+
+.message-list .message-content > :first-child {
+  margin-top: 0;
+}
+
+.message-list .message-content > :last-child {
+  margin-bottom: 0;
+}
+
+.message-list .message-content :where(p, ul, ol, blockquote, pre, table) {
+  margin: 0.55em 0;
+}
+
+.message-list .message-content p {
+  white-space: pre-wrap;
+}
+
+.message-list .message-content :where(h1, h2, h3, h4) {
+  margin: 0.85em 0 0.35em;
+  color: inherit;
+  font-size: 1em;
+  font-weight: 780;
+  line-height: 1.4;
+  text-wrap: balance;
+}
+
+.message-list .message-content h1 {
+  font-size: 1.12em;
+}
+
+.message-list .message-content h2 {
+  font-size: 1.06em;
+}
+
+.message-list .message-content :where(ul, ol) {
+  display: grid;
+  gap: 0.28em;
+  padding-inline-start: 1.45em;
+}
+
+.message-list .message-content li {
+  padding-inline-start: 0.15em;
+}
+
+.message-list .message-content li > p {
+  margin: 0;
+}
+
+.message-list .message-content strong {
+  color: inherit;
+  font-weight: 780;
+}
+
+.message-list .message-content a {
+  color: var(--color-info);
+  font-weight: 650;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.message-list .message-content blockquote {
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-subtle);
+  padding: 0.65em 0.8em;
+  color: var(--muted);
+}
+
+.message-list .message-content :not(pre) > code {
+  border-radius: var(--radius-xs);
+  background: var(--surface-muted);
+  padding: 0.12em 0.35em;
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 0.9em;
+}
+
+.message-list .message-content pre,
+.message-list .message-content table {
+  max-width: 100%;
+  overflow: auto;
+}
+
+.message-list .message-content pre {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-stage);
+  padding: 0.75em;
+  white-space: pre;
+}
+
+.message-list .message-content pre code {
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 0.88em;
+}
+
+.message-list .message-content table {
+  display: block;
+  border-collapse: collapse;
+  font-size: 0.92em;
+}
+
+.message-list .message-content :where(th, td) {
+  border: 1px solid var(--line-strong);
+  padding: 0.4em 0.55em;
+  text-align: left;
+  vertical-align: top;
+}
+
+.message-list .message-content th {
+  background: var(--surface-muted);
+  font-weight: 750;
+}
+
+.message-list .message-content hr {
+  margin: 0.8em 0;
+  border: 0;
+  border-top: 1px solid var(--line-strong);
+}
+
 .message-list .message-bubble .message-pending {
   color: var(--muted);
 }

@@ -400,7 +400,7 @@ function applyTextOrCitationEvent({ messageId, sseEvent, payload, context }: Str
           : citations?.length
             ? "verifying"
             : message.progress_stage,
-        content: token ? (visibleReplyText ?? message.content) : message.content,
+        content: token ? `${message.content}${token}` : message.content,
         live2d_action_hints:
           hiddenActionHints && hiddenActionHints.length > 0 ? hiddenActionHints : message.live2d_action_hints,
         citations: citations ? [...(message.citations || []), ...citations] : message.citations,

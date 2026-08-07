@@ -3,7 +3,11 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { SseEvent } from "../../services/sse";
 import type { ChatMessage } from "../../types";
-import { createAssistantReplyTextFilter, normalizeVisibleAssistantReplyText, stripAssistantHiddenReplyText } from "./assistantReplyVisibility";
+import {
+  extractAssistantActionDirectives,
+  stripAssistantActionDirectivesFromMarkdown,
+} from "./assistantActionDirectives";
+import { createAssistantReplyTextFilter, normalizeVisibleAssistantReplyText } from "./assistantReplyVisibility";
 import { applyStreamEvent, type StreamDispatcherContext } from "./streamDispatcher";
 import type { PetChatBubbleController } from "./usePetChatBubble";
 
@@ -17,16 +21,19 @@ function createHarness() {
     },
   ];
   const filter = createAssistantReplyTextFilter();
+  const assistantRawReplyRef = { current: "" };
   const assistantReplyRef = { current: "" };
   const assistantHiddenReplyTextsRef = { current: [] as string[] };
   const replyStartedRef = { current: false };
   const petChat = {
+    assistantRawReplyRef,
     assistantReplyRef,
     assistantHiddenReplyTextsRef,
     latestContinuitySignalRef: { current: null },
     replyStartedRef,
     markStreamEventReceived: vi.fn(),
     appendAssistantReplyText: vi.fn((text: string) => {
+      assistantRawReplyRef.current = `${assistantRawReplyRef.current}${text}`;
       const visibleText = filter.append(text);
       const hiddenTexts = filter.takeHiddenTexts();
       if (hiddenTexts.length > 0) {
@@ -38,11 +45,12 @@ function createHarness() {
       return visibleText;
     }),
     setAssistantReplyText: vi.fn((text: string) => {
+      assistantRawReplyRef.current = text;
       filter.reset();
-      assistantReplyRef.current = stripAssistantHiddenReplyText(text);
-      const finalFilter = createAssistantReplyTextFilter();
-      finalFilter.append(text);
-      assistantHiddenReplyTextsRef.current = finalFilter.takeHiddenTexts();
+      assistantReplyRef.current = normalizeVisibleAssistantReplyText(
+        stripAssistantActionDirectivesFromMarkdown(text),
+      );
+      assistantHiddenReplyTextsRef.current = extractAssistantActionDirectives(text);
       return assistantReplyRef.current;
     }),
     setReplyPagesFromText: vi.fn(),
@@ -94,8 +102,7 @@ describe("applyStreamEvent assistant reply visibility", () => {
     applyStreamEvent("assistant-1", event("token", { token: "你好（" }), harness.context);
     applyStreamEvent("assistant-1", event("token", { token: "微笑）我在" }), harness.context);
 
-    expect(harness.messages[0].content).toBe("你好我在");
-    expect(harness.messages[0].content).not.toContain("微笑");
+    expect(harness.messages[0].content).toBe("你好（微笑）我在");
     expect(harness.messages[0].live2d_action_hints).toEqual(["微笑"]);
     expect(harness.petChat.replyStartedRef.current).toBe(true);
     expect(harness.petChat.setReplyPagesFromText).toHaveBeenLastCalledWith("你好我在", { preserveCurrentPage: true });
@@ -118,6 +125,21 @@ describe("applyStreamEvent assistant reply visibility", () => {
     expect(harness.messages[0].content).toBe("你好，我在。");
     expect(harness.petChat.replyStartedRef.current).toBe(true);
     expect(harness.context.onVisibleAssistantReply).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves streamed Markdown exactly while filtering only the pet reply", () => {
+    const harness = createHarness();
+    const chunks = [
+      "## 昨天回顾\n\n* *旅行*：威海\n  * 慢旅行\n\n```ts\n",
+      "const plan = (days: number) => {\n  return days + 1;\n};\n```\n\n",
+      "[查看记录](https://example.com/memory_(daily))",
+    ];
+
+    chunks.forEach((token) => applyStreamEvent("assistant-1", event("token", { token }), harness.context));
+
+    expect(harness.messages[0].content).toBe(chunks.join(""));
+    expect(harness.petChat.appendAssistantReplyText).toHaveBeenCalledTimes(chunks.length);
+    expect(harness.petChat.setReplyPagesFromText).toHaveBeenCalled();
   });
 
   it("records continuity proposals without replacing the pending answer bubble", () => {
@@ -159,13 +181,12 @@ describe("applyStreamEvent assistant reply visibility", () => {
 
     applyStreamEvent("assistant-1", event("token", { token: "你好*" }), harness.context);
     applyStreamEvent("assistant-1", event("token", { token: "微笑*我在" }), harness.context);
+    applyStreamEvent("assistant-1", event("done", { text: "done" }), harness.context);
 
-    expect(harness.messages[0].content).toBe("你好我在");
-    expect(harness.messages[0].content).not.toContain("微笑");
-    expect(harness.messages[0].content).not.toContain("*");
+    expect(harness.messages[0].content).toBe("你好*微笑*我在");
     expect(harness.messages[0].live2d_action_hints).toEqual(["微笑"]);
     expect(harness.petChat.replyStartedRef.current).toBe(true);
-    expect(harness.petChat.setReplyPagesFromText).toHaveBeenLastCalledWith("你好我在", { preserveCurrentPage: true });
+    expect(harness.petChat.assistantReplyRef.current).toBe("你好我在");
   });
 
   it("does not start a visible reply for hidden-only streamed text", () => {
@@ -173,7 +194,7 @@ describe("applyStreamEvent assistant reply visibility", () => {
 
     applyStreamEvent("assistant-1", event("token", { token: "（微笑）" }), harness.context);
 
-    expect(harness.messages[0].content).toBe("");
+    expect(harness.messages[0].content).toBe("（微笑）");
     expect(harness.messages[0].live2d_action_hints).toEqual(["微笑"]);
     expect(harness.petChat.replyStartedRef.current).toBe(false);
     expect(harness.petChat.setReplyPagesFromText).not.toHaveBeenCalled();
@@ -192,7 +213,7 @@ describe("applyStreamEvent assistant reply visibility", () => {
 
     applyStreamEvent("assistant-1", event("reply_ready", { text: "(smile)Hello." }), harness.context);
 
-    expect(harness.messages[0]).toMatchObject({ content: "Hello.", status: "completed" });
+    expect(harness.messages[0]).toMatchObject({ content: "(smile)Hello.", status: "completed" });
     expect(harness.context.onVisibleAssistantReply).toHaveBeenCalledTimes(1);
   });
 
@@ -228,15 +249,38 @@ describe("applyStreamEvent assistant reply visibility", () => {
     expect(harness.petChat.setAssistantReplyText).toHaveBeenCalledWith("最终回答。");
   });
 
-  it("filters final reply_ready text before completing the message", () => {
+  it("keeps final reply_ready text raw while extracting pet action hints", () => {
     const harness = createHarness();
 
     applyStreamEvent("assistant-1", event("reply_ready", { text: "（抱枕）你好，我在。" }), harness.context);
 
-    expect(harness.messages[0]).toMatchObject({ content: "你好，我在。", status: "completed" });
+    expect(harness.messages[0]).toMatchObject({ content: "（抱枕）你好，我在。", status: "completed" });
     expect(harness.messages[0].live2d_action_hints).toEqual(["抱枕"]);
     expect(harness.petChat.startReplyPaging).toHaveBeenCalledWith("assistant-1");
   });
+
+  it("replaces partial streamed Markdown with the authoritative reply_ready text", () => {
+    const harness = createHarness();
+    const finalText = "## 完整回答\n\n- 第一项\n- 第二项";
+
+    applyStreamEvent("assistant-1", event("token", { token: "## 完整" }), harness.context);
+    applyStreamEvent("assistant-1", event("reply_ready", { text: finalText }), harness.context);
+
+    expect(harness.messages[0]).toMatchObject({ content: finalText, status: "completed" });
+  });
+
+  it.each(["*斜体回复*", "* 第一项\n* 第二项"])(
+    "completes a Markdown-only reply without treating it as a hidden action: %s",
+    (text) => {
+      const harness = createHarness();
+
+      applyStreamEvent("assistant-1", event("reply_ready", { text }), harness.context);
+
+      expect(harness.messages[0]).toMatchObject({ content: text, status: "completed" });
+      expect(harness.petChat.failStream).not.toHaveBeenCalled();
+      expect(harness.petChat.assistantReplyRef.current).toBe(text);
+    },
+  );
 
   it("compresses backend status and negotiation events into four visible progress stages", () => {
     const harness = createHarness();

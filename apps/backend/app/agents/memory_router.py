@@ -25,6 +25,7 @@ class MemoryRoute(BaseModel):
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     reason: str = ""
     semantic_fallback: bool = False
+    retrieval_top_k: int = Field(default=5, ge=1, le=20)
 
     @property
     def all_scopes(self) -> tuple[MemoryScope, ...]:
@@ -69,6 +70,7 @@ class MemoryRouter:
                 answer_style="grounded",
                 confidence=0.92,
                 reason="explicit_date_recall",
+                retrieval_top_k=20,
             )
 
         if _is_long_term_preference_query(query, normalized):
@@ -162,7 +164,7 @@ def _dedupe_legacy_scopes(
 
 
 def _is_explicit_date_recall(query: str, normalized: str) -> bool:
-    if not _has_explicit_date(query, normalized):
+    if not _has_date_reference(query, normalized):
         return False
     recall_markers = (
         "what did i say",
@@ -180,10 +182,13 @@ def _is_explicit_date_recall(query: str, normalized: str) -> bool:
         "\u6211\u4eec\u8bf4\u4e86\u4ec0\u4e48",
         "\u54b1\u4eec\u8bf4\u4e86\u4ec0\u4e48",
         "\u804a\u4e86\u4ec0\u4e48",
+        "\u804a\u5929\u8bb0\u5f55",
         "\u95ee\u4e86\u4ec0\u4e48",
         "\u63d0\u4e86\u4ec0\u4e48",
         "\u8bf4\u4e86\u4ec0\u4e48",
         "\u8bf4\u8fc7\u4ec0\u4e48",
+        "\u8bb0\u5f55\u4e86\u4ec0\u4e48",
+        "\u6709\u4ec0\u4e48\u8bb0\u5f55",
         "\u4ec0\u4e48\u4e8b\u60c5",
         "\u56de\u5fc6",
         "\u8bb0\u5f97",
@@ -191,7 +196,22 @@ def _is_explicit_date_recall(query: str, normalized: str) -> bool:
     return any(marker in normalized or marker in query for marker in recall_markers)
 
 
-def _has_explicit_date(query: str, normalized: str) -> bool:
+def _has_date_reference(query: str, normalized: str) -> bool:
+    relative_date_markers = (
+        "前天",
+        "昨天",
+        "今天",
+        "今日",
+        "明天",
+        "后天",
+        "day before yesterday",
+        "yesterday",
+        "today",
+        "tomorrow",
+        "day after tomorrow",
+    )
+    if any(marker in query or marker in normalized for marker in relative_date_markers):
+        return True
     month_names = (
         "jan",
         "january",

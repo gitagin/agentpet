@@ -15,6 +15,7 @@ def test_technical_knowledge_question_prefers_knowledge_base_and_avoids_diary() 
     assert route.confidence >= 0.8
     assert route.reason == "technical_knowledge"
     assert route.legacy_source_scope == "knowledge_base"
+    assert route.retrieval_top_k == 5
 
 
 def test_personal_emotional_continuity_prefers_diary_then_daily_chat() -> None:
@@ -36,6 +37,21 @@ def test_explicit_date_recall_prefers_daily_chat() -> None:
     assert route.answer_style == "grounded"
     assert route.reason == "explicit_date_recall"
     assert route.legacy_source_scope == "all"
+    assert route.retrieval_top_k == 20
+
+
+def test_relative_date_recall_prefers_daily_chat() -> None:
+    for query in (
+        "我昨天和你聊了什么",
+        "我今天说过什么",
+        "我前天记录了什么事情",
+        "我后天有什么聊天记录",
+    ):
+        route = route_memory(query)
+
+        assert route.primary_scopes == ("daily_chat",)
+        assert route.reason == "explicit_date_recall"
+        assert route.retrieval_top_k == 20
 
 
 def test_long_term_preference_prefers_graph_facts_then_personal_memory_then_diary_and_daily_chat() -> None:

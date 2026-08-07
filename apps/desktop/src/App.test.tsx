@@ -460,9 +460,11 @@ vi.mock("./features/wiki/useWiki", () => ({
 
 vi.mock("./features/chat/usePetChatBubble", () => ({
   usePetChatBubble: () => {
+    const assistantRawReplyRef = { current: "" };
     const assistantReplyRef = { current: "" };
     const assistantHiddenReplyTextsRef = { current: [] };
     return {
+      assistantRawReplyRef,
       assistantReplyRef,
       assistantHiddenReplyTextsRef,
       bubble: { visible: false, title: "", message: "", tone: "thinking", phase: "idle" },
@@ -475,6 +477,7 @@ vi.mock("./features/chat/usePetChatBubble", () => ({
       streamOpenedRef: { current: false },
       streamReceivedEventRef: { current: false },
       appendAssistantReplyText: vi.fn((text: string) => {
+        assistantRawReplyRef.current += text;
         assistantReplyRef.current += text;
         return text;
       }),
@@ -487,6 +490,7 @@ vi.mock("./features/chat/usePetChatBubble", () => ({
       scheduleHide: vi.fn(),
       scheduleStreamWatchdog: vi.fn(),
       setAssistantReplyText: vi.fn((text: string) => {
+        assistantRawReplyRef.current = text;
         assistantReplyRef.current = text;
         return text;
       }),

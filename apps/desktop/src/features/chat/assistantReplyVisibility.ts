@@ -1,3 +1,5 @@
+import { isAssistantActionDirective } from "./assistantActionDirectives";
+
 export type AssistantReplyTextFilter = {
   append: (text: string) => string;
   takeHiddenTexts: () => string[];
@@ -6,7 +8,6 @@ export type AssistantReplyTextFilter = {
 
 const openingHiddenMarkers = new Set(["(", "\uff08"]);
 const closingHiddenMarkers = new Set([")", "\uff09"]);
-const hiddenEmphasisMarkers = new Set(["*", "\uff0a"]);
 
 export type AssistantReplyVisibilityResult = {
   visibleText: string;
@@ -15,9 +16,10 @@ export type AssistantReplyVisibilityResult = {
 
 export function createAssistantReplyTextFilter(): AssistantReplyTextFilter {
   let hiddenDepth = 0;
-  let hiddenEmphasis = false;
+  let linkDestinationDepth = 0;
+  let pendingLinkOpen = false;
+  let parentheticalOpening = "";
   let parentheticalBuffer = "";
-  let emphasisBuffer = "";
   let hiddenTexts: string[] = [];
 
   const pushHiddenText = (value: string) => {
@@ -33,27 +35,42 @@ export function createAssistantReplyTextFilter(): AssistantReplyTextFilter {
       const chars = Array.from(text);
       for (let index = 0; index < chars.length; index += 1) {
         const char = chars[index];
-        const nextChar = chars[index + 1];
-        if (hiddenEmphasis) {
-          if (hiddenEmphasisMarkers.has(char)) {
-            hiddenEmphasis = false;
-            pushHiddenText(emphasisBuffer);
-            emphasisBuffer = "";
-          } else {
-            emphasisBuffer += char;
+        if (linkDestinationDepth > 0) {
+          visible += char;
+          if (char === "(") {
+            linkDestinationDepth += 1;
+          } else if (char === ")") {
+            linkDestinationDepth -= 1;
           }
           continue;
+        }
+        if (pendingLinkOpen) {
+          if (char === "(") {
+            visible += char;
+            linkDestinationDepth = 1;
+            pendingLinkOpen = false;
+            continue;
+          }
+          pendingLinkOpen = false;
         }
         if (hiddenDepth > 0) {
           if (openingHiddenMarkers.has(char)) {
             hiddenDepth += 1;
+            parentheticalBuffer += char;
             continue;
           }
           if (closingHiddenMarkers.has(char)) {
             hiddenDepth -= 1;
             if (hiddenDepth === 0) {
-              pushHiddenText(parentheticalBuffer);
+              if (isAssistantActionDirective(parentheticalBuffer)) {
+                pushHiddenText(parentheticalBuffer);
+              } else {
+                visible += `${parentheticalOpening}${parentheticalBuffer}${char}`;
+              }
+              parentheticalOpening = "";
               parentheticalBuffer = "";
+            } else {
+              parentheticalBuffer += char;
             }
             continue;
           }
@@ -63,20 +80,17 @@ export function createAssistantReplyTextFilter(): AssistantReplyTextFilter {
 
         if (openingHiddenMarkers.has(char)) {
           hiddenDepth = 1;
+          parentheticalOpening = char;
           parentheticalBuffer = "";
           continue;
         }
         if (closingHiddenMarkers.has(char)) {
+          visible += char;
           continue;
         }
-        if (hiddenEmphasisMarkers.has(char)) {
-          if (nextChar && hiddenEmphasisMarkers.has(nextChar)) {
-            visible += `${char}${nextChar}`;
-            index += 1;
-            continue;
-          }
-          hiddenEmphasis = true;
-          emphasisBuffer = "";
+        if (char === "]") {
+          visible += char;
+          pendingLinkOpen = true;
           continue;
         }
         visible += char;
@@ -90,9 +104,10 @@ export function createAssistantReplyTextFilter(): AssistantReplyTextFilter {
     },
     reset() {
       hiddenDepth = 0;
-      hiddenEmphasis = false;
+      linkDestinationDepth = 0;
+      pendingLinkOpen = false;
+      parentheticalOpening = "";
       parentheticalBuffer = "";
-      emphasisBuffer = "";
       hiddenTexts = [];
     },
   };

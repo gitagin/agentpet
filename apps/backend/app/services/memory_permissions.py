@@ -180,7 +180,6 @@ def split_recall_prompt_sections(
     results: Iterable[MemorySearchResult],
     *,
     query: str,
-    limit: int = 5,
 ) -> MemoryPromptSections:
     style_hints: list[str] = []
     answer_context_lines: list[str] = []
@@ -188,7 +187,7 @@ def split_recall_prompt_sections(
     action_suggestion_lines: list[str] = []
     usages: list[MemoryPromptUsage] = []
 
-    for result in list(results)[: max(1, limit)]:
+    for result in results:
         result = ensure_recall_permissions(result)
         permissions = _contextual_permissions(result, query=query)
         used_style = False

@@ -332,6 +332,12 @@ class _DeterministicVectorResultOrder:
 
     def search(self, **kwargs: Any):
         requested_top_k = int(kwargs.get("top_k", 0))
+        requested_chunk_ids = kwargs.get("chunk_ids")
+        allowed_chunk_ids = (
+            None
+            if requested_chunk_ids is None
+            else {str(chunk_id) for chunk_id in requested_chunk_ids}
+        )
         expanded = dict(kwargs)
         expanded["top_k"] = max(requested_top_k, len(self._stable_keys))
         qdrant_results = self._index.search(**expanded)
@@ -343,6 +349,8 @@ class _DeterministicVectorResultOrder:
         query_vector = self._embeddings.last_query_vector
         rescored: list[tuple[SearchResult, int]] = []
         for result, chunk_index in self._authoritative_rows.get(vault_id, []):
+            if allowed_chunk_ids is not None and result.chunk_id not in allowed_chunk_ids:
+                continue
             document_vector = self._document_vectors.get(result.content_hash or "")
             if document_vector is None:
                 document_vector = _feature_hash_vector(

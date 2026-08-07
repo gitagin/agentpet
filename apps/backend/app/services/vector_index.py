@@ -32,6 +32,7 @@ _BATCH_SIZE = 64
 # real server because qdrant-client's embedded implementation is brute-force.
 _HNSW_INDEXING_THRESHOLD_KB = 1024
 _VAULT_ID_PAYLOAD_FIELD = "metadata.vault_id"
+_CHUNK_ID_PAYLOAD_FIELD = "metadata.authoritative_chunk_id"
 _SAFE_REASONS = {
     "active_generation_missing",
     "credential_store_unavailable",
@@ -391,6 +392,7 @@ class LangChainQdrantVectorIndex:
         vault_id: str,
         top_k: int,
         local_privacy: bool = False,
+        chunk_ids: Sequence[str] | None = None,
     ) -> list[SearchResult]:
         if not self.available:
             raise VectorIndexUnavailableError(self._configuration_reason())
@@ -414,6 +416,14 @@ class LangChainQdrantVectorIndex:
                 self._blocked_vaults[vault_id] = "index_corrupt"
                 raise VectorIndexUnavailableError("index_corrupt")
 
+            normalized_chunk_ids = None
+            if chunk_ids is not None:
+                normalized_chunk_ids = tuple(
+                    dict.fromkeys(str(chunk_id) for chunk_id in chunk_ids if str(chunk_id))
+                )
+                if not normalized_chunk_ids:
+                    return []
+
             vector = self._embed_query(query)
             dimensions = _positive_int(metadata.get("embedding_dimensions"))
             if dimensions is None or len(vector) != dimensions:
@@ -422,17 +432,23 @@ class LangChainQdrantVectorIndex:
             try:
                 from qdrant_client import models
 
+                must_conditions = [
+                    models.FieldCondition(
+                        key=_VAULT_ID_PAYLOAD_FIELD,
+                        match=models.MatchValue(value=vault_id),
+                    )
+                ]
+                if normalized_chunk_ids is not None:
+                    must_conditions.append(
+                        models.FieldCondition(
+                            key=_CHUNK_ID_PAYLOAD_FIELD,
+                            match=models.MatchAny(any=list(normalized_chunk_ids)),
+                        )
+                    )
                 response = self._client_instance().query_points(
                     collection_name=collection_name,
                     query=vector,
-                    query_filter=models.Filter(
-                        must=[
-                            models.FieldCondition(
-                                key="metadata.vault_id",
-                                match=models.MatchValue(value=vault_id),
-                            )
-                        ]
-                    ),
+                    query_filter=models.Filter(must=must_conditions),
                     limit=max(0, top_k),
                     with_payload=True,
                     with_vectors=False,

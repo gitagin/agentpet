@@ -8,9 +8,10 @@ import type {
   TaskItem,
 } from "../../types";
 import { EmptyState } from "../../components/layout";
+import { AssistantMessageContent } from "./AssistantMessageContent";
+import { stripAssistantActionDirectivesFromMarkdown } from "./assistantActionDirectives";
 import { ChatAgentActionSummary } from "./ChatAgentActionSummary";
 import { ChatCitationSummary } from "./ChatCitationSummary";
-import { stripAssistantHiddenReplyText } from "./assistantReplyVisibility";
 import { formatMessageRole, formatRunStatus } from "./chatFormatters";
 
 type ChatMessageListProps = {
@@ -73,7 +74,9 @@ export function ChatMessageList({
         visibleMessages.map((message) => {
           const showMeta = message.status === "failed" || message.status === "cancelled";
           const displayContent =
-            message.role === "assistant" ? stripAssistantHiddenReplyText(message.content) : message.content;
+            message.role === "assistant"
+              ? stripAssistantActionDirectivesFromMarkdown(message.content)
+              : message.content;
           const hasContent = displayContent.trim().length > 0;
           const isPending = message.status === "partial" && !hasContent;
           return (
@@ -86,9 +89,13 @@ export function ChatMessageList({
                   {message.status ? <span>{formatRunStatus(message.status)}</span> : null}
                 </div>
               ) : null}
-              <p className={isPending ? "message-pending" : undefined}>
-                {hasContent ? displayContent : message.status === "partial" ? "正在整理回答..." : "没有收到可显示内容。"}
-              </p>
+              {hasContent && message.role === "assistant" ? (
+                <AssistantMessageContent content={displayContent} />
+              ) : (
+                <p className={isPending ? "message-pending" : undefined}>
+                  {hasContent ? displayContent : message.status === "partial" ? "正在整理回答..." : "没有收到可显示内容。"}
+                </p>
+              )}
               {message.role === "assistant" ? (
                 <>
                   {isPending ? renderAssistantProgress(message) : null}

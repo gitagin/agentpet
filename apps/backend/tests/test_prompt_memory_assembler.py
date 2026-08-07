@@ -197,7 +197,138 @@ def test_graph_fact_memory_is_classified_as_activated_fact() -> None:
     assert "Ada prefers tests before refactors." in assembly.prompt_text
 
 
-def test_budget_clips_oversized_sections_and_records_drop_reason() -> None:
+def test_recall_uses_all_retrieved_citations_before_applying_character_budget() -> None:
+    citations = [
+        _result(
+            snippet=f"Daily topic {index}",
+            source_scope="daily_chat",
+            retrieval_mode="fts",
+            memory_kind="episodic",
+            fact_id=f"daily-{index}",
+        )
+        for index in range(1, 8)
+    ]
+
+    assembly = _assemble(citations=citations)
+
+    assert assembly.recall_sections is not None
+    assert len(assembly.recall_sections.usages) == 7
+    assert "Daily topic 7" in assembly.prompt_text
+
+
+def test_recall_budget_drops_whole_tail_usages_and_records_the_actual_prompt_use() -> None:
+    class Recorder:
+        def __init__(self) -> None:
+            self.records = []
+
+        def record_usage(self, **kwargs) -> None:
+            self.records.append(kwargs)
+
+    citations = [
+        _result(
+            snippet=f"LONG_RECALL_{index} " + ("x" * 700),
+            fact_id=f"fact-long-{index}",
+        )
+        for index in range(1, 21)
+    ]
+    assembly = _assemble(citations=citations)
+
+    assert assembly.recall_sections is not None
+    included_usages = [
+        usage for usage in assembly.recall_sections.usages if usage.used_for_answer_context
+    ]
+    dropped_usages = [
+        usage
+        for usage in assembly.recall_sections.usages
+        if usage.filtered_reason == "prompt_char_budget_exceeded"
+    ]
+    assert included_usages
+    assert dropped_usages
+    assert "LONG_RECALL_20" not in assembly.prompt_text
+    assert all(
+        not any(
+            (
+                usage.used_for_style,
+                usage.used_for_answer_context,
+                usage.used_for_proactive_mention,
+                usage.used_for_action_suggestion,
+            )
+        )
+        for usage in dropped_usages
+    )
+    assert assembly.telemetry.permission_usage_counts["answer_context"] == len(included_usages)
+    assert assembly.telemetry.filtered_count == len(dropped_usages)
+    answer_section = next(
+        section for section in assembly.sections if section.key == "recall_answer_context"
+    )
+    answer_metric = next(
+        section for section in assembly.telemetry.sections if section.key == "recall_answer_context"
+    )
+    assert answer_section.item_count == len(included_usages)
+    assert answer_section.dropped_count == len(dropped_usages)
+    assert answer_metric.item_count == len(included_usages)
+    assert answer_metric.dropped_count == len(dropped_usages)
+
+    recorder = Recorder()
+    state = AgentState(
+        conversation_id="conversation-budget",
+        message_id="message-budget",
+        agent_run_id="run-budget",
+        user_message="What do you remember about Ada?",
+        semantic_analysis=SemanticAnalysisResult(
+            needs_context=True,
+            source_scope="personal_memory",
+            query="Ada",
+        ),
+        citations=citations,
+    )
+    prompt = _message_with_runtime_context(
+        AgentRuntimeServices(memory_activation_recorder=recorder),
+        state,
+    )
+
+    last_record = next(
+        record for record in recorder.records if record["result"].fact_id == "fact-long-20"
+    )
+    assert len(recorder.records) == 20
+    assert "LONG_RECALL_20" not in prompt
+    assert last_record["used_for_style"] is False
+    assert last_record["used_for_answer_context"] is False
+    assert last_record["used_for_proactive_mention"] is False
+    assert last_record["used_for_action_suggestion"] is False
+    assert last_record["filtered_reason"] == "prompt_char_budget_exceeded"
+
+
+def test_recall_budget_drops_usage_from_every_permitted_section_atomically() -> None:
+    snippet = "Ada dislikes preachy answers and prefers direct action."
+    permissions = MemoryRecallPermissions(
+        can_style_response=True,
+        can_answer_context=True,
+        can_proactively_mention=True,
+        can_suggest_action=True,
+    )
+    assembler = PromptMemoryAssembler(PromptMemoryBudgetConfig(action_suggestions_chars=1))
+
+    assembly = assembler.assemble(
+        PromptMemoryAssemblyInput(
+            user_message="What do you remember about Ada?",
+            citations=[_result(snippet=snippet, permissions=permissions)],
+        )
+    )
+
+    assert assembly.recall_sections is not None
+    usage = assembly.recall_sections.usages[0]
+    assert usage.used_for_style is False
+    assert usage.used_for_answer_context is False
+    assert usage.used_for_proactive_mention is False
+    assert usage.used_for_action_suggestion is False
+    assert usage.filtered_reason == "prompt_char_budget_exceeded"
+    assert not assembly.recall_sections.has_prompt_content
+    assert snippet not in assembly.prompt_text
+    assert "Avoid preachy framing" not in assembly.prompt_text
+
+
+def test_budget_drops_oversized_recall_item_and_records_drop_reason() -> None:
     long_tail = " ".join(f"detail-{index}" for index in range(60))
     assembler = PromptMemoryAssembler(
         PromptMemoryBudgetConfig(

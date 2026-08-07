@@ -266,15 +266,6 @@ def test_profile_projection_filters_rejected_forgotten_superseded_and_sensitive(
 
         assert response.status_code == 200
         payload = response.json()
-        ordinary_groups = [
-            *payload["identity"],
-            *payload["preferences"],
-            *payload["boundaries"],
-            *payload["projects"],
-            *payload["relationships"],
-            *payload["recent_state"],
-            *payload["needs_confirmation"],
-        ]
         assert payload["conflicts"]
         assert payload["filtered"]
         body = response.text
@@ -419,6 +410,49 @@ def test_memory_receipts_use_opaque_ids_and_dedupe_answer_usage(client_factory, 
             assert "lifecycle_status" not in value
             assert "FTS" not in value
             assert "vector" not in value
+
+
+def test_memory_receipts_describe_prompt_budget_filtering_without_a_safety_warning(
+    client_factory,
+    tmp_path: Path,
+) -> None:
+    with client_factory(data_dir=tmp_path / "data") as client:
+        run_id = "run-prompt-budget-filter-1"
+        seed_agent_run(client, run_id)
+        now = utc_now_iso()
+        with sqlite3.connect(client.app.state.database.path) as conn:
+            with conn:
+                conn.execute(
+                    """
+                    INSERT INTO memory_activation_events (
+                        id, candidate_id, fact_id, conversation_id, message_id,
+                        agent_run_id, activation_score, permissions_json,
+                        score_breakdown_json, used_for_style, used_for_answer_context,
+                        used_for_proactive_mention, used_for_action_suggestion,
+                        filtered_reason, created_at
+                    )
+                    VALUES (?, NULL, NULL, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, ?, ?)
+                    """,
+                    (
+                        "activation-prompt-budget-filtered",
+                        "conv-profile-1",
+                        "msg-profile-user-1",
+                        run_id,
+                        0.72,
+                        "{}",
+                        "{}",
+                        "prompt_char_budget_exceeded",
+                        now,
+                    ),
+                )
+
+        response = client.get(f"/api/memory/receipts?agent_run_id={run_id}", headers=auth())
+
+        assert response.status_code == 200
+        filtered = next(item for item in response.json()["items"] if item["kind"] == "filtered")
+        assert "上下文容量有限" in filtered["detail"]
+        assert "权限、状态或安全" not in filtered["detail"]
+        assert filtered["safety_note"] is None
 
 
 def test_profile_detail_uses_opaque_id_and_safe_chinese_labels(client_factory, tmp_path: Path) -> None:
