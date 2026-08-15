@@ -78,7 +78,20 @@ class WikiIngestConfirmRequest(BaseModel):
 
 
 class WikiSourceImportPreviewRequest(BaseModel):
-    source_kind: Literal["file", "folder", "url", "webpage_text", "image_asset"]; title: str | None = None; import_root: str | None = None; source_path: str | None = None; url: str | None = None; text: str | None = None; html: str | None = None; tags: list[str] = Field(default_factory=list); links: list[str] = Field(default_factory=list); max_pages: int = Field(default=15, ge=1, le=15); max_files: int = Field(default=20, ge=1, le=50)
+    source_kind: Literal["file", "folder", "url", "webpage_text", "image_asset"]; title: str | None = None; import_root: str | None = None; source_path: str | None = None; url: str | None = None; text: str | None = None; html: str | None = None; tags: list[str] = Field(default_factory=list); links: list[str] = Field(default_factory=list); max_pages: int = Field(default=15, ge=1, le=15); max_files: int = Field(default=100, ge=1, le=1000)
+
+
+class WikiFolderBatchImportRequest(BaseModel):
+    folder_path: str = Field(min_length=1)
+    max_pages: int = Field(default=15, ge=1, le=15)
+    batch_size: int = Field(default=20, ge=1, le=50)
+
+
+class WikiFolderBatchImportResponse(BaseModel):
+    status: str
+    files_scanned: int = 0
+    pages_written: int = 0
+    batches: int = 0
 
 
 class WikiIngestApplyRequest(BaseModel):

@@ -45,6 +45,7 @@ class MemoryGraphProjectionNode:
     available_actions: list[str] = field(default_factory=list)
     confidence: float = 0.0
     evidence_count: int = 0
+    title: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,13 +111,15 @@ class MemoryGraphProjectionService:
         if self._owns_connection:
             self.conn.close()
 
-    def build(self, *, max_nodes: int = 40) -> MemoryGraphProjection:
-        node_limit = max(5, min(max_nodes, 80))
+    def build(self, *, max_nodes: int = 200) -> MemoryGraphProjection:
+        # 不设硬上限：调用方（API limit）负责约束，避免整段节点类别被静默丢弃
+        node_limit = max(5, max_nodes)
         generated_at = utc_now_iso()
         center = MemoryGraphProjectionNode(
             id=_opaque_id("mg", "node", "user", "center"),
             type="user",
             label="我",
+            title="我",
             subtitle="记忆中心",
             status="active",
             risk_tier="low",
@@ -342,6 +345,7 @@ class MemoryGraphProjectionService:
                     id=_opaque_id("mg", "node", "entity", endpoint_id),
                     type=_entity_node_type(str(row["entity_type"])),
                     label=label,
+                    title=label,
                     subtitle=_entity_subtitle(str(row["entity_type"])),
                     status="active",
                     risk_tier="low",
@@ -372,6 +376,7 @@ class MemoryGraphProjectionService:
                     id=_opaque_id("mg", "node", "fact", endpoint_id),
                     type="source",
                     label=label,
+                    title=_short_title(label),
                     subtitle="受控事实",
                     status="active",
                     risk_tier="low",
@@ -427,6 +432,7 @@ class MemoryGraphProjectionService:
                 id=_opaque_id("mg", "node", "fact", fact_id),
                 type=_entity_node_type(str(row["entity_type"] or "source")),
                 label=label,
+                title=_short_title(label),
                 subtitle="有证据的事实",
                 status="active",
                 risk_tier="low",
@@ -475,6 +481,7 @@ class MemoryGraphProjectionService:
                         id=_opaque_id("mg", "node", "cleanup", suggestion.id),
                         type="cleanup",
                         label=label,
+                        title=label,
                         subtitle="需要整理",
                         status="hidden" if hidden else "pending",
                         risk_tier="hidden" if hidden else "low",
@@ -531,6 +538,7 @@ def _profile_item_draft(
         id=_opaque_id("mg", "node", "profile", group, item.id, item.updated_at),
         type="pending" if status == "pending" else node_type,
         label=safe_label,
+        title=_short_title(safe_label),
         subtitle=subtitle,
         status=status,
         risk_tier="hidden" if hidden else "low",
@@ -571,6 +579,7 @@ def _diary_row_draft(row: sqlite3.Row) -> _NodeDraft:
         id=_opaque_id("mg", "node", "diary", row["id"], row["updated_at"]),
         type=node_type,
         label=label,
+        title=_short_title(str(row["topic"] or row["summary"]), fallback="一段聊天回忆"),
         subtitle=subtitle,
         status=status,
         risk_tier="hidden" if hidden else "low",
@@ -803,6 +812,21 @@ def _safe_text(value: str, *, fallback: str) -> str:
     if not text or _unsafe_text(text):
         return fallback
     return _compact(text, 48)
+
+
+def _short_title(text: str, *, fallback: str = "一条记忆", max_chars: int = 16) -> str:
+    """从长摘要生成短标题：压缩空白、在句读处截断、超长加省略号。"""
+    value = " ".join(str(text or "").split())
+    if not value or _unsafe_text(value):
+        return fallback
+    for sep in ("。", "；", "，", "、", ",", ";", ":", "\n"):
+        idx = value.find(sep)
+        if 0 < idx <= max_chars:
+            value = value[:idx]
+            break
+    if len(value) > max_chars:
+        value = f"{value[:max_chars]}…"
+    return value.strip() or fallback
 
 
 def _unsafe_text(value: str) -> bool:

@@ -131,6 +131,11 @@ async def test_runner_executes_stages_in_order_and_records_safe_action_ids() -> 
         assert kwargs["diary_object_ids"] == ("diary-object-1",)
         return [_action("slow-action", "memory.consolidation.candidate")]
 
+    def entity_relation_stage(**kwargs):
+        order.append("entity_relation")
+        assert kwargs["diary_object_ids"] == ("diary-object-1",)
+        return [_action("entity-action", "memory.entity_relation")]
+
     def wiki_stage(**kwargs):
         order.append("wiki_summary")
         assert kwargs["daily_result"] is daily_result
@@ -140,24 +145,27 @@ async def test_runner_executes_stages_in_order_and_records_safe_action_ids() -> 
         daily_diary_stage=daily_stage,
         structured_diary_stage=structured_stage,
         slow_consolidation_stage=slow_stage,
+        entity_relation_stage=entity_relation_stage,
         wiki_summary_stage=wiki_stage,
     )
 
     run = await runner.run_with_actions(_payload(automation=_automation()))
 
-    assert order == ["daily_diary", "structured_diary", "slow_consolidation", "wiki_summary"]
+    assert order == ["daily_diary", "structured_diary", "slow_consolidation", "entity_relation", "wiki_summary"]
     assert [stage.key for stage in run.result.stages] == order
-    assert [stage.status for stage in run.result.stages] == ["succeeded"] * 4
+    assert [stage.status for stage in run.result.stages] == ["succeeded"] * 5
     assert [stage.action_ids for stage in run.result.stages] == [
         ("daily-action",),
         ("structured-action",),
         ("slow-action",),
+        ("entity-action",),
         ("wiki-action",),
     ]
     assert [event.action_id for event in run.action_events] == [
         "daily-action",
         "structured-action",
         "slow-action",
+        "entity-action",
         "wiki-action",
     ]
     result_json = json.dumps(asdict(run.result), ensure_ascii=False)
@@ -422,6 +430,7 @@ async def test_disabled_stages_return_skipped_without_calling_stage_functions() 
         daily_diary_stage=fail_if_called,
         structured_diary_stage=fail_if_called,
         slow_consolidation_stage=fail_if_called,
+        entity_relation_stage=fail_if_called,
         wiki_summary_stage=fail_if_called,
     )
 
@@ -433,6 +442,7 @@ async def test_disabled_stages_return_skipped_without_calling_stage_functions() 
         ("daily_diary", "skipped"),
         ("structured_diary", "skipped"),
         ("slow_consolidation", "skipped"),
+        ("entity_relation", "skipped"),
         ("wiki_summary", "skipped"),
     ]
     assert run.action_events == ()
@@ -497,6 +507,7 @@ async def test_automation_settings_failure_returns_safe_failed_result() -> None:
         daily_diary_stage=lambda **_kwargs: pytest.fail("daily stage should not be called"),
         structured_diary_stage=lambda **_kwargs: pytest.fail("structured stage should not be called"),
         slow_consolidation_stage=lambda **_kwargs: pytest.fail("slow stage should not be called"),
+        entity_relation_stage=lambda **_kwargs: pytest.fail("entity relation stage should not be called"),
         wiki_summary_stage=lambda **_kwargs: pytest.fail("wiki stage should not be called"),
     )
 
@@ -514,6 +525,7 @@ async def test_automation_settings_failure_returns_safe_failed_result() -> None:
         ("daily_diary", "failed", "automation_settings_failed"),
         ("structured_diary", "failed", "automation_settings_failed"),
         ("slow_consolidation", "failed", "automation_settings_failed"),
+        ("entity_relation", "failed", "automation_settings_failed"),
         ("wiki_summary", "failed", "automation_settings_failed"),
     ]
     _assert_safe_result(run.result)

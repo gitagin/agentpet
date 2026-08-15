@@ -7,6 +7,7 @@ import { GlobalModelCard } from "./GlobalModelCard";
 import { ModelHealthBanner } from "./ModelHealthBanner";
 import { MemoryResetCard } from "./MemoryResetCard";
 import { ResidentRuntimeCard } from "./ResidentRuntimeCard";
+import { WikiImportCard } from "./WikiImportCard";
 import type {
   AsyncStatus,
   AutomationSettingsDraft,
@@ -186,6 +187,7 @@ export function SettingsPanel({ model }: SettingsPanelProps) {
         onLoadVaultStatus={onLoadVaultStatus}
         onRebuildIndex={onRebuildIndex}
       />
+      <WikiImportCard api={api} />
       <MemoryResetCard resetting={resettingMemoryState} onReset={onResetMemoryState} />
     </section>
   );

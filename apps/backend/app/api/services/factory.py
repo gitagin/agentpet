@@ -348,13 +348,13 @@ def ensure_vault_path(path: str, *, create_if_missing: bool) -> Path:
 
 
 def ensure_default_vault_content(root: Path) -> None:
-    inbox = root / "Inbox"
-    memories = root / "Memories"
-    inbox.mkdir(parents=True, exist_ok=True)
-    memories.mkdir(parents=True, exist_ok=True)
-    pending = inbox / "Pending Memories.md"
-    if not pending.exists():
-        pending.write_text("# Pending Memories\n\n", encoding="utf-8")
+    """已废弃：默认目录改为按需创建，不再在绑定 vault 时预建。
+
+    历史行为会在 vault 根目录预建 Inbox/、Memories/ 与 Inbox/Pending Memories.md，
+    用户删除后重新绑定又会被重建。SafeMarkdownWriter.write 写入时会自动创建
+    父目录，因此这些目录/文件只会在真正需要时出现，删除后不会被自动重建。
+    """
+    del root  # 保留签名兼容调用方，语义已废弃
 
 
 class VaultServiceContainer:

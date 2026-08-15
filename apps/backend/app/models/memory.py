@@ -179,6 +179,7 @@ class MemoryGraphNodeResponse(BaseModel):
     node_id: str
     type: MemoryGraphNodeType
     label: str
+    title: str = ""
     subtitle: str
     status: MemoryGraphStatus
     risk: MemoryGraphRisk

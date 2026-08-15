@@ -4,6 +4,12 @@ from dataclasses import dataclass
 from typing import Iterable
 
 
+# 注意：此文件的 PAGE_TYPE_CONTRACTS 是 resources/wiki/AGENTS.md「页面类型」一节的
+# 代码化镜像，用于确定性校验（validate_page_type）。AGENTS.md 是唯一规则来源，
+# LLM 审查会读取它（wiki/review.py）。修改页面类型 / 证据门槛 / 必需章节时，
+# 必须同时更新 AGENTS.md 与下表，否则一致性测试会失败。
+
+
 @dataclass(frozen=True, slots=True)
 class WikiPageTypeContract:
     required_sections: tuple[str, ...]

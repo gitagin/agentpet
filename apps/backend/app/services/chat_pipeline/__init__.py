@@ -10,6 +10,7 @@ from app.services.agent_actions import AgentActionCreate, AutomationPolicy
 from .consolidation import consolidate_slow_memory
 from .diary import archive_daily_diary
 from .diary_memory import archive_structured_diary_memory
+from .entity_relation import archive_entity_relations
 from .wiki_summary import archive_wiki_answer_summary
 
 if TYPE_CHECKING:
@@ -36,6 +37,7 @@ async def archive_chat_memory(
         daily_diary_stage=archive_daily_diary,
         structured_diary_stage=archive_structured_diary_memory,
         slow_consolidation_stage=consolidate_slow_memory,
+        entity_relation_stage=archive_entity_relations,
         wiki_summary_stage=archive_wiki_answer_summary,
     ).run_with_actions(
         PostReplyMemoryJobInput(

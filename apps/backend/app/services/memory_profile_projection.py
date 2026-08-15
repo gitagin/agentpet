@@ -195,6 +195,7 @@ class MemoryProfileProjectionService:
                     LIMIT 1
                 ) AS authority_contradicted_by
             FROM memory_graph_facts f
+            WHERE (f.statement_kind IS NULL OR f.statement_kind != 'relation')
             ORDER BY updated_at DESC, id DESC
             LIMIT ?
             """,

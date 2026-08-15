@@ -77,6 +77,9 @@ import type {
   WikiIngestReviewRequest,
   WikiIngestReviewResponse,
   WikiIndexResponse,
+  WikiFolderBatchImportRequest,
+  WikiFolderBatchImportResponse,
+  WikiSourceImportPreviewRequest,
   WikiDiagnosticQueueRequest,
   WikiDiagnosticQueueResponse,
   WikiLintRunRequest,
@@ -573,6 +576,20 @@ export class DesktopApi {
     signal?: AbortSignal,
   ): Promise<WikiIngestPreviewResponse> {
     return this.client.post<WikiIngestPreviewResponse>("/api/wiki/ingest/preview", request, signal);
+  }
+
+  previewWikiImport(
+    request: WikiSourceImportPreviewRequest,
+    signal?: AbortSignal,
+  ): Promise<WikiIngestPreviewResponse> {
+    return this.client.post<WikiIngestPreviewResponse>("/api/wiki/import/preview", request, signal);
+  }
+
+  importFolderBatch(
+    request: WikiFolderBatchImportRequest,
+    signal?: AbortSignal,
+  ): Promise<WikiFolderBatchImportResponse> {
+    return this.client.post<WikiFolderBatchImportResponse>("/api/wiki/import/folder-batch", request, signal);
   }
 
   applyWikiIngest(

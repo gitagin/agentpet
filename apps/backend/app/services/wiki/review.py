@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from .common import *
 from .common import _StoredIngestRun, _StoredPagePlan
 from .utility import _preview_text, _unique
@@ -92,12 +94,24 @@ async def _complete_model(model: WikiReviewModelProtocol, *, user_message: str, 
     return str(result).strip()
 
 
+def _wiki_schema_markdown() -> str:
+    """读取 Wiki 唯一页面规则来源（resources/wiki/AGENTS.md 模板）。"""
+    resource = Path(__file__).resolve().parents[2] / "resources" / "wiki" / "AGENTS.md"
+    if resource.exists():
+        return resource.read_text(encoding="utf-8")
+    return ""
+
+
 def _review_system_prompt() -> str:
+    schema = _wiki_schema_markdown()
     return (
         "你正在审查本地优先的 LLM Wiki 导入计划。"
         "只返回 JSON，包含 summary, findings, recommended_targets 键。"
         "findings 是对象数组，含 severity(info|warning|error)、code、message、target_path。"
-        "不要要求写文件，不要包含密钥。"
+        "不要要求写文件，不要包含密钥。\n\n"
+        "以下是 Wiki 的唯一页面规则来源（Wiki/AGENTS.md），请严格按它审查每个页面计划"
+        "是否遵守页面类型、frontmatter 契约、证据门槛和写入生命周期：\n\n"
+        f"{schema}"
     )
 
 

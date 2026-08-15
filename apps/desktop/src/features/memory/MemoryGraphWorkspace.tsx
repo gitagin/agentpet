@@ -1,5 +1,5 @@
 import { Database, ExternalLink, RefreshCw, Search, TriangleAlert } from "lucide-react";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
   Controls,
@@ -12,10 +12,12 @@ import {
   type Node,
   type NodeProps,
   type NodeTypes,
+  type ReactFlowInstance,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import type { MemoryGraphResponse } from "../../types";
 import type { MemoryGraphEdgeItem, MemoryGraphNodeItem } from "./useMemoryGraphWorkspace";
+import { useForceLayout } from "./useForceLayout";
 
 type MemoryGraphWorkspaceProps = {
   graph: MemoryGraphResponse | null;
@@ -36,10 +38,14 @@ type MemoryGraphWorkspaceProps = {
 type FlowNodeData = {
   item: MemoryGraphNodeItem;
   label: string;
+  fullLabel: string;
   kindLabel: string;
   color: string;
   isPending: boolean;
   isConflict: boolean;
+  dimmed: boolean;
+  scale: number;
+  dotSize: number;
 } & Record<string, unknown>;
 
 type FlowNode = Node<FlowNodeData, "memoryGraphNode">;
@@ -103,7 +109,8 @@ function visibleText(value: string | null | undefined, fallback: string): string
 }
 
 function nodeLabel(node: MemoryGraphNodeItem): string {
-  return visibleText(node.label, node.status === "hidden" ? "已隐藏的记忆" : "一条记忆");
+  // 圆点下方显示后端生成的短标题 title，回退到完整 label
+  return visibleText(node.title || node.label, node.status === "hidden" ? "已隐藏的记忆" : "一条记忆");
 }
 
 function nodeKind(node: MemoryGraphNodeItem): string {
@@ -131,6 +138,10 @@ function formatDate(value: string | null | undefined): string {
   }).format(new Date(timestamp));
 }
 
+/* ============================================================
+ * 力导向布局辅助：种子位置 + 节点半径
+ * ============================================================ */
+
 function stableUnit(seed: string): number {
   let hash = 2166136261;
   for (let index = 0; index < seed.length; index += 1) {
@@ -140,36 +151,63 @@ function stableUnit(seed: string): number {
   return (hash >>> 0) / 4294967295;
 }
 
-function nodePosition(node: MemoryGraphNodeItem, index: number): { x: number; y: number } {
+/** 初始种子位置（布局收敛前 / 新节点占位用） */
+function seedPosition(node: MemoryGraphNodeItem, index: number): [number, number] {
   if (node.type === "user") {
-    return { x: 420, y: 260 };
+    return [0, 0];
   }
   const angle = stableUnit(`${node.node_id}:angle:${index}`) * Math.PI * 2;
   const radius = 155 + stableUnit(`${node.node_id}:radius`) * 175;
-  return {
-    x: 420 + Math.cos(angle) * radius,
-    y: 260 + Math.sin(angle) * radius * 0.72,
-  };
+  return [Math.cos(angle) * radius, Math.sin(angle) * radius * 0.72];
 }
 
-function flowNodes(nodes: MemoryGraphNodeItem[], selectedNodeId: string | null): FlowNode[] {
+/** 节点半径：度数/规模越大圆点越大（Obsidian「节点大小 = 连接数」） */
+function nodeRadius(node: MemoryGraphNodeItem, degree: number): number {
+  const sizeBoost = Math.min(Math.max(node.size ?? 1, 0), 2) * 3;
+  return 9 + Math.min(degree, 12) * 1.8 + sizeBoost;
+}
+
+/** 卡片缩放：度数越高越大（与圆点半径叠加） */
+function nodeScale(node: MemoryGraphNodeItem, degree: number): number {
+  const sizeBoost = Math.min(Math.max(node.size ?? 1, 0), 2) * 0.06;
+  return Math.min(0.88 + Math.min(degree, 12) * 0.035 + sizeBoost, 1.35);
+}
+
+/* ============================================================
+ * 节点 / 边构建（不含 position：位置由 useForceLayout 的 tick 驱动）
+ * ============================================================ */
+
+function flowNodeData(
+  nodes: MemoryGraphNodeItem[],
+  selectedNodeId: string | null,
+  activeId: string | null,
+  neighborIds: ReadonlySet<string> | null,
+  degreeById: ReadonlyMap<string, number>,
+): FlowNode[] {
   const grouped = new Map<string, MemoryGraphNodeItem[]>();
   nodes.forEach((node) => grouped.set(node.type, [...(grouped.get(node.type) || []), node]));
   return nodes.map((node) => {
     const index = grouped.get(node.type)?.findIndex((item) => item.node_id === node.node_id) || 0;
     const isPending = node.status === "pending" || node.type === "pending";
     const isConflict = node.status === "hidden" || node.status === "archived";
+    const degree = degreeById.get(node.node_id) ?? 0;
+    const dimmed = activeId !== null && neighborIds !== null && !neighborIds.has(node.node_id);
+    const seed = seedPosition(node, index);
     return {
       id: node.node_id,
       type: "memoryGraphNode",
-      position: nodePosition(node, index),
+      position: { x: seed[0], y: seed[1] },
       data: {
         item: node,
         label: nodeLabel(node),
+        fullLabel: visibleText(node.label, nodeLabel(node)),
         kindLabel: nodeKind(node),
         color: isConflict ? palette.muted : isPending ? palette.amber : typeColors[node.type] || palette.teal,
         isPending,
         isConflict,
+        dimmed,
+        scale: nodeScale(node, degree),
+        dotSize: nodeRadius(node, degree),
       },
       draggable: true,
       selectable: true,
@@ -179,10 +217,21 @@ function flowNodes(nodes: MemoryGraphNodeItem[], selectedNodeId: string | null):
   });
 }
 
-function flowEdges(edges: MemoryGraphEdgeItem[], selectedEdgeId: string | null): FlowEdge[] {
+function flowEdgeData(
+  edges: MemoryGraphEdgeItem[],
+  selectedEdgeId: string | null,
+  activeId: string | null,
+  neighborIds: ReadonlySet<string> | null,
+): FlowEdge[] {
   return edges.map((edge) => {
     const conflict = edge.relation_type === "contradicts" || edge.status === "conflict";
     const selected = edge.edge_id === selectedEdgeId;
+    const confidence = Math.max(0, Math.min(1, edge.confidence ?? 0.6));
+    const evidence = Math.min(edge.evidence_count ?? 0, 5);
+    const dimmed =
+      activeId !== null &&
+      neighborIds !== null &&
+      !(neighborIds.has(edge.source_node_id) && neighborIds.has(edge.target_node_id));
     return {
       id: edge.edge_id,
       source: edge.source_node_id,
@@ -196,8 +245,9 @@ function flowEdges(edges: MemoryGraphEdgeItem[], selectedEdgeId: string | null):
       animated: false,
       style: {
         stroke: conflict ? palette.red : selected ? palette.teal : "rgba(243, 241, 236, 0.35)",
-        strokeWidth: selected ? 2.6 : 1.4,
+        strokeWidth: selected ? 2.6 : 1 + confidence * 2.2 + evidence * 0.25,
         strokeDasharray: conflict ? "5 4" : undefined,
+        opacity: dimmed ? 0.04 : undefined,
       },
       labelStyle: { fill: palette.muted, fontSize: 11, fontWeight: 600 },
       labelBgStyle: { fill: "#1b1d21", fillOpacity: 0.92, color: "#1b1d21" },
@@ -206,17 +256,31 @@ function flowEdges(edges: MemoryGraphEdgeItem[], selectedEdgeId: string | null):
 }
 
 function MemoryNode({ data, selected }: NodeProps<FlowNode>) {
-  const { item, label, kindLabel, color, isPending, isConflict } = data;
+  const { item, label, fullLabel, kindLabel, color, isPending, isConflict, dimmed, scale, dotSize } = data;
+  const diameter = dotSize * 2;
   return (
     <div
-      className={["llmwiki-graph-node", isPending ? "is-pending" : "", isConflict ? "is-archived" : "", selected ? "is-selected" : ""]
+      className={[
+        "llmwiki-graph-node",
+        isPending ? "is-pending" : "",
+        isConflict ? "is-archived" : "",
+        selected ? "is-selected" : "",
+        dimmed ? "is-dimmed" : "",
+        item.type === "user" ? "is-center" : "",
+      ]
         .filter(Boolean)
         .join(" ")}
-      style={{ "--node-color": color } as React.CSSProperties}
+      style={
+        {
+          "--node-color": color,
+          "--node-size": `${diameter}px`,
+          "--node-scale": String(scale),
+        } as React.CSSProperties
+      }
       role="button"
       tabIndex={0}
       aria-label={`记忆节点：${label}`}
-      title={`${label}，${kindLabel}`}
+      title={`${fullLabel}，${kindLabel}`}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
@@ -225,12 +289,7 @@ function MemoryNode({ data, selected }: NodeProps<FlowNode>) {
       }}
     >
       <Handle type="target" position={Position.Top} className="llmwiki-graph-handle" />
-      <span className="llmwiki-graph-node-dot" aria-hidden="true" />
-      <span className="llmwiki-graph-node-copy">
-        <strong>{label}</strong>
-        <small>{kindLabel}</small>
-      </span>
-      <span className="llmwiki-graph-node-status">{isPending ? "待确认" : isConflict ? "已归档" : "使用中"}</span>
+      <span className="llmwiki-graph-node-copy"><strong>{label}</strong></span>
       <Handle type="source" position={Position.Bottom} className="llmwiki-graph-handle" />
       <span className="sr-only">更新于 {formatDate(item.updated_at)}</span>
     </div>
@@ -272,11 +331,110 @@ export function MemoryGraphWorkspace({
     () => edges.filter((edge) => visibleNodeIds.has(edge.source_node_id) && visibleNodeIds.has(edge.target_node_id)),
     [edges, visibleNodeIds],
   );
-  const [reactFlowNodes, setReactFlowNodes, onNodesChange] = useNodesState<FlowNode>(flowNodes(visibleNodes, selectedNodeId));
-  const [reactFlowEdges, setReactFlowEdges, onEdgesChange] = useEdgesState<FlowEdge>(flowEdges(visibleEdges, selectedEdgeId));
 
-  useEffect(() => setReactFlowNodes(flowNodes(visibleNodes, selectedNodeId)), [setReactFlowNodes, selectedNodeId, visibleNodes]);
-  useEffect(() => setReactFlowEdges(flowEdges(visibleEdges, selectedEdgeId)), [selectedEdgeId, setReactFlowEdges, visibleEdges]);
+  const degreeById = useMemo(() => {
+    const map = new Map<string, number>();
+    visibleNodes.forEach((node) => map.set(node.node_id, 0));
+    visibleEdges.forEach((edge) => {
+      map.set(edge.source_node_id, (map.get(edge.source_node_id) ?? 0) + 1);
+      map.set(edge.target_node_id, (map.get(edge.target_node_id) ?? 0) + 1);
+    });
+    return map;
+  }, [visibleNodes, visibleEdges]);
+
+  // ---- 悬停高亮：activeId = 悬停 ?? 选中 ----
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+  const activeId = hoveredNodeId ?? selectedNodeId;
+  const neighborIds = useMemo(() => {
+    if (!activeId) {
+      return null;
+    }
+    const set = new Set<string>([activeId]);
+    for (const edge of visibleEdges) {
+      if (edge.source_node_id === activeId) set.add(edge.target_node_id);
+      if (edge.target_node_id === activeId) set.add(edge.source_node_id);
+    }
+    return set;
+  }, [activeId, visibleEdges]);
+
+  // ---- 力导向布局（d3-force 只算坐标，React Flow 只负责渲染） ----
+  const { positions, pinNode, unpinNode, onSettled } = useForceLayout<MemoryGraphNodeItem, MemoryGraphEdgeItem>(
+    visibleNodes,
+    visibleEdges,
+    {
+      center: [0, 0],
+      pinnedIds: new Set(["user"]),
+      radiusOf: (node, degree) => nodeRadius(node, degree) + 10, // +10 给下方标签留空间
+      seedPosition,
+    },
+  );
+
+  // 布局收敛后 fit 一次（时序：先让物理摊开，再缩放窗口）
+  const rfInstanceRef = useRef<ReactFlowInstance<FlowNode, FlowEdge> | null>(null);
+  const fitOnceRef = useRef(false);
+  const generationKey = graph?.generation?.generation_id ?? graph?.generated_at ?? "";
+  useEffect(() => {
+    fitOnceRef.current = false;
+  }, [generationKey]);
+  useEffect(() => {
+    return onSettled(() => {
+      if (!fitOnceRef.current && rfInstanceRef.current) {
+        fitOnceRef.current = true;
+        // 关键：延迟到下一帧再 fitView，等 React commit 布局收敛后的最新坐标，
+        // 否则 fitView 会按旧的 seed 位置计算视口，把节点切到画布外（"消失"）
+        requestAnimationFrame(() => {
+          rfInstanceRef.current?.fitView({ padding: 0.2, maxZoom: 1.1, duration: 500 });
+        });
+      }
+    });
+  }, [onSettled]);
+
+  // ---- React Flow 状态：data 变化时整体同步（保留 position），布局 tick 只更新 position ----
+  const baseNodes = useMemo(
+    () => flowNodeData(visibleNodes, selectedNodeId, activeId, neighborIds, degreeById),
+    [visibleNodes, selectedNodeId, activeId, neighborIds, degreeById],
+  );
+  const baseEdges = useMemo(
+    () => flowEdgeData(visibleEdges, selectedEdgeId, activeId, neighborIds),
+    [visibleEdges, selectedEdgeId, activeId, neighborIds],
+  );
+
+  const [reactFlowNodes, setReactFlowNodes, onNodesChange] = useNodesState<FlowNode>(baseNodes);
+  const [reactFlowEdges, setReactFlowEdges, onEdgesChange] = useEdgesState<FlowEdge>(baseEdges);
+
+  useEffect(() => {
+    setReactFlowNodes((prev) => {
+      const byId = new Map(prev.map((node) => [node.id, node]));
+      return baseNodes.map((node) => {
+        const old = byId.get(node.id);
+        if (!old) {
+          return node;
+        }
+        // 只同步 data / selected / type，保留 position、measured 等 React Flow 运行时字段，
+        // 否则 hover/点击时全量重建会丢掉 measured，触发重新测量导致节点短暂"消失"
+        return { ...old, data: node.data, selected: node.selected, type: node.type };
+      });
+    });
+  }, [baseNodes, setReactFlowNodes]);
+
+  useEffect(() => {
+    setReactFlowEdges(baseEdges);
+  }, [baseEdges, setReactFlowEdges]);
+
+  useEffect(() => {
+    setReactFlowNodes((prev) =>
+      prev.map((node) => {
+        const next = positions.get(node.id);
+        if (!next) {
+          return node;
+        }
+        if (node.position.x === next.x && node.position.y === next.y) {
+          return node;
+        }
+        return { ...node, position: { x: next.x, y: next.y } };
+      }),
+    );
+  }, [positions, setReactFlowNodes]);
 
   const summary = graph?.summary || { total_nodes: 0, pending_count: 0, cleanup_count: 0, hidden_count: 0 };
   const hasMemory = nodes.some((node) => node.type !== "user");
@@ -333,9 +491,16 @@ export function MemoryGraphWorkspace({
               nodeTypes={nodeTypes}
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
+              onInit={(instance) => {
+                rfInstanceRef.current = instance;
+              }}
               onNodeClick={(_, node) => onSelectNode(node.id)}
               onEdgeClick={(_, edge) => onSelectEdge(edge.id)}
               onPaneClick={onClearSelection}
+              onNodeMouseEnter={(_, node) => setHoveredNodeId(node.id)}
+              onNodeMouseLeave={() => setHoveredNodeId(null)}
+              onNodeDrag={(_, node) => pinNode(node.id, node.position.x, node.position.y)}
+              onNodeDragStop={(_, node) => unpinNode(node.id)}
               fitView
               fitViewOptions={{ padding: 0.2, maxZoom: 1.1 }}
               minZoom={0.3}

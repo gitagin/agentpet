@@ -63,7 +63,7 @@ async def get_memory_graph(
     query: str | None = Query(default=None, max_length=200),
     status_filter: str | None = Query(default=None, alias="status", max_length=40),
     entity_type: str | None = Query(default=None, max_length=40),
-    limit: int = Query(default=60, ge=5, le=80),
+    limit: int = Query(default=200, ge=5, le=1000),
     service: MemoryGraphProjectionService = Depends(memory_graph_projection_service_dependency),
 ) -> MemoryGraphResponse:
     vault_id = _require_bound_vault(request)
@@ -93,7 +93,7 @@ async def get_memory_graph_node(
     store: MemoryEntityGraphStore = Depends(memory_entity_graph_store_dependency),
 ) -> MemoryGraphNodeDetailResponse:
     vault_id = _require_bound_vault(request)
-    projection = service.build(max_nodes=80)
+    projection = service.build(max_nodes=1000)
     node = next((item for item in projection.nodes if item.id == node_id), None)
     if node is None:
         raise _not_found("memory_graph_node_not_found")
@@ -144,7 +144,7 @@ async def get_memory_graph_edge(
     store: MemoryEntityGraphStore = Depends(memory_entity_graph_store_dependency),
 ) -> MemoryGraphEdgeDetailResponse:
     vault_id = _require_bound_vault(request)
-    projection = service.build(max_nodes=80)
+    projection = service.build(max_nodes=1000)
     edge = next((item for item in projection.edges if item.id == edge_id), None)
     relation = _resolve_relation(edge, store) if edge is not None else _resolve_relation_any_status(edge_id, store)
     if relation is None:
@@ -181,7 +181,7 @@ async def act_on_memory_graph_edge(
     store: MemoryEntityGraphStore = Depends(memory_entity_graph_store_dependency),
 ) -> MemoryGraphActionResponse:
     vault_id = _require_bound_vault(request)
-    projection = service.build(max_nodes=80)
+    projection = service.build(max_nodes=1000)
     edge = next((item for item in projection.edges if item.id == edge_id), None)
     # Resolve from authoritative SQLite even when a prior successful action
     # removed the edge from the active projection. This lets the lifecycle

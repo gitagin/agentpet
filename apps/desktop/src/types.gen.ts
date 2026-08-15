@@ -3130,6 +3130,8 @@ export interface components {
             evidence_count: number;
             /** Label */
             label: string;
+            /** Title */
+            title?: string;
             /** Node Id */
             node_id: string;
             /**

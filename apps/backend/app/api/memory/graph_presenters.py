@@ -46,6 +46,7 @@ def memory_graph_node_response(node: MemoryGraphProjectionNode) -> MemoryGraphNo
         node_id=node.id,
         type=node.type,
         label=node.label,
+        title=node.title or node.label,
         subtitle=node.subtitle,
         status=node.status,
         risk=node.risk_tier,

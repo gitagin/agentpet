@@ -14,6 +14,10 @@ from app.storage.markdown import ParsedMarkdown
 
 FTS_TOKEN_RE = re.compile(r"[\w-]+", re.UNICODE)
 CJK_RE = re.compile(r"[\u3400-\u9fff]")
+
+# Wiki 核心文件是给 LLM 做规划/整理用的规范，不是可检索回答的资料。
+# 全文搜索必须排除它们，避免用户一问就被拿来引用。
+WIKI_CORE_FILES = ("Wiki/AGENTS.md", "Wiki/index.md", "Wiki/log.md")
 QUERY_STOP_WORDS = {
     "a",
     "about",
@@ -258,6 +262,7 @@ class NoteRepository:
                     bm25(note_fts) AS rank
                 FROM note_fts
                 WHERE vault_id = ? AND note_fts MATCH ?
+                  AND relative_path NOT IN ('Wiki/AGENTS.md', 'Wiki/index.md', 'Wiki/log.md')
                 ORDER BY rank
                 LIMIT ?
                 """,
@@ -295,6 +300,7 @@ class NoteRepository:
                     content
                 FROM note_chunks
                 WHERE vault_id = ?
+                  AND relative_path NOT IN ('Wiki/AGENTS.md', 'Wiki/index.md', 'Wiki/log.md')
                   AND (
                     content LIKE ? ESCAPE '~'
                     OR title LIKE ? ESCAPE '~'

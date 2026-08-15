@@ -449,15 +449,17 @@
 
 .llmwiki-graph-stage {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(250px, 0.42fr);
+  /* 关系列表移到画布下方：图谱画布独占整行，不再被右侧列表挤压 */
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
-  min-height: 410px;
 }
 
 .llmwiki-graph-canvas {
   position: relative;
   min-width: 0;
-  min-height: 410px;
+  /* 画布高度随窗口自适应，优先给足图谱空间 */
+  height: min(680px, calc(100dvh - 330px));
+  min-height: 440px;
   overflow: hidden;
   border: 1px solid var(--wiki-line);
   background: #111216;
@@ -465,7 +467,7 @@
 
 .llmwiki-react-flow {
   width: 100%;
-  height: 410px;
+  height: 100%;
   background: #111216;
 }
 
@@ -482,28 +484,32 @@
   fill: var(--wiki-warm);
 }
 
+/* ============ 圆形节点（Obsidian 风格：发光圆点 + 下方标签） ============ */
 .llmwiki-graph-node {
-  display: grid;
-  grid-template-columns: 12px minmax(0, 1fr);
-  gap: 7px;
-  min-width: 126px;
-  max-width: 180px;
-  padding: 8px 9px;
-  border: 1px solid color-mix(in srgb, var(--node-color) 48%, transparent);
-  border-radius: 6px;
-  background: #1B1D21;
-  color: var(--wiki-warm);
-  box-shadow: 0 7px 18px rgba(0, 0, 0, 0.28);
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--node-size, 24px);
+  height: var(--node-size, 24px);
+  border-radius: 50%;
+  /* 圆心对准 React Flow 的 position 点 */
+  transform: translate(-50%, -50%) scale(var(--node-scale, 1));
+  background: radial-gradient(circle at 34% 30%, color-mix(in srgb, var(--node-color) 94%, white 6%), var(--node-color) 70%);
+  border: 1px solid color-mix(in srgb, var(--node-color) 65%, white 30%);
+  box-shadow: 0 0 10px var(--node-color), 0 0 22px color-mix(in srgb, var(--node-color) 40%, transparent);
+  cursor: pointer;
+  transition: opacity 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
 }
 
 .llmwiki-graph-node.is-selected {
   border-color: var(--wiki-teal);
-  box-shadow: 0 0 0 2px rgba(104, 184, 173, 0.18);
+  box-shadow: 0 0 0 3px rgba(104, 184, 173, 0.4), 0 0 14px var(--node-color), 0 0 30px color-mix(in srgb, var(--node-color) 45%, transparent);
 }
 
 .llmwiki-graph-node:focus-visible {
   outline: 2px solid var(--wiki-rose);
-  outline-offset: 3px;
+  outline-offset: 4px;
 }
 
 .llmwiki-react-flow .react-flow__edge:focus-visible {
@@ -516,59 +522,72 @@
   stroke-width: 3;
 }
 
+/* 待确认：琥珀色虚线圈 */
 .llmwiki-graph-node.is-pending {
-  border-color: rgba(209, 164, 75, 0.65);
+  border-style: dashed;
+  border-color: var(--wiki-amber, #D1A44B);
 }
 
+/* 已归档：降饱和、半透明 */
 .llmwiki-graph-node.is-archived {
-  opacity: 0.65;
+  opacity: 0.6;
+  filter: saturate(0.35);
 }
 
-.llmwiki-graph-node-dot,
-.llmwiki-relation-dot {
-  width: 10px;
-  height: 10px;
-  margin-top: 3px;
-  border-radius: 50%;
-  background: var(--node-color, var(--wiki-teal));
+/* 悬停/选中高亮：非邻居节点变暗（Obsidian 标志性交互） */
+.llmwiki-graph-node.is-dimmed {
+  opacity: 0.1;
 }
 
+/* 悬停被点亮时外圈亮环放大 */
+.llmwiki-graph-node:hover:not(.is-dimmed) {
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--node-color) 26%, transparent), 0 0 16px var(--node-color), 0 0 34px color-mix(in srgb, var(--node-color) 55%, transparent);
+}
+
+/* 标签：圆点下方居中。默认隐藏（Obsidian 风格），悬停/选中/中心节点才显示 */
 .llmwiki-graph-node-copy {
-  display: grid;
-  min-width: 0;
-}
-
-.llmwiki-graph-node-copy strong,
-.llmwiki-graph-node-copy small {
+  position: absolute;
+  top: calc(100% + 5px);
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 130px;
+  text-align: center;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.llmwiki-graph-node:hover:not(.is-dimmed) .llmwiki-graph-node-copy,
+.llmwiki-graph-node.is-selected .llmwiki-graph-node-copy,
+.llmwiki-graph-node.is-center .llmwiki-graph-node-copy {
+  opacity: 1;
 }
 
 .llmwiki-graph-node-copy strong {
-  font-size: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(243, 241, 236, 0.92);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
 }
 
-.llmwiki-graph-node-copy small,
-.llmwiki-graph-node-status {
-  color: var(--wiki-muted);
-  font-size: 10px;
-}
-
-.llmwiki-graph-node-status {
-  grid-column: 2;
-}
-
+/* 连接锚点：不可见，边从顶部/底部进入圆心附近 */
 .llmwiki-graph-handle {
-  width: 5px;
-  height: 5px;
-  border: 0;
-  background: var(--wiki-teal);
+  width: 2px !important;
+  height: 2px !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  opacity: 0 !important;
 }
 
 .llmwiki-relation-list {
   min-width: 0;
-  max-height: 410px;
+  /* 移到底部后压扁为横向横条，不再占用图谱宽度 */
+  max-height: 220px;
   overflow: auto;
   border: 1px solid var(--wiki-line);
   background: rgba(17, 18, 22, 0.72);
@@ -1168,3 +1187,57 @@
     animation: none;
   }
 }
+
+/* ============ 设置页「导入资料文件」卡片（复用记忆页 graphite 视觉） ============ */
+.settings-wiki-import-card {
+  background: var(--wiki-graphite, #111214);
+  border: 1px solid var(--wiki-line, rgba(243, 238, 232, 0.14));
+  color: var(--wiki-warm, #F3F1EC);
+}
+
+.settings-wiki-import-card .section-heading span {
+  color: var(--wiki-muted, #A9A5A0);
+}
+
+.settings-wiki-import-body {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.settings-wiki-import-path {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--wiki-line, rgba(243, 238, 232, 0.14));
+  border-radius: 8px;
+  background: var(--wiki-graphite-soft, #1B1D21);
+  color: var(--wiki-warm, #F3F1EC);
+  font-size: 13px;
+  min-width: 0;
+}
+
+.settings-wiki-import-path svg {
+  flex: 0 0 auto;
+  color: var(--wiki-teal, #68B8AD);
+}
+
+.settings-wiki-import-path span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-wiki-import-path span.is-placeholder {
+  color: var(--wiki-muted, #A9A5A0);
+}
+
+.settings-wiki-import-notice {
+  margin: 0;
+  font-size: 13px;
+}
+
+.settings-wiki-import-notice.is-success { color: var(--wiki-teal, #68B8AD); }
+.settings-wiki-import-notice.is-error { color: var(--wiki-rose, #D56F8A); }
+.settings-wiki-import-notice.is-info { color: var(--wiki-muted, #A9A5A0); }

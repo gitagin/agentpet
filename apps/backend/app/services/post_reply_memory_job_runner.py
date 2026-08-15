@@ -15,7 +15,7 @@ from app.utils.time import utc_now_iso
 logger = logging.getLogger(__name__)
 
 
-PostReplyStageKey = Literal["daily_diary", "structured_diary", "slow_consolidation", "wiki_summary"]
+PostReplyStageKey = Literal["daily_diary", "structured_diary", "slow_consolidation", "entity_relation", "wiki_summary"]
 PostReplyStageStatus = Literal["skipped", "succeeded", "failed"]
 
 
@@ -71,12 +71,14 @@ class PostReplyMemoryJobRunner:
         daily_diary_stage: _StageCallable | None = None,
         structured_diary_stage: _StageCallable | None = None,
         slow_consolidation_stage: _StageCallable | None = None,
+        entity_relation_stage: _StageCallable | None = None,
         wiki_summary_stage: _StageCallable | None = None,
     ) -> None:
         self._automation_provider = automation_provider
         self._daily_diary_stage = daily_diary_stage
         self._structured_diary_stage = structured_diary_stage
         self._slow_consolidation_stage = slow_consolidation_stage
+        self._entity_relation_extraction_stage = entity_relation_stage
         self._wiki_summary_stage = wiki_summary_stage
 
     async def run(self, payload: PostReplyMemoryJobInput) -> PostReplyMemoryJobResult:
@@ -100,7 +102,7 @@ class PostReplyMemoryJobRunner:
             )
             stages.extend(
                 self._failed_stage(key, started=time.perf_counter(), error_code="automation_settings_failed")
-                for key in ("daily_diary", "structured_diary", "slow_consolidation", "wiki_summary")
+                for key in ("daily_diary", "structured_diary", "slow_consolidation", "entity_relation", "wiki_summary")
             )
             return self._finish(payload, stages=stages, actions=actions, started_at=started_at, started=started)
 
@@ -223,6 +225,47 @@ class PostReplyMemoryJobRunner:
                     )
                 )
 
+        if not getattr(automation, "auto_long_term_memory", False):
+            stages.append(self._skipped_stage("entity_relation", started=time.perf_counter(), reason="disabled"))
+        else:
+            stage_started = time.perf_counter()
+            try:
+                entity_actions = await self._call_stage(
+                    self._entity_relation_stage(),
+                    context=payload.context,
+                    state=payload.state,
+                    assistant_message_id=payload.assistant_message_id,
+                    assistant_answer=payload.assistant_answer,
+                    daily_result=daily_result,
+                    diary_object_ids=diary_object_ids,
+                    automation=automation,
+                    policy=policy,
+                    raise_errors=True,
+                )
+                entity_actions = tuple(entity_actions or ())
+                actions.extend(entity_actions)
+                stages.append(
+                    self._stage_result(
+                        "entity_relation",
+                        started=stage_started,
+                        actions=entity_actions,
+                        succeeded=bool(entity_actions),
+                    )
+                )
+            except Exception:
+                logger.warning(
+                    "Post-reply memory stage entity_relation failed for agent_run_id=%s",
+                    payload.state.agent_run_id,
+                    exc_info=True,
+                )
+                stages.append(
+                    self._failed_stage(
+                        "entity_relation",
+                        started=stage_started,
+                        error_code="entity_relation_failed",
+                    )
+                )
+
         if not getattr(automation, "auto_wiki_organize", False) or daily_result is None:
             stages.append(self._skipped_stage("wiki_summary", started=time.perf_counter(), reason="disabled"))
         else:
@@ -310,6 +353,13 @@ class PostReplyMemoryJobRunner:
         from app.services.chat_pipeline.consolidation import consolidate_slow_memory
 
         return consolidate_slow_memory
+
+    def _entity_relation_stage(self) -> _StageCallable:
+        if self._entity_relation_extraction_stage is not None:
+            return self._entity_relation_extraction_stage
+        from app.services.chat_pipeline.entity_relation import archive_entity_relations
+
+        return archive_entity_relations
 
     def _wiki_stage(self) -> _StageCallable:
         if self._wiki_summary_stage is not None:

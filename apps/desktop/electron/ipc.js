@@ -432,6 +432,21 @@ function registerIpcHandlers({ baseUrl, getBaseUrl, rendererUiState, persistRend
 
     return result.filePaths[0] || null;
   });
+
+  ipcMain.handle("agent-pet:select-wiki-import-folder", async (event) => {
+    assertTrustedSender(windows, event.sender, vaultPickerWindowRoles, "agent-pet:select-wiki-import-folder");
+    const ownerWindow = BrowserWindow.fromWebContents(event.sender);
+    const result = await dialog.showOpenDialog(ownerWindow ?? undefined, {
+      title: "选择要导入的知识库文件夹",
+      properties: ["openDirectory"],
+    });
+
+    if (result.canceled || result.filePaths.length === 0) {
+      return null;
+    }
+
+    return result.filePaths[0] || null;
+  });
 }
 
 module.exports = {
