@@ -161,6 +161,7 @@ function createDashboardProps(overrides: DashboardOverrides = {}): DashboardProp
         tasks: [],
         lastReminderNotification: { status: "idle", detail: "等待到期提醒触发。" },
         onLocateTask: vi.fn(),
+        onRetryReminder: vi.fn(),
       },
       continuityState,
       pendingContinuityCount: 0,

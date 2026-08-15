@@ -286,10 +286,10 @@ async def test_real_wiki_stage_failure_is_reported_and_job_completes(
     def daily_stage(**_kwargs):
         return daily_result, [_action("daily-action", "chat.daily_archive")]
 
-    def failing_wiki_service(_context):
+    def failing_action_lifecycle(_context):
         raise RuntimeError("C:\\Users\\Ada\\Vault\\secret.md raw_evidence stack trace")
 
-    monkeypatch.setattr(wiki_summary_module, "wiki_service", failing_wiki_service)
+    monkeypatch.setattr(wiki_summary_module, "action_lifecycle", failing_action_lifecycle)
     runner = PostReplyMemoryJobRunner(
         daily_diary_stage=daily_stage,
         structured_diary_stage=lambda **_kwargs: ((), []),
@@ -647,11 +647,11 @@ async def test_direct_stage_calls_keep_default_swallow_exception_behavior(
 
     monkeypatch.setattr(
         wiki_summary_module,
-        "wiki_service",
+        "action_lifecycle",
         lambda _context: (_ for _ in ()).throw(RuntimeError("wiki should be swallowed")),
     )
     assert (
-        wiki_summary_module.archive_wiki_answer_summary(
+        await wiki_summary_module.archive_wiki_answer_summary(
             context=object(),
             state=_state(),
             assistant_message_id="assistant-message-runner",
@@ -659,7 +659,6 @@ async def test_direct_stage_calls_keep_default_swallow_exception_behavior(
             daily_result=_daily_result(),
             diary_object_ids=(),
             automation=automation,
-            policy=object(),
         )
         == []
     )

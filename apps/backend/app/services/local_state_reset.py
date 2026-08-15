@@ -13,6 +13,8 @@ MEMORY_RESET_CONFIRMATION_TEXT = "RESET_AGENT_PET_MEMORY"
 
 
 MEMORY_RESET_TABLES = (
+    "product_metric_events",
+    "post_reply_memory_jobs",
     "agent_checkpoint_decisions",
     "agent_checkpoints",
     "companion_retrieval_reports",
@@ -43,6 +45,8 @@ MEMORY_RESET_TABLES = (
 
 
 SQLITE_RESET_TABLES = (
+    "product_metric_events",
+    "post_reply_memory_jobs",
     "apscheduler_jobs",
     "note_fts",
     "diary_memory_object_fts",

@@ -154,7 +154,7 @@ def test_destructive_demo_chat_requires_confirmation_and_keeps_target_bytes(clie
                     (agent_run_id,),
                 ).fetchall()
             }
-        assert stored == ("high", "ask", "pending_confirm")
+        assert stored == ("high", "ask", "pending_confirmation")
         assert action_types == {"local.destructive_request"}
 
     assert protected_file.read_bytes() == b"keep-this-content"

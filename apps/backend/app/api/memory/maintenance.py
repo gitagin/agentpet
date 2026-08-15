@@ -16,8 +16,6 @@ from ...models.api import (
     RetrospectiveReportResponse,
     RetrospectiveResponse,
 )
-from ...models.common import new_id
-from ...services.agent_actions import AgentActionCreate
 from ...services.memory_hygiene_suggestions import (
     MemoryHygieneSuggestion,
     MemoryHygieneSuggestionConfirmationRequired,
@@ -27,7 +25,8 @@ from ...services.memory_hygiene_suggestions import (
 from ...services.memory_lifecycle import MemoryLifecycleTransitionError
 from ...services.retrospectives import RetrospectiveService
 from ...utils.time import utc_now_iso
-from ..wiring import audit_reason, record_agent_action, record_audit
+from ..services.adapters import RuntimeMemoryHygieneAdapter, RuntimeRetrospectiveAdapter
+from ..wiring import audit_reason, production_action_lifecycle, record_audit
 from .dependencies import (
     memory_hygiene_suggestion_service_dependency,
     retrospective_service_dependency,
@@ -52,15 +51,12 @@ async def preview_memory_hygiene(
 async def apply_memory_hygiene_action(
     action_request: MemoryHygieneActionRequest,
     request: Request,
-    service: MemoryHygieneSuggestionService = Depends(memory_hygiene_suggestion_service_dependency),
 ) -> MemoryHygieneActionResponse:
-    action_id = new_id()
     try:
-        result = service.apply(
-            action_request.suggestion_id,
-            confirmed=action_request.confirmed,
-            agent_action_id=action_id,
-        )
+        response = await RuntimeMemoryHygieneAdapter(
+            request,
+            production_action_lifecycle(request),
+        ).apply(action_request)
     except MemoryHygieneSuggestionConfirmationRequired as exc:
         raise AppError(
             code="hygiene_confirmation_required",
@@ -79,39 +75,20 @@ async def apply_memory_hygiene_action(
             message="The memory hygiene suggestion could not be applied.",
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         ) from exc
-    action = record_agent_action(
-        request,
-        AgentActionCreate(
-            action_id=action_id,
-            action_type="memory.hygiene.apply",
-            title="记忆整理建议已应用",
-            summary=_memory_hygiene_action_summary(result.type),
-            risk_tier="low",
-            decision="notify",
-            status="completed",
-            target_paths=(),
-            metadata={
-                "suggestion_type": result.type,
-                "suggestion_id": result.suggestion_id,
-                "result_status": result.status,
-                "safe_summary": True,
-            },
-            reversible=False,
-        ),
-    )
+    except RuntimeError as exc:
+        error_code = str(exc).removeprefix("action_lifecycle_")
+        raise AppError(
+            code=error_code or "hygiene_suggestion_recovery_required",
+            message="The memory hygiene effect could not be confirmed; no retry was issued automatically.",
+            status_code=status.HTTP_409_CONFLICT,
+        ) from exc
     record_audit(
         request,
         action="memory.hygiene.apply",
         result="success",
-        reason=audit_reason(request, suggestion_type=result.type, status=result.status),
+        reason=audit_reason(request, suggestion_type=response.type, status=response.status),
     )
-    return MemoryHygieneActionResponse(
-        ok=True,
-        suggestion_id=result.suggestion_id,
-        type=result.type,
-        status=result.status,
-        action_id=action.action_id,
-    )
+    return response
 
 
 @router.get("/retrospectives", response_model=RetrospectiveResponse)
@@ -133,22 +110,25 @@ async def get_retrospectives(
 async def write_retrospective_report(
     report_request: RetrospectiveReportRequest,
     request: Request,
-    service: RetrospectiveService = Depends(retrospective_service_dependency),
 ) -> RetrospectiveReportResponse:
     try:
-        response = (
-            service.write_period_report(report_request.period)
-            if report_request.period is not None
-            else service.write_report(report_request.days)
-        )
+        response = await RuntimeRetrospectiveAdapter(
+            request,
+            production_action_lifecycle(request),
+        ).write_report(report_request)
     except RuntimeError as exc:
-        if str(exc) == "retrospective_report_requires_vault":
+        error_code = str(exc).removeprefix("action_lifecycle_")
+        if error_code == "retrospective_report_requires_vault":
             raise AppError(
                 code="vault_not_configured",
                 message="生成 Markdown 回顾报告前需要先配置活动 Vault。",
                 status_code=status.HTTP_409_CONFLICT,
             ) from exc
-        raise
+        raise AppError(
+            code=error_code or "retrospective_report_failed",
+            message="回顾报告无法完成权威写入。",
+            status_code=status.HTTP_409_CONFLICT,
+        ) from exc
     record_audit(
         request,
         action="memory.retrospective.report.write",
@@ -176,12 +156,3 @@ def _memory_hygiene_suggestion_response(item: MemoryHygieneSuggestion) -> Memory
         requires_confirmation=item.requires_confirmation,
         action_label=item.action_label,
     )
-
-
-def _memory_hygiene_action_summary(suggestion_type: str) -> str:
-    labels = {
-        "stale_recent_state": "已归档一条过期的临时状态。",
-        "low_confidence_stale": "已忽略一条长期未确认的低置信候选。",
-        "sensitive_candidate": "已安全拒绝一条不适合保存的候选记忆。",
-    }
-    return labels.get(suggestion_type, "已应用一条记忆整理建议。")

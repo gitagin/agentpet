@@ -163,14 +163,40 @@ def test_edit_fact_supersedes_old_fact_and_recalls_replacement(client_factory, t
         replacement_id = payload["replacement_target_id"]
         assert payload["status"] == "superseded"
         assert replacement_id
+        observation = db_row(
+            client,
+            "SELECT status, query_count FROM product_metric_correction_observations",
+        )
+        assert observation["status"] == "pending"
+        assert observation["query_count"] == 0
         assert not any(result.get("fact_id") == old_fact_id for result in search_personal_memory(client, "mango"))
         assert any(result.get("fact_id") == replacement_id for result in search_personal_memory(client, "pear"))
+
+        observation = db_row(
+            client,
+            "SELECT status, query_count FROM product_metric_correction_observations",
+        )
+        assert observation["status"] == "verified"
+        assert observation["query_count"] == 1
 
         old_fact = db_row(client, "SELECT status, metadata_json FROM memory_graph_facts WHERE id = ?", (old_fact_id,))
         replacement = db_row(client, "SELECT status, object FROM memory_graph_facts WHERE id = ?", (replacement_id,))
         feedback = db_row(client, "SELECT metadata_json FROM memory_feedback_events WHERE id = ?", (payload["feedback_event_id"],))
         assert old_fact["status"] == "superseded"
-        assert json.loads(old_fact["metadata_json"])["superseded_by"] == replacement_id
+        assert "superseded_by" not in json.loads(old_fact["metadata_json"])
+        relation = db_row(
+            client,
+            """
+            SELECT subject_fact_id
+            FROM memory_graph_facts
+            WHERE statement_kind = 'relation'
+              AND relation_type = 'supersedes'
+              AND object_fact_id = ?
+              AND status = 'active'
+            """,
+            (old_fact_id,),
+        )
+        assert relation["subject_fact_id"] == replacement_id
         assert replacement["status"] == "active"
         assert replacement["object"] == "pear"
         assert json.loads(feedback["metadata_json"])["replacement_target_id"] == replacement_id

@@ -21,6 +21,23 @@ def map_memory_error(exc: Exception) -> AppError:
         return AppError("memory_write_conflict", str(exc), status.HTTP_409_CONFLICT)
     if isinstance(exc, MarkdownWriteError):
         return AppError("markdown_write_failed", str(exc), status.HTTP_400_BAD_REQUEST)
+    if isinstance(exc, RuntimeError):
+        raw_code = str(exc)
+        code = raw_code.removeprefix("action_lifecycle_").strip()
+        if code in {"markdown_write_failed", "policy_denied"}:
+            return AppError(
+                "markdown_write_failed",
+                "记忆目标文件路径或写入策略不允许，未把不确定结果显示为成功。",
+                status.HTTP_400_BAD_REQUEST,
+            )
+        if code == "memory_write_conflict":
+            return AppError(
+                "memory_write_conflict",
+                "记忆目标在提案预览后已发生变化。",
+                status.HTTP_409_CONFLICT,
+            )
+        if code in {"proposal_not_found", "proposal_state_conflict"}:
+            return AppError(code, "记忆提案状态已变化，请重新加载后再操作。", status.HTTP_409_CONFLICT)
     return AppError("memory_service_error", "记忆服务处理失败。", status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 

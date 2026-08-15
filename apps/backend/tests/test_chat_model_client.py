@@ -309,6 +309,19 @@ def test_chat_model_error_classifies_authentication_failure() -> None:
     assert "API 密钥" in str(error)
 
 
+def test_chat_model_error_distinguishes_quota_exhaustion_from_rate_limit() -> None:
+    class ProviderError(Exception):
+        status_code = 429
+
+    quota_error = classify_chat_model_exception(
+        ProviderError("insufficient_quota: credit_balance_exhausted")
+    )
+    rate_error = classify_chat_model_exception(ProviderError("rate limit reached for requests"))
+
+    assert quota_error.code == "quota_exhausted"
+    assert rate_error.code == "rate_limited"
+
+
 def test_chat_model_error_redacts_secret_like_details() -> None:
     error = classify_chat_model_exception(RuntimeError("provider echoed tp-secretvalue1234567890"))
 

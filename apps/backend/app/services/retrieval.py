@@ -13,7 +13,11 @@ from app.repositories.storage import IndexJobRepository, NoteRepository, SearchR
 from app.storage.database import Database, MigrationRunner
 from app.storage.markdown import read_markdown
 from app.storage.vault import VaultStorage
-from app.services.retrieval_query import build_retrieval_plan, build_retrieval_plan_telemetry
+from app.services.retrieval_query import (
+    build_retrieval_plan,
+    build_retrieval_plan_telemetry,
+    contains_exact_retrieval_atom,
+)
 from app.services.reranking import DisabledReranker, Reranker, apply_reranker
 from app.services.retrieval_fusion import (
     FUSION_POLICY_VERSION,
@@ -172,6 +176,7 @@ class RetrievalService:
                 now=now,
             )
             plan_telemetry = build_retrieval_plan_telemetry(plan, original_query=query)
+            required_atoms = (*plan.exact_terms, *plan.identifiers)
             vector_health = self._vector_health(vault_id)
             fallback_reason: str | None = None
             if "vector" in requested_channels and local_privacy:
@@ -218,6 +223,7 @@ class RetrievalService:
                         top_k=candidate_limit,
                     ),
                     vault_id=vault_id,
+                    required_atoms=required_atoms,
                 )
                 daily_date_search_ms = _elapsed_ms(daily_date_started)
                 daily_chunk_ids = tuple(result.chunk_id for result in daily_date_results)
@@ -245,6 +251,7 @@ class RetrievalService:
                             candidates,
                             vault_id=vault_id,
                             active_generation=_optional_text(vector_health.get("active_generation")),
+                            required_atoms=required_atoms,
                         )
                         if daily_chunk_ids is None:
                             vector_results = authoritative_vector_results
@@ -302,6 +309,7 @@ class RetrievalService:
                         conn,
                         search_results,
                         vault_id=vault_id,
+                        required_atoms=required_atoms,
                     )
                     fts_search_ms = _elapsed_ms(fts_started)
                 completed_channels.append("fts")
@@ -544,7 +552,14 @@ def _optional_text(value: object) -> str | None:
     return stripped or None
 
 
-def _authoritative_vector_results(conn, candidates, *, vault_id: str, active_generation: str | None):
+def _authoritative_vector_results(
+    conn,
+    candidates,
+    *,
+    vault_id: str,
+    active_generation: str | None,
+    required_atoms: tuple[str, ...] = (),
+):
     if active_generation is None:
         return []
     accepted = []
@@ -603,6 +618,13 @@ def _authoritative_vector_results(conn, candidates, *, vault_id: str, active_gen
         ).fetchone()
         if row is None or str(row["content_hash"]) != content_hash:
             continue
+        if not _contains_required_atoms(
+            title=str(row["title"]),
+            heading=str(row["heading"]) if row["heading"] is not None else None,
+            content=str(row["content"]),
+            required_atoms=required_atoms,
+        ):
+            continue
         accepted.append(
             replace(
                 candidate,
@@ -614,12 +636,22 @@ def _authoritative_vector_results(conn, candidates, *, vault_id: str, active_gen
     return accepted
 
 
-def _authoritative_fts_results(conn, candidates, *, vault_id: str) -> list[SearchResult]:
+def _authoritative_fts_results(
+    conn,
+    candidates,
+    *,
+    vault_id: str,
+    required_atoms: tuple[str, ...] = (),
+) -> list[SearchResult]:
     accepted: list[SearchResult] = []
     for candidate in candidates:
         row = conn.execute(
             """
-            SELECT note_chunks.content_hash
+            SELECT
+                note_chunks.content_hash,
+                note_chunks.title,
+                note_chunks.heading,
+                note_chunks.content
             FROM note_chunks
             JOIN notes
               ON notes.id = note_chunks.note_id
@@ -642,6 +674,13 @@ def _authoritative_fts_results(conn, candidates, *, vault_id: str) -> list[Searc
         ).fetchone()
         if row is None:
             continue
+        if not _contains_required_atoms(
+            title=str(row["title"]),
+            heading=str(row["heading"]) if row["heading"] is not None else None,
+            content=str(row["content"]),
+            required_atoms=required_atoms,
+        ):
+            continue
         content_hash = _optional_text(row["content_hash"])
         if content_hash is None:
             continue
@@ -653,6 +692,20 @@ def _authoritative_fts_results(conn, candidates, *, vault_id: str) -> list[Searc
             )
         )
     return accepted
+
+
+def _contains_required_atoms(
+    *,
+    title: str,
+    heading: str | None,
+    content: str,
+    required_atoms: tuple[str, ...],
+) -> bool:
+    searchable_text = "\n".join((title, heading or "", content))
+    return all(
+        contains_exact_retrieval_atom(searchable_text, atom)
+        for atom in required_atoms
+    )
 
 
 def _fusion_candidate(

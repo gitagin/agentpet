@@ -34,7 +34,6 @@ from ..services.memory import MarkdownWriteError
 from ..services.wiki import SensitiveWikiRejectedError, WikiService, WikiWriteError
 from ..utils.hash import sha256_hex
 from ..utils.time import utc_now_iso
-from ..services.wiki_lint import WikiLintService
 from ..services.wiki_workflows import (
     QueryArchiveNotFoundError,
     QueryArchiveRejectedError,
@@ -42,11 +41,12 @@ from ..services.wiki_workflows import (
     WikiWorkflowError,
     WikiWorkflowService,
 )
+from .services.adapters import RuntimeWikiAdapter, RuntimeWikiWorkflowAdapter
 from .wiring import (
     audit_reason,
+    production_action_lifecycle,
     record_audit,
     wiki_diagnostics_queue_service_dependency,
-    wiki_lint_service_dependency,
     wiki_service_dependency,
     wiki_workflow_service_dependency,
 )
@@ -114,10 +114,12 @@ async def get_wiki_log(
 async def write_wiki_page(
     page_request: WikiPageWriteRequest,
     request: Request,
-    service: WikiService = Depends(wiki_service_dependency),
 ) -> WikiPageResponse:
     try:
-        response = service.write_page(page_request)
+        response = await RuntimeWikiAdapter(
+            request,
+            production_action_lifecycle(request),
+        ).manage_page(page_request)
     except SensitiveWikiRejectedError as exc:
         record_audit(
             request,
@@ -159,10 +161,12 @@ async def write_wiki_page(
 async def synthesize_wiki_page(
     synthesize_request: WikiSynthesizeRequest,
     request: Request,
-    service: WikiWorkflowService = Depends(wiki_workflow_service_dependency),
 ) -> WikiSynthesizeResponse:
     try:
-        response = service.synthesize(synthesize_request)
+        response = await RuntimeWikiWorkflowAdapter(
+            request,
+            production_action_lifecycle(request),
+        ).synthesize(synthesize_request)
     except SensitiveWikiRejectedError as exc:
         record_audit(
             request,
@@ -177,7 +181,7 @@ async def synthesize_wiki_page(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             details={"reason": exc.reason},
         ) from exc
-    except (MarkdownWriteError, WikiWriteError, WikiWorkflowError) as exc:
+    except (MarkdownWriteError, WikiWriteError, WikiWorkflowError, RuntimeError) as exc:
         record_audit(
             request,
             action="wiki.synthesize",
@@ -204,7 +208,7 @@ async def preview_wiki_ingest(
 ) -> WikiIngestPreviewResponse:
     try:
         response = service.preview_ingest(ingest_request)
-    except WikiWorkflowError as exc:
+    except (WikiWorkflowError, RuntimeError) as exc:
         record_audit(
             request,
             action="wiki.ingest.preview",
@@ -242,7 +246,7 @@ async def preview_wiki_import(
             status_code=status.HTTP_400_BAD_REQUEST,
             details={"reason": exc.reason},
         ) from exc
-    except WikiWorkflowError as exc:
+    except (WikiWorkflowError, RuntimeError) as exc:
         record_audit(
             request,
             action="wiki.import.preview",
@@ -263,11 +267,13 @@ async def preview_wiki_import(
 async def confirm_wiki_ingest(
     confirm_request: WikiIngestConfirmRequest,
     request: Request,
-    service: WikiWorkflowService = Depends(wiki_workflow_service_dependency),
 ) -> WikiIngestPreviewResponse:
     try:
-        response = service.confirm_ingest(confirm_request)
-    except WikiWorkflowError as exc:
+        response = await RuntimeWikiWorkflowAdapter(
+            request,
+            production_action_lifecycle(request),
+        ).confirm_ingest(confirm_request)
+    except (WikiWorkflowError, RuntimeError) as exc:
         record_audit(
             request,
             action="wiki.ingest.confirm",
@@ -288,11 +294,13 @@ async def confirm_wiki_ingest(
 async def apply_wiki_ingest(
     apply_request: WikiIngestApplyRequest,
     request: Request,
-    service: WikiWorkflowService = Depends(wiki_workflow_service_dependency),
 ) -> WikiIngestApplyResponse:
     try:
-        response = service.apply_ingest(apply_request)
-    except WikiWorkflowError as exc:
+        response = await RuntimeWikiWorkflowAdapter(
+            request,
+            production_action_lifecycle(request),
+        ).apply_ingest(apply_request)
+    except (WikiWorkflowError, RuntimeError) as exc:
         record_audit(
             request,
             action="wiki.ingest.apply",
@@ -313,11 +321,13 @@ async def apply_wiki_ingest(
 async def review_wiki_ingest(
     review_request: WikiIngestReviewRequest,
     request: Request,
-    service: WikiWorkflowService = Depends(wiki_workflow_service_dependency),
 ) -> WikiIngestReviewResponse:
     try:
-        response = await service.review_ingest(review_request)
-    except WikiWorkflowError as exc:
+        response = await RuntimeWikiWorkflowAdapter(
+            request,
+            production_action_lifecycle(request),
+        ).review_ingest(review_request)
+    except (WikiWorkflowError, RuntimeError) as exc:
         record_audit(
             request,
             action="wiki.ingest.review",
@@ -401,10 +411,12 @@ async def read_query_archive(
 async def archive_query_answer(
     archive_request: QueryArchiveRequest,
     request: Request,
-    service: WikiWorkflowService = Depends(wiki_workflow_service_dependency),
 ) -> QueryArchiveResponse:
     try:
-        response = service.archive_query(archive_request)
+        response = await RuntimeWikiWorkflowAdapter(
+            request,
+            production_action_lifecycle(request),
+        ).archive_query(archive_request)
     except QueryArchiveRejectedError as exc:
         record_audit(
             request,
@@ -433,7 +445,7 @@ async def archive_query_answer(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             details={"reason": exc.reason},
         ) from exc
-    except (MarkdownWriteError, WikiWriteError, WikiWorkflowError) as exc:
+    except (MarkdownWriteError, WikiWriteError, WikiWorkflowError, RuntimeError) as exc:
         record_audit(
             request,
             action="wiki.query_archive.write",
@@ -456,11 +468,13 @@ async def archive_query_answer(
 async def run_wiki_lint(
     lint_request: WikiLintRequest,
     request: Request,
-    service: WikiLintService = Depends(wiki_lint_service_dependency),
 ) -> WikiLintReportResponse:
     try:
-        response = service.run(lint_request)
-    except (MarkdownWriteError, WikiWriteError) as exc:
+        response = await RuntimeWikiWorkflowAdapter(
+            request,
+            production_action_lifecycle(request),
+        ).run_lint(lint_request)
+    except (MarkdownWriteError, WikiWriteError, RuntimeError) as exc:
         record_audit(
             request,
             action="wiki.lint.run",
@@ -550,4 +564,10 @@ def _workflow_error(exc: Exception) -> AppError:
         return AppError(exc.code, str(exc), status.HTTP_400_BAD_REQUEST)
     if isinstance(exc, WikiWorkflowError):
         return AppError(exc.code, str(exc), status.HTTP_400_BAD_REQUEST)
+    if isinstance(exc, RuntimeError):
+        message = str(exc)
+        code = message.removeprefix("action_lifecycle_").strip() or "wiki_workflow_failed"
+        if not code.replace("_", "").isalnum():
+            code = "wiki_workflow_failed"
+        return AppError(code, "Wiki 工作流未完成，未把不确定结果显示为成功。", status.HTTP_400_BAD_REQUEST)
     return AppError("wiki_workflow_failed", str(exc), status.HTTP_400_BAD_REQUEST)

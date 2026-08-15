@@ -27,7 +27,7 @@ class FakeDiaryExtractor:
 def memory_object(
     *,
     summary: str,
-    type: str = "event",
+    memory_type: str = "event",
     topic: str = "work",
     emotion: str = "anxious",
     people: tuple[str, ...] = ("manager",),
@@ -46,7 +46,7 @@ def memory_object(
         importance=importance,
         confidence=confidence,
         status=status,
-        type=type,
+        type=memory_type,
     )
 
 
@@ -106,13 +106,13 @@ async def test_diary_memory_service_uses_extracted_type_without_writing_vault_fi
         [
             memory_object(
                 summary="User asked how to compare two parser options.",
-                type="qa",
+                memory_type="qa",
                 topic="parser choice",
                 keywords=("parser", "qa"),
             ),
             memory_object(
                 summary="Project Atlas decision moved to next week.",
-                type="project_update",
+                memory_type="project_update",
                 topic="Project Atlas",
                 emotion="focused",
                 keywords=("atlas", "decision"),

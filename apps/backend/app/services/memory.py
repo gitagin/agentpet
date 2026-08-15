@@ -32,7 +32,7 @@ class MemoryConflictError(MemoryServiceError):
 
 
 class MarkdownWriteError(MemoryServiceError):
-    pass
+    code = "markdown_write_failed"
 
 
 @dataclass(frozen=True)
@@ -282,10 +282,11 @@ class MemoryService:
         content: str,
         target_path: str,
         source_message_id: str | None = None,
+        proposal_id: str | None = None,
     ) -> MemoryProposal:
         now = utc_now_iso()
         proposal = MemoryProposal(
-            id=new_id(),
+            id=proposal_id or new_id(),
             type=type,
             content=content,
             target_path=target_path,
@@ -297,16 +298,25 @@ class MemoryService:
         )
         return self.store.insert(proposal)
 
-    def confirm_proposal(self, proposal_id: str) -> MemoryWriteResult:
+    def confirm_proposal(
+        self,
+        proposal_id: str,
+        *,
+        lifecycle_marker: str | None = None,
+    ) -> MemoryWriteResult:
         proposal = self.store.get(proposal_id)
+        if lifecycle_marker is not None:
+            reconciled = self.reconcile_confirmation(proposal_id, lifecycle_marker=lifecycle_marker)
+            if reconciled is not None:
+                return reconciled
         if proposal.status != MemoryProposalStatus.PENDING:
             raise MemoryProposalStateError(f"记忆提案当前状态为 {proposal.status}")
         current_hash = self.writer.current_hash(proposal.target_path)
         if current_hash != proposal.target_content_hash:
             raise MemoryConflictError("目标文件在提案预览后已发生变化")
+        markdown = _confirmation_markdown(proposal.content, lifecycle_marker)
         try:
-            written_path = self.writer.append(proposal.target_path, proposal.content)
-            index_job_id = self.index_refresh(proposal.target_path) if self.index_refresh else None
+            written_path = self.writer.append(proposal.target_path, markdown)
         except Exception as exc:
             self.store.update_status(proposal_id, MemoryProposalStatus.FAILED, error=str(exc))
             raise
@@ -316,10 +326,41 @@ class MemoryService:
             written_path=str(written_path),
             error=None,
         )
+        index_job_id = self.index_refresh(proposal.target_path) if self.index_refresh else None
         return MemoryWriteResult(
             proposal_id=proposal_id,
             status=MemoryProposalStatus.CONFIRMED,
             written_path=str(written_path),
+            index_job_id=index_job_id,
+        )
+
+    def reconcile_confirmation(
+        self,
+        proposal_id: str,
+        *,
+        lifecycle_marker: str,
+    ) -> MemoryWriteResult | None:
+        proposal = self.store.get(proposal_id)
+        if proposal.status not in {MemoryProposalStatus.PENDING, MemoryProposalStatus.CONFIRMED}:
+            return None
+        target = self.writer.resolve_markdown_path(proposal.target_path)
+        if not target.exists():
+            return None
+        markdown = target.read_text(encoding="utf-8")
+        if not _markdown_has_confirmation(markdown, proposal.content, lifecycle_marker):
+            return None
+        if proposal.status == MemoryProposalStatus.PENDING or proposal.written_path != str(target):
+            proposal = self.store.update_status(
+                proposal_id,
+                MemoryProposalStatus.CONFIRMED,
+                written_path=str(target),
+                error=None,
+            )
+        index_job_id = self.index_refresh(proposal.target_path) if self.index_refresh else None
+        return MemoryWriteResult(
+            proposal_id=proposal.id,
+            status=MemoryProposalStatus.CONFIRMED,
+            written_path=str(target),
             index_job_id=index_job_id,
         )
 
@@ -336,3 +377,15 @@ class MemoryService:
 
     def list_pending(self) -> list[MemoryProposal]:
         return self.store.list_pending()
+
+
+def _confirmation_markdown(content: str, lifecycle_marker: str | None) -> str:
+    if lifecycle_marker is None:
+        return content
+    return f"{content.rstrip()}\n\n{lifecycle_marker}"
+
+
+def _markdown_has_confirmation(markdown: str, content: str, lifecycle_marker: str) -> bool:
+    normalized_markdown = markdown.replace("\r\n", "\n").replace("\r", "\n").rstrip("\n")
+    expected = _confirmation_markdown(content, lifecycle_marker).replace("\r\n", "\n").replace("\r", "\n")
+    return normalized_markdown.endswith(expected)

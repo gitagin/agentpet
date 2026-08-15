@@ -78,9 +78,10 @@ def build_evidence_envelope(result: MemorySearchResult) -> EvidenceEnvelope | No
     if evidence_rejection_reason(result) is not None:
         return None
     channels = tuple(dict.fromkeys(result.retrieval_channels or [result.retrieval_mode]))
+    source_reference = _normalized_relative_path(result.relative_path) or result.citation_refs[0]
     return EvidenceEnvelope(
         citation_id=stable_citation_id(result),
-        source=f"{result.source_scope}:{_normalized_relative_path(result.relative_path)}",
+        source=f"{result.source_scope}:{source_reference}",
         chunk_id=result.chunk_id,
         permitted_excerpt=result.snippet,
         lifecycle_status=(result.lifecycle_status or "active").casefold(),
@@ -180,7 +181,7 @@ def evidence_rejection_reason(result: MemorySearchResult) -> str | None:
         return "empty_excerpt"
     if result.source_scope not in _ALLOWED_SOURCE_SCOPES:
         return "inaccessible_source_scope"
-    if _unsafe_relative_path(result.relative_path):
+    if _unsafe_relative_path(result.relative_path) and not _has_local_graph_evidence(result):
         return "inaccessible_source_path"
     if result.filtered_reason:
         return _normalized_reason(result.filtered_reason)
@@ -229,6 +230,19 @@ def _unsafe_relative_path(value: str) -> bool:
         return True
     parts = PurePosixPath(normalized).parts
     return any(part in {".", ".."} or part.startswith(".") for part in parts)
+
+
+def _has_local_graph_evidence(result: MemorySearchResult) -> bool:
+    if result.source_scope != "personal_memory" or result.retrieval_mode != "graph_activation":
+        return False
+    evidence_refs = tuple(result.evidence_refs)
+    citation_refs = tuple(result.citation_refs)
+    if not evidence_refs or not citation_refs:
+        return False
+    return all(
+        re.fullmatch(r"evidence_[0-9a-f]{24}", reference)
+        for reference in (*evidence_refs, *citation_refs)
+    )
 
 
 def _normalized_reason(value: str) -> str:

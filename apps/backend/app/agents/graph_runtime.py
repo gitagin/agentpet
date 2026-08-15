@@ -25,13 +25,14 @@ from app.models.enums import AgentId
 from .agent_runner import run_agent
 from .events import AgentDoneEvent, AgentErrorEvent, AgentStatusEvent, AgentTokenEvent, NegotiationDoneEvent, NegotiationStepEvent, public_agent_error
 from .events_helpers import _agent_state, _append_status, _events, _record_node_error
+from .ephemeral_lifecycle import build_ephemeral_lifecycle
 from .immediate_understanding import extract_immediate_understanding
-from .intent import route_intent
+from .intent import is_high_risk_mutation_request, route_intent
 from .memory_router import route_memory
 from .checkpointer import CheckpointConflictError, CheckpointError, CheckpointExpiredError
 from .contracts import MAX_PLANNING_ROUNDS, ActionProposal, PolicyDecision
 from .negotiation_graph import build_negotiation_graph
-from .nodes.action import _action_planner_node, _execute_action_plan, _record_policy_blocked_plan
+from .nodes.action import _action_planner_node, _canonical_payload_hash, _execute_action_plan
 from .nodes.chat import _chat_node, _message_with_runtime_context
 from .nodes.finish import _finish_node
 from .nodes.orchestrator import OrchestratorNode
@@ -71,6 +72,11 @@ class LangGraphAgentRuntime:
 
     def __init__(self, services: AgentRuntimeServices | None = None) -> None:
         self.services = services or AgentRuntimeServices()
+        if (
+            self.services.allow_ephemeral_lifecycle
+            and self.services.action_lifecycle is None
+        ):
+            self.services.action_lifecycle = build_ephemeral_lifecycle(self.services)
         self.toolset = AgentToolSet(
             retrieval=self.services.retrieval,
             memory=self.services.memory,
@@ -126,10 +132,23 @@ class LangGraphAgentRuntime:
         record = store.get(checkpoint_id)
         if record.graph_version != "agent-graph-v1" or record.state_version != "agent-state-v1":
             raise CheckpointConflictError("checkpoint_version_mismatch")
-        if record.status in {"completed", "cancelled", "expired", "rejected", "failed_recovery"}:
+        if record.status in {"completed", "cancelled", "expired", "failed_recovery"}:
             return {
                 "checkpoint_id": checkpoint_id,
                 "status": record.status,
+                "effect_applied": False,
+            }
+        if record.status == "rejected":
+            payload, _plan, proposal, stored_policy = self._checkpoint_action_contract(record)
+            await self._record_checkpoint_rejection(
+                checkpoint_id=checkpoint_id,
+                proposal=proposal,
+                stored_policy=stored_policy,
+                payload=payload,
+            )
+            return {
+                "checkpoint_id": checkpoint_id,
+                "status": "rejected",
                 "effect_applied": False,
             }
         payload = record.state
@@ -139,13 +158,7 @@ class LangGraphAgentRuntime:
         if decision_expires_at <= datetime.now(timezone.utc):
             store.expire_checkpoint(checkpoint_id)
             raise CheckpointExpiredError(checkpoint_id)
-        plan = ActionPlan.model_validate(payload["action_plan"])
-        proposal = ActionProposal.model_validate(payload["action_proposal"])
-        stored_policy = PolicyDecision.model_validate(payload["policy_decision"])
-        if record.run_id != str(payload["agent_run_id"]):
-            raise CheckpointConflictError("run_id_mismatch")
-        if record.action_proposal_id != proposal.proposal_id:
-            raise CheckpointConflictError("proposal_id_mismatch")
+        payload, plan, proposal, stored_policy = self._checkpoint_action_contract(record)
         if stored_policy.policy_version != policy_version:
             raise CheckpointConflictError("policy_version_mismatch")
         outcome = store.claim_decision(
@@ -155,11 +168,19 @@ class LangGraphAgentRuntime:
             policy_version=policy_version,
         )
         if outcome.decision != "approved":
+            if outcome.decision == "rejected":
+                await self._record_checkpoint_rejection(
+                    checkpoint_id=checkpoint_id,
+                    proposal=proposal,
+                    stored_policy=stored_policy,
+                    payload=payload,
+                )
             return {
                 "checkpoint_id": checkpoint_id,
                 "status": outcome.decision,
                 "effect_applied": False,
             }
+
 
         rechecked = evaluate_action_proposal(proposal)
         if rechecked.decision == "denied" or rechecked.idempotency_key != stored_policy.idempotency_key:
@@ -178,7 +199,7 @@ class LangGraphAgentRuntime:
             conversation_id=str(payload["conversation_id"]),
             message_id=str(payload["message_id"]),
             agent_run_id=str(payload["agent_run_id"]),
-            user_message="[checkpoint resume]",
+            user_message=str(payload.get("user_message") or proposal.parameters.get("source_text") or ""),
             action_plan=plan,
             action_plans=[plan],
             action_proposals=[proposal],
@@ -189,14 +210,78 @@ class LangGraphAgentRuntime:
         graph_state: dict[str, Any] = {"agent_state": state, "events": [], "failed": False}
         await _execute_action_plan(graph_state, self.services)
         if plan.control_state == "completed" and plan.executed:
-            store.mark_status(checkpoint_id, "completed")
-            return {"checkpoint_id": checkpoint_id, "status": "completed", "effect_applied": True}
+            receipt_ref = plan.receipt_ref
+            store.mark_status(checkpoint_id, "completed", terminal_receipt_ref=receipt_ref)
+            return {
+                "checkpoint_id": checkpoint_id,
+                "status": "completed",
+                "effect_applied": not plan.duplicate,
+            }
         store.mark_status(checkpoint_id, "failed_recovery")
         return {
             "checkpoint_id": checkpoint_id,
             "status": "failed_recovery",
             "effect_applied": False,
         }
+
+    @staticmethod
+    def _checkpoint_action_contract(
+        record: Any,
+    ) -> tuple[dict[str, Any], ActionPlan, ActionProposal, PolicyDecision]:
+        payload = dict(record.state)
+        plan = ActionPlan.model_validate(payload["action_plan"])
+        proposal = ActionProposal.model_validate(payload["action_proposal"])
+        stored_policy = PolicyDecision.model_validate(payload["policy_decision"])
+        if record.run_id != str(payload["agent_run_id"]):
+            raise CheckpointConflictError("run_id_mismatch")
+        if record.action_proposal_id != proposal.proposal_id:
+            raise CheckpointConflictError("proposal_id_mismatch")
+        canonical_payload_hash = payload.get("canonical_payload_hash")
+        if (
+            canonical_payload_hash is not None
+            and str(canonical_payload_hash) != _canonical_payload_hash(stored_policy)
+        ):
+            raise CheckpointConflictError("canonical_payload_mismatch")
+        return payload, plan, proposal, stored_policy
+
+    async def _record_checkpoint_rejection(
+        self,
+        *,
+        checkpoint_id: str,
+        proposal: ActionProposal,
+        stored_policy: PolicyDecision,
+        payload: dict[str, Any],
+    ) -> None:
+        coordinator = self.services.action_lifecycle
+        if coordinator is None:
+            return
+        denied_policy = stored_policy.model_copy(
+            update={
+                "decision": "denied",
+                "requires_confirmation": False,
+                "confirmation_digest": None,
+                "confirmed_by_user": False,
+            }
+        )
+        try:
+            outcome = await coordinator.execute(
+                proposal,
+                denied_policy,
+                source_run_id=str(payload["agent_run_id"]),
+                source_conversation_id=str(payload["conversation_id"]),
+            )
+        except Exception as exc:
+            if self.services.checkpoint_store is not None:
+                self.services.checkpoint_store.mark_status(checkpoint_id, "failed_recovery")
+            raise CheckpointConflictError("rejection_action_record_failed") from exc
+        if (
+            outcome.receipt.status != "denied"
+            or outcome.action.status != "denied"
+            or outcome.receipt.idempotency_key != stored_policy.idempotency_key
+        ):
+            if self.services.checkpoint_store is not None:
+                self.services.checkpoint_store.mark_status(checkpoint_id, "failed_recovery")
+            raise CheckpointConflictError("rejection_action_state_mismatch")
 
     async def _run_local_privacy_mode(self, state: AgentState) -> AsyncIterator[Any]:
         state.status = AgentRunStatus.RUNNING
@@ -416,11 +501,16 @@ class LangGraphAgentRuntime:
 
     async def _semantic_node(self, graph_state: dict[str, Any]) -> dict[str, Any]:
         state = _agent_state(graph_state)
-        if state.route and state.route.intent in {
-            AgentIntent.PROPOSE_MEMORY,
-            AgentIntent.MANAGE_WIKI,
-            AgentIntent.CREATE_TASK,
-        }:
+        if (
+            state.route
+            and state.route.intent
+            in {
+                AgentIntent.PROPOSE_MEMORY,
+                AgentIntent.MANAGE_WIKI,
+                AgentIntent.CREATE_TASK,
+            }
+            and not is_high_risk_mutation_request(state.user_message)
+        ):
             state.semantic_analysis = SemanticAnalysisResult(
                 needs_context=False,
                 source_scope="none",
@@ -745,18 +835,7 @@ class LangGraphAgentRuntime:
 
     async def _finish_node_adapter(self, graph_state: dict[str, Any]) -> dict[str, Any]:
         if not graph_state.get("failed"):
-            state = _agent_state(graph_state)
-            if state.checkpoint_id and state.checkpoint_status == "pending_confirmation":
-                plans = state.action_plans or ([state.action_plan] if state.action_plan is not None else [])
-                for plan in plans:
-                    policy = next(
-                        (item for item in state.policy_decisions if item.proposal_id == plan.proposal_id),
-                        None,
-                    )
-                    if policy is not None and policy.decision == "pending_confirmation":
-                        _record_policy_blocked_plan(graph_state, self.services, state, plan, policy)
-            else:
-                await _execute_action_plan(graph_state, self.services)
+            await _execute_action_plan(graph_state, self.services)
         return await _finish_node(graph_state)
 
     def _record_negotiation_stats(self, state: NegotiationState) -> None:
@@ -769,8 +848,8 @@ class LangGraphAgentRuntime:
             recorder(
                 AgentActionCreate(
                     action_type="agent.negotiation",
-                    title="已完成多 Agent 协商",
-                    summary=f"协商 {state.round} 轮，调用 {len(agents_invoked)} 个子 Agent。",
+                    title="已完成证据复核",
+                    summary=f"复核 {state.round} 轮，执行 {len(agents_invoked)} 个只读检索步骤。",
                     source_agent_run_id=state.agent_run_id,
                     source_conversation_id=state.conversation_id,
                     source_message_id=state.message_id,
@@ -974,7 +1053,7 @@ def _message_with_negotiation_context(state: NegotiationState) -> str:
     return "\n\n".join(
         [
             f"用户原始问题：{state.user_message}",
-            "多 Agent 协商已收集上下文：",
+            "证据复核已收集本地上下文：",
             state.collected_context,
             "请基于以上上下文，用桌宠口吻给出简短自然回复。",
         ]
@@ -1136,6 +1215,8 @@ def _latest_negotiation_confidence(state: NegotiationState) -> float:
 
 
 def _should_call_semantic_agent(state: AgentState) -> bool:
+    if is_high_risk_mutation_request(state.user_message):
+        return True
     if state.route and state.route.intent in {
         AgentIntent.PROPOSE_MEMORY,
         AgentIntent.MANAGE_WIKI,

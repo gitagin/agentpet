@@ -15,6 +15,8 @@ from fastapi.testclient import TestClient
 
 from app.agents.events import AgentDoneEvent, AgentErrorEvent, AgentStatusEvent, AgentTokenEvent
 from app.models.enums import AgentIntent, AgentRunStatus, MessageStatus
+from app.services.memory_entity_graph import MemoryEntityGraphStore
+from app.storage.markdown import read_markdown
 from tests.conftest import auth_headers, parse_sse_events
 
 
@@ -865,78 +867,79 @@ def test_wiki_page_api_writes_under_wiki_and_lists_pages(client: TestClient, tmp
     assert listed.json()["pages"][0]["relative_path"] == "Wiki/Runtime-Architecture.md"
 
 
-def test_memory_graph_fact_api_actions_are_wired(client: TestClient, tmp_path: Path) -> None:
+def test_memory_graph_entity_and_claim_actions_are_wired(client: TestClient, tmp_path: Path) -> None:
     vault = tmp_path / "Vault"
     client.post(
         "/api/vaults/init",
         headers=auth(),
         json={"path": str(vault), "create_if_missing": True, "confirmed": True},
     )
-    now = "2026-05-15T10:00:00Z"
-    with sqlite3.connect(client.app.state.database.path) as conn:
-        conn.execute(
-            """
-            INSERT INTO memory_graph_facts (
-                id, fact_key, conflict_key, category, subject, predicate, object,
-                status, confidence, source_text, source_type, support_count,
-                created_at, updated_at, memory_type, entity_type, occurred_at,
-                expires_at, metadata_json, importance
-            )
-            VALUES (
-                'fact-api-actions-1', 'fact-api-actions-key', 'fact-api-actions-conflict',
-                'preference', 'fruit', 'likes', 'apple', 'active', 0.95,
-                'I like apple', 'user_message', 1, ?, ?, 'preference',
-                'preference', NULL, NULL, '{}', 0.8
-            )
-            """,
-            (now, now),
+    store = MemoryEntityGraphStore(client.app.state.database.path)
+    try:
+        entity = store.create_entity(entity_type="preference", canonical_name="水果", confidence=0.95)
+        claim = store.create_claim(
+            subject_entity_id=entity.id,
+            predicate="likes",
+            literal_value="苹果",
+            category="preference",
+            source_text="我喜欢的水果是苹果",
+            confidence=0.95,
+            evidence_id="evidence-api-actions",
         )
-        conn.commit()
+    finally:
+        store.close()
 
-    listed = client.get("/api/memory/graph/facts?query=fruit", headers=auth())
-    assert listed.status_code == 200
-    facts = listed.json()["facts"]
-    assert facts
-    assert facts[0]["status"] == "active"
-    fact_id = facts[0]["fact_id"]
+    graph = client.get("/api/memory/graph", headers=auth())
+    assert graph.status_code == 200
+    graph_nodes = graph.json()["nodes"]
+    # The graph is a public projection: node ids are opaque and must not leak
+    # SQLite authority ids. Resolve the claim node through its detail endpoint
+    # before exercising the claim-specific API.
+    matching_nodes = [
+        node
+        for node in graph_nodes
+        if node["node_id"].startswith("mg_") and "苹果" in node["label"]
+    ]
+    assert matching_nodes
+    assert all(node["node_id"] not in {entity.id, claim.id} for node in matching_nodes)
+    claim_node = None
+    node_detail = None
+    for candidate in matching_nodes:
+        response = client.get(f"/api/memory/graph/nodes/{candidate['node_id']}", headers=auth())
+        assert response.status_code == 200
+        if response.json()["kind"] == "claim":
+            claim_node = candidate
+            node_detail = response
+            break
+    assert claim_node is not None
+    assert node_detail is not None
+    public_claim_ids = node_detail.json()["claim_ids"]
+    assert public_claim_ids
+    public_claim_id = public_claim_ids[0]
 
-    archived = client.post(f"/api/memory/graph/facts/{fact_id}/archive", headers=auth())
+    detail = client.get(f"/api/memory/graph/claims/{public_claim_id}", headers=auth())
+    assert detail.status_code == 200
+    assert detail.json()["literal_value"] == "苹果"
+
+    key = "a" * 64
+    archived = client.post(
+        f"/api/memory/graph/claims/{public_claim_id}/actions",
+        headers={**auth(), "Idempotency-Key": key},
+        json={"action": "archive", "confirmed": True},
+    )
     assert archived.status_code == 200
     assert archived.json()["status"] == "archived"
-
-    confirmed = client.post(f"/api/memory/graph/facts/{fact_id}/confirm", headers=auth())
-    assert confirmed.status_code == 200
-    assert confirmed.json()["status"] == "active"
-
-    wrong = client.post(f"/api/memory/graph/facts/{fact_id}/wrong", headers=auth())
-    assert wrong.status_code == 200
-    assert wrong.json()["status"] == "wrong"
-    search = client.post(
-        "/api/memory/search",
-        headers=auth(),
-        json={"query": "fruit", "top_k": 5, "source_scope": "personal_memory", "mode": "fts"},
+    replay = client.post(
+        f"/api/memory/graph/claims/{public_claim_id}/actions",
+        headers={**auth(), "Idempotency-Key": key},
+        json={"action": "archive", "confirmed": True},
     )
-    assert search.status_code == 200
-    assert all(result["retrieval_mode"] != "graph" for result in search.json()["results"])
-    assert all(result["relative_path"] != "Memories/LongTerm/Preferences.md" for result in search.json()["results"])
+    assert replay.status_code == 200
+    assert replay.json()["replayed"] is True
 
-    sensitive_blocked = client.post(f"/api/memory/graph/facts/{fact_id}/sensitive-block", headers=auth())
-    assert sensitive_blocked.status_code == 200
-    assert sensitive_blocked.json()["status"] == "sensitive_blocked"
-
-    confirmed_again = client.post(f"/api/memory/graph/facts/{fact_id}/confirm", headers=auth())
-    assert confirmed_again.status_code == 200
-    assert confirmed_again.json()["status"] == "active"
-
-    export = client.get("/api/memory/graph/export-preview?query=fruit&format=markdown", headers=auth())
-    assert export.status_code == 200
-    payload = export.json()
-    assert payload["item_count"] == 1
-    assert "source_text" not in payload["json_preview"]
-    assert "I like apple" not in payload["json_preview"]
-    assert "I like apple" not in payload["markdown_preview"]
-    assert payload["items"][0]["subject"] == "fruit"
-    assert "source_text" not in payload["items"][0]
+    after = client.get(f"/api/memory/graph/claims/{public_claim_id}", headers=auth())
+    assert after.status_code == 200
+    assert after.json()["status"] == "archived"
 
 
 def test_local_asset_stats_api_is_local_read_only_and_no_data_safe(
@@ -1468,6 +1471,38 @@ def test_chat_stream_fails_when_runtime_ends_without_terminal_event(
     assert run["error_code"] == "stream_ended_without_terminal_event"
     assert assistant_message is not None
     assert assistant_message["status"] == "failed"
+    assert assistant_message["content"] == ""
+    assert payload["agent_run_id"] not in client.app.state.chat_runs
+
+
+@pytest.mark.asyncio
+async def test_persisting_stream_discards_partial_content_after_terminal_error(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.api import chat as chat_api
+
+    class PartialErrorRuntime:
+        async def run(self, state):
+            yield AgentTokenEvent(agent_run_id=state.agent_run_id, text="partial reply")
+            yield AgentErrorEvent(
+                agent_run_id=state.agent_run_id,
+                code="provider_timeout",
+                message="provider timed out",
+            )
+
+    monkeypatch.setattr(chat_api, "agent_runtime", lambda request: PartialErrorRuntime())
+    payload, state = create_unstreamed_chat(client, "fail after a partial reply")
+
+    events = [event async for event in chat_api._persisting_stream(api_request(client), state)]
+
+    assert [event.event for event in events] == ["token", "error"]
+    assert events[-1].code == "provider_timeout"
+    run, assistant_message = stream_persistence_rows(client, payload["agent_run_id"])
+    assert run["status"] == AgentRunStatus.FAILED.value
+    assert run["error_code"] == "provider_timeout"
+    assert assistant_message["status"] == MessageStatus.FAILED.value
+    assert assistant_message["content"] == ""
     assert payload["agent_run_id"] not in client.app.state.chat_runs
 
 
@@ -1494,7 +1529,7 @@ async def test_persisting_stream_aclose_marks_partial_records_cancelled(
     assert run["status"] == AgentRunStatus.CANCELLED.value
     assert run["error_code"] == "stream_cancelled"
     assert assistant_message["status"] == MessageStatus.CANCELLED.value
-    assert assistant_message["content"] == "partial reply"
+    assert assistant_message["content"] == ""
     assert payload["agent_run_id"] not in client.app.state.chat_runs
 
 
@@ -1531,7 +1566,7 @@ async def test_persisting_stream_reraises_cancelled_error_after_persisting_termi
     assert run["status"] == AgentRunStatus.CANCELLED.value
     assert run["error_code"] == "stream_cancelled"
     assert assistant_message["status"] == MessageStatus.CANCELLED.value
-    assert assistant_message["content"] == "partial reply"
+    assert assistant_message["content"] == ""
     assert payload["agent_run_id"] not in client.app.state.chat_runs
 
 
@@ -1874,11 +1909,18 @@ def test_chat_stream_auto_summarizes_useful_answer_to_wiki(
     assert wiki_action["target_paths"][0].startswith("Wiki/Companion/Summaries/")
 
     page_path = vault.joinpath(*wiki_action["target_paths"][0].split("/"))
-    text = page_path.read_text(encoding="utf-8")
-    assert "### 核心定义" in text
-    assert "### 原文出处" in text
-    assert "### 自检清单" in text
-    assert "agent_run_id" in text
+    page = read_markdown(page_path)
+    assert page.frontmatter["page_type"] == "source"
+    assert page.frontmatter["sources"]
+    assert "## 来源摘要" in page.body
+    assert "单来源聊天摘要" in page.body
+    assert "## 证据状态" in page.body
+    assert "## 来源" in page.body
+    assert "## 更新记录" in page.body
+    assert "agent_run_id" in page.body
+    assert "## 核心定义" not in page.body
+    assert "## 经典案例" not in page.body
+    assert "## 自检清单" not in page.body
     assert wiki_action["target_paths"][0] in (vault / "Wiki" / "log.md").read_text(encoding="utf-8")
 
 
@@ -1899,7 +1941,7 @@ def test_retrieval_chat_stream_emits_citation_event(client: TestClient, tmp_path
     assert indexed.status_code == 200
     disable_negotiation(client)
 
-    events = stream_chat(client, "search memory for citation-term")
+    chat_payload, events = stream_chat_with_payload(client, "search memory for citation-term")
 
     status_events = [event for event in events if event.get("event") == "status"]
     status_payloads = [json.loads(event["data"]) for event in status_events]
@@ -1910,6 +1952,20 @@ def test_retrieval_chat_stream_emits_citation_event(client: TestClient, tmp_path
     citation_payload = json.loads(citation_events[0]["data"])
     assert citation_payload["citation"]["relative_path"] == "People.md"
     assert events[-1]["event"] == "done"
+    with sqlite3.connect(client.app.state.database.path) as conn:
+        run_status = conn.execute(
+            "SELECT status FROM agent_runs WHERE id = ?",
+            (chat_payload["agent_run_id"],),
+        ).fetchone()
+        grounded_rows = conn.execute(
+            "SELECT dimensions_json FROM product_metric_events WHERE event_type = 'grounded_answer'"
+        ).fetchall()
+    assert run_status is not None and run_status[0] == "success"
+    assert len(grounded_rows) == 1
+    assert json.loads(grounded_rows[0][0])["citation_valid"] == "true"
+    source_coverage = client.get("/api/metrics/local-impact", headers=auth()).json()["metrics"]["source_coverage_rate"]
+    assert source_coverage["numerator"] == 1
+    assert source_coverage["denominator"] == 1
 
 
 def test_plain_chat_stream_answers_without_citation(client: TestClient, tmp_path: Path) -> None:
@@ -1931,6 +1987,11 @@ def test_plain_chat_stream_answers_without_citation(client: TestClient, tmp_path
     assert token_text
     assert "搜索" not in token_text
     assert "Markdown" not in token_text
+    with sqlite3.connect(client.app.state.database.path) as conn:
+        grounded_count = conn.execute(
+            "SELECT COUNT(*) FROM product_metric_events WHERE event_type = 'grounded_answer'"
+        ).fetchone()[0]
+    assert grounded_count == 0
 
 
 def test_chat_done_auto_writes_daily_memory_file(client: TestClient, tmp_path: Path) -> None:
@@ -1964,28 +2025,6 @@ def test_chat_done_auto_writes_daily_memory_file(client: TestClient, tmp_path: P
     assert "- agent_run_id：`" in content
 
 
-def _legacy_chat_done_auto_writes_long_term_memory_for_explicit_preference(
-    client: TestClient,
-    tmp_path: Path,
-) -> None:
-    return
-    vault = tmp_path / "Vault"
-    client.post(
-        "/api/vaults/init",
-        headers=auth(),
-        json={"path": str(vault), "create_if_missing": True, "confirmed": True},
-    )
-    enable_automation(client, long_term_memory=True)
-
-    events = stream_chat(client, "我喜欢的水果是苹果")
-
-    assert_successful_chat_events(events)
-    assert "- 类型：preference" in content
-    assert "- 主题：水果" in content
-    assert "- 内容：用户的水果是苹果" in content
-    assert "- 来源原文：我喜欢的水果是苹果" in content
-
-
 def test_chat_done_auto_long_term_records_candidate_without_vault_profile(
     client: TestClient,
     tmp_path: Path,
@@ -2006,7 +2045,9 @@ def test_chat_done_auto_long_term_records_candidate_without_vault_profile(
         for event in events
         if event["event"] == "agent_action"
     ]
-    assert any(action["action_type"] == "memory.proposal.defer" for action in foreground_actions)
+    deferred = [action for action in foreground_actions if action["action_type"] == "memory.proposal.defer"]
+    assert len(deferred) == 1
+    assert deferred[0]["status"] == "completed"
     action_payloads = wait_for_agent_actions(
         client,
         chat_payload["agent_run_id"],
@@ -2021,13 +2062,189 @@ def test_chat_done_auto_long_term_records_candidate_without_vault_profile(
         conn.row_factory = sqlite3.Row
         candidate = conn.execute("SELECT * FROM memory_candidates").fetchone()
         evidence_count = conn.execute("SELECT COUNT(*) FROM memory_evidence").fetchone()[0]
-        graph_count = conn.execute("SELECT COUNT(*) FROM memory_graph_facts").fetchone()[0]
+        graph_count = conn.execute(
+            "SELECT COUNT(*) FROM memory_graph_facts WHERE statement_kind = 'claim'"
+        ).fetchone()[0]
+        graph_fact = conn.execute(
+            """
+            SELECT f.id, f.status, f.subject, f.predicate, f.object,
+                   f.subject_entity_id, c.fact_id AS candidate_fact_id,
+                   e.fact_id AS evidence_fact_id
+            FROM memory_graph_facts AS f
+            JOIN memory_candidates AS c ON c.fact_id = f.id
+            JOIN memory_evidence AS e ON e.candidate_id = c.id
+            WHERE f.statement_kind = 'claim'
+            """
+        ).fetchone()
     assert candidate["memory_kind"] == "preference"
     assert candidate["source_track"] == "explicit_user"
     assert candidate["status"] == "active"
     assert evidence_count == 1
-    assert graph_count == 0
+    assert graph_count == 1
+    assert graph_fact is not None
+    assert graph_fact["status"] == "active"
+    assert graph_fact["subject"] == "editor"
+    assert graph_fact["object"] == "VS Code"
+    assert graph_fact["subject_entity_id"]
+    assert graph_fact["candidate_fact_id"] == graph_fact["id"]
+    assert graph_fact["evidence_fact_id"] == graph_fact["id"]
     assert not (vault / "Memories" / "LongTerm").exists()
+
+
+def test_explicit_chat_memory_cross_session_correction_and_forget_closure(
+    client: TestClient,
+    tmp_path: Path,
+) -> None:
+    vault = tmp_path / "Vault"
+    init = client.post(
+        "/api/vaults/init",
+        headers=auth(),
+        json={"path": str(vault), "create_if_missing": True, "confirmed": True},
+    )
+    assert init.status_code == 200
+    enable_automation(client, long_term_memory=True)
+
+    first_payload, first_events = stream_chat_with_payload(
+        client,
+        "Remember this: my preferred editor = VS Code.",
+    )
+    assert_successful_chat_events(first_events)
+    actions = wait_for_agent_actions(
+        client,
+        first_payload["agent_run_id"],
+        action_type="memory.consolidation.candidate",
+    )
+    assert any(action["status"] == "completed" for action in actions)
+
+    with sqlite3.connect(client.app.state.database.path) as conn:
+        conn.row_factory = sqlite3.Row
+        graph_fact = conn.execute(
+            """
+            SELECT f.id, f.status, c.id AS candidate_id
+            FROM memory_graph_facts AS f
+            JOIN memory_candidates AS c ON c.fact_id = f.id
+            WHERE f.statement_kind = 'claim' AND f.status = 'active'
+            """
+        ).fetchone()
+    assert graph_fact is not None
+    fact_id = str(graph_fact["id"])
+    candidate_id = str(graph_fact["candidate_id"])
+
+    second_payload, second_events = stream_chat_with_payload(
+        client,
+        "What is my preferred editor?",
+    )
+    assert_successful_chat_events(second_events)
+    assert second_payload["conversation_id"] != first_payload["conversation_id"]
+    citation_payloads = [
+        json.loads(event["data"])["citation"]
+        for event in second_events
+        if event["event"] == "citation"
+    ]
+    graph_citation = next(
+        citation for citation in citation_payloads if citation.get("fact_id") == fact_id
+    )
+    assert graph_citation["relative_path"] == ""
+    assert graph_citation["evidence_refs"]
+    assert graph_citation["citation_refs"] == graph_citation["evidence_refs"]
+    search = client.post(
+        "/api/memory/search",
+        headers=auth(),
+        json={"query": "preferred editor VS Code", "top_k": 5, "source_scope": "personal_memory"},
+    )
+    assert search.status_code == 200
+    recalled = next(
+        result for result in search.json()["results"] if result.get("fact_id") == fact_id
+    )
+    assert recalled["source_scope"] == "personal_memory"
+    assert recalled["retrieval_mode"] == "graph_activation"
+    assert recalled["lifecycle_status"] == "active"
+    assert recalled["recall_permissions"]["can_answer_context"] is True
+
+    correction = client.post(
+        "/api/memory/feedback",
+        headers=auth(),
+        json={
+            "target_type": "candidate",
+            "target_id": candidate_id,
+            "operation": "edit",
+            "feedback_text": "I switched to JetBrains.",
+            "replacement_text": "JetBrains",
+        },
+    )
+    assert correction.status_code == 200, correction.text
+    replacement_candidate_id = correction.json()["replacement_target_id"]
+    assert replacement_candidate_id
+    assert correction.json()["status"] == "superseded"
+    with sqlite3.connect(client.app.state.database.path) as conn:
+        replacement_row = conn.execute(
+            "SELECT fact_id, status FROM memory_candidates WHERE id = ?",
+            (replacement_candidate_id,),
+        ).fetchone()
+    assert replacement_row is not None
+    replacement_fact_id = str(replacement_row[0])
+    assert replacement_fact_id
+    assert replacement_row[1] == "active"
+    old_search = client.post(
+        "/api/memory/search",
+        headers=auth(),
+        json={"query": "VS Code", "top_k": 5, "source_scope": "personal_memory"},
+    )
+    new_search = client.post(
+        "/api/memory/search",
+        headers=auth(),
+        json={"query": "JetBrains", "top_k": 5, "source_scope": "personal_memory"},
+    )
+    assert old_search.status_code == new_search.status_code == 200
+    assert not any(result.get("fact_id") == fact_id for result in old_search.json()["results"])
+    assert any(result.get("fact_id") == replacement_fact_id for result in new_search.json()["results"])
+
+    forgotten = client.post(
+        "/api/memory/feedback",
+        headers=auth(),
+        json={
+            "target_type": "candidate",
+            "target_id": replacement_candidate_id,
+            "operation": "forget",
+            "feedback_text": "Forget this editor preference.",
+        },
+    )
+    assert forgotten.status_code == 200, forgotten.text
+    assert forgotten.json()["status"] == "forgotten"
+    forgotten_search = client.post(
+        "/api/memory/search",
+        headers=auth(),
+        json={"query": "JetBrains", "top_k": 5, "source_scope": "personal_memory"},
+    )
+    assert forgotten_search.status_code == 200
+    assert not any(result.get("fact_id") == replacement_fact_id for result in forgotten_search.json()["results"])
+    with sqlite3.connect(client.app.state.database.path) as conn:
+        old_candidate_status = conn.execute(
+            "SELECT status FROM memory_candidates WHERE fact_id = ?",
+            (fact_id,),
+        ).fetchone()
+        replacement_candidate_status = conn.execute(
+            "SELECT status FROM memory_candidates WHERE id = ?",
+            (replacement_candidate_id,),
+        ).fetchone()
+        fact_status = conn.execute(
+            "SELECT status FROM memory_graph_facts WHERE id = ?",
+            (replacement_fact_id,),
+        ).fetchone()
+        supersedes_count = conn.execute(
+            """
+            SELECT COUNT(*) FROM memory_graph_facts
+            WHERE statement_kind = 'relation'
+              AND relation_type = 'supersedes'
+              AND subject_fact_id = ?
+              AND object_fact_id = ?
+            """,
+            (replacement_fact_id, fact_id),
+        ).fetchone()[0]
+    assert old_candidate_status is not None and old_candidate_status[0] == "superseded"
+    assert replacement_candidate_status is not None and replacement_candidate_status[0] == "forgotten"
+    assert fact_status is not None and fact_status[0] == "forgotten"
+    assert supersedes_count == 1
 
 
 def test_chat_auto_memory_records_low_value_wiki_skip_without_raw_content(

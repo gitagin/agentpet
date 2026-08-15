@@ -477,6 +477,12 @@ def classify_chat_model_exception(exc: Exception) -> ChatModelError:
             code="unsupported_model",
             detail=detail,
         )
+    if status_code == 429 and _looks_like_quota_exhausted(lowered):
+        return ChatModelError(
+            "Model quota is exhausted; update billing or quota before retrying.",
+            code="quota_exhausted",
+            detail=detail,
+        )
     if status_code == 429 or "rate limit" in lowered:
         return ChatModelError(
             "模型服务限流，请稍后重试。",
@@ -556,6 +562,16 @@ def _looks_like_unsupported_model(lowered: str) -> bool:
         "does not exist",
     )
     return any(signal in lowered for signal in model_signals)
+
+
+def _looks_like_quota_exhausted(lowered: str) -> bool:
+    quota_signals = (
+        "insufficient_quota",
+        "credit_balance_exhausted",
+        "credit balance exhausted",
+        "exceeded your current quota",
+    )
+    return any(signal in lowered for signal in quota_signals)
 
 
 def _looks_like_timeout(exc: Exception, lowered: str) -> bool:

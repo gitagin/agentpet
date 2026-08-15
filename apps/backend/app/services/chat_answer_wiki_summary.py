@@ -3,10 +3,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from app.models.api import WikiPageResponse, WikiPageWriteRequest
-from app.services.agent_actions import markdown_snapshot
 from app.services.memory_policy import evaluate_memory_content
-from app.services.wiki import WikiService, slugify_wiki_title
+from app.services.wiki import slugify_wiki_title
 
 
 KNOWLEDGE_KEYWORDS = (
@@ -56,18 +54,8 @@ class ChatAnswerWikiSummaryPlan:
     skipped_reason: str | None = None
 
 
-@dataclass(frozen=True)
-class ChatAnswerWikiSummaryWriteResult:
-    page: WikiPageResponse
-    before_snapshot: dict[str, object]
-    after_snapshot: dict[str, object]
-
-
 class ChatAnswerWikiSummaryService:
     """Distill useful completed chat answers into auditable Wiki pages."""
-
-    def __init__(self, wiki: WikiService) -> None:
-        self.wiki = wiki
 
     def plan(
         self,
@@ -136,41 +124,6 @@ class ChatAnswerWikiSummaryService:
             return "low_knowledge_score"
         return "no_saveable_content"
 
-    def write(self, plan: ChatAnswerWikiSummaryPlan, *, source_message_id: str) -> ChatAnswerWikiSummaryWriteResult:
-        before = markdown_snapshot(self.wiki.writer, [plan.target_path])
-        page = self.wiki.write_page(
-            WikiPageWriteRequest(
-                title=plan.title,
-                content=plan.content,
-                operation="replace_section",
-                target_path=plan.target_path,
-                section="自动总结",
-                tags=list(plan.tags),
-                links=list(plan.links),
-                source_message_id=source_message_id,
-                page_type="synthesis",
-                confidence="medium",
-                authors=["chat_answer_wiki_summary_agent"],
-                sources=list(plan.source_paths),
-            )
-        )
-        self.wiki.refresh_index()
-        self.wiki.append_log(
-            "auto-summary",
-            plan.title,
-            "\n".join(
-                [
-                    f"- 页面：`{page.relative_path}`",
-                    f"- 触发消息：`{source_message_id}`",
-                    f"- 置信度：{plan.confidence:.2f}",
-                    f"- 来源路径：{len(plan.source_paths)}",
-                ]
-            ),
-        )
-        after = markdown_snapshot(self.wiki.writer, [plan.target_path])
-        return ChatAnswerWikiSummaryWriteResult(page=page, before_snapshot=before, after_snapshot=after)
-
-
 def _knowledge_score(question: str, answer: str) -> float:
     text = f"{question}\n{answer}".casefold()
     keyword_hits = sum(1 for keyword in KNOWLEDGE_KEYWORDS if keyword.casefold() in text)
@@ -221,73 +174,50 @@ def _summary_markdown(
     source_paths: tuple[str, ...],
 ) -> str:
     key_points = _key_points(answer)
-    source_link = f"[[{diary_markdown_path}]]" if diary_markdown_path else "`未生成日记路径`"
-    related = ["[[Wiki/index.md]]", "[[Wiki/AGENTS.md]]", *[f"[[{path}]]" for path in source_paths]]
-    return "\n".join(
+    lines = [
+        "## 来源摘要",
+        "",
+        "- 页面性质：单来源聊天摘要，不是多来源综合结论。",
+        "- 摘要只保留回答中可复用的表述；原始来源仍以日记或触发消息为准。",
+        "",
+        "## 问题",
+        "",
+        question,
+        "",
+        "## 结论",
+        "",
+        *[f"- {point}" for point in key_points],
+        "",
+        "## 证据状态",
+        "",
+        "- 状态：待基于独立来源进一步综合。",
+        "- 冲突或未验证的内容不会被提升为确定事实。",
+        "",
+        "## 来源",
+        "",
+        f"- 触发消息：`message:{user_message_id}`",
+    ]
+    if diary_markdown_path:
+        lines.append(f"- 日记来源：[[{diary_markdown_path}]]")
+    lines.extend(
         [
-            "### 核心定义",
-            "",
-            f"- {title}：桌宠根据本轮用户输入和回复自动提炼出的可复用知识。该内容是整理性总结，不是原始日记的逐字摘录。",
-            "",
-            "### 核心要点",
-            "",
-            *[f"- {point}" for point in key_points],
-            "",
-            "### 经典案例",
-            "",
-            f"- 用户提出：{question}",
-            "- 桌宠回答后，把本轮交互先归档到日记，再提炼为这个 Wiki 知识页。",
-            "",
-            "### 实践方法",
-            "",
-            "1. 先按用户意图检索日记、长期记忆和 Wiki。",
-            "2. 回答用户时只使用可解释的上下文。",
-            "3. 回答完成后写入每日聊天日记和结构化日记对象。",
-            "4. 对本轮回答做自我总结，只把可复用、非敏感、有出处的内容沉淀到 Wiki。",
-            "5. 写入后更新索引、追加集中日志，并保留活动账本用于撤销。",
-            "",
-            "### 常见误区",
-            "",
-            "- 不要把原始日记或来源文件改写成整理后的观点。",
-            "- 不要把没有出处的推断伪装成原文事实。",
-            "- 不要为普通寒暄、短句确认或敏感凭据创建 Wiki 页面。",
-            "",
-            "### 相关知识点",
-            "",
-            *[f"- {link}" for link in related],
-            "",
-            "### 原文出处",
-            "",
-            f"- 触发来源：用户查询 `message:{user_message_id}`。",
-            f"- 日记出处：{source_link}。",
-            f"- conversation_id：`{conversation_id}`。",
-            f"- assistant_message_id：`{assistant_message_id}`。",
-            f"- agent_run_id：`{agent_run_id}`。",
-            f"- 结构化日记对象：{', '.join(f'`{item}`' for item in diary_object_ids) if diary_object_ids else '`无`'}。",
-            "- 证据说明：以上内容是基于本轮问答的整理性推断；若与原始日记冲突，以原始日记为准并标记矛盾。",
-            "",
-            "### 对用户/决策的意义",
-            "",
-            "- 用户只需要对桌宠自然输入；桌宠负责检索、回答、归档、总结和维护 Wiki。",
-            "- 自动沉淀必须可追踪、可撤销、可解释，普通整理不打断对话。",
-            "",
-            "### 更新日志",
-            "",
-            "| 日期 | 操作类型 | 触发来源 | 变更内容 |",
-            "| --- | --- | --- | --- |",
-            f"| 自动生成 | 创建 | 用户查询 `{user_message_id}` | 从聊天回答生成 Wiki 自动总结 |",
-            "",
-            "### 自检清单",
-            "",
-            "- [x] 索引同步：写入后调用 Wiki index refresh。",
-            "- [x] 关键词同步：标题、标签和来源写入 frontmatter。",
-            "- [x] 关系图谱：保留 Wiki/index、Wiki/AGENTS 与日记来源链接。",
-            "- [x] 入链检查：新页至少进入索引，并通过后续 lint 检查补足上下文入链。",
-            "- [x] AGENTS 同步：遵守 Wiki/AGENTS 的只读来源和证据规则。",
-            "- [x] 内嵌日志：页面含更新日志。",
-            "- [x] 集中日志：写入 Wiki/log.md。",
+            f"- conversation_id：`{conversation_id}`",
+            f"- assistant_message_id：`{assistant_message_id}`",
+            f"- agent_run_id：`{agent_run_id}`",
         ]
-    ).strip()
+    )
+    if diary_object_ids:
+        lines.extend(["", "## 结构化证据", "", *[f"- `{item}`" for item in diary_object_ids]])
+    lines.extend(
+        [
+            "",
+            "## 更新记录",
+            "",
+            f"- 触发消息：`message:{user_message_id}`",
+            "- 页面写入、索引和集中日志的最终状态以动作回执及权威读回为准。",
+        ]
+    )
+    return "\n".join(lines).strip()
 
 
 def _key_points(answer: str) -> list[str]:

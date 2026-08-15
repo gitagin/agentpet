@@ -10,6 +10,8 @@ export type LastIndexRun = {
 
 export type AsyncStatus = "idle" | "loading" | "success" | "error";
 
+export type SettingsStatusLoadState = "unknown" | "loading" | "ready" | "error";
+
 export type GlobalModelDraft = {
   provider: string;
   base_url: string;
@@ -22,10 +24,11 @@ export type GlobalModelDraft = {
 };
 
 export type NegotiationSettingsDraft = {
-  use_negotiation: boolean;
-  max_rounds: number;
+  use_negotiation: boolean | null;
+  max_rounds: number | null;
 };
 
-export type AutomationSettingsDraft = AutomationSettings;
+export type AutomationSettingsDraft = Omit<AutomationSettings, keyof NegotiationSettingsDraft>
+  & NegotiationSettingsDraft;
 
 export type TtsSettingsDraft = TtsSettingsUpdateRequest;

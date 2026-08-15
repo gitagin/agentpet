@@ -12,6 +12,7 @@ from app.services.diary_memory import DiaryMemoryObjectSource, DiaryMemoryStore
 from app.services.diary_memory_extractor import DiaryMemoryObject
 from app.services.memory_candidates import MemoryCandidateCreate, MemoryEvidenceCreate
 from app.services.memory_graph import MemoryFactCandidate
+from app.services.memory_entity_graph import MemoryEntityGraphStore
 from app.services.memory_lifecycle import MemoryLifecycleService
 from app.services.memory_taxonomy import LifecycleStatus, MemoryKind, MemoryScope, RiskTier, SourceTrack
 from tests.conftest import auth_headers
@@ -80,7 +81,7 @@ def create_diary_object(
     client: TestClient,
     *,
     summary: str,
-    type: str,
+    memory_type: str,
     topic: str = "Project Atlas",
     emotion: str = "focused",
     source_id: str = "run-raw-diary-source",
@@ -101,12 +102,12 @@ def create_diary_object(
                 topic=topic,
                 emotion=emotion,
                 people=("Alice",),
-                keywords=("atlas", type),
+                keywords=("atlas", memory_type),
                 source_text="RAW_DIARY_SOURCE_TEXT_SHOULD_NOT_LEAK",
                 importance=0.82,
                 confidence=0.88,
                 status=status,
-                type=type,
+                type=memory_type,
             ),
             occurred_at="2026-07-08T10:30:00+08:00",
             timezone="Asia/Shanghai",
@@ -149,8 +150,18 @@ def add_raw_evidence(client: TestClient, candidate_id: str) -> None:
 
 
 def get_projection(client: TestClient, *, max_nodes: int | None = None) -> dict[str, Any]:
-    query = "" if max_nodes is None else f"?max_nodes={max_nodes}"
-    response = client.get(f"/api/memory/graph-projection{query}", headers=auth())
+    vault_status = client.get("/api/vaults/status", headers=auth())
+    assert vault_status.status_code == 200
+    if not vault_status.json()["configured"]:
+        vault_root = Path(client.app.state.database.path).parent / "Vault"
+        initialized = client.post(
+            "/api/vaults/init",
+            headers=auth(),
+            json={"path": str(vault_root), "create_if_missing": True, "confirmed": True},
+        )
+        assert initialized.status_code == 200
+    query = "" if max_nodes is None else f"?limit={max_nodes}"
+    response = client.get(f"/api/memory/graph{query}", headers=auth())
     assert response.status_code == 200
     return response.json()
 
@@ -223,19 +234,37 @@ def test_graph_projection_returns_center_and_profile_nodes_safely(client_factory
         assert any(node["type"] == "user" and node["label"] == "我" for node in nodes)
         assert any(node["type"] == "preference" and "简洁" in node["label"] for node in nodes)
         assert any(node["type"] == "boundary" and "早上" in node["label"] for node in nodes)
-        assert all(str(node["id"]).startswith("mg_") for node in nodes)
-        assert all(str(edge["id"]).startswith("mge_") for edge in payload["edges"])
-        assert any(edge["from"] in {node["id"] for node in nodes} for edge in payload["edges"])
+        assert all(str(node["node_id"]).startswith("mg_") for node in nodes)
+        assert all(str(edge["edge_id"]).startswith("mge_") for edge in payload["edges"])
+        node_ids = {node["node_id"] for node in nodes}
+        assert all(
+            edge["source_node_id"] in node_ids and edge["target_node_id"] in node_ids
+            for edge in payload["edges"]
+        )
         assert_safe_projection(payload, fact_id, boundary_id, "RAW_GRAPH_SOURCE_TEXT_SHOULD_NOT_LEAK")
 
 
 def test_graph_projection_adds_diary_episode_qa_mood_and_project_nodes(client_factory, tmp_path: Path) -> None:
     with client_factory(data_dir=tmp_path / "data") as client:
         raw_ids = [
-            create_diary_object(client, summary="Project Atlas kickoff notes were reviewed.", type="event"),
-            create_diary_object(client, summary="User asked how to compare two parser options.", type="qa", topic="parser choice"),
-            create_diary_object(client, summary="User felt focused after finishing the draft.", type="mood", emotion="focused"),
-            create_diary_object(client, summary="Project Atlas decision moved to next week.", type="project_update"),
+            create_diary_object(client, summary="Project Atlas kickoff notes were reviewed.", memory_type="event"),
+            create_diary_object(
+                client,
+                summary="User asked how to compare two parser options.",
+                memory_type="qa",
+                topic="parser choice",
+            ),
+            create_diary_object(
+                client,
+                summary="User felt focused after finishing the draft.",
+                memory_type="mood",
+                emotion="focused",
+            ),
+            create_diary_object(
+                client,
+                summary="Project Atlas decision moved to next week.",
+                memory_type="project_update",
+            ),
         ]
 
         payload = get_projection(client)
@@ -314,20 +343,123 @@ def test_graph_projection_limits_nodes_clusters_are_valid_and_is_read_only(clien
     with client_factory(data_dir=tmp_path / "data") as client:
         for index in range(12):
             create_candidate(client, summary=f"用户偏好第 {index} 项。", confidence=0.9)
-        create_diary_object(client, summary="Project Atlas checkpoint was reviewed.", type="event")
+        create_diary_object(client, summary="Project Atlas checkpoint was reviewed.", memory_type="event")
         before = table_counts(client)
 
         payload = get_projection(client, max_nodes=8)
 
         after = table_counts(client)
-        node_ids = {node["id"] for node in payload["nodes"]}
+        node_ids = {node["node_id"] for node in payload["nodes"]}
         assert len(payload["nodes"]) <= 8
         assert payload["summary"]["total_nodes"] == len(payload["nodes"])
         for cluster in payload["clusters"]:
             assert cluster["node_ids"]
             assert set(cluster["node_ids"]).issubset(node_ids)
         for edge in payload["edges"]:
-            assert edge["from"] in node_ids
-            assert edge["to"] in node_ids
+            assert edge["source_node_id"] in node_ids
+            assert edge["target_node_id"] in node_ids
         assert before == after
         assert not (tmp_path / "Vault").exists()
+
+
+def test_graph_projection_does_not_infer_related_edges_from_shared_keywords(client_factory, tmp_path: Path) -> None:
+    with client_factory(data_dir=tmp_path / "data") as client:
+        create_diary_object(
+            client,
+            summary="Project Atlas kickoff was reviewed.",
+            memory_type="event",
+            topic="shared topic",
+            source_id="source-one",
+        )
+        create_diary_object(
+            client,
+            summary="Project Atlas checklist was edited.",
+            memory_type="event",
+            topic="shared topic",
+            source_id="source-two",
+        )
+
+        payload = get_projection(client)
+
+        assert payload["edges"] == []
+
+
+def test_graph_projection_uses_only_evidenced_sqlite_relations(client_factory, tmp_path: Path) -> None:
+    with client_factory(data_dir=tmp_path / "data") as client:
+        store = MemoryEntityGraphStore(client.app.state.database.path)
+        try:
+            self_entity = store.ensure_self()
+            project = store.create_entity(entity_type="project", canonical_name="Atlas")
+            relation = store.create_relation(
+                relation_type="works_on",
+                subject_entity_id=self_entity.id,
+                object_entity_id=project.id,
+                source_text="I work on Atlas.",
+                evidence_id="evidence-works-on",
+                confidence=0.93,
+            )
+            no_evidence = store.create_relation(
+                relation_type="related_to",
+                subject_entity_id=self_entity.id,
+                object_entity_id=project.id,
+                source_text="A model guessed a relation.",
+                confidence=0.93,
+            )
+            assert relation.status.value == "active"
+            assert no_evidence.status.value == "quarantined"
+        finally:
+            store.close()
+
+        # Simulate a legacy/manual status mistake. Projection must still use
+        # the evidence binding as a hard gate.
+        with sqlite3.connect(client.app.state.database.path) as conn:
+            conn.execute("UPDATE memory_graph_facts SET status = 'active' WHERE id = ?", (no_evidence.id,))
+            conn.commit()
+
+        payload = get_projection(client)
+        relation_edges = payload["edges"]
+        assert [(edge["relation_type"], edge["confidence"]) for edge in relation_edges] == [("works_on", 0.93)]
+        assert all(edge["relation_type"] != "related_to" for edge in relation_edges)
+
+
+def test_graph_projection_excludes_expired_or_sensitive_relations(client_factory, tmp_path: Path) -> None:
+    with client_factory(data_dir=tmp_path / "data") as client:
+        store = MemoryEntityGraphStore(client.app.state.database.path)
+        try:
+            self_entity = store.ensure_self()
+            project = store.create_entity(entity_type="project", canonical_name="Expired Atlas")
+            expired = store.create_relation(
+                relation_type="works_on",
+                subject_entity_id=self_entity.id,
+                object_entity_id=project.id,
+                source_text="I used to work on Expired Atlas.",
+                evidence_id="evidence-expired",
+                confidence=0.95,
+            )
+            sensitive_project = store.create_entity(
+                entity_type="project",
+                canonical_name="Sensitive Atlas",
+                risk_tier="high",
+            )
+            store.create_relation(
+                relation_type="works_on",
+                subject_entity_id=self_entity.id,
+                object_entity_id=sensitive_project.id,
+                source_text="Sensitive relation.",
+                evidence_id="evidence-sensitive",
+                confidence=0.95,
+            )
+        finally:
+            store.close()
+        with sqlite3.connect(client.app.state.database.path) as conn:
+            conn.execute(
+                "UPDATE memory_graph_facts SET expires_at = ?, metadata_json = ? WHERE id = ?",
+                ("2020-01-01T00:00:00Z", '{"risk_tier":"high"}', expired.id),
+            )
+            conn.commit()
+
+        payload = get_projection(client)
+        assert not any(edge["relation_type"] == "works_on" for edge in payload["edges"])
+        labels = {node["label"] for node in payload["nodes"]}
+        assert "Expired Atlas" not in labels
+        assert "Sensitive Atlas" not in labels

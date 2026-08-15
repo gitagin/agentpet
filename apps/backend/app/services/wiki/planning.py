@@ -1,6 +1,6 @@
 from .common import *
-from .markdown import _comparison_update_markdown, _concept_update_markdown, _entity_update_markdown, _ingest_synthesis_markdown, _maintenance_markdown, _related_titles, _source_summary_markdown
-from .planning_candidates import _ComparisonCandidate, _EntityCandidate, _comparison_candidates, _comparison_title, _entity_candidates, _should_plan_maintenance, _should_plan_synthesis
+from .markdown import _concept_update_markdown, _entity_update_markdown, _maintenance_markdown, _related_titles, _source_summary_markdown
+from .planning_candidates import _EntityCandidate, _entity_candidates, _should_plan_maintenance
 from .utility import _unique
 
 def _build_ingest_page_plans(request: WikiIngestPreviewRequest, source_hash: str) -> list[WikiIngestPagePlan]:
@@ -16,7 +16,6 @@ def _build_ingest_page_plans(request: WikiIngestPreviewRequest, source_hash: str
 
     related_titles = _related_titles(request, parsed.links, parsed.tags)
     entity_candidates = _entity_candidates(request, parsed)
-    comparison_candidates = _comparison_candidates(request, parsed, related_titles, entity_candidates)
     concept_plans = [
         _concept_page_plan(title, request=request, source_path=source_path)
         for title in related_titles
@@ -25,28 +24,11 @@ def _build_ingest_page_plans(request: WikiIngestPreviewRequest, source_hash: str
         _entity_page_plan(candidate, request=request, source_path=source_path, related_titles=related_titles)
         for candidate in entity_candidates
     ]
-    comparison_plans = [
-        _comparison_page_plan(candidate, request=request, source_path=source_path)
-        for candidate in comparison_candidates
-    ]
-
     seed_plans: list[WikiIngestPagePlan] = []
     if concept_plans:
         seed_plans.append(concept_plans[0])
     if entity_plans:
         seed_plans.append(entity_plans[0])
-    if comparison_plans:
-        seed_plans.append(comparison_plans[0])
-    if _should_plan_synthesis(parsed, related_titles, entity_candidates, comparison_candidates):
-        seed_plans.append(
-            _synthesis_page_plan(
-                request,
-                source_path=source_path,
-                related_titles=related_titles,
-                entity_candidates=entity_candidates,
-                comparison_candidates=comparison_candidates,
-            )
-        )
     if _should_plan_maintenance(request.content, parsed):
         seed_plans.append(
             _maintenance_page_plan(
@@ -60,7 +42,6 @@ def _build_ingest_page_plans(request: WikiIngestPreviewRequest, source_hash: str
         *seed_plans,
         *concept_plans[1:],
         *entity_plans[1:],
-        *comparison_plans[1:],
     ]:
         _append_ingest_plan(plans, plan, max_pages=request.max_pages)
         if len(plans) >= request.max_pages:
@@ -91,10 +72,10 @@ def _build_basic_ingest_page_plans(request: WikiIngestPreviewRequest, source_has
                 title=title,
                 target_path=f"Wiki/Concepts/{slugify_wiki_title(title)}.md",
                 operation="replace_section",
-                section=f"来源：{request.title}",
+                section="定义",
                 content=_concept_update_markdown(title, request, source_path),
                 tags=_unique([*request.tags, "concept"]),
-                links=[request.title],
+                links=[source_path, request.title],
             )
         )
     return plans[: request.max_pages]
@@ -127,7 +108,7 @@ def _concept_page_plan(
         title=title,
         target_path=f"Wiki/Concepts/{slugify_wiki_title(title)}.md",
         operation="replace_section",
-        section=f"Source: {request.title}",
+        section="定义",
         content=_concept_update_markdown(title, request, source_path),
         tags=_unique([*request.tags, "concept"]),
         links=[request.title],
@@ -145,62 +126,10 @@ def _entity_page_plan(
         title=candidate.title,
         target_path=f"Wiki/Entities/{slugify_wiki_title(candidate.title)}.md",
         operation="replace_section",
-        section=f"Source: {request.title}",
+        section="实体定义",
         content=_entity_update_markdown(candidate, request, source_path),
         tags=_unique([*request.tags, "entity", candidate.kind]),
         links=_unique([request.title, source_path, *related_titles]),
-    )
-
-
-def _comparison_page_plan(
-    candidate: _ComparisonCandidate,
-    *,
-    request: WikiIngestPreviewRequest,
-    source_path: str,
-) -> WikiIngestPagePlan:
-    title = _comparison_title(candidate)
-    return WikiIngestPagePlan(
-        title=title,
-        target_path=f"Wiki/Comparisons/{slugify_wiki_title(title)}.md",
-        operation="replace_section",
-        section=f"Source: {request.title}",
-        content=_comparison_update_markdown(candidate, request, source_path),
-        tags=_unique([*request.tags, "comparison"]),
-        links=_unique([request.title, source_path, candidate.left, candidate.right]),
-    )
-
-
-def _synthesis_page_plan(
-    request: WikiIngestPreviewRequest,
-    *,
-    source_path: str,
-    related_titles: list[str],
-    entity_candidates: list[_EntityCandidate],
-    comparison_candidates: list[_ComparisonCandidate],
-) -> WikiIngestPagePlan:
-    title = f"{request.title} Synthesis"
-    return WikiIngestPagePlan(
-        title=title,
-        target_path=f"Wiki/Syntheses/{slugify_wiki_title(title)}.md",
-        operation="replace_section",
-        section=f"Synthesis: {request.title}",
-        content=_ingest_synthesis_markdown(
-            request,
-            source_path=source_path,
-            related_titles=related_titles,
-            entity_candidates=entity_candidates,
-            comparison_candidates=comparison_candidates,
-        ),
-        tags=_unique([*request.tags, "synthesis"]),
-        links=_unique(
-            [
-                request.title,
-                source_path,
-                *related_titles,
-                *(candidate.title for candidate in entity_candidates),
-                *(_comparison_title(candidate) for candidate in comparison_candidates),
-            ]
-        ),
     )
 
 

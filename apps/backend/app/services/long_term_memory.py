@@ -6,7 +6,7 @@ import logging
 import re
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Callable
+from typing import Callable, Protocol
 from zoneinfo import ZoneInfo
 
 from app.services.memory import SafeMarkdownWriter
@@ -20,6 +20,10 @@ logger = logging.getLogger(__name__)
 
 PREFERENCES_PATH = "Memories/LongTerm/Preferences.md"
 PROFILE_PATH = "Memories/LongTerm/Profile.md"
+
+
+class CompletionModel(Protocol):
+    def complete(self, *, user_message: str, system_prompt: str) -> object: ...
 
 
 @dataclass(frozen=True)
@@ -56,7 +60,7 @@ class LongTermMemoryService:
         now_provider: Callable[[], datetime] | None = None,
         index_refresh: Callable[[str], str | None] | None = None,
         graph_store: MemoryGraphStore | None = None,
-        extraction_model: object | None = None,
+        extraction_model: CompletionModel | None = None,
         extraction_model_name: str | None = None,
     ) -> None:
         self.writer = writer
@@ -158,27 +162,28 @@ class LongTermMemoryService:
         conversation_id: str,
         user_message_id: str,
         agent_run_id: str,
+        candidate_only: bool = False,
     ) -> MemoryGraphWriteResult | None:
         if self.graph_store is None:
             return None
-        return self.graph_store.upsert_candidate(
-            MemoryFactCandidate(
-                category=candidate.category,
-                subject=candidate.subject,
-                predicate=candidate.predicate,
-                object=candidate.value,
-                source_text=candidate.source_text,
-                source_type="user_message",
-                confidence=candidate.confidence,
-                conversation_id=conversation_id,
-                user_message_id=user_message_id,
-                agent_run_id=agent_run_id,
-                memory_type=candidate.memory_type,
-                entity_type=candidate.entity_type,
-                importance=candidate.importance,
-                metadata_json=candidate.metadata_json,
-            )
+        graph_candidate = MemoryFactCandidate(
+            category=candidate.category,
+            subject=candidate.subject,
+            predicate=candidate.predicate,
+            object=candidate.value,
+            source_text=candidate.source_text,
+            source_type="user_message",
+            confidence=candidate.confidence,
+            conversation_id=conversation_id,
+            user_message_id=user_message_id,
+            agent_run_id=agent_run_id,
+            memory_type=candidate.memory_type,
+            entity_type=candidate.entity_type,
+            importance=candidate.importance,
+            metadata_json=candidate.metadata_json,
         )
+        writer = self.graph_store.insert_candidate if candidate_only else self.graph_store.upsert_candidate
+        return writer(graph_candidate)
 
     def _remember_model_extracted_facts(
         self,
@@ -210,6 +215,7 @@ class LongTermMemoryService:
                 conversation_id=conversation_id,
                 user_message_id=user_message_id,
                 agent_run_id=agent_run_id,
+                candidate_only=True,
             )
             if result is None:
                 continue
@@ -409,7 +415,7 @@ LONG_TERM_EXTRACTION_SYSTEM_PROMPT = (
 
 
 def _extract_model_long_term_candidates(
-    model: object,
+    model: CompletionModel,
     user_message: str,
     *,
     model_name: str | None,

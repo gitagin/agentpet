@@ -1,0 +1,11 @@
+{
+  "artifact_profile": "task-1206-mode-comparison",
+  "artifacts": {
+    "identity-control.md": "21f8538dff0c76d9afbf7675b7ee15c352682252e274d5eb6c91cb33aa49648c",
+    "latency-and-cost.md": "1b852f21bab5cb1d46f2d3033cbc996763de262ade6723299bb89d004d870503",
+    "mode-comparison.json": "82679ff805e207dd9245b32a13bad4044614887e7b38d5ddb3d2c7ede0d3f349",
+    "per-slice-quality.md": "8abc606955180a065a44576291494c0598951a5b84a79482aa74e8227d9b285e"
+  },
+  "hash_algorithm": "sha256",
+  "schema_version": "retrieval-eval-artifact-hashes.v3"
+}

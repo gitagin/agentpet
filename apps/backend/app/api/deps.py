@@ -9,6 +9,7 @@ from .services.adapters import (
     RuntimeWikiWorkflowAdapter,
     agent_runtime,
     prepend_graph_memory_results,
+    production_action_lifecycle,
 )
 from .services.errors import map_memory_error, map_task_error
 from .services.factory import (
@@ -42,6 +43,7 @@ from .services.factory import (
     memory_activation_recorder,
     memory_consolidation_service,
     memory_graph_store,
+    memory_entity_graph_store,
     memory_lifecycle_service,
     memory_service,
     memory_service_dependency,
@@ -111,10 +113,12 @@ __all__ = [
     "map_memory_error",
     "map_task_error",
     "memory_graph_store",
+    "memory_entity_graph_store",
     "memory_service",
     "memory_service_dependency",
     "pop_chat_run",
     "prepend_graph_memory_results",
+    "production_action_lifecycle",
     "record_agent_action",
     "record_audit",
     "refresh_retrieval_vector_index",

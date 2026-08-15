@@ -11,22 +11,51 @@ from ..contracts import ActionProposal, PolicyDecision
 
 
 ACTION_POLICY_VERSION = "action-policy.v1"
+_FORMATTED_TEXT_PARAMETERS = frozenset({"content", "description", "log_details", "source_text"})
 
 AUTO_ACTION_TYPES = frozenset(
     {
         "task.create",
+        "task.complete",
+        "task.approve",
+        "task.reject",
+        "task.cancel",
+        "task.patch",
         "memory.proposal",
+        "memory.proposal.confirm",
+        "memory.proposal.reject",
+        "memory.proposal.defer",
+        "memory.feedback.apply",
+        "memory.graph.entity",
+        "memory.graph.statement",
+        "memory.graph.relation",
+        "memory.graph.rebuild",
+        "continuity.proposal.reject",
+        "continuity.proposal.activate",
+        "chat.daily_archive",
+        "diary.structured_memory",
+        "memory.consolidation.candidate",
+        "memory.consolidation.safety_event",
+        "reminder.delivery.reserve",
+        "reminder.delivery.display",
+        "reminder.delivery.recover",
         "wiki.page.write",
         "wiki.answer_summary.write",
         "wiki.retrospective_report.write",
+        "wiki.weekly_report.write",
+        "wiki.monthly_report.write",
         "wiki.ingest.write",
         "wiki.query_archive.write",
         "wiki.synthesize.write",
         "wiki.lint.write",
+        "wiki.lint.report",
+        "wiki.ingest.confirm",
+        "wiki.ingest.review",
         "wiki.ingest.plan",
         "wiki.query_archive.plan",
         "wiki.synthesize.plan",
         "wiki.lint.plan",
+        "metrics.feedback",
     }
 )
 
@@ -35,11 +64,13 @@ KNOWN_CONFIRMATION_TYPES = frozenset(
     | AutomationPolicy.MEDIUM_RISK_TYPES
     | {
         "local.destructive_request",
+        "continuity.proposal.confirm",
         "wiki.ingest.apply",
         "wiki.query_archive.apply",
         "wiki.synthesize.apply",
         "wiki.lint.repair",
         "memory.long_term.write",
+        "memory.hygiene.apply",
     }
 )
 
@@ -192,7 +223,15 @@ def derive_action_idempotency_key(
 
 
 def _canonicalize_parameters(value: dict[str, Any]) -> dict[str, Any]:
-    return {str(key): _canonical_value(value[key]) for key in sorted(value)}
+    canonical: dict[str, Any] = {}
+    for key in sorted(value):
+        normalized_key = str(key)
+        raw = value[key]
+        if normalized_key.casefold() in _FORMATTED_TEXT_PARAMETERS and isinstance(raw, str):
+            canonical[normalized_key] = raw.replace("\r\n", "\n").replace("\r", "\n").strip()
+        else:
+            canonical[normalized_key] = _canonical_value(raw)
+    return canonical
 
 
 def _canonical_value(value: Any) -> Any:

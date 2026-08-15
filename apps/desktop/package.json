@@ -76,6 +76,7 @@
     "asar": true,
     "npmRebuild": false,
     "win": {
+      "signAndEditExecutable": false,
       "target": [
         "dir",
         "zip"

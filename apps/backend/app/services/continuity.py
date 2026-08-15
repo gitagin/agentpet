@@ -149,6 +149,12 @@ class ContinuityService:
         ).fetchall()
         return [self._map_proposal(row) for row in rows]
 
+    def get_proposal(self, proposal_id: str) -> ContinuityProposal:
+        row = self._proposal_row(proposal_id)
+        if row is None:
+            raise ContinuityProposalNotFoundError(proposal_id)
+        return self._map_proposal(row)
+
     def get_state_items(self) -> list[ContinuityStateItem]:
         rows = self.conn.execute(
             """

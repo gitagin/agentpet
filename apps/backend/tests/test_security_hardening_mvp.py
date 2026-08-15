@@ -497,7 +497,7 @@ def test_sensitive_api_key_memory_proposal_is_rejected_before_pending_state(
     assert pending.json()["proposals"] == []
 
 
-def test_memory_graph_export_preview_omits_sensitive_raw_evidence(
+def test_memory_graph_projection_omits_sensitive_raw_evidence(
     client: TestClient,
     tmp_path: Path,
 ) -> None:
@@ -524,17 +524,29 @@ def test_memory_graph_export_preview_omits_sensitive_raw_evidence(
             """,
             (f"My API key is {secret}",),
         )
+        conn.execute(
+            """
+            INSERT INTO memory_evidence (
+                id, fact_id, source_type, source_text_hash, source_excerpt,
+                confidence, metadata_json, created_at
+            ) VALUES (
+                'evidence-export-sensitive', 'fact-export-sensitive',
+                'user_message', 'redacted-hash', ?, 0.9, '{}',
+                '2026-06-01T00:00:00Z'
+            )
+            """,
+            (f"My API key is {secret}",),
+        )
         conn.commit()
 
-    response = client.get("/api/memory/graph/export-preview?query=fruit", headers=_auth())
+    response = client.get("/api/memory/graph?query=fruit", headers=_auth())
 
     assert response.status_code == 200
-    payload = response.json()
-    assert payload["item_count"] == 1
     assert secret not in response.text
     assert "source_text" not in response.text
     assert "password=hidden" not in response.text
-    assert payload["items"][0]["subject"] == "fruit"
+    assert "memory_graph_facts" not in response.text
+    assert "memory_evidence" not in response.text
 
 
 def test_model_key_endpoint_reports_credential_store_errors(

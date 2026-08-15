@@ -113,8 +113,8 @@ vi.mock("./features/tts", () => ({
   },
 }));
 
-vi.mock("./features/connection/ConnectionPanel", () => ({
-  ConnectionPanel: () => <section aria-label="mock connection panel" />,
+vi.mock("./features/desktop/ConnectionManagementPanel", () => ({
+  ConnectionManagementPanel: () => <section aria-label="mock connection panel" />,
 }));
 
 vi.mock("./features/connection/HealthStatus", () => ({
@@ -363,6 +363,7 @@ vi.mock("./features/tasks/useTasks", () => ({
     lastReminderNotification: null,
     loadingTasks: false,
     loadTasks: vi.fn().mockResolvedValue(null),
+    retryReminder: vi.fn(),
     taskActionIds: new Set(),
     taskDraft: {
       title: "",
@@ -933,7 +934,7 @@ describe("App", () => {
   it("renders core product routes as dedicated workspaces instead of chat-only surfaces", async () => {
     const routes = [
       { hash: "#agent", query: () => screen.findByLabelText("提醒和待办区") },
-      { hash: "#memory", query: () => screen.findByLabelText("记忆工作台入口") },
+      { hash: "#memory", query: () => screen.findByLabelText("证据链轨道") },
       { hash: "#world", query: () => screen.findByRole("heading", { name: "资料库" }) },
     ];
 

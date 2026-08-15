@@ -276,8 +276,14 @@ def _validated_model_response(
     state: AgentState,
     response: str,
 ) -> str:
+    state.grounding_validation = (
+        "passed"
+        if any(_can_use_result_as_answer_context(item) for item in state.citations)
+        else "not_applicable"
+    )
     invalid_ids = invalid_rendered_citation_ids(response, accepted_citation_ids(state.citations))
     if invalid_ids:
+        state.grounding_validation = "failed"
         graph_state["grounding_review"] = {
             "required": True,
             "owner_task": "TASK-1211",
@@ -286,6 +292,7 @@ def _validated_model_response(
         return _invalid_citation_response()
     unsupported_values = unsupported_exact_values(response, state.citations)
     if unsupported_values:
+        state.grounding_validation = "failed"
         graph_state["grounding_review"] = {
             "required": True,
             "owner_task": "TASK-1211",

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+import errno
+import os
 import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
+from collections.abc import Callable
 from typing import Literal
 
 from app.models.api import AgentActionResponse, AutomationSettingsRequest, AutomationSettingsResponse
@@ -38,6 +41,7 @@ class AgentActionCreate:
     source_agent_run_id: str | None = None
     source_conversation_id: str | None = None
     source_message_id: str | None = None
+    idempotency_key: str | None = None
     risk_tier: RiskTier = "low"
     decision: Decision = "auto"
     status: str = "completed"
@@ -170,18 +174,20 @@ class AgentActionStore:
                 """
                 INSERT INTO agent_actions (
                     id, source_agent_run_id, source_conversation_id, source_message_id,
+                    idempotency_key,
                     action_type, risk_tier, decision, status, title, summary,
                     target_paths_json, before_snapshot_json, after_snapshot_json,
                     metadata_json, reversible, error, created_at, updated_at, completed_at,
                     negotiation_rounds, total_tokens, total_latency_ms
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     action_id,
                     request.source_agent_run_id,
                     request.source_conversation_id,
                     request.source_message_id,
+                    request.idempotency_key,
                     request.action_type,
                     request.risk_tier,
                     request.decision,
@@ -236,14 +242,152 @@ class AgentActionStore:
         return self._map(row)
 
     def find_by_idempotency_key(self, idempotency_key: str) -> AgentActionResponse | None:
-        rows = self.conn.execute(
-            "SELECT * FROM agent_actions ORDER BY created_at DESC, rowid DESC"
-        ).fetchall()
-        for row in rows:
+        row = self.conn.execute(
+            "SELECT * FROM agent_actions WHERE idempotency_key = ?",
+            (idempotency_key,),
+        ).fetchone()
+        return self._map(row) if row is not None else None
+
+    def promote_pending_execution(
+        self,
+        action_id: str,
+        *,
+        metadata: dict[str, object],
+    ) -> AgentActionResponse | None:
+        current = self.conn.execute(
+            "SELECT metadata_json FROM agent_actions WHERE id = ? AND status = 'pending_confirmation'",
+            (action_id,),
+        ).fetchone()
+        if current is None:
+            return None
+        merged_metadata = _json_load(current["metadata_json"], {})
+        if not isinstance(merged_metadata, dict):
+            merged_metadata = {}
+        merged_metadata.pop("execution_receipt", None)
+        merged_metadata.pop("verification_result", None)
+        merged_metadata.update(metadata)
+        now = utc_now_iso()
+        with self.conn:
+            cursor = self.conn.execute(
+                """
+                UPDATE agent_actions
+                SET status = 'claimed', metadata_json = ?, error = NULL,
+                    updated_at = ?, completed_at = NULL
+                WHERE id = ? AND status = 'pending_confirmation'
+                """,
+                (_json(merged_metadata), now, action_id),
+            )
+        return self.get(action_id) if cursor.rowcount == 1 else None
+
+    def begin_execution(
+        self,
+        action_id: str,
+        *,
+        owner_id: str,
+        takeover: bool = False,
+    ) -> tuple[AgentActionResponse, bool]:
+        """Atomically acquire the adapter dispatch slot for one claim.
+
+        ``agent_actions`` is the durable arbiter between request-scoped
+        runtimes.  A claimed row can be started exactly once in the current
+        process.  A different process may take over an executing row only
+        after its authoritative readback found no effect; that is the crash
+        recovery path, not a normal retry path.
+        """
+        now = utc_now_iso()
+        self.conn.execute("BEGIN IMMEDIATE")
+        try:
+            row = self.conn.execute(
+                "SELECT status, metadata_json FROM agent_actions WHERE id = ?",
+                (action_id,),
+            ).fetchone()
+            if row is None:
+                raise AgentActionNotFoundError(action_id)
             metadata = _json_load(row["metadata_json"], {})
-            if isinstance(metadata, dict) and metadata.get("idempotency_key") == idempotency_key:
-                return self._map(row)
-        return None
+            if not isinstance(metadata, dict):
+                metadata = {}
+            current_owner = str(metadata.get("lifecycle_owner") or "")
+            interrupted = bool(metadata.get("execution_interrupted"))
+            status = str(row["status"])
+            can_start = status == "claimed" or (
+                takeover
+                and status in {"executing", "verifying"}
+                and (
+                    interrupted
+                    or (
+                        current_owner != owner_id
+                        and not _owner_process_is_alive(current_owner)
+                    )
+                )
+            )
+            if not can_start:
+                self.conn.commit()
+                return self.get(action_id), False
+            metadata["lifecycle_owner"] = owner_id
+            metadata["lifecycle_started_at"] = now
+            metadata.pop("execution_interrupted", None)
+            metadata.pop("execution_interrupted_owner", None)
+            self.conn.execute(
+                """
+                UPDATE agent_actions
+                SET status = 'executing', metadata_json = ?, error = NULL,
+                    updated_at = ?, completed_at = NULL
+                WHERE id = ?
+                """,
+                (_json(metadata), now, action_id),
+            )
+            self.conn.commit()
+        except Exception:
+            self.conn.rollback()
+            raise
+        return self.get(action_id), True
+
+    def mark_execution_interrupted(
+        self,
+        action_id: str,
+        *,
+        owner_id: str,
+    ) -> AgentActionResponse:
+        """Mark an open owned execution interrupted without regressing a terminal row."""
+        now = utc_now_iso()
+        self.conn.execute("BEGIN IMMEDIATE")
+        try:
+            row = self.conn.execute(
+                "SELECT status, metadata_json FROM agent_actions WHERE id = ?",
+                (action_id,),
+            ).fetchone()
+            if row is None:
+                raise AgentActionNotFoundError(action_id)
+            metadata = _json_load(row["metadata_json"], {})
+            if not isinstance(metadata, dict):
+                metadata = {}
+            current_owner = str(metadata.get("lifecycle_owner") or "")
+            if str(row["status"]) not in {"claimed", "executing", "verifying"} or (
+                current_owner and current_owner != owner_id
+            ):
+                self.conn.commit()
+                return self.get(action_id)
+            metadata.update(
+                {
+                    "control_state": "executing",
+                    "execution_interrupted": True,
+                    "execution_interrupted_owner": owner_id,
+                }
+            )
+            self.conn.execute(
+                """
+                UPDATE agent_actions
+                SET status = 'executing', metadata_json = ?, error = 'execution_interrupted',
+                    updated_at = ?, completed_at = NULL
+                WHERE id = ?
+                """,
+                (_json(metadata), now, action_id),
+            )
+            self.conn.commit()
+        except Exception:
+            self.conn.rollback()
+            raise
+        return self.get(action_id)
 
     def update_execution(
         self,
@@ -253,6 +397,7 @@ class AgentActionStore:
         before_snapshot: dict[str, object] | None = None,
         after_snapshot: dict[str, object] | None = None,
         metadata: dict[str, object] | None = None,
+        target_paths: tuple[str, ...] | list[str] | None = None,
         reversible: bool | None = None,
         error: str | None = None,
     ) -> AgentActionResponse:
@@ -273,6 +418,7 @@ class AgentActionStore:
                 UPDATE agent_actions
                 SET status = ?, before_snapshot_json = COALESCE(?, before_snapshot_json),
                     after_snapshot_json = COALESCE(?, after_snapshot_json),
+                    target_paths_json = COALESCE(?, target_paths_json),
                     metadata_json = ?, reversible = ?, error = ?, updated_at = ?,
                     completed_at = ?
                 WHERE id = ?
@@ -281,6 +427,7 @@ class AgentActionStore:
                     status,
                     _json(before_snapshot) if before_snapshot is not None else None,
                     _json(after_snapshot) if after_snapshot is not None else None,
+                    _json(list(target_paths)) if target_paths is not None else None,
                     _json(merged_metadata),
                     int(bool(reversible)) if reversible is not None else int(current["reversible"]),
                     error,
@@ -473,7 +620,7 @@ class AgentActionService:
         *,
         idempotency_key: str,
     ) -> tuple[AgentActionResponse, bool]:
-        action_id = f"action-{idempotency_key[:32]}"
+        action_id = f"action-{idempotency_key}"
         metadata = {
             **request.metadata,
             "idempotency_key": idempotency_key,
@@ -488,6 +635,7 @@ class AgentActionService:
                     source_agent_run_id=request.source_agent_run_id,
                     source_conversation_id=request.source_conversation_id,
                     source_message_id=request.source_message_id,
+                    idempotency_key=idempotency_key,
                     risk_tier=request.risk_tier,
                     decision=request.decision,
                     status="claimed",
@@ -502,7 +650,17 @@ class AgentActionService:
             )
             return action, True
         except sqlite3.IntegrityError:
-            return self.store.get(action_id), False
+            existing = self.store.find_by_idempotency_key(idempotency_key)
+            if existing is None:
+                raise
+            if existing.status == "pending_confirmation":
+                promoted = self.store.promote_pending_execution(
+                    existing.action_id,
+                    metadata=metadata,
+                )
+                if promoted is not None:
+                    return promoted, True
+            return existing, False
 
     def record_policy_decision(
         self,
@@ -511,7 +669,7 @@ class AgentActionService:
         idempotency_key: str,
         status: str,
     ) -> tuple[AgentActionResponse, bool]:
-        action_id = f"action-{idempotency_key[:32]}"
+        action_id = f"action-{idempotency_key}"
         metadata = {**request.metadata, "idempotency_key": idempotency_key, "control_state": status}
         try:
             action = self.store.create(
@@ -522,6 +680,7 @@ class AgentActionService:
                     source_agent_run_id=request.source_agent_run_id,
                     source_conversation_id=request.source_conversation_id,
                     source_message_id=request.source_message_id,
+                    idempotency_key=idempotency_key,
                     risk_tier=request.risk_tier,
                     decision=request.decision,
                     status=status,
@@ -533,7 +692,36 @@ class AgentActionService:
             )
             return action, True
         except sqlite3.IntegrityError:
-            return self.store.get(action_id), False
+            existing = self.store.find_by_idempotency_key(idempotency_key)
+            if existing is None:
+                raise
+            if existing.status == "pending_confirmation" and status == "denied":
+                updated = self.store.update_execution(
+                    existing.action_id,
+                    status="denied",
+                    metadata=metadata,
+                    reversible=False,
+                    error="policy_denied",
+                )
+                return updated, True
+            return existing, False
+
+    def begin_execution(
+        self,
+        action_id: str,
+        *,
+        owner_id: str,
+        takeover: bool = False,
+    ) -> tuple[AgentActionResponse, bool]:
+        return self.store.begin_execution(action_id, owner_id=owner_id, takeover=takeover)
+
+    def mark_execution_interrupted(
+        self,
+        action_id: str,
+        *,
+        owner_id: str,
+    ) -> AgentActionResponse:
+        return self.store.mark_execution_interrupted(action_id, owner_id=owner_id)
 
     def find_execution(self, idempotency_key: str) -> AgentActionResponse | None:
         return self.store.find_by_idempotency_key(idempotency_key)
@@ -546,6 +734,7 @@ class AgentActionService:
         before_snapshot: dict[str, object] | None = None,
         after_snapshot: dict[str, object] | None = None,
         metadata: dict[str, object] | None = None,
+        target_paths: tuple[str, ...] | list[str] | None = None,
         reversible: bool | None = None,
         error: str | None = None,
     ) -> AgentActionResponse:
@@ -555,6 +744,7 @@ class AgentActionService:
             before_snapshot=before_snapshot,
             after_snapshot=after_snapshot,
             metadata=metadata,
+            target_paths=target_paths,
             reversible=reversible,
             error=error,
         )
@@ -637,6 +827,65 @@ class AgentActionService:
         return payload if isinstance(payload, dict) else {}
 
 
+class ScopedAgentActionLedger:
+    """Open and close one AgentActionService for every ledger operation."""
+
+    def __init__(self, service_factory: Callable[[], AgentActionService]) -> None:
+        self._service_factory = service_factory
+
+    def claim_execution(
+        self,
+        request: AgentActionCreate,
+        *,
+        idempotency_key: str,
+    ) -> tuple[AgentActionResponse, bool]:
+        return self._call("claim_execution", request, idempotency_key=idempotency_key)
+
+    def record_policy_decision(
+        self,
+        request: AgentActionCreate,
+        *,
+        idempotency_key: str,
+        status: str,
+    ) -> tuple[AgentActionResponse, bool]:
+        return self._call(
+            "record_policy_decision",
+            request,
+            idempotency_key=idempotency_key,
+            status=status,
+        )
+
+    def find_execution(self, idempotency_key: str) -> AgentActionResponse | None:
+        return self._call("find_execution", idempotency_key)
+
+    def begin_execution(
+        self,
+        action_id: str,
+        *,
+        owner_id: str,
+        takeover: bool = False,
+    ) -> tuple[AgentActionResponse, bool]:
+        return self._call("begin_execution", action_id, owner_id=owner_id, takeover=takeover)
+
+    def mark_execution_interrupted(
+        self,
+        action_id: str,
+        *,
+        owner_id: str,
+    ) -> AgentActionResponse:
+        return self._call("mark_execution_interrupted", action_id, owner_id=owner_id)
+
+    def update_execution(self, action_id: str, **kwargs) -> AgentActionResponse:
+        return self._call("update_execution", action_id, **kwargs)
+
+    def _call(self, method_name: str, *args, **kwargs):
+        service = self._service_factory()
+        try:
+            return getattr(service, method_name)(*args, **kwargs)
+        finally:
+            service.close()
+
+
 def markdown_snapshot(writer: SafeMarkdownWriter, target_paths: list[str] | tuple[str, ...]) -> dict[str, object]:
     contents: dict[str, str] = {}
     hashes: dict[str, str | None] = {}
@@ -717,6 +966,25 @@ def _json_load(value: object, default):
         return json.loads(str(value))
     except (TypeError, json.JSONDecodeError):
         return default
+
+
+def _owner_process_is_alive(owner: str) -> bool:
+    """Return whether a recorded lifecycle owner still has a live process."""
+    raw_pid, separator, _ = owner.partition(":")
+    if not separator or not raw_pid.isdigit():
+        return False
+    pid = int(raw_pid)
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError as exc:
+        return exc.errno == errno.EPERM
+    return True
 
 
 def _optional_str(value: object) -> str | None:

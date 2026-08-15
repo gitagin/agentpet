@@ -66,6 +66,9 @@ export function formatSidecarState(state: DesktopSidecarStatus["state"]): string
     starting: "正在启动",
     ready: "已就绪",
     degraded: "降级运行（复用外部进程）",
+    recovering: "正在恢复",
+    "manual-retry": "等待手动重试",
+    suspended: "已暂停",
     error: "异常",
     stopping: "正在停止",
   };

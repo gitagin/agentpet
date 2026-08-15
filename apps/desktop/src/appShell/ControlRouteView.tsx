@@ -68,6 +68,7 @@ export function ControlRouteView() {
           tasks: tasks.controller.tasks,
           lastReminderNotification: tasks.controller.lastReminderNotification,
           onLocateTask: scrollToWorkflowTarget,
+          onRetryReminder: tasks.controller.retryReminder,
         },
         continuityState: continuity.state,
         pendingContinuityCount: presentation.pendingContinuityCount,

@@ -152,7 +152,7 @@ def test_user_boundary_is_not_superseded_by_ordinary_preference(tmp_path: Path) 
         service.close()
 
 
-def test_graph_fact_lifecycle_events_and_superseded_metadata(tmp_path: Path) -> None:
+def test_graph_fact_lifecycle_events_and_authority_supersedes_relation(tmp_path: Path) -> None:
     service, db_path = build_service(tmp_path)
     try:
         old = service.graph.upsert_candidate(
@@ -211,5 +211,390 @@ def test_graph_fact_lifecycle_events_and_superseded_metadata(tmp_path: Path) -> 
             "SELECT fact_id, from_status, to_status, metadata_json FROM memory_lifecycle_events WHERE fact_id = ? ORDER BY created_at",
             (old.id,),
         ).fetchall()
+        relation = conn.execute(
+            """
+            SELECT subject_fact_id
+            FROM memory_graph_facts
+            WHERE statement_kind = 'relation'
+              AND relation_type = 'supersedes'
+              AND object_fact_id = ?
+              AND status = 'active'
+            """,
+            (old.id,),
+        ).fetchone()
     assert [row["to_status"] for row in rows] == ["stale", "active", "superseded"]
-    assert json.loads(rows[-1]["metadata_json"]) == {"superseded_by": replacement.id}
+    assert relation["subject_fact_id"] == replacement.id
+    assert json.loads(rows[-1]["metadata_json"]) == {"replacement_fact_id": replacement.id}
+
+
+def test_forgetting_fact_revokes_wiki_references_and_preserves_semantic_relations(
+    tmp_path: Path,
+) -> None:
+    service, _ = build_service(tmp_path)
+    try:
+        preference = service.graph.create_entity(
+            entity_type="preference",
+            canonical_name="preferred editor",
+        )
+        source = service.graph.create_entity(
+            entity_type="source",
+            canonical_name="Editor preference source",
+        )
+        page = service.graph.create_entity(
+            entity_type="wiki_page",
+            canonical_name="Editor preference",
+        )
+        fact = service.graph.create_claim(
+            subject_entity_id=preference.id,
+            predicate="is",
+            literal_value="JetBrains",
+            category="preference",
+            source_text="My preferred editor is JetBrains.",
+            source_type="explicit_user",
+            evidence_id="evidence-editor-jetbrains",
+        )
+        conflicting_fact = service.graph.create_claim(
+            subject_entity_id=preference.id,
+            predicate="is",
+            literal_value="VS Code",
+            category="preference",
+            source_text="An older source says VS Code.",
+            source_type="explicit_user",
+            evidence_id="evidence-editor-vscode",
+        )
+        historical_fact = service.graph.create_claim(
+            subject_entity_id=preference.id,
+            predicate="was",
+            literal_value="Vim",
+            category="preference",
+            source_text="The historical editor was Vim.",
+            source_type="explicit_user",
+            evidence_id="evidence-editor-vim",
+        )
+        documented_in = service.graph.create_relation(
+            relation_type="documented_in",
+            subject_fact_id=fact.id,
+            object_entity_id=page.id,
+            source_text="The Wiki page documents the editor preference.",
+            source_type="wiki_binding",
+            evidence_id="evidence-editor-documented-in",
+        )
+        supports = service.graph.create_relation(
+            relation_type="supports",
+            subject_entity_id=source.id,
+            object_fact_id=fact.id,
+            source_text="The source supports the editor preference.",
+            source_type="wiki_binding",
+            evidence_id="evidence-editor-supports",
+        )
+        contradicts = service.graph.create_relation(
+            relation_type="contradicts",
+            subject_fact_id=conflicting_fact.id,
+            object_fact_id=fact.id,
+            source_text="The editor claims conflict.",
+            source_type="explicit_user",
+            evidence_id="evidence-editor-contradicts",
+        )
+        supersedes = service.graph.create_relation(
+            relation_type="supersedes",
+            subject_fact_id=fact.id,
+            object_fact_id=historical_fact.id,
+            source_text="The current editor replaces the historical editor.",
+            source_type="explicit_user",
+            evidence_id="evidence-editor-supersedes",
+        )
+        source_binding_id = service.graph.bind_artifact(
+            fact_id=fact.id,
+            vault_id=None,
+            artifact_type="source",
+            artifact_ref="Wiki/Sources/Editor-preference.md",
+        )
+        page_binding_id = service.graph.bind_artifact(
+            fact_id=fact.id,
+            vault_id=None,
+            artifact_type="wiki_page",
+            artifact_ref="Wiki/Preferences/Editor.md",
+        )
+
+        service.transition_fact(
+            fact.id,
+            LifecycleStatus.FORGOTTEN,
+            reason="user_forget_wiki_fact",
+        )
+
+        relation_rows = service.conn.execute(
+            "SELECT id, relation_type, status FROM memory_graph_facts WHERE id IN (?, ?, ?, ?) ORDER BY id",
+            (documented_in.id, supports.id, contradicts.id, supersedes.id),
+        ).fetchall()
+        relation_statuses = {
+            str(row["id"]): (str(row["relation_type"]), str(row["status"]))
+            for row in relation_rows
+        }
+        binding_rows = service.conn.execute(
+            "SELECT id, status FROM memory_fact_artifact_bindings WHERE id IN (?, ?) ORDER BY id",
+            (source_binding_id, page_binding_id),
+        ).fetchall()
+        documented_events = service.conn.execute(
+            """
+            SELECT from_status, to_status, reason
+            FROM memory_lifecycle_events
+            WHERE fact_id = ?
+            ORDER BY created_at, id
+            """,
+            (documented_in.id,),
+        ).fetchall()
+
+        assert service.graph.get(fact.id).status is MemoryFactStatus.FORGOTTEN
+        assert relation_statuses[documented_in.id] == ("documented_in", "archived")
+        assert relation_statuses[supports.id] == ("supports", "active")
+        assert relation_statuses[contradicts.id] == ("contradicts", "active")
+        assert relation_statuses[supersedes.id] == ("supersedes", "active")
+        assert {str(row["id"]): str(row["status"]) for row in binding_rows} == {
+            source_binding_id: "revoked",
+            page_binding_id: "revoked",
+        }
+        assert [tuple(row) for row in documented_events] == [
+            ("active", "archived", "user_forget_wiki_fact")
+        ]
+    finally:
+        service.close()
+
+
+def test_superseding_fact_revokes_wiki_references_without_removing_history(
+    tmp_path: Path,
+) -> None:
+    service, _ = build_service(tmp_path)
+    try:
+        preference = service.graph.create_entity(
+            entity_type="preference",
+            canonical_name="preferred editor",
+        )
+        page = service.graph.create_entity(
+            entity_type="wiki_page",
+            canonical_name="Editor preference",
+        )
+        old_fact = service.graph.create_claim(
+            subject_entity_id=preference.id,
+            predicate="is",
+            literal_value="VS Code",
+            category="preference",
+            source_text="My preferred editor was VS Code.",
+            source_type="explicit_user",
+            evidence_id="evidence-superseded-editor-old",
+        )
+        replacement = service.graph.create_claim(
+            subject_entity_id=preference.id,
+            predicate="is",
+            literal_value="JetBrains",
+            category="preference",
+            source_text="My preferred editor is now JetBrains.",
+            source_type="explicit_user",
+            evidence_id="evidence-superseded-editor-new",
+        )
+        documented_in = service.graph.create_relation(
+            relation_type="documented_in",
+            subject_fact_id=old_fact.id,
+            object_entity_id=page.id,
+            source_text="The Wiki page documents the old editor preference.",
+            source_type="wiki_binding",
+            evidence_id="evidence-superseded-editor-page",
+        )
+        binding_id = service.graph.bind_artifact(
+            fact_id=old_fact.id,
+            vault_id=None,
+            artifact_type="wiki_page",
+            artifact_ref="Wiki/Preferences/Editor.md",
+        )
+
+        old_after, replacement_after = service.supersede_fact(
+            old_fact.id,
+            replacement.id,
+            reason="user_corrected_editor",
+            allow_boundary_override=True,
+        )
+
+        documented_row = service.conn.execute(
+            "SELECT id, status FROM memory_graph_facts WHERE id = ?",
+            (documented_in.id,),
+        ).fetchone()
+        binding_row = service.conn.execute(
+            "SELECT id, status FROM memory_fact_artifact_bindings WHERE id = ?",
+            (binding_id,),
+        ).fetchone()
+        supersedes_rows = service.conn.execute(
+            """
+            SELECT id, status
+            FROM memory_graph_facts
+            WHERE statement_kind = 'relation'
+              AND relation_type = 'supersedes'
+              AND subject_fact_id = ?
+              AND object_fact_id = ?
+            """,
+            (replacement.id, old_fact.id),
+        ).fetchall()
+
+        assert old_after.status is MemoryFactStatus.SUPERSEDED
+        assert replacement_after.status is MemoryFactStatus.ACTIVE
+        assert tuple(documented_row) == (documented_in.id, "archived")
+        assert tuple(binding_row) == (binding_id, "revoked")
+        assert len(supersedes_rows) == 1
+        assert str(supersedes_rows[0]["status"]) == "active"
+    finally:
+        service.close()
+
+
+def test_editing_linked_candidate_supersedes_fact_and_forget_revokes_replacement(
+    tmp_path: Path,
+) -> None:
+    service, db_path = build_service(tmp_path)
+    try:
+        entity = service.graph.create_entity(
+            entity_type="preference",
+            canonical_name="editor",
+            confidence=0.96,
+        )
+        old_fact = service.graph.create_claim(
+            subject_entity_id=entity.id,
+            predicate="is",
+            literal_value="VS Code",
+            category="preference",
+            source_text="Remember this: my favorite editor is VS Code.",
+            source_type="explicit_user",
+            confidence=0.96,
+            evidence_id="evidence-linked-candidate-old",
+        )
+        old_candidate_id = create_candidate(
+            service,
+            kind=MemoryKind.PREFERENCE,
+            summary="User preference for editor: VS Code.",
+            normalized_value="preference:editor=vs code",
+            status=LifecycleStatus.ACTIVE,
+        )
+        service.candidates.attach_fact(old_candidate_id, old_fact.id)
+
+        corrected = service.apply_feedback(
+            target_type="candidate",
+            target_id=old_candidate_id,
+            operation="edit",
+            feedback_text="I switched to JetBrains.",
+            replacement_object="JetBrains",
+        )
+        assert corrected.replacement_target_id
+        replacement_candidate = service.candidates.get_candidate(
+            str(corrected.replacement_target_id)
+        )
+        assert replacement_candidate.fact_id
+        replacement_fact_id = str(replacement_candidate.fact_id)
+        assert service.graph.get(old_fact.id).status is MemoryFactStatus.SUPERSEDED
+        assert service.graph.get(replacement_fact_id).status is MemoryFactStatus.ACTIVE
+        assert service.graph.answerable_facts(query="VS Code") == []
+        assert [fact.id for fact in service.graph.answerable_facts(query="JetBrains")] == [
+            replacement_fact_id
+        ]
+        event_count_before_replay = service.conn.execute(
+            """
+            SELECT COUNT(*) FROM memory_lifecycle_events
+            WHERE (candidate_id = ? OR fact_id = ?) AND to_status = 'superseded'
+            """,
+            (old_candidate_id, old_fact.id),
+        ).fetchone()[0]
+        replayed_old, replayed_replacement = service.supersede_candidate(
+            old_candidate_id,
+            replacement_candidate.id,
+            reason="user_edited_memory",
+            allow_boundary_override=True,
+        )
+        assert replayed_old.status is LifecycleStatus.SUPERSEDED
+        assert replayed_replacement.id == replacement_candidate.id
+        assert service.conn.execute(
+            """
+            SELECT COUNT(*) FROM memory_lifecycle_events
+            WHERE (candidate_id = ? OR fact_id = ?) AND to_status = 'superseded'
+            """,
+            (old_candidate_id, old_fact.id),
+        ).fetchone()[0] == event_count_before_replay
+
+        forgotten = service.apply_feedback(
+            target_type="candidate",
+            target_id=replacement_candidate.id,
+            operation="forget",
+            feedback_text="Forget this editor preference.",
+        )
+        assert forgotten.status is LifecycleStatus.FORGOTTEN
+        assert service.graph.get(replacement_fact_id).status is MemoryFactStatus.FORGOTTEN
+        assert service.graph.answerable_facts(query="JetBrains") == []
+    finally:
+        service.close()
+
+    with sqlite3.connect(db_path) as conn:
+        relation_count = conn.execute(
+            """
+            SELECT COUNT(*)
+            FROM memory_graph_facts
+            WHERE statement_kind = 'relation'
+              AND relation_type = 'supersedes'
+              AND object_fact_id = ?
+            """,
+            (old_fact.id,),
+        ).fetchone()[0]
+    assert relation_count == 1
+
+
+def test_editing_fact_target_replaces_and_forgets_linked_candidate(tmp_path: Path) -> None:
+    service, _ = build_service(tmp_path)
+    try:
+        entity = service.graph.create_entity(
+            entity_type="preference",
+            canonical_name="editor",
+            confidence=0.96,
+        )
+        old_fact = service.graph.create_claim(
+            subject_entity_id=entity.id,
+            predicate="is",
+            literal_value="VS Code",
+            category="preference",
+            source_text="Remember this: my preferred editor is VS Code.",
+            source_type="explicit_user",
+            confidence=0.96,
+            evidence_id="evidence-fact-target-candidate-old",
+        )
+        old_candidate_id = create_candidate(
+            service,
+            kind=MemoryKind.PREFERENCE,
+            summary="User preference for editor: VS Code.",
+            normalized_value="preference:editor=vs code",
+            status=LifecycleStatus.ACTIVE,
+        )
+        service.candidates.attach_fact(old_candidate_id, old_fact.id)
+
+        corrected = service.apply_feedback(
+            target_type="fact",
+            target_id=old_fact.id,
+            operation="edit",
+            feedback_text="JetBrains",
+            replacement_object="JetBrains",
+        )
+
+        assert corrected.replacement_target_id is not None
+        replacement_fact_id = str(corrected.replacement_target_id)
+        old_candidate = service.candidates.get_candidate(old_candidate_id)
+        assert old_candidate.status is LifecycleStatus.SUPERSEDED
+        assert old_candidate.superseded_by is not None
+        replacement_candidate = service.candidates.get_candidate(
+            old_candidate.superseded_by
+        )
+        assert replacement_candidate.status is LifecycleStatus.ACTIVE
+        assert replacement_candidate.fact_id == replacement_fact_id
+
+        forgotten = service.apply_feedback(
+            target_type="fact",
+            target_id=replacement_fact_id,
+            operation="forget",
+            feedback_text="Forget this editor preference.",
+        )
+
+        assert forgotten.status is LifecycleStatus.FORGOTTEN
+        assert service.candidates.get_candidate(replacement_candidate.id).status is LifecycleStatus.FORGOTTEN
+        assert service.graph.get(replacement_fact_id).status is MemoryFactStatus.FORGOTTEN
+    finally:
+        service.close()

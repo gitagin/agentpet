@@ -1,6 +1,6 @@
 # Retrieval Evaluation Contract
 
-Status: active for TASK-1204
+Status: active for `LLMWIKI-011` synthetic baseline evidence
 
 Contract version: `retrieval-eval.v1`
 
@@ -9,8 +9,8 @@ Frozen corpus: `agent-pet-retrieval-synthetic-v1.0.0`
 ## Purpose and claim boundary
 
 This contract defines the fixed synthetic retrieval benchmark and the strict
-SQLite FTS baseline used by TASK-1204. It measures the current checkout through
-the production `RetrievalService` while leaving production retrieval code,
+SQLite FTS baseline used by `LLMWIKI-011`. It measures the current checkout
+through the current `RetrievalService` while leaving retrieval code,
 tokenization, synonyms, ranking, vector search, RRF, reranking, and answer
 generation unchanged.
 
@@ -18,7 +18,7 @@ Passing this contract is L2 evidence for the evaluator, isolated fixture, and
 current-checkout FTS baseline only. It is not packaged L3 evidence, a real
 Vault trial, a live-provider result, an answer-grounding acceptance result, or
 L4 usability evidence. A failed final quality gate is an expected reportable
-baseline result and does not by itself fail TASK-1204.
+baseline result and does not by itself close `LLMWIKI-011` or prove user value.
 
 ## Frozen inputs
 
@@ -62,7 +62,7 @@ heading, or body. Stable citation IDs are derived as:
 citation:agent-pet-retrieval-v1:<stable_chunk_id>
 ```
 
-Production note and chunk IDs are UUIDs and change on every clean rebuild. The
+Source note and chunk IDs are UUIDs and change on every clean rebuild. The
 evaluator therefore maps a runtime chunk to a stable evaluation chunk using
 all of:
 
@@ -103,10 +103,10 @@ sample count.
 
 The runner accepts only a `WorkDir` below repository `.tmp`. `OutputDir` must be
 a named child below `output/evals` or remain inside
-`output/verification/task-1204`. It rejects overlapping directories and
+`output/verification/LLMWIKI-011`. It rejects overlapping directories and
 existing directory or artifact reparse points. It never deletes or resets a
 directory. Before overwriting a fixed report name, both PowerShell and Python
-require a TASK-1204 ownership manifest and verify every recorded artifact hash.
+require an `LLMWIKI-011` ownership manifest and verify every recorded artifact hash.
 Python writes through an exclusive temporary regular file followed by atomic
 replacement rather than following an existing target. Otherwise the caller
 must choose a new output directory. Each invocation creates a unique run
@@ -134,7 +134,7 @@ RetrievalService.search(
 ```
 
 Both response metadata and every returned result must report `fts`. The current
-production `daily_chat` path also merges its deterministic date/path lookup;
+current `daily_chat` path also merges its deterministic date/path lookup;
 that behavior is part of this current-checkout FTS product baseline and is
 reported rather than bypassed.
 
@@ -172,7 +172,7 @@ Deterministic FTS runs every case at least once. The runner fixes and records:
 - fallback state;
 - model, provider, embedding, and temperature (`None`/zero for this baseline);
 - normalizer/query-plan, chunker, and index-generation identifiers;
-- corpus, evaluator, configuration, and production implementation hashes;
+- corpus, evaluator, configuration, and current implementation hashes;
 - non-identifying machine fields: operating system, release, architecture,
   logical CPU count, Python version, and SQLite version;
 - external request count, transmitted bytes, and external USD cost.
@@ -191,7 +191,7 @@ transmitted bytes, and USD 0 external cost.
 
 ## Citation and faithfulness hooks
 
-TASK-1204 retrieves candidates but does not generate an answer or invoke a
+`LLMWIKI-011` retrieves candidates but does not generate an answer or invoke a
 human/LLM judge. Citation precision, local-fact citation coverage, and grounded
 answer faithfulness therefore remain `not_evaluated` in the FTS baseline.
 They must not be reported as zero violations or as passing.
@@ -244,7 +244,7 @@ The complete pre-registered retrieval/grounding gates are:
 
 The FTS baseline is the reference for the two comparative gates; it cannot
 satisfy them by comparing itself to itself. Answer/citation and prompt-policy
-gates remain not evaluated in TASK-1204. Consequently a TASK-1204 baseline can
+gates remain not evaluated in `LLMWIKI-011`. Consequently an `LLMWIKI-011` baseline can
 complete while the complete final gate remains failed.
 
 ## Exit behavior
@@ -276,12 +276,13 @@ and an expected owner task:
 
 | Failure class | Expected owner |
 | --- | --- |
-| Dataset, labels, evaluator, strict FTS execution, reproducibility | TASK-1204 |
-| Semantic query planning and vector lifecycle | TASK-1205 |
-| Rank fusion, deterministic tie-break, reranker | TASK-1206 |
-| Permission, accepted evidence, lifecycle, citation, no-evidence, prompt injection | TASK-1207 |
+| Dataset, labels, evaluator, strict FTS execution, reproducibility | `LLMWIKI-011` |
+| Semantic query planning and vector lifecycle | Optional promotion gate; not the default path |
+| Rank fusion, deterministic tie-break, reranker | Optional promotion gate; no accepted report |
+| Permission, accepted evidence, lifecycle, citation, no-evidence, prompt injection | `LLMWIKI-007` and `LLMWIKI-011` |
 
-TASK-1204 does not fix a baseline failure owned by a later task.
+`LLMWIKI-011` records a baseline failure; it does not silently promote an
+optional vector or reranker path.
 
 ## Reproduction
 
@@ -292,7 +293,7 @@ Push-Location apps\backend
 python -m pytest -q tests/test_retrieval_quality_eval.py tests/test_retrieval_fts.py
 Pop-Location
 
-.\scripts\run-retrieval-eval.ps1 -Mode Fts -WorkDir .\.tmp\task-1204 -OutputDir .\output\evals\task-1204-fts
+.\scripts\run-retrieval-eval.ps1 -Mode Fts -WorkDir .\.tmp\llmwiki-011 -OutputDir .\output\verification\LLMWIKI-011\eval
 ```
 
 To verify the failing final-gate exit contract, use a distinct work/output

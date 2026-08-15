@@ -9,3 +9,7 @@ class AgentToolTimeoutError(AgentError):
         super().__init__(f"Tool '{tool_name}' timed out after {timeout_seconds:g}s")
         self.tool_name = tool_name
         self.timeout_seconds = timeout_seconds
+
+
+class ActionLifecycleUnavailableError(AgentError):
+    code = "action_lifecycle_unavailable"

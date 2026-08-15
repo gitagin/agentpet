@@ -48,7 +48,7 @@ class ActionPlan(BaseModel):
     payload: dict[str, Any] = Field(default_factory=dict)
     risk_score: Literal["low", "medium", "high"] = "low"
     decision: Literal["auto", "notify", "ask"] = "auto"
-    status: Literal["planned", "executed", "pending_confirm", "skipped", "failed"] = "planned"
+    status: Literal["planned", "executed", "pending_confirmation", "skipped", "failed"] = "planned"
     confirm_text: str = ""
     reversible: bool = False
     executed: bool = False
@@ -71,6 +71,7 @@ class ActionPlan(BaseModel):
     ] = "proposed"
     receipt_ref: str | None = None
     verification_status: Literal["verified", "mismatch", "not_found", "read_failed"] | None = None
+    duplicate: bool = False
 
 
 class AgentState(BaseModel):
@@ -89,9 +90,9 @@ class AgentState(BaseModel):
     policy_decisions: list[PolicyDecision] = Field(default_factory=list)
     execution_receipts: list[ExecutionReceipt] = Field(default_factory=list)
     verification_results: list[VerificationResult] = Field(default_factory=list)
-    executed_action_keys: set[str] = Field(default_factory=set)
     immediate_understanding: ImmediateUnderstanding | None = None
     citations: list[MemorySearchResult] = Field(default_factory=list)
+    grounding_validation: Literal["not_applicable", "passed", "failed"] = "not_applicable"
     recent_turns: list[PromptRecentTurn] = Field(default_factory=list)
     response_text: str = ""
     proposal_id: str | None = None

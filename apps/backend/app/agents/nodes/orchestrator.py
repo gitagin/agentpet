@@ -52,7 +52,7 @@ class OrchestratorNode:
                 action="invoke_agent",
                 agent=AgentId.RETRIEVAL_AGENT,
                 agent_input=state.semantic_analysis.query or state.user_message,
-                reasoning="当前问题需要本地证据，先调用检索 Agent。",
+                reasoning="当前问题需要本地证据，先执行只读检索步骤。",
                 confidence=0.0,
                 expected_outcome="获得可引用的本地证据，或确认本地证据为空。",
             )
@@ -105,7 +105,7 @@ class OrchestratorNode:
 
         return "\n".join(
             [
-                "你是一个任务协调器。根据已有信息判断是否足够回复用户。",
+                "你负责查询规划。根据已有信息判断是否足够回复用户。",
                 "如果信息足够（confidence >= 0.8），返回 action=synthesize。",
                 "如果需要更多信息，选择最合适的 agent 并精炼输入 query。",
                 "禁止用相同 query 重复调用同一 agent。",

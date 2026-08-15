@@ -25,6 +25,7 @@ from app.services.write_policy import MarkdownWritePolicyRequest, evaluate_markd
 from app.utils.hash import sha256_hex
 from app.utils.time import utc_now_iso
 from app.storage.markdown import read_markdown
+from app.services.wiki.contracts import PAGE_TYPE_CONTRACTS, page_type_for_path, path_matches_page_type, validate_page_type
 
 
 WIKI_ROOT = "Wiki"
@@ -32,129 +33,12 @@ WIKI_SCHEMA_PATH = f"{WIKI_ROOT}/AGENTS.md"
 WIKI_INDEX_PATH = f"{WIKI_ROOT}/index.md"
 WIKI_LOG_PATH = f"{WIKI_ROOT}/log.md"
 WIKI_CORE_PATHS = {WIKI_SCHEMA_PATH, WIKI_INDEX_PATH, WIKI_LOG_PATH}
-WIKI_PAGE_TEMPLATE_SECTIONS = (
-    "核心定义",
-    "核心要点",
-    "经典案例",
-    "实践方法",
-    "常见误区",
-    "相关知识点",
-    "原文出处",
-    "对用户/决策的意义",
-)
-WIKI_SELF_CHECK_ITEMS = (
-    "索引同步",
-    "关键词同步",
-    "关系图谱",
-    "入链检查",
-    "AGENTS 同步",
-    "内嵌日志",
-    "集中日志",
-)
-
-
 @dataclass(frozen=True)
 class _GraphPage:
     title: str
     relative_path: str
     links: list[str]
     frontmatter: dict[str, str | list[str]]
-
-
-DEFAULT_SCHEMA_MARKDOWN = """# LLM Wiki 规范
-
-## 目标
-从不可变的原始资料中维护一个不断增长的 Markdown Wiki。助手是 Wiki 维护者，不是一次性聊天机器人。
-
-## 层级
-- 原始来源是只读证据。不要重写或替换它们。
-- Wiki Markdown 是 `Wiki/` 下的维护知识层。
-- 本规范定义页面契约、工作流规则和质量检查。
-
-## 必需文件
-- `Wiki/index.md` 是内容地图。每个维护页面都必须有对应条目。
-- `Wiki/log.md` 是仅追加的操作时间线。
-- `Wiki/AGENTS.md` 是此规则层。
-
-## 页面类型
-- source：一个来源摘要和引用。
-- entity：人、公司、项目、论文、文件、决策或其他命名对象。
-- concept：可复用的想法或术语。
-- synthesis：从多个页面或来源得出的结论。
-- comparison：实体、概念或方法之间的结构化对比。
-- report：操作输出，如检查或查询归档报告。
-
-## 硬边界
-- 原始来源目录和原始日记文件是只读证据。永远不要删除、重写或静默规范化它们。
-- Wiki 页面可以总结、链接和注释证据，但不得将推断的摘要冒充为原始声明。
-- 每个维护页面都应添加内部链接、引用来源路径、更新索引并追加中央日志。
-
-## 必需页面模板
-每个维护的知识页面应按顺序保留以下八个部分：
-1. 核心定义
-2. 核心要点
-3. 经典案例
-4. 实践方法
-5. 常见误区
-6. 相关知识点
-7. 原文出处
-8. 对用户/决策的意义
-
-页面可在八个必需部分之后添加额外的 `更新日志` 和 `自检清单` 部分。
-
-## 证据与触发来源
-- 从原始资料复制或推导的声明必须引用 Obsidian 链接，如 `[[Memories/Daily/...]]` 或 `[[Wiki/Sources/...]]`。
-- `原文出处` 部分必须区分原始声明和助手推断。
-- 自动写入必须记录触发来源：用户查询/消息 ID、Agent 运行 ID 以及来源路径（如有）。
-
-## 审查与自检
-认为写入完成之前，运行七项自检：
-1. 索引同步
-2. 关键词同步
-3. 关系图谱
-4. 入链检查
-5. AGENTS 同步
-6. 内嵌日志
-7. 集中日志
-
-## 版本与日志
-- 前置元数据应尽可能包含 `revision`、`confidence`、`disputed` 和 `sources`。
-- 冲突的知识被标记而非删除；保留双方并引用其来源。
-- 需要双层日志：每页 `更新日志` 加上仅追加的 `Wiki/log.md`。
-
-## 导入
-1. 保存原始来源和来源哈希。
-2. 创建或更新来源页面。
-3. 更新相关的实体、概念、综合或对比页面。
-4. 更新 `Wiki/index.md`。
-5. 追加 `Wiki/log.md`。
-6. 运行检查或记录检查摘要。
-
-## 查询
-1. 首先阅读 `Wiki/index.md` 以确定相关页面。
-2. 阅读相关的 Wiki 页面和必要的原始来源。
-3. 只从证据中回答。
-4. 当有价值且安全时，将答案保存为维护页面。
-5. 更新 `Wiki/index.md`。
-6. 追加页面更新日志和 `Wiki/log.md`。
-7. 运行或安排检查/自检。
-
-## 检查
-检查矛盾、过时声明、孤立页面、断裂链接、缺失的索引条目、缺失的日志记录、重复概念、命名偏差以及规范/前置元数据缺失。
-
-## 术语与格式陷阱
-- 查询：从日记、记忆和 Wiki 证据中回答用户问题。
-- 整理：从可复用证据中创建或更新维护的 Wiki 页面。
-- 来源：不可变的原始证据或日记记录。
-- 综合：必须标注为推断的助手推断。
-- 常见陷阱：未填写的占位符计数、不一致的标题格式、孤立页面、零字节页面、Wiki/Memories 外的链接、空的 `sources`、缺失的页面日志。
-
-## 写作规则
-- 保持页面简洁、结构化且可链接。
-- 以结论开头，然后是证据。
-- 重要声明需要来源引用。
-- 不要静默合并冲突；记录冲突的来源和差异。
-"""
 
 
 class WikiWriteError(Exception):
@@ -183,8 +67,39 @@ class WikiService:
         self.writer = writer
         self.index_refresh = index_refresh
 
-    def write_page(self, request: WikiPageWriteRequest) -> WikiPageResponse:
+    def write_page(
+        self,
+        request: WikiPageWriteRequest,
+        *,
+        action_marker: str | None = None,
+    ) -> WikiPageResponse:
         relative_path = resolve_wiki_path(request.title, request.target_path)
+        page_type = (request.page_type or page_type_for_path(relative_path)).strip() or "page"
+        sources = _clean_list(request.sources)
+        if request.source_message_id:
+            sources = _unique_list([*sources, f"message:{request.source_message_id.strip()}"])
+        if page_type in PAGE_TYPE_CONTRACTS and not path_matches_page_type(relative_path, page_type):
+            raise WikiWriteError(
+                "Wiki 页面类型与目标路径不匹配。",
+                reason="wiki_page_type_path_mismatch",
+            )
+        try:
+            validate_page_type(
+                page_type,
+                sources=sources,
+                evidence_ids=request.evidence_ids,
+                user_decision=_explicit_user_decision(request),
+                inference=request.inference,
+            )
+        except ValueError as exc:
+            raise WikiWriteError("Wiki 页面未满足页面类型的证据契约。", reason=str(exc)) from exc
+        request = request.model_copy(
+            update={
+                "page_type": page_type,
+                "sources": sources,
+                "confidence": request.confidence or "unverified",
+            }
+        )
         policy = evaluate_markdown_write(
             MarkdownWritePolicyRequest(
                 scope="wiki",
@@ -200,7 +115,26 @@ class WikiService:
         self.ensure_core_files()
         target = self.writer.resolve_markdown_path(relative_path)
         existed = target.exists()
+        if action_marker and existed:
+            try:
+                if action_marker in target.read_text(encoding="utf-8"):
+                    return WikiPageResponse(
+                        title=request.title,
+                        relative_path=relative_path,
+                        operation=request.operation,
+                        status="updated",
+                        index_job_id=None,
+                    )
+            except (OSError, UnicodeDecodeError):
+                pass
         now = utc_now_iso()
+        if existed:
+            try:
+                existing_frontmatter = read_markdown(target).frontmatter
+                previous_revision = int(str(existing_frontmatter.get("revision", "0")))
+            except (OSError, ValueError, TypeError):
+                previous_revision = 0
+            request = request.model_copy(update={"revision": max(request.revision, previous_revision + 1), "updated_at": now})
         frontmatter = _wiki_frontmatter(request, relative_path)
         metadata = _metadata_block(tags=request.tags, links=request.links)
 
@@ -228,6 +162,9 @@ class WikiService:
                 )
                 if request.operation == "create" and not existed:
                     self.writer.write(relative_path, entry)
+                elif existed:
+                    existing = _replace_document_frontmatter(_read_text(target), frontmatter)
+                    self.writer.write(relative_path, f"{existing.rstrip()}\n\n{entry.lstrip()}")
                 else:
                     self.writer.append(relative_path, entry)
         except MarkdownWriteError:
@@ -267,7 +204,7 @@ class WikiService:
         return pages
 
     def ensure_core_files(self) -> None:
-        self._write_if_missing(WIKI_SCHEMA_PATH, DEFAULT_SCHEMA_MARKDOWN)
+        self._write_if_missing(WIKI_SCHEMA_PATH, _canonical_schema_markdown())
         self._write_if_missing(WIKI_INDEX_PATH, _render_index([]))
         self._write_if_missing(WIKI_LOG_PATH, "# Wiki Log\n\n")
 
@@ -382,12 +319,23 @@ class WikiService:
             broken_links=sorted(broken_links, key=lambda link: (link.source_path.casefold(), link.target.casefold())),
         )
 
-    def append_log(self, operation: str, title: str, details: str = "") -> WikiLogResponse:
+    def append_log(
+        self,
+        operation: str,
+        title: str,
+        details: str = "",
+        *,
+        dedupe_marker: str | None = None,
+    ) -> WikiLogResponse:
         self.ensure_core_files()
+        existing = _read_text(self.writer.resolve_markdown_path(WIKI_LOG_PATH))
+        if dedupe_marker and dedupe_marker in existing:
+            return self.get_log()
         timestamp = _compact_timestamp(utc_now_iso())
         safe_operation = operation.strip() or "operation"
         safe_title = title.strip() or "Untitled"
-        entry = f"## [{timestamp}] {safe_operation} | {safe_title}\n\n{details.strip()}\n"
+        marker_line = f"{dedupe_marker}\n" if dedupe_marker else ""
+        entry = f"## [{timestamp}] {safe_operation} | {safe_title}\n\n{marker_line}{details.strip()}\n"
         self.writer.append(WIKI_LOG_PATH, entry)
         if self.index_refresh:
             self.index_refresh(WIKI_LOG_PATH)
@@ -517,21 +465,10 @@ def _index_entry_for(path: Path, relative_path: str) -> WikiIndexEntry:
 
 
 def _page_type(relative_path: str, frontmatter: dict[str, str | list[str]]) -> str:
-    fm_type = frontmatter.get("type")
+    fm_type = frontmatter.get("page_type") or frontmatter.get("type")
     if isinstance(fm_type, str) and fm_type.strip():
         return fm_type.strip()
-    normalized = relative_path.replace("\\", "/")
-    parts = normalized.split("/")
-    folder = parts[1].casefold() if len(parts) > 2 else ""
-    return {
-        "sources": "source",
-        "entities": "entity",
-        "concepts": "concept",
-        "syntheses": "synthesis",
-        "companion": "synthesis",
-        "comparisons": "comparison",
-        "reports": "report",
-    }.get(folder, "page")
+    return page_type_for_path(relative_path)
 
 
 def _page_summary(body: str, fallback: str) -> str:
@@ -670,6 +607,13 @@ def _read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def _canonical_schema_markdown() -> str:
+    resource = Path(__file__).resolve().parents[1] / "resources" / "wiki" / "AGENTS.md"
+    if resource.exists():
+        return resource.read_text(encoding="utf-8")
+    raise WikiWriteError("Wiki 规范资源缺失，无法初始化 Vault。", reason="wiki_schema_resource_missing")
+
+
 def _metadata_block(*, tags: list[str], links: list[str]) -> str:
     lines: list[str] = []
     clean_tags = [tag.strip().lstrip("#") for tag in tags if tag.strip()]
@@ -693,25 +637,34 @@ def _write_policy_metadata(request: WikiPageWriteRequest) -> dict[str, str]:
         "contributors": ", ".join(request.contributors),
         "aliases": ", ".join(request.aliases),
         "sources": ", ".join(request.sources),
+        "evidence_ids": ", ".join(request.evidence_ids),
     }
     return {key: value for key, value in values.items() if value}
 
 
 def _wiki_frontmatter(request: WikiPageWriteRequest, relative_path: str) -> dict[str, str | list[str]]:
-    page_type = (request.page_type or _page_type(relative_path, {})).strip() or "page"
+    page_type = (request.page_type or page_type_for_path(relative_path, default="page")).strip() or "page"
     sources = _clean_list(request.sources)
     if request.source_message_id:
         sources = _unique_list([*sources, f"message:{request.source_message_id.strip()}"])
+    target_path = relative_path.replace("\\", "/")
     data: dict[str, str | list[str]] = {
+        "wiki_id": request.wiki_id or sha256_hex(f"wiki:{target_path}")[:32],
         "title": request.title.strip(),
+        "page_type": page_type,
         "type": page_type,
-        "revision": "1",
+        "entity_ids": _clean_list(request.entity_ids),
+        "fact_ids": _clean_list(request.fact_ids),
+        "evidence_ids": _clean_list(request.evidence_ids),
+        "revision": str(max(1, request.revision)),
+        "confidence": (request.confidence or "unverified").strip(),
+        "updated_at": request.updated_at or utc_now_iso(),
         "disputed": "true" if request.disputed else "false",
+        "sources": sources,
     }
-    optional_scalars = {
-        "confidence": request.confidence,
-        "expiry": request.expiry,
-    }
+    if request.inference:
+        data["inference"] = "true"
+    optional_scalars = {"expiry": request.expiry}
     for key, value in optional_scalars.items():
         if value and value.strip():
             data[key] = value.strip()
@@ -720,13 +673,25 @@ def _wiki_frontmatter(request: WikiPageWriteRequest, relative_path: str) -> dict
         "authors": request.authors,
         "contributors": request.contributors,
         "aliases": request.aliases,
-        "sources": sources,
     }
     for key, values in optional_lists.items():
         clean_values = _clean_list(values)
         if clean_values:
             data[key] = clean_values
     return data
+
+
+def _explicit_user_decision(request: WikiPageWriteRequest) -> str | None:
+    if (request.section or "").strip() == "用户决定":
+        return request.content.strip() or None
+    match = re.search(
+        r"^##+\s+用户决定\s*$\n+(.*?)(?=^##+\s+|\Z)",
+        request.content,
+        flags=re.MULTILINE | re.DOTALL,
+    )
+    if match is None:
+        return None
+    return match.group(1).strip() or None
 
 
 def _frontmatter_markdown(frontmatter: dict[str, str | list[str]]) -> str:
@@ -736,6 +701,7 @@ def _frontmatter_markdown(frontmatter: dict[str, str | list[str]]) -> str:
     for key, value in frontmatter.items():
         if isinstance(value, list):
             if not value:
+                lines.append(f"{key}: []")
                 continue
             lines.append(f"{key}:")
             for item in value:
@@ -750,7 +716,7 @@ def _yaml_scalar(value: str) -> str:
     text = value.strip()
     if not text:
         return '""'
-    if re.search(r"[:#\[\]{},&*!|>'\"%@`]", text) or text.lower() in {"true", "false", "null"}:
+    if re.search(r"[:#\[\]{},&*!|>'\"%@`]", text) or text.lower() == "null":
         return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
     return text
 
@@ -806,7 +772,10 @@ def _replace_section(
     if not base:
         frontmatter_text = _frontmatter_markdown(frontmatter)
         base = f"{frontmatter_text}\n\n# {title.strip()}" if frontmatter_text else f"# {title.strip()}"
-    block_lines = [f"## {section}", "", content.strip()]
+    else:
+        base = _replace_document_frontmatter(base, frontmatter)
+    normalized_content = _strip_leading_section_heading(content, section)
+    block_lines = [f"## {section}", "", normalized_content]
     if metadata:
         block_lines.extend(["", metadata])
     block = "\n".join(block_lines).strip()
@@ -814,6 +783,20 @@ def _replace_section(
     if pattern.search(base):
         return pattern.sub(block + "\n", base).strip() + "\n"
     return f"{base}\n\n{block}\n"
+
+
+def _strip_leading_section_heading(content: str, section: str) -> str:
+    text = content.strip()
+    pattern = re.compile(rf"^##+\s+{re.escape(section)}\s*\n(?:\s*\n)?", re.MULTILINE)
+    return pattern.sub("", text, count=1).strip()
+
+
+def _replace_document_frontmatter(existing: str, frontmatter: dict[str, str | list[str]]) -> str:
+    rendered = _frontmatter_markdown(frontmatter)
+    body = re.sub(r"\A---\s*\n.*?\n---\s*(?:\n|\Z)", "", existing, count=1, flags=re.DOTALL).lstrip()
+    if not rendered:
+        return body
+    return f"{rendered}\n\n{body}".rstrip()
 
 
 def _table_cell(value: str) -> str:

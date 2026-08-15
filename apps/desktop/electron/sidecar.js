@@ -1,5 +1,6 @@
 const { app, BrowserWindow, Notification } = require("electron");
 const { spawn } = require("node:child_process");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const http = require("node:http");
 const net = require("node:net");
@@ -13,7 +14,9 @@ const DEFAULT_READY_TIMEOUT_MS = 30_000;
 const READY_POLL_INTERVAL_MS = 250;
 const READY_STALLED_POLL_INTERVAL_MS = 1_000;
 const STOP_FORCE_KILL_TIMEOUT_MS = 5_000;
-const MAX_DELIVERED_REMINDER_IDS = 500;
+const RESTART_BACKOFF_MS = [1_000, 2_000, 5_000, 15_000, 30_000];
+const RESTART_WINDOW_MS = 10 * 60 * 1_000;
+const MAX_PENDING_RECOVERY_INCIDENTS = 8;
 
 function resolveReadyTimeoutMs() {
   const raw = Number.parseInt(process.env.AGENT_PET_READY_TIMEOUT_MS ?? "", 10);
@@ -29,7 +32,10 @@ function createSidecarManager({
   managedSidecarDataDir,
   state,
   showControlWindow,
+  onReady,
   platform = process.platform,
+  incidentIdFactory = () => crypto.randomBytes(16).toString("hex"),
+  clock = () => new Date(),
 }) {
   const portRuntime = runtime ?? { host, port, baseUrl };
   const preferredPort = portRuntime.port;
@@ -38,8 +44,12 @@ function createSidecarManager({
   let stoppingSidecarProcess = null;
   let sidecarReadinessAbort = null;
   let runtimeHandshakeTimer = null;
+  let restartTimer = null;
+  let restartAfterStop = false;
+  let suspended = false;
+  let restartAttempts = [];
+  let pendingRecoveryIncidents = [];
   let logWriteErrorReported = false;
-  const deliveredReminderNotifications = new Set();
   let sidecarStatus = {
     state: "stopped",
     baseUrl: portRuntime.baseUrl,
@@ -98,6 +108,80 @@ function createSidecarManager({
     return publicStatus;
   }
 
+  function normalizeIncidentCause(causeCode) {
+    const normalized = String(causeCode || "").trim().toUpperCase();
+    if (normalized === "SPAWN_FAILED") {
+      return "spawn_failed";
+    }
+    if (normalized === "RUNTIME_HANDSHAKE_TIMEOUT" || normalized === "READINESS_TIMEOUT") {
+      return "readiness_failed";
+    }
+    if (normalized === "STARTUP_FAILED" || normalized === "RUNTIME_HANDSHAKE_INVALID") {
+      return "startup_failed";
+    }
+    return "process_exited";
+  }
+
+  function timestampNow() {
+    const value = clock();
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return new Date().toISOString();
+    }
+    return date.toISOString();
+  }
+
+  function beginRecoveryIncident(causeCode) {
+    if (state.isQuitting || suspended) {
+      return null;
+    }
+    const active = pendingRecoveryIncidents.find((incident) => !incident.ready_at);
+    if (active) {
+      return active;
+    }
+    const incident = {
+      incident_id: String(incidentIdFactory()).trim().toLowerCase(),
+      unhealthy_at: timestampNow(),
+      ready_at: null,
+      cause: normalizeIncidentCause(causeCode),
+      restart_attempt: 1,
+    };
+    if (!/^[a-f0-9]{32}$/.test(incident.incident_id)) {
+      throw new Error("sidecar incident id factory returned an invalid identifier");
+    }
+    pendingRecoveryIncidents = [
+      ...pendingRecoveryIncidents,
+      incident,
+    ].slice(-MAX_PENDING_RECOVERY_INCIDENTS);
+    return incident;
+  }
+
+  function markRecoveryIncidentReady() {
+    const active = [...pendingRecoveryIncidents]
+      .reverse()
+      .find((incident) => !incident.ready_at);
+    if (!active) {
+      return null;
+    }
+    active.ready_at = timestampNow();
+    active.restart_attempt = Math.max(1, Math.min(5, Number(active.restart_attempt) || 1));
+    return { ...active };
+  }
+
+  function getPendingRecoveryIncident() {
+    const incident = pendingRecoveryIncidents.find((candidate) => candidate.ready_at);
+    return incident ? { ...incident } : null;
+  }
+
+  function acknowledgeRecoveryIncident(incidentId) {
+    const normalized = String(incidentId || "").trim().toLowerCase();
+    const previousLength = pendingRecoveryIncidents.length;
+    pendingRecoveryIncidents = pendingRecoveryIncidents.filter(
+      (incident) => incident.incident_id !== normalized,
+    );
+    return pendingRecoveryIncidents.length !== previousLength;
+  }
+
   function getSidecarEnvironment() {
     const env = {
       ...process.env,
@@ -142,14 +226,6 @@ function createSidecarManager({
     }
   }
 
-  function rememberDeliveredReminder(reminderId) {
-    deliveredReminderNotifications.add(reminderId);
-    while (deliveredReminderNotifications.size > MAX_DELIVERED_REMINDER_IDS) {
-      const oldest = deliveredReminderNotifications.values().next().value;
-      deliveredReminderNotifications.delete(oldest);
-    }
-  }
-
   function showReminderNotification(payload) {
     const reminderId = typeof payload?.reminder_id === "string" ? payload.reminder_id.trim() : "";
     if (!reminderId) {
@@ -158,13 +234,17 @@ function createSidecarManager({
         reason: "missing_reminder_id",
       };
     }
-    if (deliveredReminderNotifications.has(reminderId)) {
+    let notificationSupported;
+    try {
+      notificationSupported = Notification.isSupported();
+    } catch {
       return {
-        status: "duplicate",
+        status: "failed",
         reminder_id: reminderId,
+        reason: "notification_support_check_failed",
       };
     }
-    if (!Notification.isSupported()) {
+    if (!notificationSupported) {
       return {
         status: "unsupported",
         reminder_id: reminderId,
@@ -177,14 +257,21 @@ function createSidecarManager({
     const body = typeof payload?.body === "string" && payload.body.trim()
       ? payload.body.trim()
       : "有一条提醒已到期。";
-    const notification = new Notification({ title, body });
-    notification.on("click", showControlWindow);
-    notification.show();
-    rememberDeliveredReminder(reminderId);
-    return {
-      status: "shown",
-      reminder_id: reminderId,
-    };
+    try {
+      const notification = new Notification({ title, body });
+      notification.on("click", showControlWindow);
+      notification.show();
+      return {
+        status: "shown",
+        reminder_id: reminderId,
+      };
+    } catch {
+      return {
+        status: "failed",
+        reminder_id: reminderId,
+        reason: "notification_api_failed",
+      };
+    }
   }
 
   function setSidecarStatus(patch) {
@@ -236,7 +323,17 @@ function createSidecarManager({
 
       try {
         const health = await requestJson(`${portRuntime.baseUrl}/api/health`, signal);
-        if (health && typeof health.status === "string") {
+        const authenticated = await requestJson(
+          `${portRuntime.baseUrl}/api/settings`,
+          signal,
+          { Authorization: `Bearer ${sessionToken}` },
+        );
+        if (
+          health &&
+          typeof health.status === "string" &&
+          authenticated &&
+          typeof authenticated === "object"
+        ) {
           return health;
         }
       } catch (error) {
@@ -256,6 +353,7 @@ function createSidecarManager({
     if (state.isQuitting || !sidecarProcess) {
       return;
     }
+    beginRecoveryIncident("READINESS_TIMEOUT");
     const suffix = lastError?.message ? ` 最近一次错误：${lastError.message}` : "";
     console.warn(`FastAPI 后端在 ${timeoutMs}ms 内未通过健康检查，继续等待。${suffix}`);
     setSidecarStatus({
@@ -272,9 +370,9 @@ function createSidecarManager({
     });
   }
 
-  function requestJson(url, signal) {
+  function requestJson(url, signal, headers = undefined) {
     return new Promise((resolve, reject) => {
-      const request = http.get(url, { signal, timeout: 2_000 }, (response) => {
+      const request = http.get(url, { signal, timeout: 2_000, headers }, (response) => {
         let body = "";
 
         response.setEncoding("utf8");
@@ -430,6 +528,10 @@ function createSidecarManager({
           error: null,
           health,
         });
+        markRecoveryIncidentReady();
+        Promise.resolve(onReady?.()).catch((error) => {
+          console.warn("Sidecar 就绪后的本地恢复检查失败。", error);
+        });
       })
       .catch((error) => {
         if (readinessAbort.signal.aborted || state.isQuitting) {
@@ -439,10 +541,72 @@ function createSidecarManager({
       });
   }
 
+  function clearRestartTimer() {
+    if (restartTimer) {
+      clearTimeout(restartTimer);
+      restartTimer = null;
+    }
+  }
+
+  function pruneRestartAttempts(now = Date.now()) {
+    restartAttempts = restartAttempts.filter((timestamp) => now - timestamp < RESTART_WINDOW_MS);
+  }
+
+  function scheduleAutomaticRestart(causeCode) {
+    if (state.isQuitting || suspended) {
+      return false;
+    }
+    clearRestartTimer();
+    const now = Date.now();
+    pruneRestartAttempts(now);
+    if (restartAttempts.length >= RESTART_BACKOFF_MS.length) {
+      setSidecarStatus({
+        state: "manual-retry",
+        managed: false,
+        pid: null,
+        health: null,
+        restartAttempt: restartAttempts.length,
+        retryAt: null,
+        error: {
+          code: "RESTART_LIMIT_REACHED",
+          message: "本地助手连续恢复失败，已停止自动重试。请检查诊断信息后手动重试。",
+        },
+      });
+      return false;
+    }
+
+    const delayMs = RESTART_BACKOFF_MS[restartAttempts.length];
+    restartAttempts.push(now);
+    const retryAt = new Date(now + delayMs).toISOString();
+    setSidecarStatus({
+      state: "recovering",
+      managed: false,
+      pid: null,
+      health: null,
+      restartAttempt: restartAttempts.length,
+      retryAt,
+      error: {
+        code: "SIDECAR_RECOVERING",
+        message: "本地助手正在恢复；提醒和后台整理会在恢复后继续核对。",
+        cause: causeCode,
+      },
+    });
+    restartTimer = setTimeout(() => {
+      restartTimer = null;
+      if (!state.isQuitting && !suspended) {
+        void startSidecar();
+      }
+    }, delayMs);
+    restartTimer.unref?.();
+    return true;
+  }
+
   async function startSidecar() {
-    if (sidecarProcess || stoppingSidecarProcess) {
+    if (sidecarProcess || stoppingSidecarProcess || suspended || state.isQuitting) {
       return;
     }
+
+    clearRestartTimer();
 
     updateRuntimePort(preferredPort);
     setSidecarStatus({
@@ -467,21 +631,13 @@ function createSidecarManager({
         }
 
         if (existingHealth && typeof existingHealth.status === "string") {
-          setSidecarStatus({
-            state: "degraded",
-            managed: false,
-            pid: null,
-            health: existingHealth,
-            error: {
-              code: "PORT_IN_USE_EXISTING_BACKEND",
-              message: `端口 ${preferredPort} 已有后端响应，已降级复用现有后端（未校验会话令牌）。若业务请求返回 401，请关闭占用进程后重启，或用相同 AGENT_PET_SESSION_TOKEN 启动后端。`,
-            },
-          });
-          return;
+          console.warn(
+            `端口 ${preferredPort} 已有未受管理的后端响应；Agent Pet 不会复用它，将启动自己的 sidecar 并搜索备用端口。`,
+          );
         }
 
         console.warn(
-          `端口 ${preferredPort} 被非后端进程占用；sidecar 将原子搜索 ${preferredPort + 1}-${preferredPort + PORT_SEARCH_RANGE}。`,
+          `端口 ${preferredPort} 已被占用；sidecar 将原子搜索 ${preferredPort + 1}-${preferredPort + PORT_SEARCH_RANGE}。`,
         );
       }
     } catch (error) {
@@ -543,6 +699,10 @@ function createSidecarManager({
         windowsHide: true,
       });
     } catch (error) {
+      const incident = beginRecoveryIncident("SPAWN_FAILED");
+      if (incident) {
+        incident.restart_attempt = Math.max(1, Math.min(5, restartAttempts.length + 1));
+      }
       setSidecarStatus({
         state: "error",
         managed: false,
@@ -553,6 +713,7 @@ function createSidecarManager({
           message: messageWithLogPath(`无法启动后端进程。原始错误：${error.message}`),
         },
       });
+      scheduleAutomaticRestart("SPAWN_FAILED");
       return;
     }
 
@@ -566,13 +727,16 @@ function createSidecarManager({
         const runtimePayload = parseControlPayload(line, RUNTIME_LINE_PREFIX);
         if (runtimePayload) {
           const runtimePort = Number(runtimePayload.port);
+          const runtimePid = Number(runtimePayload.pid);
           if (
             runtimePayload.host !== portRuntime.host ||
             !Number.isInteger(runtimePort) ||
             runtimePort < 1 ||
-            runtimePort > 65_535
+            runtimePort > 65_535 ||
+            !Number.isInteger(runtimePid) ||
+            runtimePid !== child.pid
           ) {
-            throw new Error("runtime host or port is invalid");
+            throw new Error("runtime process identity is invalid");
           }
           if (runtimeReceived || sidecarProcess !== child) {
             return;
@@ -603,6 +767,7 @@ function createSidecarManager({
                 : "Sidecar reported an unknown startup failure.",
             ),
           };
+          beginRecoveryIncident("STARTUP_FAILED");
           setSidecarStatus({
             state: "error",
             managed: true,
@@ -616,6 +781,7 @@ function createSidecarManager({
           code: "RUNTIME_HANDSHAKE_INVALID",
           message: messageWithLogPath(`Sidecar 运行时握手无效：${error.message}`),
         };
+        beginRecoveryIncident("RUNTIME_HANDSHAKE_INVALID");
         setSidecarStatus({
           state: "starting",
           managed: true,
@@ -646,7 +812,7 @@ function createSidecarManager({
         return;
       }
       terminalHandled = true;
-      const stoppedIntentionally = stoppingSidecarProcess === child || state.isQuitting;
+      const stoppedIntentionally = stoppingSidecarProcess === child || state.isQuitting || suspended;
       cleanupChildRuntime();
       if (sidecarProcess === child) {
         sidecarProcess = null;
@@ -656,13 +822,20 @@ function createSidecarManager({
       }
 
       if (stoppedIntentionally) {
+        const shouldRestart = restartAfterStop && !state.isQuitting && !suspended;
+        restartAfterStop = false;
         setSidecarStatus({
-          state: "stopped",
+          state: suspended ? "suspended" : "stopped",
           managed: false,
           pid: null,
           health: null,
           error: null,
         });
+        if (shouldRestart) {
+          queueMicrotask(() => {
+            void startSidecar();
+          });
+        }
         return;
       }
 
@@ -670,6 +843,10 @@ function createSidecarManager({
         console.error(`FastAPI 后端退出，返回码 ${code}。`);
       } else if (signal) {
         console.error(`FastAPI 后端收到信号 ${signal} 后退出。`);
+      }
+      const incident = beginRecoveryIncident(startupError ? "STARTUP_FAILED" : "PROCESS_EXITED");
+      if (incident) {
+        incident.restart_attempt = Math.max(1, Math.min(5, restartAttempts.length + 1));
       }
       setSidecarStatus({
         state: "error",
@@ -685,6 +862,7 @@ function createSidecarManager({
           ),
         },
       });
+      scheduleAutomaticRestart(startupError?.code || "PROCESS_EXITED");
     });
 
     child.on("error", (error) => {
@@ -693,7 +871,7 @@ function createSidecarManager({
       }
       terminalHandled = true;
       console.error("启动 FastAPI 后端失败。", error);
-      const stoppedIntentionally = stoppingSidecarProcess === child || state.isQuitting;
+      const stoppedIntentionally = stoppingSidecarProcess === child || state.isQuitting || suspended;
       cleanupChildRuntime();
       if (sidecarProcess === child) {
         sidecarProcess = null;
@@ -702,7 +880,7 @@ function createSidecarManager({
         stoppingSidecarProcess = null;
       }
       setSidecarStatus({
-        state: stoppedIntentionally ? "stopped" : "error",
+        state: stoppedIntentionally ? (suspended ? "suspended" : "stopped") : "error",
         managed: false,
         pid: null,
         health: null,
@@ -713,6 +891,13 @@ function createSidecarManager({
               message: messageWithLogPath(`无法启动后端进程。原始错误：${error.message}`),
             },
       });
+      if (!stoppedIntentionally) {
+        const incident = beginRecoveryIncident("SPAWN_FAILED");
+        if (incident) {
+          incident.restart_attempt = Math.max(1, Math.min(5, restartAttempts.length + 1));
+        }
+        scheduleAutomaticRestart("SPAWN_FAILED");
+      }
     });
 
     runtimeHandshakeTimer = setTimeout(() => {
@@ -725,6 +910,7 @@ function createSidecarManager({
           `后端进程已启动，但 ${Math.round(resolveReadyTimeoutMs() / 1000)} 秒内未报告监听端口。进程仍在运行并会继续等待。`,
         ),
       };
+      beginRecoveryIncident("RUNTIME_HANDSHAKE_TIMEOUT");
       setSidecarStatus({
         state: "starting",
         managed: true,
@@ -801,7 +987,11 @@ function createSidecarManager({
     child.once("exit", () => clearTimeout(forceKillTimer));
   }
 
-  function stopSidecar() {
+  function stopSidecar({ preserveRestart = false } = {}) {
+    if (!preserveRestart) {
+      clearRestartTimer();
+      restartAfterStop = false;
+    }
     if (!sidecarProcess) {
       return;
     }
@@ -823,8 +1013,74 @@ function createSidecarManager({
     killSidecarProcessTree(child);
   }
 
+  function restartManagedSidecar({ resetBudget = false } = {}) {
+    if (resetBudget) {
+      restartAttempts = [];
+    }
+    clearRestartTimer();
+    if (sidecarProcess || stoppingSidecarProcess) {
+      restartAfterStop = true;
+      if (sidecarProcess) {
+        stopSidecar({ preserveRestart: true });
+      }
+      return;
+    }
+    void startSidecar();
+  }
+
+  function retrySidecar() {
+    suspended = false;
+    restartManagedSidecar({ resetBudget: true });
+    return getPublicSidecarStatus();
+  }
+
+  function handleSuspend() {
+    suspended = true;
+    clearRestartTimer();
+    setSidecarStatus({
+      state: "suspended",
+      health: null,
+      retryAt: null,
+      error: null,
+    });
+  }
+
+  async function handleResume() {
+    suspended = false;
+    if (!sidecarProcess) {
+      restartManagedSidecar();
+      return getPublicSidecarStatus();
+    }
+    try {
+      const health = await requestJson(
+        `${portRuntime.baseUrl}/api/health`,
+        AbortSignal.timeout(2_000),
+      );
+      await requestJson(
+        `${portRuntime.baseUrl}/api/settings`,
+        AbortSignal.timeout(2_000),
+        { Authorization: `Bearer ${sessionToken}` },
+      );
+      setSidecarStatus({
+        state: "ready",
+        managed: Boolean(sidecarProcess),
+        pid: sidecarProcess?.pid ?? null,
+        health,
+        error: null,
+        retryAt: null,
+      });
+      markRecoveryIncidentReady();
+      await onReady?.();
+    } catch {
+      beginRecoveryIncident("READINESS_TIMEOUT");
+      restartManagedSidecar();
+    }
+    return getPublicSidecarStatus();
+  }
+
   function abortSidecarReadiness() {
     clearRuntimeHandshakeTimer();
+    clearRestartTimer();
     sidecarReadinessAbort?.abort();
     sidecarReadinessAbort = null;
   }
@@ -834,7 +1090,12 @@ function createSidecarManager({
     stopSidecar,
     abortSidecarReadiness,
     getPublicSidecarStatus,
+    getPendingRecoveryIncident,
+    acknowledgeRecoveryIncident,
     showReminderNotification,
+    retrySidecar,
+    handleSuspend,
+    handleResume,
   };
 }
 

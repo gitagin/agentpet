@@ -45,7 +45,7 @@ export type DesktopSseError = {
 };
 
 export type DesktopSidecarStatus = {
-  state: "stopped" | "checking-port" | "starting" | "ready" | "degraded" | "error" | "stopping";
+  state: "stopped" | "checking-port" | "starting" | "ready" | "degraded" | "error" | "stopping" | "recovering" | "manual-retry" | "suspended";
   baseUrl: string;
   host: string;
   port: number;
@@ -58,6 +58,13 @@ export type DesktopSidecarStatus = {
     code: string;
     message: string;
   } | null;
+  restartAttempt?: number;
+  retryAt?: string | null;
+};
+
+export type DesktopLoginItemStatus = {
+  supported: boolean;
+  enabled: boolean;
 };
 
 export type DesktopPetMousePassthroughStatus = {
@@ -70,13 +77,16 @@ export type DesktopPetMousePassthroughStatus = {
 
 export type DesktopReminderNotificationRequest = {
   reminder_id: string;
+  trigger_at: string;
+  dispatch_kind?: "automatic" | "manual";
   title: string;
   body?: string;
 };
 
 export type DesktopReminderNotificationResult = {
-  status: "shown" | "duplicate" | "unsupported" | "failed";
+  status: "shown" | "duplicate" | "unsupported" | "failed" | "unknown";
   reminder_id?: string;
+  attempt_id?: string;
   reason?: string;
 };
 
@@ -103,6 +113,9 @@ declare global {
       getUiState?: (key: string) => string | null;
       setUiState?: (key: string, value: string | null) => Promise<void> | void;
       getSidecarStatus?: () => Promise<DesktopSidecarStatus>;
+      getLoginItemStatus?: () => Promise<DesktopLoginItemStatus>;
+      setLoginItemEnabled?: (enabled: boolean) => Promise<DesktopLoginItemStatus>;
+      retrySidecar?: () => Promise<DesktopSidecarStatus>;
       apiRequest?: (pathOrUrl: string, options?: DesktopApiRequestOptions) => Promise<DesktopApiResponse>;
       revealVaultPath?: (
         relativePath: string,
@@ -911,147 +924,13 @@ export type MemoryHygieneActionResponse = {
   action_id: string;
 };
 
-export type MemoryProfileProjectionItem = {
-  id: string;
-  category: string;
-  summary: string;
-  confidence: number;
-  importance: number;
-  status_label: string;
-  risk_label: string;
-  source_label: string;
-  updated_at: string;
-  permissions_summary: string;
-  can_revoke: boolean;
-  available_actions: string[];
-};
-
-export type MemoryProfileProjectionResponse = {
-  generated_at: string;
-  identity: MemoryProfileProjectionItem[];
-  preferences: MemoryProfileProjectionItem[];
-  boundaries: MemoryProfileProjectionItem[];
-  projects: MemoryProfileProjectionItem[];
-  relationships: MemoryProfileProjectionItem[];
-  recent_state: MemoryProfileProjectionItem[];
-  conflicts: MemoryProfileProjectionItem[];
-  needs_confirmation: MemoryProfileProjectionItem[];
-  filtered: MemoryProfileProjectionItem[];
-  redaction_note: string;
-};
-
-export type MemoryProfileActionKind = "forget" | "mark_inaccurate" | "keep" | "make_temporary" | "mark_stale";
-
-export type MemoryProfileAvailableAction = {
-  action: MemoryProfileActionKind;
-  label: string;
-  requires_confirmation: boolean;
-};
-
-export type MemoryProfileSourceSummary = {
-  label: string;
-  description: string;
-  evidence_count_label?: string | null;
-  last_seen_label?: string | null;
-  safety_note?: string | null;
-};
-
-export type MemoryProfileDetail = {
-  id: string;
-  summary: string;
-  category_label: string;
-  status_label: string;
-  confidence_label: string;
-  importance_label: string;
-  source_label: string;
-  permissions: string[];
-  safety_note?: string | null;
-  updated_at: string;
-  source_summary?: MemoryProfileSourceSummary | null;
-  available_actions: MemoryProfileAvailableAction[];
-};
-
-export type MemoryProfileActionRequest = {
-  action: MemoryProfileActionKind;
-  confirmed: boolean;
-  expires_at?: string | null;
-  feedback_text?: string;
-};
-
-export type MemoryProfileActionResponse = {
-  ok: boolean;
-  message: string;
-  item_id: string;
-};
-
-export type MemoryGraphNodeType =
-  | "user"
-  | "preference"
-  | "boundary"
-  | "project"
-  | "episode"
-  | "mood"
-  | "qa"
-  | "source"
-  | "pending"
-  | "archived"
-  | "cleanup";
-
-export type MemoryGraphNodeStatus = GeneratedApiSchemas["MemoryGraphProjectionNodeResponse"]["status"];
-
-export type MemoryGraphRiskTier = "low" | "hidden";
-
-export type MemoryGraphEdgeType =
-  | "related_to"
-  | "supports"
-  | "came_from"
-  | "updates"
-  | "conflicts_with"
-  | "belongs_to";
-
-export type MemoryGraphNode = {
-  id: string;
-  type: MemoryGraphNodeType;
-  label: string;
-  subtitle: string;
-  status: MemoryGraphNodeStatus;
-  risk_tier: MemoryGraphRiskTier;
-  size: number;
-  confidence_label: string;
-  source_label: string;
-  updated_at: string;
-  available_actions: string[];
-};
-
-export type MemoryGraphEdge = {
-  id: string;
-  from: string;
-  to: string;
-  type: MemoryGraphEdgeType;
-  strength: number;
-};
-
-export type MemoryGraphCluster = {
-  id: string;
-  label: string;
-  node_ids: string[];
-};
-
-export type MemoryGraphSummary = {
-  total_nodes: number;
-  pending_count: number;
-  cleanup_count: number;
-  hidden_count: number;
-};
-
-export type MemoryGraphProjectionResponse = {
-  generated_at: string;
-  nodes: MemoryGraphNode[];
-  edges: MemoryGraphEdge[];
-  clusters: MemoryGraphCluster[];
-  summary: MemoryGraphSummary;
-  redaction_note: string;
-};
+export type MemoryGraphNodeDetail = GeneratedApiSchemas["MemoryGraphNodeDetailResponse"];
+export type MemoryGraphEdgeDetail = GeneratedApiSchemas["MemoryGraphEdgeDetailResponse"];
+export type MemoryGraphClaimDetail = GeneratedApiSchemas["MemoryGraphClaimDetailResponse"];
+export type MemoryGraphResponse = GeneratedApiSchemas["MemoryGraphResponse"];
+export type MemoryGraphActionRequest = GeneratedApiSchemas["MemoryGraphActionRequest"];
+export type MemoryGraphActionResponse = GeneratedApiSchemas["MemoryGraphActionResponse"];
+export type MemoryGraphRebuildResponse = GeneratedApiSchemas["MemoryGraphRebuildResponse"];
 
 export type MemoryReceiptKind =
   | "remembered"
@@ -1485,28 +1364,6 @@ export type SettingsStatusResponse = {
   tts_settings?: TtsSettingsResponse;
 };
 
-export type MemoryGraphFact = {
-  fact_id: string;
-  category: string;
-  subject: string;
-  predicate: string;
-  object: string;
-  status: "candidate" | "active" | "quarantined" | "archived" | "rejected" | "wrong" | "sensitive_blocked" | string;
-  confidence: number;
-  source_text: string;
-  source_type: string;
-  support_count: number;
-  conflicts_with?: string | null;
-  memory_type?: string | null;
-  entity_type?: string | null;
-  occurred_at?: string | null;
-  expires_at?: string | null;
-  metadata_json?: string | null;
-  importance?: number | null;
-  created_at: string;
-  updated_at: string;
-};
-
 export type DiaryMemorySource = {
   source_type: string;
   source_id: string;
@@ -1541,29 +1398,6 @@ export type DiaryMemoryObject = {
 
 export type DiaryMemorySearchResponse = {
   objects: DiaryMemoryObject[];
-};
-
-export type MemoryGraphFactListResponse = {
-  facts: MemoryGraphFact[];
-};
-
-export type MemoryGraphFactActionResponse = {
-  fact_id: string;
-  status: string;
-};
-
-export type MemoryGraphExportItem = Omit<MemoryGraphFact, "source_text"> & {
-  metadata: Record<string, unknown>;
-};
-
-export type MemoryGraphExportPreviewResponse = {
-  generated_at: string;
-  format: "json" | "markdown";
-  item_count: number;
-  items: MemoryGraphExportItem[];
-  json_preview: string;
-  markdown_preview: string;
-  redaction_note: string;
 };
 
 export type CompanionConsolidationRunRequest = {

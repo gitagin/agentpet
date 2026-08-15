@@ -18,7 +18,7 @@ const savedAutomation: AutomationSettings = {
   updated_at: null,
 };
 
-describe("useSettings demo negotiation cap", () => {
+describe("useSettings", () => {
   it("saves the global model through the dedicated config and health endpoints", async () => {
     const saveModelConfig = vi.fn().mockResolvedValue({
       provider: "openai-compatible",
@@ -66,11 +66,28 @@ describe("useSettings demo negotiation cap", () => {
     }));
   });
 
-  it("normalizes legacy round counts to two when saving automation or negotiation settings", async () => {
+  it("keeps negotiation settings unknown until the server status is loaded", () => {
+    const { result } = renderHook(() => useSettings({
+      api: {} as DesktopApi,
+      isElectronRuntime: true,
+      onNotice: vi.fn(),
+    }));
+
+    expect(result.current.settingsStatusLoadState).toBe("unknown");
+    expect(result.current.automationSettingsDraft.use_negotiation).toBeNull();
+    expect(result.current.automationSettingsDraft.max_rounds).toBeNull();
+  });
+
+  it("sends the loaded round count and replaces drafts with the authoritative readback", async () => {
+    const initialStatus = { automation: { ...savedAutomation, max_rounds: 7 } };
+    const readbackStatus = { automation: { ...savedAutomation, use_negotiation: false, max_rounds: 8 } };
+    const getSettingsStatus = vi.fn()
+      .mockResolvedValueOnce(initialStatus)
+      .mockResolvedValueOnce(readbackStatus);
     const saveAutomationSettings = vi.fn().mockResolvedValue(savedAutomation);
     const api = {
       saveAutomationSettings,
-      getSettingsStatus: vi.fn().mockRejectedValue(new Error("no refresh in unit test")),
+      getSettingsStatus,
     } as unknown as DesktopApi;
     const { result } = renderHook(() => useSettings({
       api,
@@ -78,29 +95,60 @@ describe("useSettings demo negotiation cap", () => {
       onNotice: vi.fn(),
     }));
 
-    expect(result.current.automationSettingsDraft.max_rounds).toBe(5);
+    await act(async () => {
+      await result.current.loadSettingsStatus();
+    });
+    expect(result.current.automationSettingsDraft.max_rounds).toBe(7);
 
-    act(() => result.current.updateAutomationSettingsDraft({ local_privacy_mode: true }));
+    act(() => result.current.updateAutomationSettingsDraft({
+      local_privacy_mode: true,
+      use_negotiation: false,
+    }));
     await act(async () => {
       await result.current.saveAutomationSettings();
     });
 
     expect(saveAutomationSettings).toHaveBeenLastCalledWith(expect.objectContaining({
       local_privacy_mode: true,
-      max_rounds: 2,
-    }));
-    expect(result.current.automationSettingsDraft.max_rounds).toBe(2);
-
-    act(() => result.current.updateNegotiationSettingsDraft({ use_negotiation: false, max_rounds: 9 }));
-    await act(async () => {
-      await result.current.saveNegotiationSettings();
-    });
-
-    expect(saveAutomationSettings).toHaveBeenLastCalledWith(expect.objectContaining({
       use_negotiation: false,
-      max_rounds: 2,
+      max_rounds: 7,
     }));
-    expect(result.current.negotiationSettingsDraft.max_rounds).toBe(2);
-    expect(result.current.automationSettingsDraft.max_rounds).toBe(2);
+    expect(result.current.automationSettingsDraft.use_negotiation).toBe(false);
+    expect(result.current.automationSettingsDraft.max_rounds).toBe(8);
+  });
+
+  it("blocks writes after a settings refresh fails and allows a retry", async () => {
+    const getSettingsStatus = vi.fn()
+      .mockResolvedValueOnce({ automation: savedAutomation })
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce({ automation: { ...savedAutomation, max_rounds: 6 } });
+    const saveAutomationSettings = vi.fn();
+    const api = { getSettingsStatus, saveAutomationSettings } as unknown as DesktopApi;
+    const { result } = renderHook(() => useSettings({
+      api,
+      isElectronRuntime: true,
+      onNotice: vi.fn(),
+    }));
+
+    await act(async () => {
+      await result.current.loadSettingsStatus();
+    });
+    expect(result.current.settingsStatusLoadState).toBe("ready");
+
+    await act(async () => {
+      await result.current.loadSettingsStatus();
+    });
+    expect(result.current.settingsStatusLoadState).toBe("error");
+
+    await act(async () => {
+      await result.current.saveAutomationSettings();
+    });
+    expect(saveAutomationSettings).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await result.current.loadSettingsStatus();
+    });
+    expect(result.current.settingsStatusLoadState).toBe("ready");
+    expect(result.current.automationSettingsDraft.max_rounds).toBe(6);
   });
 });

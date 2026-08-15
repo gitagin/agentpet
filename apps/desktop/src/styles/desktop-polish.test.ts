@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const polishStyles = readFileSync(resolve(__dirname, "desktop-polish.css"), "utf8");
+const llmWikiStyles = readFileSync(resolve(__dirname, "llmwiki-memory.css"), "utf8");
 const themeStyles = readFileSync(resolve(__dirname, "theme.css"), "utf8");
 const baseStyles = readFileSync(resolve(__dirname, "base.css"), "utf8");
 
@@ -74,102 +75,40 @@ describe("desktop polish navigation contract", () => {
 });
 
 describe("desktop polish memory workspace boundary contract", () => {
-  it("keeps memory workspace tabs inside a fixed route area above the dock", () => {
-    expect(polishStyles).toContain("Product Design memory workspace boundary fix");
-    expect(polishStyles).toMatch(
-      /body\[data-window-mode="memory"\] \.feature-window-content\s*\{[^}]*grid-template-rows:\s*var\(--memory-workspace-rail-height\) minmax\(0,\s*1fr\);[^}]*overflow:\s*hidden;[^}]*padding:\s*0 0 calc\(var\(--bottom-nav-safe-area\) \+ 4px\);/,
+  it("keeps the LLM Wiki route scrollable above a non-overlapping dock", () => {
+    expect(llmWikiStyles).toMatch(
+      /\.feature-shell\[data-active-tab="记忆"\]\s*\{[^}]*grid-template-rows:\s*minmax\(0,\s*1fr\) auto;/,
     );
-    expect(polishStyles).toMatch(
-      /body\[data-window-mode="memory"\] \.memory-workspace-tab-panel\s*\{[^}]*height:\s*100%;[^}]*max-height:\s*100%;[^}]*overflow:\s*hidden;[^}]*contain:\s*layout paint;/,
+    expect(llmWikiStyles).toMatch(
+      /\.feature-shell\[data-active-tab="记忆"\] > \.feature-window-content\s*\{[^}]*min-height:\s*0;[^}]*overflow-x:\s*hidden;[^}]*overflow-y:\s*auto;[^}]*padding:\s*0 0 calc\(var\(--bottom-nav-safe-area\) \+ env\(safe-area-inset-bottom,\s*0px\)\);[^}]*scroll-padding-bottom:\s*calc\(var\(--bottom-nav-safe-area\) \+ env\(safe-area-inset-bottom,\s*0px\)\);/,
     );
-    expect(polishStyles).toMatch(
-      /body\[data-window-mode="memory"\] \.memory-workspace-tab-panel:not\(\.memory-workspace-tab-panel-graph\)\s*\{[^}]*overflow-y:\s*auto;[^}]*scrollbar-gutter:\s*stable;/,
+    expect(llmWikiStyles).toMatch(
+      /\.feature-shell\[data-active-tab="记忆"\] > \.bottom-nav\s*\{[^}]*position:\s*relative;[^}]*inset:\s*auto;[^}]*width:\s*100%;[^}]*min-height:\s*60px;[^}]*transform:\s*none;/,
     );
-    expect(polishStyles).toMatch(
-      /body\[data-window-mode="memory"\] \.memory-workspace-tab-panel-archive\s*\{[^}]*grid-template-rows:\s*auto auto;[^}]*align-content:\s*start;[^}]*--memory-scrollbar-thumb:\s*rgba\(245,\s*141,\s*165,\s*0\.24\);/,
+    expect(llmWikiStyles).toMatch(
+      /\.feature-shell\[data-active-tab="记忆"\] > \.bottom-nav \.bottom-nav-track\s*\{[^}]*width:\s*max-content;[^}]*min-width:\s*0;[^}]*margin:\s*0 auto;/,
     );
-    expect(polishStyles).toMatch(
-      /body\[data-window-mode="memory"\] \.memory-workspace-tab-panel-archive > :where\(\.memory-primary-panel, \.memory-profile-panel, \.memory-add-form\)\s*\{[^}]*max-height:\s*none;/,
+    expect(polishStyles.match(/\.feature-window-content:not\(:has\(\.llmwiki-memory-shell\)\)/g)?.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("keeps graph evidence and narrow-screen lifecycle views within their route", () => {
+    expect(llmWikiStyles).toMatch(
+      /\.llmwiki-graph-layout,\s*\.llmwiki-single-layout\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\) minmax\(300px,\s*360px\);/,
     );
-    expect(polishStyles).toMatch(
-      /body\[data-window-mode="memory"\] \.memory-workspace-tab-panel-archive > :where\(\.memory-profile-panel, \.memory-add-form\)\s*\{[^}]*overflow:\s*visible;/,
+    expect(llmWikiStyles).toMatch(
+      /\.llmwiki-evidence-rail\s*\{[^}]*position:\s*sticky;[^}]*max-height:\s*calc\(100dvh - 120px\);[^}]*overflow:\s*auto;/,
     );
-    expect(polishStyles).toMatch(
-      /body\[data-window-mode="memory"\] \.memory-workspace-tab-panel-graph > \.memory-graph-projection-panel\s*\{[^}]*height:\s*100%;[^}]*grid-template-rows:\s*auto auto minmax\(0,\s*1fr\) auto;[^}]*overflow:\s*hidden;/,
+    expect(llmWikiStyles).toMatch(
+      /@media \(max-width:\s*900px\)\s*\{[\s\S]*\.llmwiki-graph-layout,\s*\.llmwiki-single-layout\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\);[^}]*\}[\s\S]*\.llmwiki-evidence-rail\s*\{[^}]*position:\s*static;[^}]*max-height:\s*none;/,
     );
-    expect(polishStyles).toMatch(
-      /body\[data-window-mode="memory"\] \.memory-graph-content\s*\{[^}]*height:\s*100%;[^}]*grid-template-columns:\s*minmax\(0,\s*1\.32fr\) minmax\(240px,\s*0\.52fr\);[^}]*overflow:\s*hidden;/,
+    expect(llmWikiStyles).toMatch(
+      /@media \(max-width:\s*680px\)\s*\{[\s\S]*\.llmwiki-memory-shell\s*\{[^}]*padding:\s*16px 12px 20px;[^}]*\}[\s\S]*\.llmwiki-empty-state\s*\{[^}]*min-height:\s*180px;[^}]*padding:\s*12px;[^}]*\}[\s\S]*\.llmwiki-graph-stage\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\);/,
     );
-    expect(polishStyles).toMatch(
-      /@media \(max-width:\s*1100px\)\s*\{[\s\S]*body\[data-window-mode="memory"\] \.memory-graph-content\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\);[^}]*grid-template-rows:\s*minmax\(0,\s*1fr\) minmax\(118px,\s*0\.34fr\);/,
+    expect(llmWikiStyles).toMatch(
+      /@media \(max-width:\s*680px\)[\s\S]*\.llmwiki-evidence-rail:not\(\.is-empty\)\s*\{[^}]*position:\s*fixed;[^}]*inset-inline:\s*12px;[^}]*max-height:\s*min\(68dvh,\s*560px\);[^}]*overscroll-behavior:\s*contain;/,
     );
-    expect(polishStyles).toContain("Memory graph focus pass");
-    expect(polishStyles).toMatch(
-      /body\[data-window-mode="memory"\] \.feature-window-header\s*\{[^}]*display:\s*none;/,
-    );
-    expect(polishStyles).toMatch(
-      /body\[data-window-mode="memory"\] \.memory-graph-content\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*7fr\) minmax\(240px,\s*3fr\);/,
-    );
-    expect(polishStyles).toContain("Memory React Flow graph");
-    expect(polishStyles).toContain("Memory graph 85 percent focus pass");
-    expect(polishStyles).toMatch(
-      /body\[data-window-mode="memory"\] \.memory-flow-content\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*85fr\) minmax\(180px,\s*15fr\);[^}]*overflow:\s*hidden;/,
-    );
-    expect(polishStyles).toMatch(
-      /body\[data-window-mode="memory"\] \.memory-flow-canvas\s*\{[^}]*height:\s*100%;[^}]*overflow:\s*hidden;[^}]*contain:\s*layout paint;/,
-    );
-    expect(polishStyles).toMatch(
-      /body\[data-window-mode="memory"\] \.memory-node-dot\s*\{[^}]*border-radius:\s*50%;[^}]*background:\s*currentColor;[^}]*box-shadow:\s*0 0 12px currentColor;/,
-    );
-    expect(polishStyles).toMatch(
-      /body\[data-window-mode="memory"\] \.memory-node-center \.memory-node-dot\s*\{[^}]*box-shadow:\s*0 0 22px currentColor,\s*0 0 48px rgba\(213,\s*111,\s*138,\s*0\.22\);/,
-    );
-    expect(polishStyles).toMatch(
-      /body\[data-window-mode="memory"\] \.memory-node-pending \.memory-node-dot\s*\{[^}]*border-style:\s*dashed;/,
-    );
-    expect(polishStyles).toMatch(
-      /body\[data-window-mode="memory"\] \.memory-node-handle\s*\{[^}]*top:\s*50% !important;[^}]*left:\s*50% !important;[^}]*transform:\s*translate\(-50%,\s*-50%\) !important;/,
-    );
-    expect(polishStyles).toMatch(
-      /body\[data-window-mode="memory"\] \.memory-flow \.react-flow__controls-button\s*\{[^}]*background:\s*transparent;[^}]*box-shadow:\s*none;/,
-    );
-    expect(polishStyles).toMatch(
-      /body\[data-window-mode="memory"\] \.memory-flow-detail-panel\s*\{[^}]*grid-template-rows:\s*auto auto minmax\(0,\s*1fr\);[^}]*overflow:\s*hidden;[^}]*scrollbar-width:\s*none;/,
-    );
-    expect(polishStyles).toMatch(
-      /@media \(max-width:\s*1100px\), \(max-height:\s*760px\)\s*\{[\s\S]*body\[data-window-mode="memory"\] \.memory-flow-content\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\);[^}]*grid-template-rows:\s*minmax\(0,\s*84fr\) minmax\(68px,\s*16fr\);/,
-    );
-    expect(polishStyles).toContain("Memory graph revert pass");
-    expect(polishStyles).toMatch(
-      /body\[data-window-mode="memory"\] \.memory-flow-content\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\) minmax\(280px,\s*320px\);[^}]*grid-template-rows:\s*minmax\(0,\s*1fr\);/,
-    );
-    expect(polishStyles).toMatch(
-      /body\[data-window-mode="memory"\] \.memory-flow \.memory-flow-edge\.is-dashed \.react-flow__edge-path\s*\{[^}]*animation:\s*none;/,
-    );
-    expect(polishStyles).toMatch(
-      /body\[data-window-mode="memory"\] \.memory-node-pending \.memory-node-dot\s*\{[^}]*animation:\s*none;/,
-    );
-    expect(polishStyles).toMatch(
-      /@media \(max-width:\s*1100px\), \(max-height:\s*760px\)\s*\{[\s\S]*body\[data-window-mode="memory"\] \.memory-flow-content\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\) minmax\(240px,\s*300px\);[^}]*grid-template-rows:\s*minmax\(0,\s*1fr\);/,
-    );
-    expect(polishStyles).toContain("Memory graph layout separation");
-    expect(polishStyles).toMatch(
-      /body\[data-window-mode="memory"\] \.memory-workspace-tab-panel-graph > \.memory-flow-projection-panel\s*\{[^}]*grid-template-rows:\s*auto minmax\(34px,\s*42px\) minmax\(0,\s*1fr\);[^}]*align-items:\s*stretch;[^}]*align-content:\s*stretch;/,
-    );
-    expect(polishStyles).toMatch(
-      /body\[data-window-mode="memory"\] \.memory-flow-summary-grid\s*\{[^}]*grid-row:\s*2;[^}]*position:\s*static !important;[^}]*width:\s*100%;[^}]*height:\s*42px;[^}]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\);[^}]*max-height:\s*42px;[^}]*overflow:\s*hidden;/,
-    );
-    expect(polishStyles).toMatch(
-      /body\[data-window-mode="memory"\] \.memory-flow-summary-grid div\s*\{[^}]*height:\s*42px;[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\) auto;[^}]*overflow:\s*hidden;/,
-    );
-    expect(polishStyles).toMatch(
-      /body\[data-window-mode="memory"\] \.memory-flow-content\s*\{[^}]*grid-row:\s*3;[^}]*display:\s*grid;[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\) minmax\(280px,\s*320px\);[^}]*height:\s*100%;[^}]*min-height:\s*0;[^}]*max-height:\s*100%;[^}]*overflow:\s*hidden;/,
-    );
-    expect(polishStyles).toMatch(
-      /body\[data-window-mode="memory"\] \.memory-flow-detail-panel\s*\{[^}]*align-self:\s*stretch;[^}]*width:\s*100%;[^}]*height:\s*100%;/,
-    );
-    expect(polishStyles).toMatch(
-      /body\[data-window-mode="memory"\] \.memory-flow-detail-panel\.is-empty\s*\{[^}]*align-content:\s*start;/,
+    expect(llmWikiStyles).toMatch(
+      /@media \(prefers-reduced-motion:\s*reduce\)\s*\{[^}]*\.llmwiki-loading-line\s*\{[^}]*animation:\s*none;/,
     );
   });
 });
@@ -434,16 +373,8 @@ describe("desktop polish detail contract", () => {
     );
   });
 
-  it("keeps memory product cards readable inside the dark feature shell", () => {
-    expect(polishStyles).toMatch(
-      /\.feature-shell \.memory-priority-block\s*\{[^}]*align-content:\s*start;[^}]*background:[^}]*rgba\(18,\s*17,\s*24,\s*0\.68\);/,
-    );
-    expect(polishStyles).toMatch(
-      /\.feature-shell \.memory-profile-group,\s*\.feature-shell \.memory-profile-item,\s*\.feature-shell \.memory-profile-filtered\s*\{[^}]*border-color:\s*var\(--feature-line\);[^}]*background:\s*rgba\(255,\s*255,\s*255,\s*0\.055\);[^}]*color:\s*var\(--feature-soft\);/,
-    );
-    expect(polishStyles).toMatch(
-      /\.feature-shell \.memory-profile-group-head strong,\s*\.feature-shell \.memory-profile-item strong,\s*\.feature-shell \.memory-profile-filtered > summary\s*\{[^}]*color:\s*var\(--feature-ink\);/,
-    );
+  it("removes obsolete memory route projections from the shared polish sheet", () => {
+    expect(polishStyles).not.toMatch(/\.memory-(?:workspace|graph|flow|star|priority|profile|import|fact|hygiene|trust|review|search|activity|workbench|add|advanced|export)-[A-Za-z0-9_-]*/);
   });
 
   it("honors reduced-transparency preferences after route polish overrides", () => {
@@ -484,7 +415,7 @@ describe("desktop polish single-scroll contract", () => {
 
   it("removes nested list, message, and onboarding scrollbars inside feature routes", () => {
     expect(polishStyles).toMatch(
-      /\.feature-shell :where\([\s\S]*\.message-list,[\s\S]*\.task-digest-list,[\s\S]*\.wiki-browser-list,[\s\S]*\.memory-priority-list,[\s\S]*\.growth-history-list,[\s\S]*\.diff-preview[\s\S]*\)\s*\{[^}]*max-height:\s*none;[^}]*height:\s*auto;[^}]*overflow:\s*visible;[^}]*contain:\s*none;[^}]*will-change:\s*auto;/,
+      /\.feature-shell :where\([\s\S]*\.message-list,[\s\S]*\.task-digest-list,[\s\S]*\.wiki-browser-list,[\s\S]*\.growth-history-list,[\s\S]*\.diff-preview[\s\S]*\)\s*\{[^}]*max-height:\s*none;[^}]*height:\s*auto;[^}]*overflow:\s*visible;[^}]*contain:\s*none;[^}]*will-change:\s*auto;/,
     );
   });
 

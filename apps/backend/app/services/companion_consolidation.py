@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.models.common import new_id
+from app.services.memory_entity_graph import MemoryEntityGraphStore
 from app.services.memory_graph import MemoryFactCandidate, MemoryGraphStore
 from app.storage.database import open_database_connection
 from app.utils.hash import sha256_hex
@@ -33,7 +34,7 @@ class CompanionConsolidationService:
         db: str | Path | sqlite3.Connection,
         *,
         vault_id: str,
-        graph_store: MemoryGraphStore,
+        graph_store: MemoryGraphStore | MemoryEntityGraphStore,
     ) -> None:
         self._owns_connection = not isinstance(db, sqlite3.Connection)
         self.conn = open_database_connection(db)

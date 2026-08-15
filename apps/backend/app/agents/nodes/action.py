@@ -1,24 +1,26 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import secrets
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Literal, cast
 
-from app.services.agent_actions import AgentActionCreate, AutomationPolicy
+from app.services.agent_actions import AutomationPolicy
 from app.services.memory_policy import evaluate_memory_content
 
 from ..contracts import ActionProposal, PolicyDecision
-from ..events import AgentActionEvent
-from ..events_helpers import _agent_state, _emit_tool_results, _events, _record_node_error
+from ..events import AgentActionEvent, AgentMemoryProposalEvent, AgentTaskEvent, AgentWikiProposalEvent
+from ..events_helpers import _agent_state, _events, _record_node_error
+from ..exceptions import ActionLifecycleUnavailableError
 from ..intent import is_high_risk_mutation_request, route_intent
 from ..retrieval.router import _automation_enabled
 from ..runtime_helpers import _strip_memory_command, _strip_wiki_command, _task_title, _wiki_title
 from ..services import AgentRuntimeServices
 from ..state import ActionPlan, AgentState
-from ..tools import DEFAULT_MEMORY_TARGET_PATH, AgentToolResult, AgentToolSet, SensitiveMemoryRejectedError
-from .wiki import _fallback_manage_wiki, _fallback_plan_wiki, _wiki_proposal_kind
+from ..tools import DEFAULT_MEMORY_TARGET_PATH, SensitiveMemoryRejectedError
+from .wiki import _wiki_proposal_kind
 from .policy_guard import evaluate_action_proposal
 
 
@@ -47,7 +49,7 @@ async def _action_planner_node(
             plan.risk_score = policy.risk_tier
             plan.decision = "auto" if policy.decision == "approved" else "ask"
             if policy.decision == "pending_confirmation":
-                plan.status = "pending_confirm"
+                plan.status = "pending_confirmation"
                 plan.control_state = "pending_confirmation"
             elif policy.decision == "denied":
                 plan.status = "skipped"
@@ -102,9 +104,11 @@ def _persist_pending_checkpoint(
             "conversation_id": state.conversation_id,
             "message_id": state.message_id,
             "agent_run_id": state.agent_run_id,
+            "user_message": state.user_message,
             "action_plan": plan.model_dump(mode="json"),
             "action_proposal": proposal.model_dump(mode="json"),
             "policy_decision": policy.model_dump(mode="json"),
+            "canonical_payload_hash": _canonical_payload_hash(policy),
             "decision_id": decision_id,
             "decision_expires_at": decision_expires_at.isoformat(),
             "action_label": policy.action_type,
@@ -120,6 +124,16 @@ def _persist_pending_checkpoint(
     state.checkpoint_status = "pending_confirmation"
 
 
+def _canonical_payload_hash(policy: PolicyDecision) -> str:
+    canonical = json.dumps(
+        policy.canonical_parameters,
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
 async def _execute_action_plan(
     graph_state: dict[str, Any],
     services: AgentRuntimeServices,
@@ -128,57 +142,51 @@ async def _execute_action_plan(
     plans = state.action_plans or ([state.action_plan] if state.action_plan is not None else [])
     if not plans:
         return graph_state
+    coordinator = services.action_lifecycle
+    if coordinator is None:
+        return _record_node_error(graph_state, ActionLifecycleUnavailableError())
     for plan in plans:
         if plan.executed:
             continue
-        proposal = next(
-            (item for item in state.action_proposals if item.proposal_id == plan.proposal_id),
-            None,
-        )
-        policy = next(
-            (item for item in state.policy_decisions if item.proposal_id == plan.proposal_id),
-            None,
-        )
+        proposal = next((item for item in state.action_proposals if item.proposal_id == plan.proposal_id), None)
+        policy = next((item for item in state.policy_decisions if item.proposal_id == plan.proposal_id), None)
         if proposal is None or policy is None:
             plan.status = "failed"
             plan.control_state = "failed_recovery"
             continue
-        if policy.decision != "approved":
-            _record_policy_blocked_plan(graph_state, services, state, plan, policy)
-            plan.executed = True
-            continue
-        if policy.idempotency_key in state.executed_action_keys:
-            plan.executed = True
-            plan.status = "executed"
-            plan.control_state = "completed"
-            continue
-        plan.control_state = "executing"
+        plan.control_state = "claimed" if policy.decision == "approved" else plan.control_state
         try:
-            if plan.action_type == "task":
-                await _execute_task_plan(graph_state, services, state, plan)
-            elif plan.action_type == "memory_proposal":
-                await _execute_memory_plan(graph_state, services, state, plan)
-            elif plan.action_type == "wiki":
-                await _execute_wiki_plan(graph_state, services, state, plan)
-            else:
-                await _execute_confirmation_plan(graph_state, services, state, plan)
-            plan.executed = True
-            state.executed_action_keys.add(policy.idempotency_key)
-            plan.control_state = "completed" if plan.status == "executed" else "pending_confirmation"
+            outcome = await coordinator.execute(
+                proposal,
+                policy,
+                source_run_id=state.agent_run_id,
+                source_conversation_id=state.conversation_id,
+            )
         except Exception as exc:
             plan.status = "failed"
             plan.control_state = "failed_recovery"
-            _record_planned_action(
+            _append_lifecycle_event(
                 graph_state,
-                services,
                 state,
-                action_type=f"{plan.action_type}.failed",
-                title="动作执行失败",
-                summary=str(exc),
-                plan=plan,
-                status="failed",
-                metadata={"error": str(exc)},
+                action_id=None,
+                action_type=policy.action_type,
+                status="failed_recovery",
+                title="动作恢复失败",
+                summary="本地动作未能确认是否已完成，请查看恢复记录。",
+                target_paths=list(policy.canonical_parameters.get("target_paths") or ()),
+                reversible=False,
+                error=str(exc),
+                metadata={"safe_error_code": "action_lifecycle_failed"},
             )
+            continue
+        _project_lifecycle_outcome(
+            graph_state,
+            state,
+            plan,
+            policy,
+            outcome,
+            emit_durable_action_events=not services.allow_ephemeral_lifecycle,
+        )
     return graph_state
 
 
@@ -216,16 +224,20 @@ def _plan_action_type(plan: ActionPlan) -> str:
     if plan.action_type == "task":
         return "task.create"
     if plan.action_type == "memory_proposal":
-        return "memory.proposal"
+        return "memory.proposal.defer" if bool(plan.payload.get("auto_long_term_memory")) else "memory.proposal"
     if plan.action_type == "confirmation":
         return "local.destructive_request"
     mode = "write" if bool(plan.payload.get("auto_organize")) else "plan"
+    if plan.payload.get("kind") == "lint":
+        return "wiki.lint.report"
     return f"wiki.{plan.payload.get('kind', 'ingest')}.{mode}"
 
 
 def _plan_target_ref(plan: ActionPlan, fallback: str) -> str:
     if plan.payload.get("target_path"):
         return str(plan.payload["target_path"])
+    if plan.payload.get("target_ref"):
+        return str(plan.payload["target_ref"])
     if plan.action_type == "task":
         return f"task:{str(plan.payload.get('title') or '').casefold()}"[:256]
     if plan.action_type == "wiki":
@@ -233,39 +245,31 @@ def _plan_target_ref(plan: ActionPlan, fallback: str) -> str:
     return fallback
 
 
-def _record_policy_blocked_plan(
-    graph_state: dict[str, Any],
-    services: AgentRuntimeServices,
-    state: AgentState,
-    plan: ActionPlan,
-    policy: PolicyDecision,
-) -> None:
-    pending = policy.decision == "pending_confirmation"
-    plan.status = "pending_confirm" if pending else "skipped"
-    plan.control_state = "pending_confirmation" if pending else "denied"
-    _record_planned_action(
-        graph_state,
-        services,
-        state,
-        action_type=policy.action_type,
-        title="动作等待确认" if pending else "动作已被策略拒绝",
-        summary="目标尚未发生任何修改。",
-        plan=plan,
-        status="pending_confirm" if pending else "denied",
-        metadata={
-            "policy_version": policy.policy_version,
-            "policy_reason": policy.reason_code,
-            "idempotency_key": policy.idempotency_key,
-            "control_state": plan.control_state,
-            "confirmation_digest": policy.confirmation_digest,
-        },
-    )
-
-
 def _build_action_plans(state: AgentState, services: AgentRuntimeServices) -> list[ActionPlan]:
     if is_high_risk_mutation_request(state.user_message):
         state.suppress_post_reply_automation = True
+        destructive_word = re.search(r"删除|移走|移动|批量|覆盖|delete|move|bulk|overwrite", state.user_message, re.IGNORECASE)
+        has_explicit_target = bool(state.classifier and state.classifier.action_params.get("target_path"))
+        if (
+            state.classifier is not None
+            and state.classifier.action_type in {"task", "wiki", "memory_proposal"}
+            and (destructive_word is None or has_explicit_target)
+        ):
+            plans = _build_regular_action_plans(state, services)
+            for plan in plans:
+                plan.decision = "ask"
+                plan.status = "pending_confirmation"
+                plan.confirm_text = (
+                    "这是高风险本地变更。我已保留原始目标，确认后才会执行："
+                    f"{plan.payload.get('title') or plan.payload.get('content') or state.user_message[:120]}"
+                )
+            return plans
         return [_confirmation_plan(state)]
+
+    return _build_regular_action_plans(state, services)
+
+
+def _build_regular_action_plans(state: AgentState, services: AgentRuntimeServices) -> list[ActionPlan]:
 
     compound = _split_task_and_memory_request(state.user_message)
     if compound is not None:
@@ -382,29 +386,40 @@ def _memory_plan(state: AgentState, services: AgentRuntimeServices, *, content: 
 
 def _confirmation_plan(state: AgentState) -> ActionPlan:
     decision = AutomationPolicy().decide("markdown.bulk_rewrite", destructive=True)
+    request_text = " ".join(state.user_message.strip().split())[:500]
+    request_digest = hashlib.sha256(request_text.encode("utf-8")).hexdigest()[:24]
     return ActionPlan(
         action_type="confirmation",
         payload={
-            "request_summary": state.user_message.strip()[:500],
-            "confirmation_only": True,
+            # Keep the original intent available for a human decision and a
+            # later capability check.  The stable intent prefix is accepted
+            # by the policy target validator while the request text remains
+            # an informational, non-executable field.
+            "request_text": request_text,
+            "requested_operation": "unsupported_local_mutation",
+            "requested_target": request_text,
+            "target_ref": f"intent:unsupported-mutation:{request_digest}",
+            "target_paths": [],
         },
         risk_score=decision.risk_tier,
         decision=decision.decision,
-        status="pending_confirm",
-        confirm_text=(
-            "这个请求可能删除、移动或批量改写本地内容。我已经停在确认前，没有修改任何目标；"
-            "请先核对操作范围，再决定是否继续。"
-        ),
+        status="pending_confirmation",
+        confirm_text="这个本地变更类型当前没有安全执行器；确认后仍会先做能力检查，不会把未知目标当作成功。",
         reversible=False,
     )
 
 
 def _wiki_plan(state: AgentState, services: AgentRuntimeServices) -> ActionPlan:
     params = _action_params(state)
-    content = str(params.get("content") or _strip_wiki_command(state.user_message)).strip() or state.user_message
+    raw_content = params.get("content")
+    content = str(raw_content).strip() if raw_content and str(raw_content).strip() != state.user_message.strip() else _strip_wiki_command(state.user_message)
+    content = content.strip() or state.user_message
     title = str(params.get("title") or _wiki_title(state.user_message)).strip() or "Knowledge Note"
     kind = str(params.get("kind") or _wiki_proposal_kind(state.user_message))
-    auto_organize = _automation_enabled(services, "auto_wiki_organize")
+    auto_organize = _automation_enabled(services, "auto_wiki_organize") and _wiki_write_available(
+        services,
+        kind,
+    )
     action_type = f"wiki.{kind}.{'write' if auto_organize else 'plan'}"
     decision = AutomationPolicy().decide(action_type, reversible=auto_organize)
     if not auto_organize:
@@ -421,7 +436,9 @@ def _wiki_plan(state: AgentState, services: AgentRuntimeServices) -> ActionPlan:
             "kind": kind,
             "title": title,
             "content": content,
+            "target_path": _optional_text(params.get("target_path")),
             "auto_organize": auto_organize,
+            "citations": [citation.model_dump(mode="json") for citation in state.citations],
         },
         risk_score=decision.risk_tier,
         decision=decision.decision,
@@ -434,210 +451,277 @@ def _wiki_plan(state: AgentState, services: AgentRuntimeServices) -> ActionPlan:
     )
 
 
-async def _execute_task_plan(
+def _project_lifecycle_outcome(
     graph_state: dict[str, Any],
-    services: AgentRuntimeServices,
     state: AgentState,
     plan: ActionPlan,
+    policy: PolicyDecision,
+    outcome: Any,
+    *,
+    emit_durable_action_events: bool,
 ) -> None:
-    if plan.decision == "ask":
-        plan.status = "pending_confirm"
-        _record_planned_action(
-            graph_state,
-            services,
-            state,
-            action_type="task.create",
-            title=f"待确认本地提醒：{plan.payload.get('title', '')}",
-            summary=state.user_message,
-            plan=plan,
-            status="pending_confirm",
-        )
-        return
-
-    tool_results: list[AgentToolResult] = []
-    toolset = AgentToolSet(tasks=services.tasks, observer=tool_results.append)
-    response = await toolset.create_task(
-        title=str(plan.payload.get("title") or state.user_message),
-        description=str(plan.payload.get("description") or ""),
-        due_at=_optional_text(plan.payload.get("due_at")),
-        remind_at=_optional_text(plan.payload.get("remind_at")),
-        timezone=_optional_text(plan.payload.get("timezone")),
-        source_text=str(plan.payload.get("source_text") or state.user_message),
-    )
-    _emit_tool_results(graph_state, tool_results)
-    plan.status = "executed"
-    _record_planned_action(
-        graph_state,
-        services,
-        state,
-        action_type="task.create",
-        title=f"已创建本地提醒：{response.metadata.get('title') or plan.payload.get('title')}",
-        summary=state.user_message,
-        plan=plan,
-        status="completed",
-        metadata={
-            "task_id": response.task_id,
-            "reminder_id": response.reminder_id,
-            "reminder_status": response.metadata.get("reminder_status", ""),
-        },
-    )
-
-
-async def _execute_memory_plan(
-    graph_state: dict[str, Any],
-    services: AgentRuntimeServices,
-    state: AgentState,
-    plan: ActionPlan,
-) -> None:
-    if bool(plan.payload.get("auto_long_term_memory")):
+    receipt = outcome.receipt
+    verification = outcome.verification
+    result_metadata = receipt.result.get("metadata")
+    if isinstance(result_metadata, dict):
+        result = {**result_metadata, **{key: value for key, value in receipt.result.items() if key != "metadata"}}
+    else:
+        result = receipt.result
+    state.execution_receipts.append(receipt)
+    if verification is not None:
+        state.verification_results.append(verification)
+    plan.receipt_ref = receipt.receipt_ref
+    plan.verification_status = verification.status if verification is not None else None
+    plan.duplicate = bool(outcome.duplicate)
+    plan.executed = True
+    if receipt.status == "verified":
         plan.status = "executed"
-        _record_planned_action(
-            graph_state,
-            services,
-            state,
-            action_type="memory.proposal.defer",
-            title="已进入后台长期记忆整理",
-            summary=str(plan.payload.get("content") or ""),
-            plan=plan,
-            status="completed",
-            metadata={"target_path": plan.payload.get("target_path"), "mode": "auto_background"},
+        plan.control_state = "completed"
+        state.task_id = _optional_text(result.get("task_id")) or state.task_id
+        state.reminder_id = _optional_text(result.get("reminder_id")) or state.reminder_id
+        state.proposal_id = _optional_text(result.get("proposal_id")) or state.proposal_id
+        if policy.action_type == "task.create":
+            state.response_text = state.response_text or f"已创建本地提醒：{result.get('title') or plan.payload.get('title', '')}"
+        elif policy.action_type == "memory.proposal":
+            state.response_text = state.response_text or "已创建一条待确认的长期记忆提案。"
+        elif policy.action_type == "memory.proposal.defer":
+            state.response_text = state.response_text or "已把这条信息交给后台慢记忆整理；它不会直接进入回答上下文。"
+        elif policy.action_type.endswith(".plan"):
+            state.response_text = state.response_text or "已生成 Wiki 整理提案，尚未写入页面。"
+        elif policy.action_type.startswith("wiki."):
+            state.response_text = state.response_text or f"已写入 Wiki 页面：{result.get('target_path') or policy.normalized_target}"
+    elif receipt.status == "pending_confirmation":
+        plan.status = "pending_confirmation"
+        plan.control_state = "pending_confirmation"
+        plan.decision = "ask"
+    elif receipt.status == "denied":
+        plan.status = "skipped"
+        plan.control_state = "denied"
+    else:
+        plan.status = "failed"
+        plan.control_state = "failed_recovery"
+        state.response_text = "本地动作未能确认是否已完成，已保留恢复记录。"
+    action = outcome.action
+    target_paths = list(action.target_paths)
+    if not target_paths:
+        target_path = receipt.result.get("target_path")
+        if isinstance(target_path, str) and target_path:
+            target_paths = [target_path]
+    if policy.action_type == "task.create" and receipt.status == "verified":
+        _events(graph_state).append(
+            AgentTaskEvent(
+                agent_run_id=state.agent_run_id,
+                task_id=str(result.get("task_id") or ""),
+                reminder_id=_optional_text(result.get("reminder_id")),
+                status=str(result.get("status") or "pending"),
+                title=_optional_text(result.get("title")),
+                reminder_status=_optional_text(result.get("reminder_status")),
+                remind_at=_optional_text(result.get("remind_at")),
+                timezone=_optional_text(result.get("timezone")),
+                timezone_label=_optional_text(result.get("timezone_label")),
+            )
         )
+    if policy.action_type == "memory.proposal" and receipt.status == "verified":
+        _events(graph_state).append(
+            AgentMemoryProposalEvent(
+                agent_run_id=state.agent_run_id,
+                proposal_id=str(result.get("proposal_id") or ""),
+                status=str(result.get("status") or receipt.status),
+                target_path=str(result.get("target_path") or DEFAULT_MEMORY_TARGET_PATH),
+            )
+        )
+    if policy.action_type.endswith(".plan"):
+        _append_wiki_proposal_event(graph_state, state, plan, policy, receipt, result)
+    # Production lifecycle records are visible alongside their domain event;
+    # the in-memory test fallback keeps the narrower historical event shape.
+    emit_action = (
+        policy.action_type != "memory.proposal"
+        and (policy.action_type != "memory.proposal.defer" or emit_durable_action_events)
+        and not policy.action_type.endswith(".plan")
+        and not (
+            policy.action_type == "task.create"
+            and receipt.status == "verified"
+            and not emit_durable_action_events
+        )
+    )
+    if not emit_action:
         return
-
-    tool_results: list[AgentToolResult] = []
-    toolset = AgentToolSet(memory=services.memory, observer=tool_results.append)
-    response = await toolset.propose_memory(
-        content=str(plan.payload.get("content") or ""),
-        target_path=str(plan.payload.get("target_path") or DEFAULT_MEMORY_TARGET_PATH),
-        source_message_id=state.message_id,
-    )
-    _emit_tool_results(graph_state, tool_results)
-    plan.status = "pending_confirm"
-    _record_planned_action(
+    _append_lifecycle_event(
         graph_state,
-        services,
         state,
-        action_type="memory.proposal",
-        title="已创建待确认长期记忆提案",
-        summary=str(plan.payload.get("content") or ""),
-        plan=plan,
-        status="pending_confirm",
-        metadata={"proposal_id": response.proposal_id, "target_path": plan.payload.get("target_path")},
+        action_id=action.action_id,
+        action_type=action.action_type,
+        risk_tier=action.risk_tier,
+        decision=action.decision,
+        status=action.status,
+        title=action.title,
+        summary=action.summary,
+        target_paths=target_paths,
+        reversible=action.reversible,
+        error=action.error,
+        metadata={**action.metadata, "duplicate": bool(outcome.duplicate)},
     )
 
 
-async def _execute_wiki_plan(
+def _wiki_write_available(services: AgentRuntimeServices, kind: str) -> bool:
+    # Production adapters resolve request-bound services at execution time,
+    # so their registry is the capability boundary. The ephemeral lifecycle
+    # captures the services injected into the test/runtime instance; there an
+    # adapter name alone does not prove that its dependency exists.
+    lifecycle = services.action_lifecycle
+    adapters = getattr(lifecycle, "adapters", {}) if lifecycle is not None else {}
+    adapter_names = (
+        set(adapters)
+        if isinstance(adapters, dict) and not services.allow_ephemeral_lifecycle
+        else set()
+    )
+    if kind == "page":
+        return "wiki.page.write" in adapter_names or services.wiki is not None
+    if kind == "ingest":
+        return "wiki.ingest.write" in adapter_names or services.wiki is not None
+    if kind in {"synthesize", "lint"}:
+        return (
+            f"wiki.{kind}.write" in adapter_names
+            or services.wiki_workflow is not None
+        )
+    if kind == "query_archive":
+        return (
+            "wiki.query_archive.write" in adapter_names
+            or services.wiki_workflow is not None
+            or services.wiki is not None
+        )
+    return False
+
+
+def _append_wiki_proposal_event(
     graph_state: dict[str, Any],
-    services: AgentRuntimeServices,
     state: AgentState,
     plan: ActionPlan,
+    policy: PolicyDecision,
+    receipt: Any,
+    result: dict[str, Any],
 ) -> None:
-    auto_organize = bool(plan.payload.get("auto_organize"))
-    if auto_organize and plan.decision != "ask":
-        _, tool_results = await _fallback_manage_wiki(services, state, auto_organize=True)
-        _emit_tool_results(graph_state, tool_results)
-        plan.status = "executed"
-        return
+    """Project a read-only Wiki plan into the public proposal event.
 
-    _, tool_results = await _fallback_plan_wiki(services, state)
-    _emit_tool_results(graph_state, tool_results)
-    plan.status = "pending_confirm"
-    _record_planned_action(
-        graph_state,
-        services,
-        state,
-        action_type=f"wiki.{plan.payload.get('kind', 'ingest')}.plan",
-        title=f"已准备 Wiki 整理计划：{plan.payload.get('title', '')}",
-        summary=str(plan.payload.get("content") or ""),
-        plan=plan,
-        status="pending_confirm",
-        metadata={"kind": plan.payload.get("kind")},
+    Planning is an observable result, not a Markdown side effect.  Keeping
+    this projection at the lifecycle boundary means the UI receives the
+    original proposal even when a plan is recovered from its durable receipt.
+    """
+    raw = result.get("proposal")
+    proposal = raw if isinstance(raw, dict) else {}
+    raw_proposal_type = str(result.get("proposal_type") or proposal.get("proposal_type") or "ingest")
+    proposal_type = cast(
+        Literal["ingest", "query_archive", "synthesize", "lint"],
+        raw_proposal_type
+        if raw_proposal_type in {"ingest", "query_archive", "synthesize", "lint"}
+        else _wiki_proposal_type(policy.action_type),
+    )
+    raw_targets = result.get("target_paths") or proposal.get("target_paths") or []
+    target_paths = _string_list(raw_targets)
+    if not target_paths:
+        target_path = result.get("target_path") or proposal.get("target_path")
+        if isinstance(target_path, str) and target_path:
+            target_paths = [target_path]
+    raw_recommended = result.get("recommended_targets") or proposal.get("recommended_targets") or target_paths
+    recommended_targets = _string_list(raw_recommended)
+    title = str(result.get("title") or proposal.get("title") or plan.payload.get("title") or "Wiki proposal")
+    status = str(result.get("status") or proposal.get("status") or receipt.status)
+    markdown_preview = str(result.get("markdown_preview") or proposal.get("markdown_preview") or "")
+    errors = _string_list(result.get("errors") or proposal.get("errors"))
+    warnings = _string_list(result.get("warnings") or proposal.get("warnings"))
+    findings = result.get("findings") or proposal.get("findings") or []
+    if not isinstance(findings, list):
+        findings = []
+    lint_summary = result.get("lint_summary") or proposal.get("summary") or {}
+    if not isinstance(lint_summary, dict):
+        lint_summary = {}
+    state.proposal_id = _optional_text(
+        result.get("run_id") or proposal.get("run_id") or (target_paths[0] if target_paths else None)
+    ) or state.proposal_id
+    _events(graph_state).append(
+        AgentWikiProposalEvent(
+            agent_run_id=state.agent_run_id,
+            proposal_type=proposal_type,
+            status=status,
+            title=title,
+            markdown_preview=markdown_preview,
+            source_message_id=_optional_text(
+                result.get("source_message_id") or proposal.get("source_message_id") or state.message_id
+            ),
+            run_id=_optional_text(result.get("run_id") or proposal.get("run_id")),
+            source_id=_optional_text(result.get("source_id") or proposal.get("source_id")),
+            source_hash=_optional_text(result.get("source_hash") or proposal.get("source_hash")),
+            review_id=_optional_text(result.get("review_id") or proposal.get("review_id")),
+            review_status=_optional_text(result.get("review_status") or proposal.get("review_status")),
+            summary=str(result.get("summary") or proposal.get("summary") or ""),
+            review_summary=str(result.get("review_summary") or proposal.get("review_summary") or ""),
+            target_paths=target_paths,
+            recommended_targets=recommended_targets,
+            findings=[item for item in findings if isinstance(item, dict)],
+            errors=errors,
+            warnings=warnings,
+            lint_summary=lint_summary,
+            write_report=(
+                bool(result.get("write_report"))
+                if result.get("write_report") is not None
+                else proposal.get("write_report")
+            ),
+        )
     )
 
 
-async def _execute_confirmation_plan(
-    graph_state: dict[str, Any],
-    services: AgentRuntimeServices,
-    state: AgentState,
-    plan: ActionPlan,
-) -> None:
-    plan.status = "pending_confirm"
-    _record_planned_action(
-        graph_state,
-        services,
-        state,
-        action_type="local.destructive_request",
-        title="高风险本地操作等待确认",
-        summary="请求已拦截，尚未修改任何本地目标。",
-        plan=plan,
-        status="pending_confirm",
-        metadata={"confirmation_only": True},
-    )
+def _wiki_proposal_type(action_type: str) -> str:
+    kind = action_type.removeprefix("wiki.").removesuffix(".plan")
+    return kind if kind in {"ingest", "query_archive", "synthesize", "lint"} else "ingest"
 
 
-def _record_planned_action(
+def _string_list(value: object) -> list[str]:
+    if not isinstance(value, (list, tuple)):
+        return []
+    return [str(item) for item in value if str(item).strip()]
+
+
+def _append_lifecycle_event(
     graph_state: dict[str, Any],
-    services: AgentRuntimeServices,
     state: AgentState,
     *,
+    action_id: str | None,
     action_type: str,
+    status: str,
     title: str,
     summary: str,
-    plan: ActionPlan,
-    status: str,
+    target_paths: list[str],
+    reversible: bool,
+    risk_tier: str = "low",
+    decision: str = "auto",
+    error: str | None = None,
     metadata: dict[str, object] | None = None,
 ) -> None:
-    recorder = services.agent_action_recorder
-    if recorder is None:
+    if action_id is None:
         return
-    action = recorder(
-        AgentActionCreate(
-            action_type=action_type,
-            title=title,
-            summary=summary,
-            source_agent_run_id=state.agent_run_id,
-            source_conversation_id=state.conversation_id,
-            source_message_id=state.message_id,
-            risk_tier=plan.risk_score,
-            decision=plan.decision,
-            status=status,
-            metadata={
-                "action_payload": plan.payload,
-                "confirm_text": plan.confirm_text,
-                "proposal_id": plan.proposal_id,
-                "policy_version": plan.policy_version,
-                "idempotency_key": plan.idempotency_key,
-                "control_state": plan.control_state,
-                **(metadata or {}),
-            },
-            reversible=plan.reversible,
-        )
+    normalized_risk_tier = cast(
+        Literal["low", "medium", "high"],
+        risk_tier if risk_tier in {"low", "medium", "high"} else "high",
+    )
+    normalized_decision = cast(
+        Literal["auto", "notify", "ask"],
+        decision if decision in {"auto", "notify", "ask"} else "ask",
     )
     _events(graph_state).append(
         AgentActionEvent(
             agent_run_id=state.agent_run_id,
-            action_id=action.action_id,
-            source_agent_run_id=action.source_agent_run_id,
-            source_conversation_id=action.source_conversation_id,
-            source_message_id=action.source_message_id,
-            action_type=action.action_type,
-            risk_tier=action.risk_tier,
-            decision=action.decision,
-            status=action.status,
-            title=action.title,
-            summary=action.summary,
-            target_paths=action.target_paths,
-            reversible=action.reversible,
-            reverted_by=action.reverted_by,
-            reverts_action_id=action.reverts_action_id,
-            error=action.error,
-            source=action.source,
-            diff_summary=action.diff_summary,
-            requires_confirmation=action.decision == "ask",
-            metadata=action.metadata,
-            created_at=action.created_at,
-            updated_at=action.updated_at,
-            completed_at=action.completed_at,
+            action_id=action_id,
+            action_type=action_type,
+            risk_tier=normalized_risk_tier,
+            decision=normalized_decision,
+            status=status,
+            title=title,
+            summary=summary,
+            target_paths=target_paths,
+            reversible=reversible,
+            error=error,
+            requires_confirmation=status == "pending_confirmation",
+            metadata=metadata or {},
         )
     )
 

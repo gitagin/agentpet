@@ -102,6 +102,8 @@ _PREVIEW_TOKEN_TTL_SECONDS = 600.0
 class _CachedIngestPreview:
     request: WikiIngestPreviewRequest
     response: WikiIngestPreviewResponse
+    intent_key: str
+    scope_key: str
     expires_at: float
 
 

@@ -353,3 +353,163 @@ describe("IPC sender authorization", () => {
     expect(windows.updatePetMousePassthroughFromCursor).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("reminder delivery IPC", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    delete require.cache[ipcPath];
+    Module._load = originalModuleLoad;
+  });
+
+  function registerReminderHandler({ reservation, receipt, displayResult = { status: "shown" }, receiptError } = {}) {
+    const electronMock = createElectronMock();
+    const windows = createWindowsMock();
+    const sidecar = {
+      getPublicSidecarStatus: vi.fn(() => ({ state: "ready" })),
+      showReminderNotification: vi.fn((input) => ({
+        ...displayResult,
+        reminder_id: input.reminder_id,
+      })),
+    };
+    const proxy = {
+      proxyApiRequest: vi.fn(async (path) => {
+        if (path === "/api/tasks/reminder-delivery/reservations") {
+          return { status: 200, body: JSON.stringify(reservation) };
+        }
+        if (receiptError) {
+          throw receiptError;
+        }
+        return { status: 200, body: JSON.stringify(receipt ?? { status: "recorded" }) };
+      }),
+      startSseStream: vi.fn(),
+      cancelSseStream: vi.fn(),
+    };
+    registerHandlersForTest({ electronMock, windows, proxy, sidecar });
+    return {
+      handler: getIpcHandle(electronMock, "agent-pet:show-reminder-notification"),
+      sender: windows.petSender,
+      proxy,
+      sidecar,
+    };
+  }
+
+  const payload = {
+    reminder_id: "reminder-1",
+    trigger_at: "2026-08-08T09:00:00Z",
+    title: "Review",
+    body: "Review the evidence trail",
+  };
+
+  it("reserves an automatic attempt before invoking the operating-system notification", async () => {
+    const harness = registerReminderHandler({
+      reservation: { duplicate: false, attempt_id: "attempt-1", status: "reserved" },
+    });
+
+    await expect(harness.handler({ sender: harness.sender }, payload)).resolves.toMatchObject({
+      status: "shown",
+      reminder_id: "reminder-1",
+      attempt_id: "attempt-1",
+    });
+    expect(harness.proxy.proxyApiRequest).toHaveBeenCalledTimes(2);
+    expect(harness.proxy.proxyApiRequest.mock.calls[0][0]).toBe(
+      "/api/tasks/reminder-delivery/reservations",
+    );
+    expect(harness.proxy.proxyApiRequest.mock.calls[0][1]).toMatchObject({
+      method: "POST",
+      headers: {
+        "Idempotency-Key": expect.stringMatching(/^[0-9a-f]{64}$/),
+      },
+    });
+    expect(harness.sidecar.showReminderNotification.mock.invocationCallOrder[0]).toBeGreaterThan(
+      harness.proxy.proxyApiRequest.mock.invocationCallOrder[0],
+    );
+    expect(harness.proxy.proxyApiRequest.mock.calls[1][0]).toBe(
+      "/api/tasks/reminder-delivery/attempts/attempt-1/display",
+    );
+    expect(JSON.parse(harness.proxy.proxyApiRequest.mock.calls[1][1].body)).toMatchObject({
+      result_code: "shown",
+      error: null,
+    });
+  });
+
+  it("does not invoke the OS when the reservation is a known duplicate or crash-unknown", async () => {
+    const duplicate = registerReminderHandler({
+      reservation: { duplicate: true, attempt_id: "attempt-old", status: "display_invoked" },
+    });
+    await expect(duplicate.handler({ sender: duplicate.sender }, payload)).resolves.toMatchObject({
+      status: "duplicate",
+      reason: "display_invoked",
+    });
+    expect(duplicate.sidecar.showReminderNotification).not.toHaveBeenCalled();
+
+    const unknown = registerReminderHandler({
+      reservation: { duplicate: true, attempt_id: "attempt-unknown", status: "unknown_after_crash" },
+    });
+    await expect(unknown.handler({ sender: unknown.sender }, payload)).resolves.toMatchObject({
+      status: "unknown",
+      reason: "unknown_after_crash",
+    });
+    expect(unknown.sidecar.showReminderNotification).not.toHaveBeenCalled();
+  });
+
+  it("returns unknown when the OS was called but the display receipt cannot be confirmed", async () => {
+    const harness = registerReminderHandler({
+      reservation: { duplicate: false, attempt_id: "attempt-2", status: "reserved" },
+      receiptError: new Error("backend crashed after display"),
+    });
+
+    await expect(harness.handler({ sender: harness.sender }, payload)).resolves.toMatchObject({
+      status: "unknown",
+      reminder_id: "reminder-1",
+      attempt_id: "attempt-2",
+      reason: "display_receipt_unconfirmed",
+    });
+    expect(harness.sidecar.showReminderNotification).toHaveBeenCalledOnce();
+  });
+
+  it("records unsupported and API-failed display attempts without claiming delivery", async () => {
+    const unsupported = registerReminderHandler({
+      reservation: { duplicate: false, attempt_id: "attempt-unsupported", status: "reserved" },
+      displayResult: { status: "unsupported", reason: "notification_unsupported" },
+    });
+    await expect(unsupported.handler({ sender: unsupported.sender }, payload)).resolves.toMatchObject({
+      status: "unsupported",
+      reason: "notification_unsupported",
+    });
+    expect(JSON.parse(unsupported.proxy.proxyApiRequest.mock.calls[1][1].body)).toMatchObject({
+      result_code: "unsupported",
+      error: "notification_unsupported",
+    });
+
+    const failed = registerReminderHandler({
+      reservation: { duplicate: false, attempt_id: "attempt-failed", status: "reserved" },
+      displayResult: { status: "failed", reason: "notification_api_failed" },
+    });
+    await expect(failed.handler({ sender: failed.sender }, payload)).resolves.toMatchObject({
+      status: "failed",
+      reason: "notification_api_failed",
+    });
+    expect(JSON.parse(failed.proxy.proxyApiRequest.mock.calls[1][1].body)).toMatchObject({
+      result_code: "failed",
+      error: "notification_api_failed",
+    });
+  });
+
+  it("keeps the reminder untouched when reservation fails", async () => {
+    const electronMock = createElectronMock();
+    const windows = createWindowsMock();
+    const sidecar = { showReminderNotification: vi.fn() };
+    const proxy = {
+      proxyApiRequest: vi.fn(async () => {
+        throw new Error("sqlite unavailable");
+      }),
+      startSseStream: vi.fn(),
+      cancelSseStream: vi.fn(),
+    };
+    registerHandlersForTest({ electronMock, windows, proxy, sidecar });
+    const handler = getIpcHandle(electronMock, "agent-pet:show-reminder-notification");
+
+    await expect(handler({ sender: windows.petSender }, payload)).rejects.toThrow("sqlite unavailable");
+    expect(sidecar.showReminderNotification).not.toHaveBeenCalled();
+  });
+});

@@ -29,7 +29,8 @@ describe("apiErrorMessages", () => {
 
     expect(message).toContain("健康检查失败");
     expect(message).toContain("无法连接本机服务");
-    expect(message).toContain("8765");
+    expect(message).toContain("连接诊断");
+    expect(message).not.toContain("8765");
   });
 
   it("keeps unknown errors safe and user-facing", () => {
@@ -40,13 +41,14 @@ describe("apiErrorMessages", () => {
     const failure = describeBusinessAuthFailure(buildApiError("Unauthorized", 401));
 
     expect(failure.status).toBe("unauthorized");
-    expect(failure.message).toContain("业务接口鉴权失败");
-    expect(failure.message).toContain("会话令牌不一致");
+    expect(failure.message).toContain("当前桌面会话无法访问");
+    expect(failure.message).not.toContain("8765");
   });
 
   it("returns a reusable mismatch notice for health-success auth mismatch", () => {
-    expect(businessAuthMismatchMessage()).toContain("本机服务健康检查通过");
-    expect(businessAuthMismatchMessage()).toContain("npm run electron:dev");
+    expect(businessAuthMismatchMessage()).toContain("本机服务已响应");
+    expect(businessAuthMismatchMessage()).toContain("连接诊断");
+    expect(businessAuthMismatchMessage()).not.toContain("8765");
   });
   it("recognizes Electron sidecar startup responses as transient", () => {
     expect(isSidecarStartingError(buildApiError("starting", 503, "sidecar_starting"))).toBe(true);

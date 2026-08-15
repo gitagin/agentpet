@@ -4,7 +4,12 @@ from .review import _complete_model, _deterministic_review_response, _parse_mode
 
 class WikiIngestReviewMixin:
 
-    async def review_ingest(self, request: WikiIngestReviewRequest) -> WikiIngestReviewResponse:
+    async def review_ingest(
+        self,
+        request: WikiIngestReviewRequest,
+        *,
+        review_id: str | None = None,
+    ) -> WikiIngestReviewResponse:
         if not request.force_refresh:
             existing = self._latest_review(request.run_id, reviewer_agent_id=request.reviewer_agent_id)
             if existing is not None:
@@ -20,7 +25,7 @@ class WikiIngestReviewMixin:
                 status="model_not_configured",
                 model_error="model_not_configured",
             )
-            return self._insert_review(response)
+            return self._insert_review(response, review_id=review_id)
 
         try:
             model_text = await _complete_model(
@@ -49,4 +54,4 @@ class WikiIngestReviewMixin:
                 model_error=getattr(exc, "code", exc.__class__.__name__),
                 summary="模型审查失败。已保留确定性审查结果。",
             )
-        return self._insert_review(response)
+        return self._insert_review(response, review_id=review_id)

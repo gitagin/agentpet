@@ -73,6 +73,7 @@ export function SettingsPanelContainer() {
         automationSettingsDraft: settings.automationSettingsDraft,
         automationSettingsSaveStatus: settings.automationSettingsSaveStatus,
         loadingSettingsStatus: settings.loadingSettingsStatus,
+        settingsStatusLoadState: settings.settingsStatusLoadState,
         vaultId: settings.vaultId,
         vaultPath: settings.vaultPath,
         vaultStatus: settings.vaultStatus,

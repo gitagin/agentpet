@@ -20,6 +20,13 @@ MemoryHygieneSuggestionType = Literal[
     "sensitive_candidate",
 ]
 MemoryHygieneSuggestionTargetType = Literal["candidate", "fact"]
+SUGGESTION_TYPES = frozenset(
+    {
+        "stale_recent_state",
+        "low_confidence_stale",
+        "sensitive_candidate",
+    }
+)
 
 
 class MemoryHygieneSuggestionError(ValueError):
@@ -121,6 +128,7 @@ class MemoryHygieneSuggestionService:
                 suggestion.target_id,
                 suggestion.to_status,
                 reason=f"hygiene_suggestion:{suggestion.type}",
+                agent_action_id=agent_action_id,
             )
             return MemoryHygieneSuggestionApplyResult(
                 suggestion_id=suggestion.id,
@@ -131,12 +139,113 @@ class MemoryHygieneSuggestionService:
             suggestion.target_id,
             suggestion.to_status,
             reason=f"hygiene_suggestion:{suggestion.type}",
+            agent_action_id=agent_action_id,
         )
         return MemoryHygieneSuggestionApplyResult(
             suggestion_id=suggestion.id,
             type=suggestion.type,
             status=transition.to_status.value,
         )
+
+    def read_effect(
+        self,
+        *,
+        suggestion_id: str,
+        suggestion_type: str,
+        target_type: str,
+        target_id: str,
+        to_status: str,
+        agent_action_id: str,
+    ) -> dict[str, object] | None:
+        target_column = "candidate_id" if target_type == "candidate" else "fact_id"
+        rows = self.conn.execute(
+            f"""
+            SELECT id, from_status, to_status, reason
+            FROM memory_lifecycle_events
+            WHERE agent_action_id = ?
+              AND {target_column} = ?
+              AND reason = ?
+            ORDER BY created_at, id
+            LIMIT 2
+            """,
+            (agent_action_id, target_id, f"hygiene_suggestion:{suggestion_type}"),
+        ).fetchall()
+        if len(rows) != 1 or str(rows[0]["to_status"]) != to_status:
+            return None
+        table = "memory_candidates" if target_type == "candidate" else "memory_graph_facts"
+        target = self.conn.execute(
+            f"SELECT status FROM {table} WHERE id = ?",
+            (target_id,),
+        ).fetchone()
+        if target is None or str(target["status"]) != to_status:
+            return None
+        return {
+            "suggestion_id": suggestion_id,
+            "suggestion_type": suggestion_type,
+            "target_type": target_type,
+            "target_id": target_id,
+            "status": to_status,
+            "state_ref": f"memory-hygiene:{suggestion_id}",
+            "observed_effect": "memory_lifecycle_transition",
+        }
+
+    def recover_action_parameters(
+        self,
+        *,
+        suggestion_id: str,
+        agent_action_id: str,
+    ) -> dict[str, object] | None:
+        """Reconstruct a hygiene claim from its bound lifecycle event.
+
+        The action receipt intentionally omits target identifiers.  The
+        lifecycle event is the private authority that binds those identifiers
+        to the durable claim, so a retry can rebuild the exact policy payload
+        without exposing memory contents in the public action metadata.
+        """
+        rows = self.conn.execute(
+            """
+            SELECT candidate_id, fact_id, from_status, to_status, reason
+            FROM memory_lifecycle_events
+            WHERE agent_action_id = ?
+              AND reason LIKE 'hygiene_suggestion:%'
+            ORDER BY created_at, id
+            LIMIT 2
+            """,
+            (agent_action_id,),
+        ).fetchall()
+        if len(rows) != 1:
+            return None
+        row = rows[0]
+        candidate_id = str(row["candidate_id"] or "")
+        fact_id = str(row["fact_id"] or "")
+        if bool(candidate_id) == bool(fact_id):
+            return None
+        reason = str(row["reason"] or "")
+        suggestion_type = reason.removeprefix("hygiene_suggestion:").strip()
+        if suggestion_type not in SUGGESTION_TYPES:
+            return None
+        from_status = str(row["from_status"] or "")
+        to_status = str(row["to_status"] or "")
+        target_type = "candidate" if candidate_id else "fact"
+        target_id = candidate_id or fact_id
+        if not from_status or not to_status or not target_id:
+            return None
+        table = "memory_candidates" if target_type == "candidate" else "memory_graph_facts"
+        target = self.conn.execute(
+            f"SELECT status FROM {table} WHERE id = ?",
+            (target_id,),
+        ).fetchone()
+        if target is None or str(target["status"]) != to_status:
+            return None
+        return {
+            "suggestion_id": suggestion_id,
+            "suggestion_type": suggestion_type,
+            "target_type": target_type,
+            "target_id": target_id,
+            "from_status": from_status,
+            "to_status": to_status,
+            "confirmed": True,
+        }
 
     def _stale_recent_state_suggestions(self, now: datetime, limit: int) -> list[MemoryHygieneSuggestion]:
         suggestions: list[MemoryHygieneSuggestion] = []

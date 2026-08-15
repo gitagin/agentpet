@@ -68,12 +68,21 @@ describe("taskReducer", () => {
     });
 
     expect(state.lastReminderNotification.detail).toBe("任务已提醒。");
-    expect(formatReminderNotificationStatus(state.lastReminderNotification)).toBe("已送达，任务已提醒。");
+    expect(formatReminderNotificationStatus(state.lastReminderNotification)).toBe("已调用系统显示，任务已提醒。");
   });
 
   it("formats known and unknown task statuses", () => {
     expect(formatTaskStatus("pending")).toBe("待处理");
     expect(formatTaskStatus("reviewed")).toBe("已审查");
     expect(formatTaskStatus("custom-status")).toBe("custom-status");
+  });
+
+  it("keeps an unconfirmed OS notification distinct from failure", () => {
+    expect(
+      formatReminderNotificationStatus({
+        status: "unknown",
+        detail: "回执写入失败，显示结果无法确认。",
+      }),
+    ).toBe("结果未知，回执写入失败，显示结果无法确认。");
   });
 });

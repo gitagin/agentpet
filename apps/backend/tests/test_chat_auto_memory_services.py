@@ -6,7 +6,6 @@ from apps.backend.tests._schema import migrated_connection
 from app.services.chat_auto_memory import ChatAutoMemoryService, ChatAutoMemoryStore
 from app.services.chat_answer_wiki_summary import ChatAnswerWikiSummaryService
 from app.services.memory import SafeMarkdownWriter
-from app.services.wiki import WikiService
 
 
 def build_service(tmp_path, now_values, index_jobs=None):
@@ -141,7 +140,7 @@ def test_daily_chat_memory_uses_fixed_seven_day_month_weeks(tmp_path):
 
 
 def test_chat_answer_wiki_summary_skips_low_value_chat(tmp_path):
-    service = ChatAnswerWikiSummaryService(WikiService(SafeMarkdownWriter(tmp_path)))
+    service = ChatAnswerWikiSummaryService()
 
     plan = service.plan(
         user_question="你好",
@@ -158,9 +157,8 @@ def test_chat_answer_wiki_summary_skips_low_value_chat(tmp_path):
     assert not (tmp_path / "Wiki").exists()
 
 
-def test_chat_answer_wiki_summary_writes_template_sources_and_logs(tmp_path):
-    wiki = WikiService(SafeMarkdownWriter(tmp_path))
-    service = ChatAnswerWikiSummaryService(wiki)
+def test_chat_answer_wiki_summary_plans_single_source_page_with_evidence_links(tmp_path):
+    service = ChatAnswerWikiSummaryService()
 
     plan = service.plan(
         user_question="优化桌宠回答后日记和 Wiki 自动整理流程",
@@ -179,24 +177,25 @@ def test_chat_answer_wiki_summary_writes_template_sources_and_logs(tmp_path):
     )
     assert plan is not None
 
-    written = service.write(plan, source_message_id="user-1")
-
-    target = tmp_path.joinpath(*written.page.relative_path.split("/"))
-    text = target.read_text(encoding="utf-8")
-    assert written.before_snapshot["exists"][written.page.relative_path] is False
-    assert written.after_snapshot["exists"][written.page.relative_path] is True
-    assert "### 核心定义" in text
-    assert "### 原文出处" in text
-    assert "### 更新日志" in text
-    assert "### 自检清单" in text
+    text = plan.content
+    assert "## 来源摘要" in text
+    assert "## 问题" in text
+    assert "## 结论" in text
+    assert "## 证据状态" in text
+    assert "## 来源" in text
+    assert "## 更新记录" in text
+    assert "经典案例" not in text
+    assert "\n## 自检清单\n" not in text
     assert "[[Memories/Daily/2026/05/第1周_05-01至05-07/星期日/2026-05-03.md]]" in text
     assert "agent_run_id：`run-1`" in text
-    assert written.page.relative_path in (tmp_path / "Wiki" / "index.md").read_text(encoding="utf-8")
-    assert written.page.relative_path in (tmp_path / "Wiki" / "log.md").read_text(encoding="utf-8")
+    assert plan.target_path.startswith("Wiki/Companion/Summaries/")
+    assert "[[Wiki/index.md]]" in plan.links
+    assert "[[Wiki/AGENTS.md]]" in plan.links
+    assert not (tmp_path / "Wiki").exists()
 
 
 def test_chat_answer_wiki_summary_skips_sensitive_content(tmp_path):
-    service = ChatAnswerWikiSummaryService(WikiService(SafeMarkdownWriter(tmp_path)))
+    service = ChatAnswerWikiSummaryService()
 
     plan = service.plan(
         user_question="把接口凭据整理进 wiki",

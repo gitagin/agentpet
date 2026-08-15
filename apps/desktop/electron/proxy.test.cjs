@@ -145,6 +145,33 @@ describe("Electron API proxy allowlist", () => {
     expect(global.fetch).not.toHaveBeenCalled();
   });
 
+  it("keeps sidecar recovery metrics main-process-only while attaching backend auth", async () => {
+    global.fetch = vi.fn(async () => createJsonResponse({ status: "recorded" }));
+    const proxy = createProxyManager({
+      baseUrl: "http://127.0.0.1:8765",
+      sessionToken: "test-session-token",
+    });
+
+    await expect(
+      proxy.proxyApiRequest("/api/metrics/sidecar-recovery", { method: "POST", body: "{}" }),
+    ).rejects.toMatchObject({ code: "renderer_api_route_not_allowed" });
+    const response = await proxy.requestInternalApi("/api/metrics/sidecar-recovery", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": "a".repeat(64),
+      },
+      body: "{}",
+    });
+
+    expect(response.status).toBe(200);
+    expect(global.fetch).toHaveBeenCalledOnce();
+    const [target, init] = global.fetch.mock.calls[0];
+    expect(target.toString()).toBe("http://127.0.0.1:8765/api/metrics/sidecar-recovery");
+    expect(init.headers.get("Authorization")).toBe("Bearer test-session-token");
+    expect(init.headers.get("Idempotency-Key")).toBe("a".repeat(64));
+  });
+
   it("allows only GET requests to the exact daily chat history route", async () => {
     global.fetch = vi.fn(async () => createJsonResponse({ entries: [] }));
     const proxy = createProxyManager({
@@ -222,34 +249,45 @@ describe("Electron API proxy allowlist", () => {
     expect(postInit.headers.get("Authorization")).toBe("Bearer test-session-token");
   });
 
-  it("allows safe memory profile and receipt routes through the main-process proxy", async () => {
+  it("allows graph and receipt routes while rejecting the removed profile projection API", async () => {
     global.fetch = vi.fn(async () => createJsonResponse({ ok: true }));
     const proxy = createProxyManager({
       baseUrl: "http://127.0.0.1:8765",
       sessionToken: "test-session-token",
     });
 
-    await proxy.proxyApiRequest("/api/memory/profile-projection", { method: "GET" });
-    await proxy.proxyApiRequest("/api/memory/graph-projection", { method: "GET" });
-    await proxy.proxyApiRequest("/api/memory/profile-projection/items/profile_abc123", { method: "GET" });
-    await proxy.proxyApiRequest("/api/memory/profile-projection/items/profile_abc123/actions", { method: "POST", body: "{}" });
+    await proxy.proxyApiRequest("/api/memory/graph", { method: "GET" });
     await proxy.proxyApiRequest("/api/memory/receipts?agent_run_id=run-1", { method: "GET" });
 
-    expect(global.fetch).toHaveBeenCalledTimes(5);
+    expect(global.fetch).toHaveBeenCalledTimes(2);
     for (const [, init] of global.fetch.mock.calls) {
       expect(init.headers.get("Authorization")).toBe("Bearer test-session-token");
     }
-    await expect(proxy.proxyApiRequest("/api/memory/graph-projection", { method: "POST", body: "{}" })).rejects.toMatchObject({
+    await expect(proxy.proxyApiRequest("/api/memory/graph", { method: "POST", body: "{}" })).rejects.toMatchObject({
       code: "renderer_api_route_not_allowed",
       details: {
         method: "POST",
-        path: "/api/memory/graph-projection",
+        path: "/api/memory/graph",
       },
     });
-    await expect(proxy.proxyApiRequest("/api/memory/profile-projection/items/profile_abc123/actions", { method: "GET" })).rejects.toMatchObject({
+    await expect(proxy.proxyApiRequest("/api/memory/profile-projection", { method: "GET" })).rejects.toMatchObject({
       code: "renderer_api_route_not_allowed",
       details: {
         method: "GET",
+        path: "/api/memory/profile-projection",
+      },
+    });
+    await expect(proxy.proxyApiRequest("/api/memory/profile-projection/items/profile_abc123", { method: "GET" })).rejects.toMatchObject({
+      code: "renderer_api_route_not_allowed",
+      details: {
+        method: "GET",
+        path: "/api/memory/profile-projection/items/profile_abc123",
+      },
+    });
+    await expect(proxy.proxyApiRequest("/api/memory/profile-projection/items/profile_abc123/actions", { method: "POST", body: "{}" })).rejects.toMatchObject({
+      code: "renderer_api_route_not_allowed",
+      details: {
+        method: "POST",
         path: "/api/memory/profile-projection/items/profile_abc123/actions",
       },
     });
@@ -267,7 +305,7 @@ describe("Electron API proxy allowlist", () => {
         path: "/api/memory/profile-projection/export",
       },
     });
-    expect(global.fetch).toHaveBeenCalledTimes(5);
+    expect(global.fetch).toHaveBeenCalledTimes(2);
   });
 
   it("allows only the exact growth snapshot route", async () => {
@@ -350,22 +388,28 @@ describe("Electron API proxy allowlist", () => {
     });
   });
 
-  it("allows every graph fact action including reject", async () => {
+  it("allows graph detail and lifecycle routes while rejecting sibling paths", async () => {
     global.fetch = vi.fn(async () => createJsonResponse({ ok: true }));
     const proxy = createProxyManager({
       baseUrl: "http://127.0.0.1:8765",
       sessionToken: "test-session-token",
     });
 
-    // Regression guard: confirm/wrong/archive/sensitive-block were allowed but
-    // the sibling reject route was missing from the allowlist regex, so the
-    // renderer received renderer_api_route_not_allowed for it.
-    for (const action of ["confirm", "reject", "wrong", "archive", "sensitive-block"]) {
-      await proxy.proxyApiRequest(`/api/memory/graph/facts/fact-1/${action}`, { method: "POST", body: "{}" });
-    }
-    expect(global.fetch).toHaveBeenCalledTimes(5);
+    const ids = {
+      node: "mg_1234567890abcdef1234567890abcdef",
+      edge: "mge_1234567890abcdef1234567890abcdef",
+      claim: "claim_1234567890abcdef1234567890abcdef",
+    };
+    await proxy.proxyApiRequest("/api/memory/graph", { method: "GET" });
+    await proxy.proxyApiRequest(`/api/memory/graph/nodes/${ids.node}`, { method: "GET" });
+    await proxy.proxyApiRequest(`/api/memory/graph/edges/${ids.edge}`, { method: "GET" });
+    await proxy.proxyApiRequest(`/api/memory/graph/claims/${ids.claim}`, { method: "GET" });
+    await proxy.proxyApiRequest(`/api/memory/graph/nodes/${ids.node}/actions`, { method: "POST", body: "{}" });
+    await proxy.proxyApiRequest(`/api/memory/graph/edges/${ids.edge}/actions`, { method: "POST", body: "{}" });
+    await proxy.proxyApiRequest(`/api/memory/graph/claims/${ids.claim}/actions`, { method: "POST", body: "{}" });
+    expect(global.fetch).toHaveBeenCalledTimes(7);
 
-    await expect(proxy.proxyApiRequest("/api/memory/graph/facts/fact-1/purge", { method: "POST", body: "{}" })).rejects.toMatchObject({
+    await expect(proxy.proxyApiRequest(`/api/memory/graph/nodes/${ids.node}/purge`, { method: "POST", body: "{}" })).rejects.toMatchObject({
       code: "renderer_api_route_not_allowed",
     });
   });

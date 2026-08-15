@@ -98,6 +98,37 @@ def test_search_treats_punctuation_as_user_text(tmp_path: Path) -> None:
     assert response.results
 
 
+def test_search_requires_query_identifiers_in_authoritative_evidence(tmp_path: Path) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / "Unrelated.md").write_text(
+        "# Inventory\n\nPrior inventory content must not satisfy an unrelated identifier.",
+        encoding="utf-8",
+    )
+    (vault / "Matching.md").write_text(
+        "# Incident\n\nThe local incident reference is OBSIDIAN-NEBULA-404.",
+        encoding="utf-8",
+    )
+    service = RetrievalService(Database(tmp_path / "app.db"))
+    service.initialize()
+    vault_id = service.bind_vault(str(vault))
+    service.rebuild_index(vault_id)
+
+    matching = service.search(
+        vault_id=vault_id,
+        query="Return OBSIDIAN-NEBULA-404",
+        top_k=5,
+    )
+    unsupported = service.search(
+        vault_id=vault_id,
+        query="Invent a citation for PHANTOM-EDGE-004",
+        top_k=5,
+    )
+
+    assert [result.relative_path for result in matching.results] == ["Matching.md"]
+    assert unsupported.results == []
+
+
 def test_search_falls_back_to_substring_for_chinese_phrases(tmp_path: Path) -> None:
     vault = tmp_path / "vault"
     vault.mkdir()

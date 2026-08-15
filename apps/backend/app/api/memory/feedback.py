@@ -19,12 +19,10 @@ from ...models.api import (
     MemoryReviewActionRequest,
     MemoryReviewResponse,
 )
-from ...services.memory_feedback import MemoryFeedbackService
-from ...services.memory_lifecycle import MemoryLifecycleTransitionError
 from ...services.memory_review import MemoryReviewService
-from ..wiring import audit_reason, record_audit
+from ..services.adapters import RuntimeMemoryFeedbackAdapter
+from ..wiring import audit_reason, production_action_lifecycle, record_audit
 from .dependencies import (
-    memory_feedback_service_dependency,
     memory_review_service_dependency,
 )
 
@@ -35,14 +33,12 @@ router = APIRouter(prefix="/memory", tags=["memory"])
 async def apply_memory_feedback(
     feedback_request: MemoryFeedbackRequest,
     request: Request,
-    service: MemoryFeedbackService = Depends(memory_feedback_service_dependency),
 ) -> MemoryFeedbackResponse:
-    return apply_feedback_and_record(request, service, feedback_request)
+    return await apply_feedback_and_record(request, feedback_request)
 
 
-def apply_feedback_and_record(
+async def apply_feedback_and_record(
     request: Request,
-    service: MemoryFeedbackService,
     feedback_request: MemoryFeedbackRequest,
     *,
     audit_action: str = "memory.feedback.apply",
@@ -50,8 +46,31 @@ def apply_feedback_and_record(
 ) -> MemoryFeedbackResponse:
     """Apply a lifecycle feedback operation and record exactly one audit entry."""
     try:
-        response = service.apply(feedback_request)
-    except KeyError as exc:
+        response = await RuntimeMemoryFeedbackAdapter(
+            request,
+            production_action_lifecycle(request),
+        ).apply(feedback_request)
+    except RuntimeError as exc:
+        error_code = str(exc).removeprefix("action_lifecycle_")
+        if error_code != "memory_feedback_target_not_found":
+            record_audit(
+                request,
+                action=audit_action,
+                result="failed",
+                reason=audit_reason(
+                    request,
+                    code=error_code or "memory_feedback_invalid",
+                    target_type=feedback_request.target_type,
+                    target_id=feedback_request.target_id,
+                    operation=feedback_request.operation,
+                ),
+            )
+            raise AppError(
+                code=error_code or "memory_feedback_invalid",
+                message="Memory feedback could not be applied.",
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                details={"operation": feedback_request.operation, "target_type": feedback_request.target_type},
+            ) from exc
         record_audit(
             request,
             action=audit_action,
@@ -68,26 +87,6 @@ def apply_feedback_and_record(
             message="Memory feedback target was not found.",
             status_code=status.HTTP_404_NOT_FOUND,
             details={"target_type": feedback_request.target_type, "target_id": feedback_request.target_id},
-        ) from exc
-    except MemoryLifecycleTransitionError as exc:
-        error_code = str(exc) or "memory_feedback_invalid"
-        record_audit(
-            request,
-            action=audit_action,
-            result="failed",
-            reason=audit_reason(
-                request,
-                code=error_code,
-                target_type=feedback_request.target_type,
-                target_id=feedback_request.target_id,
-                operation=feedback_request.operation,
-            ),
-        )
-        raise AppError(
-            code=error_code,
-            message="Memory feedback could not be applied.",
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            details={"operation": feedback_request.operation, "target_type": feedback_request.target_type},
         ) from exc
     record_audit(
         request,
@@ -130,15 +129,13 @@ async def get_weekly_memory_review(
 async def apply_weekly_memory_review_action(
     action_request: MemoryReviewActionRequest,
     request: Request,
-    service: MemoryFeedbackService = Depends(memory_feedback_service_dependency),
 ) -> MemoryFeedbackResponse:
     operation = "make_temporary" if action_request.action == "only_this_week" else action_request.action
     expires_at = None
     if action_request.action == "only_this_week":
         expires_at = (datetime.now(timezone.utc) + timedelta(days=7)).isoformat()
-    return apply_feedback_and_record(
+    return await apply_feedback_and_record(
         request,
-        service,
         MemoryFeedbackRequest(
             target_type=action_request.target_type,
             target_id=action_request.target_id,

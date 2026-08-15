@@ -535,6 +535,8 @@ class TaskService:
         remind_at: str | None = None,
         timezone: str | None = None,
         source_text: str | None = None,
+        task_id: str | None = None,
+        reminder_id: str | None = None,
     ) -> TaskCreateResult:
         due_at_utc, due_timezone = parse_datetime_to_utc(due_at, timezone)
         remind_at_utc, remind_timezone = parse_datetime_to_utc(remind_at, timezone)
@@ -561,7 +563,7 @@ class TaskService:
 
         now = utc_now_iso()
         task = Task(
-            id=new_id(),
+            id=task_id or new_id(),
             title=title,
             description=description,
             due_at_utc=due_at_utc,
@@ -573,7 +575,7 @@ class TaskService:
         reminder = None
         if remind_at_utc is not None:
             reminder = Reminder(
-                id=new_id(),
+                id=reminder_id or new_id(),
                 task_id=task.id,
                 remind_at_utc=remind_at_utc,
                 time_parse_timezone=remind_timezone or due_timezone or "UTC",

@@ -34,8 +34,8 @@ const NEGOTIATION_PHASE_LABELS: Record<ChatTracePhase, string> = {
 };
 
 const NEGOTIATION_AGENT_LABELS: Record<ChatTraceAgentId, string> = {
-  orchestrator: "协调器",
-  retrieval_agent: "检索 Agent",
+  orchestrator: "查询规划",
+  retrieval_agent: "本地检索",
   synthesizer: "回复整理器",
 };
 
@@ -303,7 +303,7 @@ function traceSummary(message: ChatMessage): string {
   const parts = [
     message.citations?.length ? `${message.citations.length} 条引用` : "",
     message.events?.length ? `${message.events.length} 条工具事件` : "",
-    message.negotiation_steps?.length ? `${message.negotiation_steps.length} 步协作` : "",
+    message.negotiation_steps?.length ? `${message.negotiation_steps.length} 步证据复核` : "",
   ].filter(Boolean);
   return parts.length ? `来源与整理 · ${parts.join(" / ")}` : "来源与整理";
 }
@@ -312,7 +312,7 @@ function renderNegotiationTrace(message: ChatMessage) {
   return (
     <details className="message-negotiation">
       <summary>
-        协作过程 · {message.negotiation_steps!.length} 步
+        证据复核过程 · {message.negotiation_steps!.length} 步
         {message.negotiation_done ? " · 已完成" : ""}
       </summary>
       <ol className="message-negotiation-list">
@@ -331,7 +331,7 @@ function renderNegotiationTrace(message: ChatMessage) {
       </ol>
       {message.negotiation_done ? (
         <span className="message-negotiation-done">
-          完成 {message.negotiation_done.counts.rounds} 轮，调用 {message.negotiation_done.counts.agents_invoked} 个子 Agent，耗时 {message.negotiation_done.duration_ms}ms
+          完成 {message.negotiation_done.counts.rounds} 轮，执行 {message.negotiation_done.counts.agents_invoked} 个只读检索步骤，耗时 {message.negotiation_done.duration_ms}ms
           {message.negotiation_done.reason_code === "negotiation_completed_with_fallback" ? "，已使用安全兜底" : ""}。
         </span>
       ) : null}

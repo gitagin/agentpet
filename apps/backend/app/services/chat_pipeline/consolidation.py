@@ -5,8 +5,7 @@ from typing import TYPE_CHECKING, Any
 
 from app.agents.events import AgentActionEvent
 from app.agents.state import AgentState
-from app.services.agent_actions import AgentActionCreate, AutomationPolicy
-from app.services.memory_consolidation import MemoryConsolidationResult
+from app.services.agent_actions import AutomationPolicy
 
 if TYPE_CHECKING:
     from app.api.wiring import AppContext
@@ -20,10 +19,10 @@ def memory_consolidation_service(context: AppContext) -> Any:
     return factory(context)
 
 
-def record_agent_action(context: AppContext, payload: AgentActionCreate) -> Any:
-    from app.api.wiring import record_agent_action as recorder
+def action_lifecycle(context: AppContext) -> Any:
+    from app.api.wiring import production_action_lifecycle
 
-    return recorder(context, payload)
+    return production_action_lifecycle(context)
 
 
 def consolidate_slow_memory(
@@ -37,70 +36,33 @@ def consolidate_slow_memory(
     automation,
     policy: AutomationPolicy,
     raise_errors: bool = False,
-) -> list[AgentActionEvent]:
-    from . import AutomationStepSkipped, agent_action_event, skipped_agent_action_event
+) -> list[AgentActionEvent] | Any:
+    from . import skipped_agent_action_event
 
+    if not automation.auto_long_term_memory:
+        return []
+    diary_markdown_path = getattr(getattr(daily_result, "entry", None), "markdown_path", None)
     service = None
-    actions: list[AgentActionEvent] = []
     try:
-        if not automation.auto_long_term_memory:
-            raise AutomationStepSkipped()
         service = memory_consolidation_service(context)
-        result = service.consolidate(
+        preview = service.preview(
             user_message=state.user_message,
             assistant_answer=assistant_answer,
-            conversation_id=state.conversation_id,
-            user_message_id=state.message_id,
-            assistant_message_id=assistant_message_id,
-            agent_run_id=state.agent_run_id,
             diary_object_ids=diary_object_ids,
-            diary_markdown_path=getattr(getattr(daily_result, "entry", None), "markdown_path", None),
+            diary_markdown_path=diary_markdown_path,
         )
-        if result.candidate_count == 0:
-            actions.append(
+        if preview.candidate_count == 0:
+            return [
                 skipped_agent_action_event(
                     context=context,
                     state=state,
                     action_type="memory.consolidation.skip",
-                    title="已跳过慢记忆整理",
-                    summary=_skip_summary(result.skipped_reason),
-                    reason=result.skipped_reason or "no_signal",
+                    title="Skipped slow memory consolidation",
+                    summary="This exchange did not contain a safe durable memory signal.",
+                    reason="no_signal",
                     risk_tier="low",
                 )
-            )
-            return actions
-
-        action_type = "memory.consolidation.safety_event" if result.rejected_count else "memory.consolidation.candidate"
-        decision = policy.decide(action_type, reversible=False)
-        risk_tier = "high" if result.rejected_count else decision.risk_tier
-        decision_value = "notify" if result.rejected_count else decision.decision
-        action = record_agent_action(
-            context,
-            AgentActionCreate(
-                action_type=action_type,
-                title="已记录慢记忆整理候选",
-                summary=_result_summary(result),
-                source_agent_run_id=state.agent_run_id,
-                source_conversation_id=state.conversation_id,
-                source_message_id=state.message_id,
-                risk_tier=risk_tier,  # type: ignore[arg-type]
-                decision=decision_value,  # type: ignore[arg-type]
-                status="completed",
-                metadata={
-                    "candidate_ids": [item.candidate.id for item in result.items],
-                    "candidate_count": result.candidate_count,
-                    "evidence_count": result.evidence_count,
-                    "rejected_count": result.rejected_count,
-                    "highest_risk_tier": result.highest_risk_tier.value,
-                    "kinds": sorted({item.candidate.memory_kind.value for item in result.items}),
-                    "statuses": sorted({item.candidate.status.value for item in result.items}),
-                },
-                reversible=False,
-            ),
-        )
-        actions.append(agent_action_event(state.agent_run_id, action))
-    except AutomationStepSkipped:
-        pass
+            ]
     except Exception as exc:
         if raise_errors:
             raise
@@ -109,22 +71,83 @@ def consolidate_slow_memory(
             state.agent_run_id,
             exc,
         )
+        return []
     finally:
         if service is not None:
             service.close()
-    return actions
 
-
-def _result_summary(result: MemoryConsolidationResult) -> str:
-    if result.rejected_count:
-        return "已记录一条不可召回的安全事件，没有写入普通长期记忆或 Vault 文件。"
-    return (
-        f"已记录 {result.candidate_count} 条慢记忆候选和 "
-        f"{result.evidence_count} 条证据记录；没有写入 Vault 长期画像。"
+    return _consolidate_slow_memory_async(
+        context=context,
+        state=state,
+        assistant_message_id=assistant_message_id,
+        assistant_answer=assistant_answer,
+        diary_object_ids=diary_object_ids,
+        diary_markdown_path=diary_markdown_path,
+        safety_event=preview.has_sensitive_signal,
+        expected_candidate_count=preview.candidate_count,
+        raise_errors=raise_errors,
     )
 
 
-def _skip_summary(reason: str | None) -> str:
-    if reason == "no_signal":
-        return "本轮没有包含可安全沉淀的慢记忆信号。"
-    return "已跳过慢记忆整理，没有写入本地资产。"
+async def _consolidate_slow_memory_async(
+    *,
+    context: AppContext,
+    state: AgentState,
+    assistant_message_id: str,
+    assistant_answer: str,
+    diary_object_ids: tuple[str, ...],
+    diary_markdown_path: str | None,
+    safety_event: bool,
+    expected_candidate_count: int,
+    raise_errors: bool,
+) -> list[AgentActionEvent]:
+    from app.api.services.adapters import _execute_registered_action
+
+    from . import agent_action_event
+
+    action_type = "memory.consolidation.safety_event" if safety_event else "memory.consolidation.candidate"
+    parameters: dict[str, object] = {
+        "conversation_id": state.conversation_id,
+        "user_message_id": state.message_id,
+        "assistant_message_id": assistant_message_id,
+        "agent_run_id": state.agent_run_id,
+        "diary_object_ids": list(diary_object_ids),
+        "diary_markdown_path": diary_markdown_path,
+        "expected_candidate_count": expected_candidate_count,
+    }
+    if not safety_event:
+        parameters.update(
+            {
+                "user_message": state.user_message,
+                "assistant_answer": assistant_answer,
+            }
+        )
+    try:
+        outcome = await _execute_registered_action(
+            context,
+            action_lifecycle=action_lifecycle(context),
+            action_type=action_type,
+            target_ref=f"intent:post-reply/consolidation/{state.agent_run_id}",
+            parameters=parameters,
+            expected_effect=(
+                "Record one redacted non-recallable memory safety event."
+                if safety_event
+                else "Persist evidence-backed slow memory candidates for one completed chat exchange."
+            ),
+            source_message_id=state.message_id,
+            source_run_id=state.agent_run_id,
+            source_conversation_id=state.conversation_id,
+            reversible=False,
+        )
+        if outcome.receipt.status != "verified":
+            raise RuntimeError(outcome.receipt.safe_error_code or "memory_consolidation_not_verified")
+        return [agent_action_event(state.agent_run_id, outcome.action)]
+    except Exception as exc:
+        if raise_errors:
+            raise
+        logger.warning(
+            "Slow memory consolidation skipped for agent_run_id=%s: %s",
+            state.agent_run_id,
+            exc,
+        )
+        return []

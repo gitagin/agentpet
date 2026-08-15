@@ -4,12 +4,15 @@ import { BottomNav } from "./BottomNav";
 import type { PrimaryNavigationTab } from "./navigation";
 import { useVersionedPublicAsset } from "../hooks/useVersionedPublicAsset";
 
+type FeatureWindowSurface = "illustrated" | "graphite";
+
 export function FeatureWindowShell({
   eyebrow,
   title,
   description,
   activeTab,
   showHeader = true,
+  surface = "illustrated",
   children,
 }: {
   eyebrow: string;
@@ -17,16 +20,21 @@ export function FeatureWindowShell({
   description: string;
   activeTab?: PrimaryNavigationTab | null;
   showHeader?: boolean;
+  surface?: FeatureWindowSurface;
   children: ReactNode;
 }) {
   const homeImageSrc = useVersionedPublicAsset("/images/home.png");
 
   return (
-    <main className="feature-shell" data-active-tab={activeTab ?? "secondary"}>
-      <div className="feature-shell-backdrop" aria-hidden="true" />
-      <div className="feature-reference-stage" aria-hidden="true">
-        <img className="feature-reference-background" src={homeImageSrc} alt="" />
-      </div>
+    <main className="feature-shell" data-active-tab={activeTab ?? "secondary"} data-surface={surface}>
+      {surface === "illustrated" ? (
+        <>
+          <div className="feature-shell-backdrop" aria-hidden="true" />
+          <div className="feature-reference-stage" aria-hidden="true">
+            <img className="feature-reference-background" src={homeImageSrc} alt="" />
+          </div>
+        </>
+      ) : null}
       {showHeader ? (
         <header className="feature-window-header">
           <div className="feature-window-brand" aria-hidden="true">

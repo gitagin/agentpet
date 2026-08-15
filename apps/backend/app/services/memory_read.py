@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from pathlib import PurePosixPath
 from typing import Protocol
 
 from app.models.memory import MemorySearchResponse, MemorySearchResult
@@ -19,6 +20,7 @@ from app.services.memory_activation import (
     rank_activation_decisions,
 )
 from app.services.memory_graph import MemoryGraphFact, MemoryGraphStore
+from app.services.memory_entity_graph import MemoryEntityGraphStore
 from app.services.memory_permissions import result_with_activation_permissions
 from app.services.retrieval_fusion import (
     FusionCandidate,
@@ -26,6 +28,7 @@ from app.services.retrieval_fusion import (
     reciprocal_rank_fusion,
 )
 from app.utils.hash import sha256_hex
+from app.utils.public_references import public_memory_reference
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,6 +49,9 @@ class MemoryItem:
     score: float
     provenance: MemoryItemProvenance
     result: MemorySearchResult
+    entity_refs: tuple[str, ...] = ()
+    evidence_refs: tuple[str, ...] = ()
+    citation_refs: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -170,8 +176,16 @@ class DiaryMemorySourceAdapter:
 class GraphMemorySourceAdapter:
     channel = "graph"
 
-    def __init__(self, store_factory: Callable[[], MemoryGraphStore]) -> None:
+    def __init__(
+        self,
+        store_factory: Callable[[], MemoryGraphStore | MemoryEntityGraphStore],
+        *,
+        answerable_only: bool = False,
+        vault_id: str | None = None,
+    ) -> None:
         self._store_factory = store_factory
+        self._answerable_only = answerable_only
+        self._vault_id = vault_id
 
     def supports(self, source_scope: str) -> bool:
         return source_scope in {"all", "personal_memory"}
@@ -186,8 +200,18 @@ class GraphMemorySourceAdapter:
     ) -> MemorySourceRead:
         del mode, source_scope
         store = self._store_factory()
+        references_by_fact_id = {}
         try:
-            facts = graph_fact_candidates(store, query=query, limit=200)
+            if self._answerable_only and isinstance(store, MemoryEntityGraphStore):
+                facts = store.answerable_graph_facts(query=query, vault_id=self._vault_id, max_hops=2, limit=200)
+            else:
+                graph_store = store.graph if isinstance(store, MemoryEntityGraphStore) else store
+                facts = graph_fact_candidates(graph_store, query=query, limit=200)
+            if isinstance(store, MemoryEntityGraphStore):
+                references_by_fact_id = {
+                    fact.id: store.recall_references(fact.id, vault_id=self._vault_id)
+                    for fact in facts
+                }
             decisions = rank_activation_decisions(
                 (
                     MemoryActivationService().score(
@@ -211,18 +235,37 @@ class GraphMemorySourceAdapter:
             fact = facts_by_id.get(decision.item.memory_id)
             if fact is None:
                 continue
+            references = references_by_fact_id.get(fact.id)
+            source_refs = references.source_refs if references is not None else ()
+            relative_path = source_refs[0] if source_refs else ""
+            entity_refs = [
+                public_memory_reference("entity", entity_id)
+                for entity_id in (references.entity_ids if references is not None else ())
+            ]
+            evidence_refs = [
+                public_memory_reference("evidence", evidence_id)
+                for evidence_id in (references.evidence_ids if references is not None else ())
+            ]
+            citation_refs = (
+                [public_memory_reference("citation", source_ref) for source_ref in source_refs]
+                if source_refs
+                else list(evidence_refs)
+            )
             result = result_with_activation_permissions(
                 MemorySearchResult(
                     note_id=fact.id,
                     chunk_id=fact.id,
-                    relative_path="MemoryGraph/LongTerm",
-                    title="Structured Long-Term Memory",
+                    relative_path=relative_path,
+                    title=_graph_result_title(relative_path),
                     heading=fact.subject,
                     snippet=graph_result_snippet(fact),
                     score=decision.activation_score,
                     source_scope="personal_memory",
                     retrieval_mode="graph_activation",
                     retrieval_channels=[self.channel],
+                    entity_refs=entity_refs,
+                    evidence_refs=evidence_refs,
+                    citation_refs=citation_refs,
                 ),
                 decision,
                 query=query,
@@ -331,7 +374,7 @@ class UnifiedMemorySearchService:
 def memory_item_from_search_result(result: MemorySearchResult, *, source: str) -> MemoryItem:
     stable_id = result.fact_id or result.candidate_id or f"{result.note_id}:{result.chunk_id}"
     channels = tuple(dict.fromkeys((*result.retrieval_channels, source)))
-    return MemoryItem(
+    item = MemoryItem(
         id=stable_id,
         kind=result.memory_kind or infer_memory_kind(result),
         status=result.lifecycle_status or "active",
@@ -343,6 +386,12 @@ def memory_item_from_search_result(result: MemorySearchResult, *, source: str) -
             channels=channels,
         ),
         result=result,
+    )
+    return replace(
+        item,
+        entity_refs=tuple(result.entity_refs),
+        evidence_refs=tuple(result.evidence_refs),
+        citation_refs=tuple(result.citation_refs),
     )
 
 
@@ -417,6 +466,10 @@ def matches_inactive_long_term_fact(
 def graph_result_snippet(fact: MemoryGraphFact) -> str:
     status_part = "" if fact.status is MemoryFactStatus.ACTIVE else f" (status={fact.status.value})"
     return f"{fact.subject} {fact.predicate} {fact.object}{status_part}"
+
+
+def _graph_result_title(relative_path: str) -> str:
+    return PurePosixPath(relative_path).stem if relative_path else "Structured memory"
 
 
 def significant_terms(query: str) -> tuple[str, ...]:

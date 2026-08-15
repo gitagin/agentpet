@@ -13,13 +13,6 @@ class _EntityCandidate:
     evidence: str = ""
 
 
-@dataclass(frozen=True)
-class _ComparisonCandidate:
-    left: str
-    right: str
-    reason: str = ""
-
-
 def _entity_candidates(request: WikiIngestPreviewRequest, parsed) -> list[_EntityCandidate]:
     candidates: list[_EntityCandidate] = []
     for tag in _unique([*request.tags, *parsed.tags]):
@@ -124,80 +117,6 @@ def _unique_entity_candidates(candidates: list[_EntityCandidate]) -> list[_Entit
     return list(by_title.values())
 
 
-def _comparison_candidates(
-    request: WikiIngestPreviewRequest,
-    parsed,
-    related_titles: list[str],
-    entity_candidates: list[_EntityCandidate],
-) -> list[_ComparisonCandidate]:
-    candidates: list[_ComparisonCandidate] = []
-    for chunk in parsed.chunks:
-        heading_candidate = _comparison_from_heading(chunk.heading or "")
-        if heading_candidate is not None:
-            candidates.append(heading_candidate)
-        candidates.extend(_comparisons_from_wikilink_pairs(chunk.content))
-
-    names = _unique([*related_titles, *(candidate.title for candidate in entity_candidates)])
-    if not candidates and _has_comparison_signal(request.content) and len(names) >= 2:
-        candidates.append(_ComparisonCandidate(left=names[0], right=names[1], reason="comparison-signal"))
-    return _unique_comparison_candidates(candidates)
-
-
-def _comparison_from_heading(heading: str) -> _ComparisonCandidate | None:
-    match = re.search(r"(.+?)\s+(?:vs\.?|versus|compared with|compared to)\s+(.+)", heading, flags=re.IGNORECASE)
-    if match is None:
-        return None
-    left = _clean_title_candidate(match.group(1))
-    right = _clean_title_candidate(match.group(2))
-    if not left or not right or left.casefold() == right.casefold():
-        return None
-    return _ComparisonCandidate(left=left, right=right, reason="heading")
-
-
-def _comparisons_from_wikilink_pairs(content: str) -> list[_ComparisonCandidate]:
-    candidates: list[_ComparisonCandidate] = []
-    pattern = re.compile(
-        r"\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]\s+"
-        r"(?:vs\.?|versus|compared with|compared to)\s+"
-        r"\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]",
-        flags=re.IGNORECASE,
-    )
-    for match in pattern.finditer(content):
-        left = _clean_title_candidate(match.group(1))
-        right = _clean_title_candidate(match.group(2))
-        if left and right and left.casefold() != right.casefold():
-            candidates.append(_ComparisonCandidate(left=left, right=right, reason="wikilink-pair"))
-    return candidates
-
-
-def _unique_comparison_candidates(candidates: list[_ComparisonCandidate]) -> list[_ComparisonCandidate]:
-    by_pair: dict[tuple[str, str], _ComparisonCandidate] = {}
-    for candidate in candidates:
-        key = (candidate.left.casefold(), candidate.right.casefold())
-        reverse_key = (candidate.right.casefold(), candidate.left.casefold())
-        if key not in by_pair and reverse_key not in by_pair:
-            by_pair[key] = candidate
-    return list(by_pair.values())
-
-
-def _comparison_title(candidate: _ComparisonCandidate) -> str:
-    return f"{candidate.left} vs {candidate.right}"
-
-
-def _should_plan_synthesis(
-    parsed,
-    related_titles: list[str],
-    entity_candidates: list[_EntityCandidate],
-    comparison_candidates: list[_ComparisonCandidate],
-) -> bool:
-    headings = _unique(chunk.heading for chunk in parsed.chunks if chunk.heading)
-    return (
-        len(related_titles) + len(entity_candidates) >= 2
-        or len(headings) >= 3
-        or bool(comparison_candidates)
-    )
-
-
 def _should_plan_maintenance(content: str, parsed) -> bool:
     text = " ".join([content, *(chunk.heading or "" for chunk in parsed.chunks)]).casefold()
     return any(
@@ -216,11 +135,6 @@ def _should_plan_maintenance(content: str, parsed) -> bool:
             "disagreement",
         )
     )
-
-
-def _has_comparison_signal(content: str) -> bool:
-    normalized = content.casefold()
-    return any(marker in normalized for marker in (" vs ", " versus ", " compared with ", " compared to ", "tradeoff"))
 
 
 def _clean_title_candidate(value: str) -> str:

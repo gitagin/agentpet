@@ -6,11 +6,13 @@ import { AutomationSettingsCard } from "./AutomationSettingsCard";
 import { GlobalModelCard } from "./GlobalModelCard";
 import { ModelHealthBanner } from "./ModelHealthBanner";
 import { MemoryResetCard } from "./MemoryResetCard";
+import { ResidentRuntimeCard } from "./ResidentRuntimeCard";
 import type {
   AsyncStatus,
   AutomationSettingsDraft,
   GlobalModelDraft,
   LastIndexRun,
+  SettingsStatusLoadState,
 } from "./settingsTypes";
 import { VaultBindingSection } from "./VaultBindingSection";
 import { productCopy } from "../../productCopy";
@@ -24,6 +26,7 @@ export type SettingsPanelModel = {
   automationSettingsDraft: AutomationSettingsDraft;
   automationSettingsSaveStatus: AsyncStatus;
   loadingSettingsStatus: boolean;
+  settingsStatusLoadState: SettingsStatusLoadState;
   vaultId: string | null;
   vaultPath: string;
   vaultStatus: VaultStatusResponse | null;
@@ -59,6 +62,7 @@ export function SettingsPanel({ model }: SettingsPanelProps) {
   automationSettingsDraft,
   automationSettingsSaveStatus,
   loadingSettingsStatus,
+  settingsStatusLoadState,
   vaultId,
   vaultPath,
   vaultStatus,
@@ -145,7 +149,7 @@ export function SettingsPanel({ model }: SettingsPanelProps) {
             <ShieldCheck size={16} />
           </span>
           <span>
-            <strong>有界协作</strong>
+            <strong>证据复核</strong>
             <small>复杂问题最多复核两轮，失败时回退到稳定主链。</small>
           </span>
         </article>
@@ -163,11 +167,12 @@ export function SettingsPanel({ model }: SettingsPanelProps) {
       <AutomationSettingsCard
         draft={automationSettingsDraft}
         saveStatus={automationSettingsSaveStatus}
-        loadingSettingsStatus={loadingSettingsStatus}
+        settingsStatusLoadState={settingsStatusLoadState}
         onUpdateDraft={onUpdateAutomationSettingsDraft}
         onSave={onSaveAutomationSettings}
         onRefresh={onRefreshSettings}
       />
+      <ResidentRuntimeCard />
       <VaultBindingSection
         vaultId={vaultId}
         vaultPath={vaultPath}

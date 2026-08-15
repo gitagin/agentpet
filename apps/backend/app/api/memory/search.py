@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from time import monotonic
+
 from fastapi import APIRouter, Depends, Request
 
 from ...models.api import (
@@ -20,6 +22,7 @@ from ...services.companion_consolidation import CompanionConsolidationService
 from ...services.companion_retrieval import CompanionRetrievalReportStore
 from ...services.local_assets import LocalAssetStatsService
 from ...services.memory_read import UnifiedMemorySearchService
+from ...services.product_metrics import ProductMetricsService
 from ...services.memory_receipts import MemoryReceipt, MemoryReceiptItem, MemoryReceiptService
 from ..wiring import audit_reason, record_audit
 from .dependencies import (
@@ -36,14 +39,81 @@ router = APIRouter(prefix="/memory", tags=["memory"])
 @router.post("/search", response_model=MemorySearchResponse)
 async def search_memory(
     search_request: MemorySearchRequest,
+    request: Request,
     service: UnifiedMemorySearchService = Depends(unified_memory_search_service_dependency),
 ) -> MemorySearchResponse:
-    return service.search(
+    request_id = str(request.state.request_id)
+    started_at = monotonic()
+    _record_lookup_start(request, request_id=request_id, source_scope=search_request.source_scope)
+    response = service.search(
         query=search_request.query,
         top_k=search_request.top_k,
         mode=search_request.mode,
         source_scope=search_request.source_scope,
     )
+    try:
+        metrics = ProductMetricsService(request.app.state.database.path)
+        try:
+            duration_ms = max(0, round((monotonic() - started_at) * 1000))
+            metrics.record(
+                event_type="lookup_completed",
+                idempotency_key=f"lookup-completed:{request_id}",
+                subject_id=request_id,
+                value=duration_ms,
+                dimensions={
+                    "source_scope": search_request.source_scope,
+                    "duration_ms": duration_ms,
+                    "has_citation": bool(response.results),
+                },
+            )
+            if response.results:
+                observed_subject_ids = {
+                    subject_id
+                    for result in response.results
+                    for subject_id in (result.fact_id or result.candidate_id,)
+                    if subject_id
+                }
+                metrics.observe_corrections(observed_subject_ids)
+                for index, result in enumerate(response.results):
+                    subject_id = result.fact_id or result.candidate_id
+                    if subject_id:
+                        metrics.record(
+                            event_type="recalled",
+                            idempotency_key=f"recall:{request_id}:{subject_id}:{index}",
+                            subject_id=subject_id,
+                            dimensions={
+                                "source_scope": search_request.source_scope,
+                                "channel": result.retrieval_channels[0] if result.retrieval_channels else "unknown",
+                            },
+                        )
+            else:
+                metrics.record(
+                    event_type="no_evidence",
+                    idempotency_key=f"no-evidence:{request_id}",
+                    dimensions={"source_scope": search_request.source_scope},
+                )
+        finally:
+            metrics.close()
+    except Exception:
+        pass
+    return response
+
+
+def _record_lookup_start(request: Request, *, request_id: str, source_scope: str) -> None:
+    try:
+        metrics = ProductMetricsService(request.app.state.database.path)
+        try:
+            metrics.record(
+                event_type="lookup_started",
+                idempotency_key=f"lookup-started:{request_id}",
+                subject_id=request_id,
+                dimensions={"source_scope": source_scope},
+            )
+        finally:
+            metrics.close()
+    except Exception:
+        # Metrics are observational and must never block local retrieval.
+        return
 
 
 @router.get("/local-assets", response_model=LocalAssetStatsResponse)

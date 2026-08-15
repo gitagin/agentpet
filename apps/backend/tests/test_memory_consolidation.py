@@ -9,6 +9,7 @@ import pytest
 from apps.backend.tests._schema import migrate_db
 from app.services.memory_candidates import MemoryCandidateStore
 from app.services.memory_consolidation import MemoryConsolidationService, REDACTED_EVIDENCE
+from app.services.memory_entity_graph import MemoryEntityGraphStore
 from app.services.memory_taxonomy import LifecycleStatus, MemoryKind, MemoryScope, SourceTrack
 
 
@@ -59,7 +60,7 @@ def test_repeated_stable_preference_stays_candidate_and_gains_confidence(tmp_pat
     assert second_candidate.memory_kind is MemoryKind.PREFERENCE
     assert second_candidate.status is LifecycleStatus.CANDIDATE
     assert second_candidate.confidence > first_candidate.confidence
-    assert second_candidate.evidence_count > first_candidate.evidence_count
+    assert second_candidate.evidence_count == first_candidate.evidence_count
     assert second_candidate.metadata["recall_permissions"]["can_proactively_mention"] is False
 
 
@@ -132,6 +133,89 @@ def test_explicit_remember_is_high_confidence_active_candidate_without_vault_wri
     assert item.candidate.confidence >= 0.9
     assert item.candidate.metadata["recall_permissions"]["can_persist"] is True
     assert not (tmp_path / "Memories").exists()
+
+
+def test_explicit_remember_materializes_typed_graph_fact_and_replays(tmp_path: Path) -> None:
+    db_path = migrate_db(tmp_path / "state.sqlite3")
+    candidates = MemoryCandidateStore(db_path)
+    service = MemoryConsolidationService(
+        candidates,
+        entity_graph=MemoryEntityGraphStore(candidates.conn),
+    )
+    try:
+        first = service.consolidate(
+            user_message="Remember this: my favorite editor is VS Code.",
+        )
+        second = service.consolidate(
+            user_message="Remember this: my favorite editor is VS Code.",
+        )
+        assert first.items[0].graph_fact_id
+        assert first.items[0].graph_status == "active"
+        assert second.items[0].graph_fact_id == first.items[0].graph_fact_id
+        fact = service.entity_graph.get(str(first.items[0].graph_fact_id))
+        assert fact.status.value == "active"
+        assert service.entity_graph.answerable_facts(query="editor")[0].object == "VS Code"
+        row = candidates.conn.execute(
+            "SELECT fact_id FROM memory_candidates WHERE id = ?",
+            (first.items[0].candidate.id,),
+        ).fetchone()
+        assert row[0] == first.items[0].graph_fact_id
+        assert candidates.conn.execute(
+            "SELECT COUNT(*) FROM memory_graph_facts WHERE statement_kind = 'claim'"
+        ).fetchone()[0] == 1
+    finally:
+        service.close()
+
+
+@pytest.mark.parametrize(
+    ("message", "expected_kind", "expected_subject", "expected_predicate", "expected_value"),
+    (
+        (
+            "Remember this: my timezone = Asia/Shanghai.",
+            MemoryKind.FACT,
+            "自己",
+            "timezone",
+            "Asia/Shanghai",
+        ),
+        (
+            "Please remember that I prefer keyboard navigation.",
+            MemoryKind.PREFERENCE,
+            "preference",
+            "is",
+            "keyboard navigation",
+        ),
+    ),
+)
+def test_explicit_fallback_parser_materializes_the_same_typed_claim(
+    tmp_path: Path,
+    message: str,
+    expected_kind: MemoryKind,
+    expected_subject: str,
+    expected_predicate: str,
+    expected_value: str,
+) -> None:
+    db_path = migrate_db(tmp_path / "state.sqlite3")
+    candidates = MemoryCandidateStore(db_path)
+    service = MemoryConsolidationService(
+        candidates,
+        entity_graph=MemoryEntityGraphStore(candidates.conn),
+    )
+    try:
+        result = service.consolidate(user_message=message)
+
+        item = result.items[0]
+        assert item.candidate.memory_kind is expected_kind
+        assert item.candidate.status is LifecycleStatus.ACTIVE
+        assert item.candidate.fact_id == item.graph_fact_id
+        fact = service.entity_graph.get(str(item.graph_fact_id))
+        assert (fact.subject, fact.predicate, fact.object) == (
+            expected_subject,
+            expected_predicate,
+            expected_value,
+        )
+        assert [row.id for row in service.entity_graph.answerable_facts(query=expected_value)] == [fact.id]
+    finally:
+        service.close()
 
 
 def test_chinese_compound_remember_creates_active_preference_candidate(tmp_path: Path) -> None:

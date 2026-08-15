@@ -30,6 +30,7 @@ from app.services.memory import MemoryProposalStore, MemoryService, SafeMarkdown
 from app.services.memory_candidates import MemoryCandidateStore
 from app.services.memory_consolidation import MemoryConsolidationService
 from app.services.memory_graph import MemoryGraphStore
+from app.services.memory_entity_graph import MemoryEntityGraphStore
 from app.services.memory_lifecycle import MemoryLifecycleService
 from app.services.memory_permissions import MemoryActivationEventRecorder
 from app.services.prompt_profile_provider import PromptProfileProvider
@@ -402,9 +403,8 @@ class VaultServiceContainer:
         return LongTermMemoryService(
             self.writer(),
             index_refresh=self.index_refresh(),
-            graph_store=MemoryGraphStore(
+            graph_store=MemoryEntityGraphStore(
                 self.db.path,
-                graph_root=get_settings().data_dir / "memory-graph",
             ),
             extraction_model=extraction_model,
             extraction_model_name=extraction_model_name,
@@ -466,7 +466,11 @@ def long_term_memory_service(request: Request | AppContext) -> LongTermMemorySer
 
 
 def memory_consolidation_service(request: Request | AppContext) -> MemoryConsolidationService:
-    return MemoryConsolidationService(MemoryCandidateStore(database(request).path))
+    store = MemoryCandidateStore(database(request).path)
+    return MemoryConsolidationService(
+        store,
+        entity_graph=MemoryEntityGraphStore(store.conn),
+    )
 
 
 def memory_activation_recorder(request: Request | AppContext) -> MemoryActivationEventRecorder:
@@ -478,10 +482,7 @@ def prompt_profile_provider(request: Request | AppContext) -> PromptProfileProvi
 
 
 def memory_lifecycle_service(request: Request | AppContext) -> MemoryLifecycleService:
-    return MemoryLifecycleService(
-        database(request).path,
-        graph_root=get_settings().data_dir / "memory-graph",
-    )
+    return MemoryLifecycleService(database(request).path)
 
 
 def continuity_service(request: Request | AppContext) -> ContinuityService:
@@ -552,17 +553,18 @@ async def wiki_diagnostics_queue_service_dependency(request: Request) -> AsyncIt
 
 
 def memory_graph_store(request: Request | AppContext) -> MemoryGraphStore:
-    return MemoryGraphStore(
-        database(request).path,
-        graph_root=get_settings().data_dir / "memory-graph",
-    )
+    return MemoryGraphStore(database(request).path)
+
+
+def memory_entity_graph_store(request: Request | AppContext) -> MemoryEntityGraphStore:
+    return MemoryEntityGraphStore(database(request).path)
 
 
 def companion_consolidation_service(request: Request | AppContext) -> CompanionConsolidationService:
     return CompanionConsolidationService(
         database(request).path,
         vault_id=active_vault_id(request),
-        graph_store=memory_graph_store(request),
+        graph_store=memory_entity_graph_store(request),
     )
 
 
@@ -577,7 +579,6 @@ def retrospective_service(request: Request | AppContext) -> RetrospectiveService
         database(request).path,
         vault_id=services.vault_id,
         writer=writer,
-        agent_actions=agent_action_service(request) if writer is not None else None,
         index_refresh=services.index_refresh() if writer is not None else None,
     )
 

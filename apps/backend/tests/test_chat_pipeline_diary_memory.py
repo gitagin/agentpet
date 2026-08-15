@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from app.agents.events import AgentActionEvent
 from app.agents.state import AgentState
+from app.api.wiring import AppContext
 from app.models.config import AutomationSettingsResponse
 from app.models.enums import MemoryFactStatus
 from app.services.agent_actions import AutomationPolicy
@@ -72,7 +73,11 @@ def client(client_factory) -> Iterator[TestClient]:
         yield test_client
 
 
-def _memory_object(*, summary: str = "Project Atlas checkpoint was reviewed.", type: str = "event") -> DiaryMemoryObject:
+def _memory_object(
+    *,
+    summary: str = "Project Atlas checkpoint was reviewed.",
+    memory_type: str = "event",
+) -> DiaryMemoryObject:
     return DiaryMemoryObject(
         summary=summary,
         topic="Project Atlas",
@@ -83,7 +88,7 @@ def _memory_object(*, summary: str = "Project Atlas checkpoint was reviewed.", t
         importance=0.7,
         confidence=0.9,
         status=MemoryFactStatus.ACTIVE,
-        type=type,
+        type=memory_type,
     )
 
 
@@ -112,8 +117,6 @@ def _automation(
 
 
 def _context(client: TestClient) -> AppContext:
-    from app.api.wiring import AppContext
-
     return AppContext(app=client.app, request_id="request-structured")
 
 
@@ -194,7 +197,7 @@ async def test_structured_diary_accepts_daily_result_with_no_markdown_path(
     diary_memory_stage = _diary_memory_stage()
     vault_root = tmp_path / "Vault"
     _insert_vault_row(client, vault_root)
-    factory = DiaryServiceFactory(client.app.state.database.path, [_memory_object(type="qa")])
+    factory = DiaryServiceFactory(client.app.state.database.path, [_memory_object(memory_type="qa")])
     monkeypatch.setattr(diary_memory_stage, "diary_memory_service", factory)
     daily_result = SimpleNamespace(
         entry=SimpleNamespace(created_at="2026-07-07T01:02:03+00:00", markdown_path=None)
@@ -230,7 +233,7 @@ async def test_structured_diary_preserves_daily_markdown_source_when_present(
     diary_memory_stage = _diary_memory_stage()
     vault_root = tmp_path / "Vault"
     _insert_vault_row(client, vault_root)
-    factory = DiaryServiceFactory(client.app.state.database.path, [_memory_object(type="project_update")])
+    factory = DiaryServiceFactory(client.app.state.database.path, [_memory_object(memory_type="project_update")])
     monkeypatch.setattr(diary_memory_stage, "diary_memory_service", factory)
     markdown_path = "Memories/Daily/2026/07/week/2026-07-07.md"
     daily_result = SimpleNamespace(

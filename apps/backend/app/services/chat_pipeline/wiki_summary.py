@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import hashlib
 import logging
 from typing import TYPE_CHECKING, Any
 
+from app.agents.contracts import ActionProposal
 from app.agents.events import AgentActionEvent
+from app.agents.nodes.policy_guard import evaluate_action_proposal
 from app.agents.state import AgentState
-from app.services.agent_actions import AgentActionCreate, AutomationPolicy
 from app.services.chat_answer_wiki_summary import ChatAnswerWikiSummaryService
 
 if TYPE_CHECKING:
@@ -14,19 +16,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def wiki_service(context: AppContext) -> Any:
-    from app.api.wiring import wiki_service as factory
+def action_lifecycle(context: AppContext) -> Any:
+    from app.api.services.adapters import production_action_lifecycle
 
-    return factory(context)
-
-
-def record_agent_action(context: AppContext, payload: AgentActionCreate) -> Any:
-    from app.api.wiring import record_agent_action as recorder
-
-    return recorder(context, payload)
+    return production_action_lifecycle(context)
 
 
-def archive_wiki_answer_summary(
+async def archive_wiki_answer_summary(
     *,
     context: AppContext,
     state: AgentState,
@@ -35,17 +31,18 @@ def archive_wiki_answer_summary(
     daily_result: Any | None,
     diary_object_ids: tuple[str, ...],
     automation,
-    policy: AutomationPolicy,
     raise_errors: bool = False,
 ) -> list[AgentActionEvent]:
+    if daily_result is None or not automation.auto_wiki_organize:
+        return []
     from . import agent_action_event, skipped_agent_action_event
 
     actions: list[AgentActionEvent] = []
-    if daily_result is None or not automation.auto_wiki_organize:
+    daily_entry = getattr(daily_result, "entry", None)
+    if daily_entry is None:
         return actions
-
     try:
-        summary_service = ChatAnswerWikiSummaryService(wiki_service(context))
+        summary_service = ChatAnswerWikiSummaryService()
         plan = summary_service.plan(
             conversation_id=state.conversation_id,
             user_message_id=state.message_id,
@@ -53,8 +50,8 @@ def archive_wiki_answer_summary(
             agent_run_id=state.agent_run_id,
             user_question=state.user_message,
             assistant_answer=assistant_answer,
-            diary_markdown_path=daily_result.entry.markdown_path,
-            memory_date=daily_result.entry.memory_date,
+            diary_markdown_path=getattr(daily_entry, "markdown_path", None),
+            memory_date=getattr(daily_entry, "memory_date", None),
             diary_object_ids=diary_object_ids,
         )
         if plan is None:
@@ -74,59 +71,19 @@ def archive_wiki_answer_summary(
                 )
             )
             return actions
-        if plan is not None:
-            decision = policy.decide(
-                "wiki.answer_summary.write",
-                target_paths=[plan.target_path],
-                confidence=plan.confidence,
-                reversible=True,
-            )
-            if decision.decision == "ask":
-                action = record_agent_action(
-                    context,
-                    AgentActionCreate(
-                        action_type="wiki.answer_summary.write",
-                        title="需要确认 Wiki 自动总结",
-                        summary=plan.summary,
-                        source_agent_run_id=state.agent_run_id,
-                        source_conversation_id=state.conversation_id,
-                        source_message_id=state.message_id,
-                        risk_tier=decision.risk_tier,
-                        decision=decision.decision,
-                        status="pending_confirmation",
-                        target_paths=(plan.target_path,),
-                        metadata={"policy_reason": decision.reason, "confidence": plan.confidence},
-                        reversible=False,
-                    ),
-                )
-                actions.append(agent_action_event(state.agent_run_id, action))
-                return actions
-            written = summary_service.write(plan, source_message_id=state.message_id)
-            action = record_agent_action(
-                context,
-                AgentActionCreate(
-                    action_type="wiki.answer_summary.write",
-                    title="已自动总结到 Wiki",
-                    summary=plan.summary,
-                    source_agent_run_id=state.agent_run_id,
-                    source_conversation_id=state.conversation_id,
-                    source_message_id=state.message_id,
-                    risk_tier=decision.risk_tier,
-                    decision=decision.decision,
-                    status="completed",
-                    target_paths=(written.page.relative_path,),
-                    before_snapshot=written.before_snapshot,
-                    after_snapshot=written.after_snapshot,
-                    metadata={
-                        "confidence": plan.confidence,
-                        "index_updated": True,
-                        "log_appended": True,
-                        "source_paths": list(plan.source_paths),
-                    },
-                    reversible=True,
-                ),
-            )
-            actions.append(agent_action_event(state.agent_run_id, action))
+        proposal = _wiki_summary_proposal(
+            plan=plan,
+            state=state,
+            assistant_message_id=assistant_message_id,
+        )
+        decision = evaluate_action_proposal(proposal)
+        outcome = await action_lifecycle(context).execute(
+            proposal,
+            decision,
+            source_run_id=state.agent_run_id,
+            source_conversation_id=state.conversation_id,
+        )
+        actions.append(agent_action_event(state.agent_run_id, outcome.action))
     except Exception as exc:
         if raise_errors:
             raise
@@ -136,6 +93,52 @@ def archive_wiki_answer_summary(
             exc,
         )
     return actions
+
+
+def _wiki_summary_proposal(
+    *,
+    plan,
+    state: AgentState,
+    assistant_message_id: str,
+) -> ActionProposal:
+    intent_ref = f"post-reply:{assistant_message_id}:wiki-summary"
+    proposal_hash = hashlib.sha256(f"{intent_ref}:{plan.target_path}".encode("utf-8")).hexdigest()[:24]
+    log_details = "\n".join(
+        [
+            f"- 页面：`{plan.target_path}`",
+            f"- 触发消息：`{state.message_id}`",
+            f"- 置信度：{plan.confidence:.2f}",
+            f"- 来源路径：{len(plan.source_paths)}",
+        ]
+    )
+    return ActionProposal(
+        proposal_id=f"proposal-wiki-summary-{proposal_hash}",
+        explicit_intent_ref=intent_ref,
+        action_type="wiki.answer_summary.write",
+        target_ref=plan.target_path,
+        parameters={
+            "title": plan.title,
+            "target_path": plan.target_path,
+            "content": plan.content,
+            "operation": "replace_section",
+            "section": "来源摘要",
+            "tags": list(plan.tags),
+            "links": list(plan.links),
+            "page_type": "source",
+            "confidence": "medium",
+            "authors": ["chat_answer_wiki_summary_agent"],
+            "sources": list(plan.source_paths),
+            "refresh_wiki_index": True,
+            "append_wiki_log": True,
+            "log_operation": "auto-summary",
+            "log_title": plan.title,
+            "log_details": log_details,
+            "proposal_confidence": plan.confidence,
+        },
+        expected_effect=plan.summary,
+        reversible=True,
+        source_message_id=state.message_id,
+    )
 
 
 def _wiki_skip_summary(reason: str) -> str:

@@ -17,6 +17,7 @@
 @import "./styles/stage-restore.css";
 @import "./styles/desktop-polish.css";
 @import "./styles/demo-scope.css";
+@import "./styles/llmwiki-memory.css";
 .checkpoint-confirmation-list {
   display: grid;
   gap: 10px;

@@ -1,10 +1,14 @@
 import { Loader2, RefreshCw, ShieldCheck } from "lucide-react";
-import type { AsyncStatus, AutomationSettingsDraft } from "./settingsTypes";
+import type {
+  AsyncStatus,
+  AutomationSettingsDraft,
+  SettingsStatusLoadState,
+} from "./settingsTypes";
 
 type AutomationSettingsCardProps = {
   draft: AutomationSettingsDraft;
   saveStatus: AsyncStatus;
-  loadingSettingsStatus: boolean;
+  settingsStatusLoadState: SettingsStatusLoadState;
   onUpdateDraft: (patch: Partial<AutomationSettingsDraft>) => void;
   onSave: () => void;
   onRefresh: () => void;
@@ -37,7 +41,7 @@ const automationToggles: AutomationToggle[] = [
   {
     key: "auto_long_term_memory",
     title: "长期记忆自动沉淀",
-    description: "低风险、高置信内容可自动进入长期记忆；敏感或冲突内容仍会拦截。",
+    description: "后台记录慢记忆候选和证据；明确要求记住的低风险偏好或边界可激活，敏感或冲突内容会被拦截。",
   },
   {
     key: "local_privacy_mode",
@@ -46,8 +50,8 @@ const automationToggles: AutomationToggle[] = [
   },
   {
     key: "use_negotiation",
-    title: "复杂问题有界协作",
-    description: "复杂请求最多复核两轮；超时、低置信或解析失败时回退到稳定主链。",
+    title: "记忆检索有界复核",
+    description: "记忆或资料检索请求最多复核两轮；普通聊天继续使用轻量主链。",
   },
 ];
 
@@ -61,18 +65,20 @@ function formatAutomationSaveStatus(status: AsyncStatus): string {
   if (status === "error") {
     return "保存失败，请检查后重试。";
   }
-  return "低风险自动整理可自动执行；高风险操作始终需要确认。";
+  return "日记可自动整理；慢记忆默认先记录候选和证据，高风险操作需要确认。";
 }
 
 export function AutomationSettingsCard({
   draft,
   saveStatus,
-  loadingSettingsStatus,
+  settingsStatusLoadState,
   onUpdateDraft,
   onSave,
   onRefresh,
 }: AutomationSettingsCardProps) {
   const saving = saveStatus === "loading";
+  const settingsReady = settingsStatusLoadState === "ready";
+  const loadingSettingsStatus = settingsStatusLoadState === "loading";
   const statusText = formatAutomationSaveStatus(saveStatus);
 
   return (
@@ -82,34 +88,51 @@ export function AutomationSettingsCard({
         <span>控制低风险整理和低打扰主动开口；删除、移动、批量改写和保存位置变更仍必须确认。</span>
       </div>
 
-      <div className="automation-toggle-grid">
-        {automationToggles.map((item) => (
-          <label key={item.key} className="automation-toggle-row">
-            <input
-              type="checkbox"
-              checked={draft[item.key]}
-              onChange={(event) => onUpdateDraft(
-                item.key === "use_negotiation"
-                  ? { use_negotiation: event.target.checked, max_rounds: 2 }
-                  : { [item.key]: event.target.checked },
-              )}
-            />
-            <span>
-              <strong>{item.title}</strong>
-              <small>{item.description}</small>
-            </span>
-          </label>
-        ))}
-      </div>
+      {settingsReady ? (
+        <div className="automation-toggle-grid">
+          {automationToggles.map((item) => (
+            <label key={item.key} className="automation-toggle-row">
+              <input
+                type="checkbox"
+                checked={draft[item.key] === true}
+                onChange={(event) => onUpdateDraft({ [item.key]: event.target.checked })}
+              />
+              <span>
+                <strong>{item.title}</strong>
+                <small>{item.description}</small>
+              </span>
+            </label>
+          ))}
+        </div>
+      ) : (
+        <div className="settings-load-state" role={settingsStatusLoadState === "error" ? "alert" : "status"}>
+          {loadingSettingsStatus ? "正在从本机服务读取设置..." : "尚未取得本机服务中的设置，编辑已停用。"}
+        </div>
+      )}
 
-      <div className="automation-locked-row" aria-label="有界协作最多两轮">
-        <ShieldCheck size={16} />
-        <span>
-          <strong>协作上限固定为 2 轮</strong>
-          <small>最多调用两个子 Agent；达到上限或发生异常时立即结束，不允许无限循环。</small>
-        </span>
-        <b>最多 2 轮</b>
-      </div>
+      {settingsReady && draft.max_rounds !== null ? (
+        <label className="automation-locked-row" aria-label="证据复核轮次上限">
+          <ShieldCheck size={16} />
+          <span>
+            <strong>证据复核轮次上限</strong>
+            <small>每轮只执行一个只读检索步骤；达到上限或发生异常时立即结束。</small>
+          </span>
+          <input
+            type="number"
+            aria-label="证据复核轮次上限"
+            min={2}
+            max={10}
+            step={1}
+            value={draft.max_rounds}
+            onChange={(event) => {
+              const value = event.currentTarget.valueAsNumber;
+              if (Number.isInteger(value) && value >= 2 && value <= 10) {
+                onUpdateDraft({ max_rounds: value });
+              }
+            }}
+          />
+        </label>
+      ) : null}
 
       <div className="automation-locked-row" aria-label="高风险确认强制开启">
         <ShieldCheck size={16} />
@@ -122,7 +145,7 @@ export function AutomationSettingsCard({
 
       <div className="settings-action-row">
         <div className="button-row">
-          <button type="button" onClick={onSave} disabled={saving}>
+          <button type="button" onClick={onSave} disabled={saving || !settingsReady}>
             {saving ? <Loader2 className="spin" size={16} /> : <ShieldCheck size={16} />}
             保存设置
           </button>

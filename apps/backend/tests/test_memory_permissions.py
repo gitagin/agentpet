@@ -11,6 +11,7 @@ from app.services.memory_permissions import (
     split_recall_prompt_sections,
 )
 from app.services.memory_taxonomy import LifecycleStatus, MemoryKind, MemoryScope, RiskTier
+from app.utils.public_references import public_memory_reference
 
 
 def _item(
@@ -128,6 +129,58 @@ def test_prompt_sections_keep_style_memory_out_of_raw_answer_context() -> None:
     assert "Ada dislikes preachy answers" in answer_text
     assert sections.usages[0].used_for_style is True
     assert sections.usages[0].used_for_answer_context is False
+
+
+def test_prompt_context_uses_safe_source_and_opaque_citation_references() -> None:
+    raw_fact_id = "internal-fact-id-must-not-enter-prompt"
+    citation_ref = public_memory_reference("citation", "Wiki/Projects/Atlas.md")
+    result = _result(
+        snippet="Ada works on Atlas",
+        permissions=MemoryRecallPermissions(can_answer_context=True),
+        memory_kind=MemoryKind.PROJECT_CONTEXT.value,
+        fact_id=raw_fact_id,
+    ).model_copy(
+        update={
+            "relative_path": "Wiki/Projects/Atlas.md",
+            "citation_refs": [citation_ref],
+        }
+    )
+
+    sections = split_recall_prompt_sections([result], query="What is the status of project Atlas?")
+
+    line = sections.answer_context_lines[0]
+    assert "source=Wiki/Projects/Atlas.md" in line
+    assert f"citations={citation_ref}" in line
+    assert raw_fact_id not in line
+
+
+def test_prompt_context_rejects_absolute_sources_and_sensitive_memory() -> None:
+    absolute_source = _result(
+        snippet="safe eligible context",
+        permissions=MemoryRecallPermissions(can_answer_context=True),
+    ).model_copy(update={"relative_path": r"C:\Users\Alice\Vault\Secret.md"})
+    sensitive = _result(
+        snippet="private medical detail",
+        permissions=MemoryRecallPermissions(
+            can_style_response=True,
+            can_answer_context=True,
+            can_proactively_mention=True,
+            can_suggest_action=True,
+        ),
+    ).model_copy(
+        update={
+            "memory_scope": MemoryScope.SENSITIVE.value,
+            "risk_tier": RiskTier.HIGH.value,
+        }
+    )
+
+    sections = split_recall_prompt_sections([absolute_source, sensitive], query="safe eligible context")
+
+    assert sections.answer_context_lines == ("- source=(none) / Profile: safe eligible context",)
+    assert "Alice" not in "\n".join(sections.answer_context_lines)
+    assert "private medical detail" not in "\n".join(
+        (*sections.style_hints, *sections.answer_context_lines, *sections.proactive_mention_lines)
+    )
 
 
 def test_activation_recorder_writes_usage_permissions(tmp_path) -> None:

@@ -149,10 +149,12 @@ class AgentErrorEvent(AgentEventBase):
 
 
 _PUBLIC_AGENT_ERROR_MESSAGES: dict[str, str] = {
+    "action_lifecycle_unavailable": "本地动作生命周期暂不可用，未执行任何写入。",
     "agent_model_not_configured": "尚未配置可用的聊天模型。",
     "authentication_failed": "模型鉴权失败，请检查模型配置。",
     "unsupported_model": "当前模型配置不可用，请检查模型名称。",
     "rate_limited": "模型服务暂时繁忙，请稍后重试。",
+    "quota_exhausted": "模型服务配额已用尽，请更新额度或计费设置后重试。",
     "provider_bad_request": "模型请求未被服务接受，请检查模型配置。",
     "provider_timeout": "模型服务响应超时，请稍后重试。",
     "provider_unreachable": "暂时无法连接模型服务，请稍后重试。",

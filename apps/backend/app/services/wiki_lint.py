@@ -16,7 +16,8 @@ from app.models.api import (
 )
 from app.storage.database import open_database_connection
 from app.utils.time import utc_now_iso
-from app.services.wiki import WIKI_PAGE_TEMPLATE_SECTIONS, WIKI_ROOT, WikiService
+from app.services.wiki import WIKI_ROOT, WikiService
+from app.services.wiki.contracts import PAGE_TYPE_CONTRACTS, page_type_for_path, path_matches_page_type, unique_evidence
 from app.storage.markdown import read_markdown
 
 
@@ -62,7 +63,12 @@ class WikiLintService:
         if self._owns_connection:
             self.conn.close()
 
-    def run(self, request: WikiLintRequest | None = None) -> WikiLintReportResponse:
+    def run(
+        self,
+        request: WikiLintRequest | None = None,
+        *,
+        action_marker: str | None = None,
+    ) -> WikiLintReportResponse:
         lint_request = request or WikiLintRequest()
         if self.wiki is not None:
             self.wiki.ensure_core_files()
@@ -72,7 +78,7 @@ class WikiLintService:
         issues.extend(self._core_file_issues(pages))
         issues.extend(_schema_frontmatter_issues(pages))
         issues.extend(_duplicate_title_issues(pages))
-        issues.extend(_template_section_issues(pages))
+        issues.extend(_page_type_section_issues(pages))
         issues.extend(_evidence_source_issues(pages))
         issues.extend(_version_log_issues(pages, self.vault_root))
         issues.extend(_orphan_page_issues(pages))
@@ -92,12 +98,20 @@ class WikiLintService:
         summary = _summary(pages, issues, research_questions, repair_proposals)
         report_page = None
         if lint_request.write_report and self.wiki is not None:
-            report_page = self._write_report(generated_at, summary, issues, research_questions, repair_proposals)
+            report_page = self._write_report(
+                generated_at,
+                summary,
+                issues,
+                research_questions,
+                repair_proposals,
+                action_marker=action_marker,
+            )
         if self.wiki is not None:
             self.wiki.append_log(
                 "lint",
                 "Wiki 检查",
                 f"- 问题：{summary.get('issues', 0)}\n- 错误：{summary.get('errors', 0)}\n- 待研究问题：{summary.get('research_questions', 0)}",
+                dedupe_marker=action_marker,
             )
         return WikiLintReportResponse(
             generated_at=generated_at,
@@ -292,10 +306,18 @@ class WikiLintService:
             return []
         rows = self.conn.execute(
             """
-            SELECT id, subject, predicate, object, conflicts_with
-            FROM memory_graph_facts
-            WHERE status = 'quarantined' AND conflicts_with IS NOT NULL
-            ORDER BY updated_at DESC
+            SELECT f.id, f.subject, f.predicate, f.object
+            FROM memory_graph_facts f
+            WHERE f.status = 'quarantined'
+              AND EXISTS (
+                    SELECT 1
+                    FROM memory_graph_facts relation
+                    WHERE relation.statement_kind = 'relation'
+                      AND relation.relation_type = 'contradicts'
+                      AND relation.status = 'active'
+                      AND (relation.subject_fact_id = f.id OR relation.object_fact_id = f.id)
+              )
+            ORDER BY f.updated_at DESC
             LIMIT 20
             """
         ).fetchall()
@@ -316,10 +338,14 @@ class WikiLintService:
         issues: list[WikiLintIssue],
         research_questions: list[WikiResearchQuestion],
         repair_proposals: list[WikiLintRepairProposal],
+        *,
+        action_marker: str | None = None,
     ) -> WikiPageResponse:
         assert self.wiki is not None
         date = generated_at[:10]
         content = _report_markdown(generated_at, summary, issues, research_questions, repair_proposals)
+        if action_marker:
+            content = f"{action_marker}\n{content}"
         return self.wiki.write_page(
             WikiPageWriteRequest(
                 title=f"Wiki Lint {date}",
@@ -328,7 +354,11 @@ class WikiLintService:
                 target_path=f"Wiki/Reports/Lint-{date}.md",
                 section="Lint Report",
                 tags=["wiki-lint"],
-            )
+                page_type="report",
+                sources=[f"lint:{date}"],
+                confidence="high",
+            ),
+            action_marker=action_marker,
         )
 
 
@@ -358,16 +388,24 @@ def _duplicate_title_issues(pages: list[_WikiPage]) -> list[WikiLintIssue]:
     return issues
 
 
-def _template_section_issues(pages: list[_WikiPage]) -> list[WikiLintIssue]:
+_PAGE_TYPE_REQUIRED_HEADINGS = {
+    page_type: contract.required_sections
+    for page_type, contract in PAGE_TYPE_CONTRACTS.items()
+}
+
+
+def _page_type_section_issues(pages: list[_WikiPage]) -> list[WikiLintIssue]:
     issues: list[WikiLintIssue] = []
     for page in _maintained_pages(pages):
-        missing = [section for section in WIKI_PAGE_TEMPLATE_SECTIONS if not _has_heading(page.body, section)]
+        page_type = str(page.frontmatter.get("page_type") or page.frontmatter.get("type") or "page")
+        required = _PAGE_TYPE_REQUIRED_HEADINGS.get(page_type, ())
+        missing = [section for section in required if not _has_heading(page.body, section)]
         if missing:
             issues.append(
                 WikiLintIssue(
-                    severity="info",
-                    code="wiki_template_section_missing",
-                    message="Wiki 页面缺少固定 8 章模板章节：" + ", ".join(missing),
+                    severity="warning",
+                    code="wiki_page_contract_missing",
+                    message=f"{page_type} 页面缺少必要章节：" + ", ".join(missing),
                     path=page.relative_path,
                     target=", ".join(missing),
                 )
@@ -378,8 +416,9 @@ def _template_section_issues(pages: list[_WikiPage]) -> list[WikiLintIssue]:
 def _evidence_source_issues(pages: list[_WikiPage]) -> list[WikiLintIssue]:
     issues: list[WikiLintIssue] = []
     for page in _maintained_pages(pages):
+        page_type = str(page.frontmatter.get("page_type") or page.frontmatter.get("type") or "page")
         sources = _frontmatter_list(page.frontmatter.get("sources"))
-        has_source_section = _has_heading(page.body, "原文出处")
+        has_source_section = _has_heading(page.body, "来源") or _has_heading_prefix(page.body, "来源：")
         has_obsidian_source = "[[Memories/" in page.body or "[[Wiki/Sources/" in page.body or any(
             source.startswith(("Memories/", "Wiki/Sources/", "message:")) for source in sources
         )
@@ -388,10 +427,42 @@ def _evidence_source_issues(pages: list[_WikiPage]) -> list[WikiLintIssue]:
                 WikiLintIssue(
                     severity="warning",
                     code="wiki_source_reference_missing",
-                    message="Wiki 页面应在 frontmatter 和“原文出处”中标明证据、来源路径或触发消息。",
+                    message="Wiki 页面应在 frontmatter 和来源章节中标明证据、来源路径或触发消息。",
                     path=page.relative_path,
                 )
             )
+        contract = PAGE_TYPE_CONTRACTS.get(page_type)
+        if contract is not None:
+            evidence_ids = _frontmatter_list(page.frontmatter.get("evidence_ids"))
+            evidence_total = max(len(unique_evidence(sources)), len(unique_evidence(evidence_ids)))
+            if evidence_total < contract.minimum_evidence:
+                issues.append(
+                    WikiLintIssue(
+                        severity="error",
+                        code="wiki_evidence_insufficient",
+                        message=f"{page_type} 页面需要至少 {contract.minimum_evidence} 个独立 evidence/source，当前为 {evidence_total}。",
+                        path=page.relative_path,
+                    )
+                )
+            if page_type == "decision" and not _has_nonempty_heading(page.body, "用户决定"):
+                issues.append(
+                    WikiLintIssue(
+                        severity="error",
+                        code="wiki_decision_missing_user_decision",
+                        message="decision 页面必须包含用户明确决定；模型推断不能代替确认。",
+                        path=page.relative_path,
+                    )
+                )
+            inference = str(page.frontmatter.get("inference") or "").casefold()
+            if page_type != "decision" and _is_derived_page(page) and inference != "true":
+                issues.append(
+                    WikiLintIssue(
+                        severity="error",
+                        code="wiki_inference_marker_missing",
+                        message="派生 Wiki 页面必须在 frontmatter 标记 inference: true。",
+                        path=page.relative_path,
+                    )
+                )
         if _is_automatic_page(page) and ("触发来源" not in page.body or "agent_run_id" not in page.body):
             issues.append(
                 WikiLintIssue(
@@ -512,32 +583,55 @@ def _duplicate_entity_issues(pages: list[_WikiPage]) -> list[WikiLintIssue]:
 
 def _schema_frontmatter_issues(pages: list[_WikiPage]) -> list[WikiLintIssue]:
     issues: list[WikiLintIssue] = []
-    typed_roots = {
-        f"{WIKI_ROOT}/Sources/": "source",
-        f"{WIKI_ROOT}/Entities/": "entity",
-        f"{WIKI_ROOT}/Concepts/": "concept",
-        f"{WIKI_ROOT}/Syntheses/": "synthesis",
-        f"{WIKI_ROOT}/Companion/Summaries/": "synthesis",
-        f"{WIKI_ROOT}/Comparisons/": "comparison",
-    }
     for page in pages:
         if page.relative_path in {"Wiki/AGENTS.md", "Wiki/index.md", "Wiki/log.md"}:
             continue
         if page.relative_path.startswith(f"{WIKI_ROOT}/Reports/"):
             continue
-        expected_type = "page"
-        for prefix, page_type in typed_roots.items():
-            if page.relative_path.startswith(prefix):
-                expected_type = page_type
-                break
-        actual_type = page.frontmatter.get("type")
+        expected_type = page_type_for_path(page.relative_path)
+        actual_type = page.frontmatter.get("page_type") or page.frontmatter.get("type")
         title = page.frontmatter.get("title")
-        if actual_type != expected_type or not title:
+        required_keys = {"wiki_id", "page_type", "entity_ids", "fact_ids", "revision", "confidence", "disputed", "sources", "updated_at"}
+        missing_keys = sorted(key for key in required_keys if key not in page.frontmatter)
+        sources = _frontmatter_list(page.frontmatter.get("sources"))
+        path_mismatch = str(actual_type or "page") in PAGE_TYPE_CONTRACTS and not path_matches_page_type(
+            page.relative_path, str(actual_type)
+        )
+        if (
+            actual_type != expected_type
+            or not title
+            or missing_keys
+            or not sources
+            or path_mismatch
+        ):
             issues.append(
                 WikiLintIssue(
-                    severity="info",
+                    severity="error" if path_mismatch else "warning",
                     code="wiki_schema_frontmatter_missing",
-                    message=f"Wiki {expected_type} 页面应包含 schema frontmatter，并填写匹配的类型和标题。",
+                    message=(
+                        f"Wiki {expected_type} 页面 frontmatter 不完整或不匹配。"
+                        + (f" 缺少：{', '.join(missing_keys)}。" if missing_keys else "")
+                        + (" sources 不能为空。" if not sources else "")
+                        + (" 页面类型与路径不匹配。" if path_mismatch else "")
+                    ),
+                    path=page.relative_path,
+                )
+            )
+            if path_mismatch:
+                issues.append(
+                    WikiLintIssue(
+                        severity="error",
+                        code="wiki_page_type_path_mismatch",
+                        message=f"页面类型 `{actual_type}` 与路径推断类型 `{expected_type}` 不一致。",
+                        path=page.relative_path,
+                    )
+                )
+        if expected_type in PAGE_TYPE_CONTRACTS and str(actual_type or "") != expected_type:
+            issues.append(
+                WikiLintIssue(
+                    severity="error",
+                    code="wiki_page_type_path_mismatch",
+                    message=f"页面路径要求 page_type `{expected_type}`。",
                     path=page.relative_path,
                 )
             )
@@ -680,7 +774,11 @@ def _format_trap_issues(pages: list[_WikiPage]) -> list[WikiLintIssue]:
                         target=link,
                     )
                 )
-        if "TODO" in page.body or "待补" in page.body:
+        placeholder = re.search(r"\b(?:TODO|TBD)\b", page.body, flags=re.IGNORECASE) or re.search(
+            r"(?im)^\s*(?:[-*]\s*)?(?:待补|占位|未提供|未填写|无)\s*[。.!！]?\s*$",
+            page.body,
+        )
+        if placeholder:
             issues.append(
                 WikiLintIssue(
                     severity="info",
@@ -815,21 +913,21 @@ def _repair_proposal(
             markdown_preview="撰写带有当前引用的更新部分；在替换文本被审查之前不要覆盖页面。",
             related_paths=related_paths,
         )
-    if issue.code == "wiki_schema_frontmatter_missing" and issue.path:
+    if issue.code in {"wiki_schema_frontmatter_missing", "wiki_page_type_path_mismatch"} and issue.path:
         page_type = _expected_page_type(issue.path)
         page = page_by_path.get(issue.path)
         title = page.title if page else Path(issue.path).stem
         return WikiLintRepairProposal(
             issue_code=issue.code,
-            title="Add Wiki schema frontmatter",
+            title="Review Wiki page contract",
             target_path=issue.path,
-            operation="replace_section",
+            operation="review",
             reason=issue.message,
             markdown_preview=_frontmatter_preview(title, page_type),
             related_paths=related_paths,
         )
     if issue.code in {
-        "wiki_template_section_missing",
+        "wiki_page_contract_missing",
         "wiki_source_reference_missing",
         "wiki_trigger_source_missing",
         "wiki_revision_missing",
@@ -839,14 +937,17 @@ def _repair_proposal(
         "wiki_empty_page",
         "wiki_link_path_outside_known_roots",
         "wiki_placeholder_left",
+        "wiki_evidence_insufficient",
+        "wiki_decision_missing_user_decision",
+        "wiki_inference_marker_missing",
     }:
         return WikiLintRepairProposal(
             issue_code=issue.code,
             title="Complete Wiki page contract",
             target_path=issue.path,
-            operation="replace_section",
+            operation="review",
             reason=issue.message,
-            markdown_preview="补齐固定 8 章模板、原文出处、更新日志、自检清单、集中日志和必要入链；涉及覆盖内容时先走确认。",
+            markdown_preview="先补充真实来源并确认页面类型，再由 Wiki 生命周期重新生成缺失章节；此建议不会写入占位文本。",
             related_paths=related_paths,
         )
     if issue.code in {"wiki_index_entry_missing", "wiki_core_file_missing", "wiki_log_entry_missing"}:
@@ -955,6 +1056,25 @@ def _has_heading(body: str, heading: str) -> bool:
     return bool(pattern.search(body))
 
 
+def _has_heading_prefix(body: str, prefix: str) -> bool:
+    pattern = re.compile(rf"^##+\s+{re.escape(prefix)}.+$", re.MULTILINE)
+    return bool(pattern.search(body))
+
+
+def _has_nonempty_heading(body: str, heading: str) -> bool:
+    match = re.search(
+        rf"^##+\s+{re.escape(heading)}\s*$\n+(.*?)(?=^##+\s+|\Z)",
+        body,
+        flags=re.MULTILINE | re.DOTALL,
+    )
+    return bool(match and match.group(1).strip())
+
+
+def _is_derived_page(page: _WikiPage) -> bool:
+    page_type = str(page.frontmatter.get("page_type") or page.frontmatter.get("type") or "")
+    return page_type in {"entity", "concept", "synthesis", "comparison", "decision", "report"}
+
+
 def _frontmatter_list(value: str | list[str] | object) -> list[str]:
     if isinstance(value, list):
         return [str(item).strip() for item in value if str(item).strip()]
@@ -1011,49 +1131,21 @@ def _report_markdown(
 
 
 def _concept_page_preview(title: str, source_path: str | None) -> str:
-    source = f"\n\n## Related\n\n- Source: `{source_path}`" if source_path else ""
     return "\n".join(
         [
-            "---",
-            f"title: {title}",
-            "type: concept",
-            "tags: [wiki-concept]",
-            "---",
-            "",
-            f"# {title}",
-            "",
-            "## Summary",
-            "",
-            "在应用此建议之前，撰写带有引用的简洁定义。",
-            source,
+            f"审查概念候选 `{title}`。",
+            f"现有来源：`{source_path}`。" if source_path else "需要用户指定真实来源。",
+            "确认来源后再生成 concept 页面；当前不创建空定义或虚构案例。",
         ]
     ).strip()
 
 
 def _frontmatter_preview(title: str, page_type: str) -> str:
-    return "\n".join(
-        [
-            "---",
-            f"title: {title}",
-            f"type: {page_type}",
-            "tags: []",
-            "---",
-        ]
-    )
+    return f"审查 `{title}` 的 `{page_type}` 页面契约；补齐真实 wiki_id、来源、证据和生命周期字段后再写入。"
 
 
 def _expected_page_type(relative_path: str) -> str:
-    typed_roots = {
-        f"{WIKI_ROOT}/Sources/": "source",
-        f"{WIKI_ROOT}/Entities/": "entity",
-        f"{WIKI_ROOT}/Concepts/": "concept",
-        f"{WIKI_ROOT}/Syntheses/": "synthesis",
-        f"{WIKI_ROOT}/Comparisons/": "comparison",
-    }
-    for prefix, page_type in typed_roots.items():
-        if relative_path.startswith(prefix):
-            return page_type
-    return "page"
+    return page_type_for_path(relative_path)
 
 
 def _looks_like_concept_link(link: str) -> bool:

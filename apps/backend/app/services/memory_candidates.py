@@ -20,6 +20,9 @@ from app.utils.hash import sha256_hex
 from app.utils.time import utc_now_iso
 
 
+CANDIDATE_SOURCE_TYPE_PREFIX = "candidate_source:"
+
+
 @dataclass(frozen=True, slots=True)
 class MemoryCandidateCreate:
     memory_kind: MemoryKind | str
@@ -81,6 +84,7 @@ class MemoryEvidenceCreate:
 @dataclass(frozen=True, slots=True)
 class MemoryEvidenceRecord:
     id: str
+    evidence_key: str
     candidate_id: str | None
     fact_id: str | None
     source_type: str
@@ -183,7 +187,6 @@ class MemoryCandidateStore:
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(candidate_hash) DO UPDATE SET
-                    evidence_count = evidence_count + 1,
                     confidence = MAX(confidence, excluded.confidence),
                     importance = MAX(importance, excluded.importance),
                     updated_at = excluded.updated_at
@@ -211,6 +214,26 @@ class MemoryCandidateStore:
                     now,
                 ),
             )
+            row = self.conn.execute(
+                "SELECT id FROM memory_candidates WHERE candidate_hash = ?",
+                (candidate_hash,),
+            ).fetchone()
+            if row is None:
+                raise RuntimeError("candidate_insert_missing")
+            stored_candidate_id = str(row["id"])
+            if request.source_text.strip():
+                self._insert_evidence(
+                    MemoryEvidenceCreate(
+                        candidate_id=stored_candidate_id,
+                        source_type=f"{CANDIDATE_SOURCE_TYPE_PREFIX}{track.value}",
+                        source_text=request.source_text,
+                        source_excerpt=request.source_text,
+                        confidence=request.confidence,
+                        metadata={"source_track": track.value},
+                    ),
+                    created_at=now,
+                )
+            self._recount_candidate(stored_candidate_id, updated_at=now)
         return self.get_candidate_by_hash(candidate_hash)
 
     def get_candidate(self, candidate_id: str) -> MemoryCandidateRecord:
@@ -230,6 +253,29 @@ class MemoryCandidateStore:
         if row is None:
             raise KeyError(candidate_hash)
         return _candidate_record(row)
+
+    def attach_fact(self, candidate_id: str, fact_id: str) -> MemoryCandidateRecord:
+        """Bind a candidate and its existing evidence to the authoritative fact."""
+        self.get_candidate(candidate_id)
+        now = utc_now_iso()
+        with self.conn:
+            self.conn.execute(
+                """
+                UPDATE memory_candidates
+                SET fact_id = COALESCE(fact_id, ?), updated_at = ?
+                WHERE id = ?
+                """,
+                (fact_id, now, candidate_id),
+            )
+            self.conn.execute(
+                """
+                UPDATE memory_evidence
+                SET fact_id = COALESCE(fact_id, ?)
+                WHERE candidate_id = ? AND fact_id IS NULL
+                """,
+                (fact_id, candidate_id),
+            )
+        return self.get_candidate(candidate_id)
 
     def list_candidates(
         self,
@@ -262,45 +308,58 @@ class MemoryCandidateStore:
     def add_evidence(self, request: MemoryEvidenceCreate) -> MemoryEvidenceRecord:
         if request.candidate_id is None and request.fact_id is None:
             raise ValueError("candidate_id_or_fact_id_required")
-        evidence_id = new_id()
         created_at = utc_now_iso()
         with self.conn:
-            self.conn.execute(
-                """
-                INSERT INTO memory_evidence (
-                    id, candidate_id, fact_id, source_type, source_text_hash,
-                    source_excerpt, conversation_id, message_id, agent_run_id,
-                    diary_object_id, confidence, metadata_json, created_at
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    evidence_id,
-                    request.candidate_id,
-                    request.fact_id,
-                    _compact(request.source_type, 80),
-                    sha256_hex(request.source_text),
-                    _compact(request.source_excerpt or request.source_text, 500),
-                    request.conversation_id,
-                    request.message_id,
-                    request.agent_run_id,
-                    request.diary_object_id,
-                    _clamp(request.confidence),
-                    _json_object(request.metadata),
-                    created_at,
-                ),
-            )
+            evidence_key = self._insert_evidence(request, created_at=created_at)
             if request.candidate_id is not None:
-                self.conn.execute(
-                    """
-                    UPDATE memory_candidates
-                    SET evidence_count = evidence_count + 1,
-                        updated_at = ?
-                    WHERE id = ?
-                    """,
-                    (created_at, request.candidate_id),
-                )
-        return self.get_evidence(evidence_id)
+                self._recount_candidate(request.candidate_id, updated_at=created_at)
+        return self.get_evidence_by_key(evidence_key)
+
+    def _insert_evidence(self, request: MemoryEvidenceCreate, *, created_at: str) -> str:
+        source_text_hash = sha256_hex(request.source_text)
+        evidence_key = _evidence_key(request, source_text_hash=source_text_hash)
+        self.conn.execute(
+            """
+            INSERT OR IGNORE INTO memory_evidence (
+                id, evidence_key, candidate_id, fact_id, source_type, source_text_hash,
+                source_excerpt, conversation_id, message_id, agent_run_id,
+                diary_object_id, confidence, metadata_json, created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                f"evidence-{evidence_key}",
+                evidence_key,
+                request.candidate_id,
+                request.fact_id,
+                _compact(request.source_type, 80),
+                source_text_hash,
+                _compact(request.source_excerpt or request.source_text, 500),
+                request.conversation_id,
+                request.message_id,
+                request.agent_run_id,
+                request.diary_object_id,
+                _clamp(request.confidence),
+                _json_object(request.metadata),
+                created_at,
+            ),
+        )
+        return evidence_key
+
+    def _recount_candidate(self, candidate_id: str, *, updated_at: str) -> None:
+        self.conn.execute(
+            """
+            UPDATE memory_candidates
+            SET evidence_count = (
+                    SELECT COUNT(*)
+                    FROM memory_evidence
+                    WHERE candidate_id = ?
+                ),
+                updated_at = ?
+            WHERE id = ?
+            """,
+            (candidate_id, updated_at, candidate_id),
+        )
 
     def get_evidence(self, evidence_id: str) -> MemoryEvidenceRecord:
         row = self.conn.execute(
@@ -309,6 +368,15 @@ class MemoryCandidateStore:
         ).fetchone()
         if row is None:
             raise KeyError(evidence_id)
+        return _evidence_record(row)
+
+    def get_evidence_by_key(self, evidence_key: str) -> MemoryEvidenceRecord:
+        row = self.conn.execute(
+            "SELECT * FROM memory_evidence WHERE evidence_key = ?",
+            (evidence_key,),
+        ).fetchone()
+        if row is None:
+            raise KeyError(evidence_key)
         return _evidence_record(row)
 
     def transition(
@@ -476,6 +544,7 @@ def _candidate_record(row: sqlite3.Row) -> MemoryCandidateRecord:
 def _evidence_record(row: sqlite3.Row) -> MemoryEvidenceRecord:
     return MemoryEvidenceRecord(
         id=str(row["id"]),
+        evidence_key=str(row["evidence_key"]),
         candidate_id=row["candidate_id"],
         fact_id=row["fact_id"],
         source_type=str(row["source_type"]),
@@ -526,6 +595,26 @@ def _candidate_hash(
                 source_track.value,
                 source_text_hash,
             ]
+        )
+    )
+
+
+def _evidence_key(request: MemoryEvidenceCreate, *, source_text_hash: str) -> str:
+    return sha256_hex(
+        json.dumps(
+            {
+                "candidate_id": request.candidate_id,
+                "fact_id": request.fact_id,
+                "source_type": _compact(request.source_type, 80),
+                "source_text_hash": source_text_hash,
+                "conversation_id": request.conversation_id,
+                "message_id": request.message_id,
+                "agent_run_id": request.agent_run_id,
+                "diary_object_id": request.diary_object_id,
+            },
+            ensure_ascii=True,
+            sort_keys=True,
+            separators=(",", ":"),
         )
     )
 

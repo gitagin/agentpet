@@ -12,17 +12,15 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from ..wiring import memory_lifecycle_service
-from . import diary, feedback, graph, maintenance, profile, proposals, search
-from .shared import RAW_EVIDENCE_REDACTION_NOTE
+from . import diary, feedback, graph, maintenance, proposals, search
 
 router = APIRouter()
 # 注册顺序沿用拆分前的端点声明顺序，避免任何路径匹配顺序差异。
 router.include_router(search.router)
 router.include_router(diary.router)
-router.include_router(profile.router)
 router.include_router(graph.router)
 router.include_router(feedback.router)
 router.include_router(maintenance.router)
 router.include_router(proposals.router)
 
-__all__ = ["RAW_EVIDENCE_REDACTION_NOTE", "memory_lifecycle_service", "router"]
+__all__ = ["memory_lifecycle_service", "router"]

@@ -155,10 +155,12 @@ function createProxyManager({ baseUrl, getBaseUrl, sessionToken }) {
     };
   }
 
-  async function proxyApiRequest(pathOrUrl, options) {
+  async function requestApi(pathOrUrl, options, { enforceRendererRoute }) {
     const target = resolveSidecarUrl(pathOrUrl);
     const init = normalizeApiRequestOptions(options);
-    assertAllowedProxyRoute(init.method, target);
+    if (enforceRendererRoute) {
+      assertAllowedProxyRoute(init.method, target);
+    }
     const attempts = retryableMethods.has(init.method) ? CONNECTION_RETRY_ATTEMPTS : 1;
     let lastError = null;
 
@@ -189,6 +191,14 @@ function createProxyManager({ baseUrl, getBaseUrl, sessionToken }) {
     }
 
     return sidecarUnavailableResponse(lastError);
+  }
+
+  async function proxyApiRequest(pathOrUrl, options) {
+    return requestApi(pathOrUrl, options, { enforceRendererRoute: true });
+  }
+
+  async function requestInternalApi(pathOrUrl, options) {
+    return requestApi(pathOrUrl, options, { enforceRendererRoute: false });
   }
 
   function sendSseEvent(sender, channel, streamId, payload) {
@@ -288,6 +298,7 @@ function createProxyManager({ baseUrl, getBaseUrl, sessionToken }) {
 
   return {
     proxyApiRequest,
+    requestInternalApi,
     startSseStream,
     cancelSseStream,
     assertAllowedProxyRoute,

@@ -19,6 +19,8 @@ def _semantic_system_prompt() -> str:
         "action_type ('task'|'wiki'|'memory_proposal'|null), "
         "action_params (object), confidence (0..1), reason (string). "
         "Do not answer the user. Decide once whether the message needs retrieval or a local action. "
+        "For a destructive or broad local change, copy an explicit target_path from the user message; "
+        "never invent a missing target, broaden its scope, or grant execution authority. "
         "Downstream nodes must only execute your decision."
     )
 

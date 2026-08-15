@@ -2636,6 +2636,61 @@
         "title": "LocalAssetStatsResponse",
         "type": "object"
       },
+      "LocalImpactResponse": {
+        "properties": {
+          "evidence_status": {
+            "enum": [
+              "sufficient",
+              "insufficient_sample"
+            ],
+            "title": "Evidence Status",
+            "type": "string"
+          },
+          "failure_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Failure Counts",
+            "type": "object"
+          },
+          "generated_at": {
+            "title": "Generated At",
+            "type": "string"
+          },
+          "metric_version": {
+            "title": "Metric Version",
+            "type": "string"
+          },
+          "metrics": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/MetricValueResponse"
+            },
+            "title": "Metrics",
+            "type": "object"
+          },
+          "sample_size": {
+            "title": "Sample Size",
+            "type": "integer"
+          },
+          "window_days": {
+            "enum": [
+              7,
+              30
+            ],
+            "title": "Window Days",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "metric_version",
+          "window_days",
+          "generated_at",
+          "sample_size",
+          "evidence_status"
+        ],
+        "title": "LocalImpactResponse",
+        "type": "object"
+      },
       "LocalStateResetRequest": {
         "properties": {
           "confirmation": {
@@ -2868,17 +2923,65 @@
         "title": "MemoryFeedbackResponse",
         "type": "object"
       },
-      "MemoryGraphExportItem": {
+      "MemoryGraphActionRequest": {
+        "additionalProperties": false,
         "properties": {
-          "category": {
-            "title": "Category",
+          "action": {
+            "enum": [
+              "confirm",
+              "correct",
+              "forget",
+              "archive"
+            ],
+            "title": "Action",
             "type": "string"
           },
-          "confidence": {
-            "title": "Confidence",
-            "type": "number"
+          "confirmed": {
+            "default": false,
+            "title": "Confirmed",
+            "type": "boolean"
           },
-          "conflicts_with": {
+          "replacement": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Replacement"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "title": "MemoryGraphActionRequest",
+        "type": "object"
+      },
+      "MemoryGraphActionResponse": {
+        "properties": {
+          "action": {
+            "enum": [
+              "confirm",
+              "correct",
+              "forget",
+              "archive"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "message": {
+            "default": "",
+            "title": "Message",
+            "type": "string"
+          },
+          "operation_id": {
+            "title": "Operation Id",
+            "type": "string"
+          },
+          "replacement_id": {
             "anyOf": [
               {
                 "type": "string"
@@ -2887,338 +2990,98 @@
                 "type": "null"
               }
             ],
-            "title": "Conflicts With"
+            "title": "Replacement Id"
           },
-          "created_at": {
-            "title": "Created At",
-            "type": "string"
-          },
-          "entity_type": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Entity Type"
-          },
-          "expires_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Expires At"
-          },
-          "fact_id": {
-            "title": "Fact Id",
-            "type": "string"
-          },
-          "importance": {
-            "default": 0.5,
-            "title": "Importance",
-            "type": "number"
-          },
-          "lifecycle_status": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Lifecycle Status"
-          },
-          "memory_type": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Memory Type"
-          },
-          "metadata": {
-            "additionalProperties": true,
-            "title": "Metadata",
-            "type": "object"
-          },
-          "object": {
-            "title": "Object",
-            "type": "string"
-          },
-          "occurred_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Occurred At"
-          },
-          "predicate": {
-            "title": "Predicate",
-            "type": "string"
-          },
-          "source_type": {
-            "title": "Source Type",
-            "type": "string"
+          "replayed": {
+            "default": false,
+            "title": "Replayed",
+            "type": "boolean"
           },
           "status": {
             "title": "Status",
             "type": "string"
           },
-          "subject": {
-            "title": "Subject",
-            "type": "string"
-          },
-          "superseded_by": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Superseded By"
-          },
-          "support_count": {
-            "default": 1,
-            "title": "Support Count",
-            "type": "integer"
-          },
-          "updated_at": {
-            "title": "Updated At",
+          "target_id": {
+            "title": "Target Id",
             "type": "string"
           }
         },
         "required": [
-          "fact_id",
-          "category",
-          "subject",
-          "predicate",
-          "object",
-          "status",
-          "confidence",
-          "source_type",
-          "created_at",
-          "updated_at"
+          "operation_id",
+          "target_id",
+          "action",
+          "status"
         ],
-        "title": "MemoryGraphExportItem",
+        "title": "MemoryGraphActionResponse",
         "type": "object"
       },
-      "MemoryGraphExportPreviewResponse": {
+      "MemoryGraphClaimDetailResponse": {
         "properties": {
-          "format": {
-            "default": "markdown",
-            "enum": [
-              "json",
-              "markdown"
-            ],
-            "title": "Format",
-            "type": "string"
-          },
-          "generated_at": {
-            "title": "Generated At",
-            "type": "string"
-          },
-          "item_count": {
-            "title": "Item Count",
-            "type": "integer"
-          },
-          "items": {
+          "allowed_actions": {
             "items": {
-              "$ref": "#/components/schemas/MemoryGraphExportItem"
+              "enum": [
+                "confirm",
+                "correct",
+                "forget",
+                "archive"
+              ],
+              "type": "string"
             },
-            "title": "Items",
+            "title": "Allowed Actions",
             "type": "array"
           },
-          "json_preview": {
-            "title": "Json Preview",
+          "claim_id": {
+            "title": "Claim Id",
             "type": "string"
           },
-          "markdown_preview": {
-            "title": "Markdown Preview",
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/MemoryGraphEvidenceResponse"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "evidence_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Evidence Count",
+            "type": "integer"
+          },
+          "fact_type": {
+            "title": "Fact Type",
+            "type": "string"
+          },
+          "lifecycle": {
+            "$ref": "#/components/schemas/MemoryGraphLifecycleResponse"
+          },
+          "literal_value": {
+            "title": "Literal Value",
+            "type": "string"
+          },
+          "predicate": {
+            "title": "Predicate",
             "type": "string"
           },
           "redaction_note": {
+            "default": "原始证据和本机路径仅按需显示。",
             "title": "Redaction Note",
             "type": "string"
-          }
-        },
-        "required": [
-          "generated_at",
-          "item_count",
-          "json_preview",
-          "markdown_preview",
-          "redaction_note"
-        ],
-        "title": "MemoryGraphExportPreviewResponse",
-        "type": "object"
-      },
-      "MemoryGraphFactAction": {
-        "enum": [
-          "confirm",
-          "reject",
-          "wrong",
-          "sensitive-block",
-          "archive"
-        ],
-        "title": "MemoryGraphFactAction",
-        "type": "string"
-      },
-      "MemoryGraphFactActionResponse": {
-        "properties": {
-          "fact_id": {
-            "title": "Fact Id",
-            "type": "string"
           },
-          "status": {
-            "title": "Status",
-            "type": "string"
-          }
-        },
-        "required": [
-          "fact_id",
-          "status"
-        ],
-        "title": "MemoryGraphFactActionResponse",
-        "type": "object"
-      },
-      "MemoryGraphFactListResponse": {
-        "properties": {
-          "facts": {
-            "items": {
-              "$ref": "#/components/schemas/MemoryGraphFactResponse"
-            },
-            "title": "Facts",
-            "type": "array"
-          }
-        },
-        "title": "MemoryGraphFactListResponse",
-        "type": "object"
-      },
-      "MemoryGraphFactResponse": {
-        "properties": {
-          "category": {
-            "title": "Category",
-            "type": "string"
-          },
-          "confidence": {
-            "title": "Confidence",
-            "type": "number"
-          },
-          "conflicts_with": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
+          "risk": {
+            "default": "low",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "hidden"
             ],
-            "title": "Conflicts With"
-          },
-          "created_at": {
-            "title": "Created At",
-            "type": "string"
-          },
-          "entity_type": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Entity Type"
-          },
-          "expires_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Expires At"
-          },
-          "fact_id": {
-            "title": "Fact Id",
-            "type": "string"
-          },
-          "importance": {
-            "default": 0.5,
-            "title": "Importance",
-            "type": "number"
-          },
-          "lifecycle_status": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Lifecycle Status"
-          },
-          "memory_type": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Memory Type"
-          },
-          "metadata_json": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Metadata Json"
-          },
-          "object": {
-            "title": "Object",
-            "type": "string"
-          },
-          "occurred_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Occurred At"
-          },
-          "predicate": {
-            "title": "Predicate",
-            "type": "string"
-          },
-          "source_text": {
-            "title": "Source Text",
+            "title": "Risk",
             "type": "string"
           },
           "source_type": {
@@ -3229,11 +3092,11 @@
             "title": "Status",
             "type": "string"
           },
-          "subject": {
-            "title": "Subject",
+          "subject_label": {
+            "title": "Subject Label",
             "type": "string"
           },
-          "superseded_by": {
+          "subject_node_id": {
             "anyOf": [
               {
                 "type": "string"
@@ -3242,38 +3105,57 @@
                 "type": "null"
               }
             ],
-            "title": "Superseded By"
+            "title": "Subject Node Id"
           },
-          "support_count": {
-            "default": 1,
-            "title": "Support Count",
-            "type": "integer"
+          "superseded_by_claim_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Superseded By Claim Id"
           },
           "updated_at": {
             "title": "Updated At",
             "type": "string"
+          },
+          "version_chain": {
+            "items": {
+              "$ref": "#/components/schemas/MemoryGraphVersionResponse"
+            },
+            "title": "Version Chain",
+            "type": "array"
+          },
+          "wiki_pages": {
+            "items": {
+              "$ref": "#/components/schemas/MemoryGraphWikiBindingResponse"
+            },
+            "title": "Wiki Pages",
+            "type": "array"
           }
         },
         "required": [
-          "fact_id",
-          "category",
-          "subject",
+          "claim_id",
+          "subject_label",
           "predicate",
-          "object",
+          "literal_value",
+          "fact_type",
           "status",
           "confidence",
-          "source_text",
           "source_type",
-          "created_at",
+          "lifecycle",
           "updated_at"
         ],
-        "title": "MemoryGraphFactResponse",
+        "title": "MemoryGraphClaimDetailResponse",
         "type": "object"
       },
-      "MemoryGraphProjectionClusterResponse": {
+      "MemoryGraphClusterResponse": {
         "properties": {
-          "id": {
-            "title": "Id",
+          "cluster_id": {
+            "title": "Cluster Id",
             "type": "string"
           },
           "label": {
@@ -3289,82 +3171,572 @@
           }
         },
         "required": [
-          "id",
+          "cluster_id",
           "label"
         ],
-        "title": "MemoryGraphProjectionClusterResponse",
+        "title": "MemoryGraphClusterResponse",
         "type": "object"
       },
-      "MemoryGraphProjectionEdgeResponse": {
+      "MemoryGraphEdgeDetailResponse": {
         "properties": {
-          "from": {
-            "title": "From",
-            "type": "string"
+          "allowed_actions": {
+            "items": {
+              "enum": [
+                "confirm",
+                "correct",
+                "forget",
+                "archive"
+              ],
+              "type": "string"
+            },
+            "title": "Allowed Actions",
+            "type": "array"
           },
-          "id": {
-            "title": "Id",
-            "type": "string"
-          },
-          "strength": {
+          "confidence": {
+            "default": 0.0,
             "maximum": 1.0,
             "minimum": 0.0,
-            "title": "Strength",
+            "title": "Confidence",
             "type": "number"
           },
-          "to": {
-            "title": "To",
+          "edge_id": {
+            "title": "Edge Id",
             "type": "string"
           },
-          "type": {
-            "enum": [
-              "related_to",
-              "supports",
-              "came_from",
-              "updates",
-              "conflicts_with",
-              "belongs_to"
-            ],
-            "title": "Type",
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/MemoryGraphEvidenceResponse"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "evidence_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Evidence Count",
+            "type": "integer"
+          },
+          "lifecycle": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MemoryGraphLifecycleResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "redaction_note": {
+            "default": "原始证据和本机路径仅按需显示。",
+            "title": "Redaction Note",
             "type": "string"
+          },
+          "relation_type": {
+            "enum": [
+              "prefers",
+              "avoids",
+              "works_on",
+              "knows",
+              "related_to",
+              "occurred_in",
+              "supports",
+              "contradicts",
+              "supersedes",
+              "derived_from",
+              "documented_in"
+            ],
+            "title": "Relation Type",
+            "type": "string"
+          },
+          "risk": {
+            "default": "low",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "hidden"
+            ],
+            "title": "Risk",
+            "type": "string"
+          },
+          "source_node_id": {
+            "title": "Source Node Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "target_node_id": {
+            "title": "Target Node Id",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "version_chain": {
+            "items": {
+              "$ref": "#/components/schemas/MemoryGraphVersionResponse"
+            },
+            "title": "Version Chain",
+            "type": "array"
+          },
+          "wiki_pages": {
+            "items": {
+              "$ref": "#/components/schemas/MemoryGraphWikiBindingResponse"
+            },
+            "title": "Wiki Pages",
+            "type": "array"
           }
         },
         "required": [
-          "id",
-          "from",
-          "to",
-          "type",
-          "strength"
+          "edge_id",
+          "relation_type",
+          "source_node_id",
+          "target_node_id",
+          "status"
         ],
-        "title": "MemoryGraphProjectionEdgeResponse",
+        "title": "MemoryGraphEdgeDetailResponse",
         "type": "object"
       },
-      "MemoryGraphProjectionNodeResponse": {
+      "MemoryGraphEdgeResponse": {
         "properties": {
-          "available_actions": {
+          "allowed_actions": {
             "items": {
+              "enum": [
+                "confirm",
+                "correct",
+                "forget",
+                "archive"
+              ],
               "type": "string"
             },
-            "title": "Available Actions",
+            "title": "Allowed Actions",
             "type": "array"
           },
-          "confidence_label": {
-            "title": "Confidence Label",
+          "confidence": {
+            "default": 0.0,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "edge_id": {
+            "title": "Edge Id",
             "type": "string"
           },
-          "id": {
-            "title": "Id",
+          "evidence_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Evidence Count",
+            "type": "integer"
+          },
+          "relation_type": {
+            "enum": [
+              "prefers",
+              "avoids",
+              "works_on",
+              "knows",
+              "related_to",
+              "occurred_in",
+              "supports",
+              "contradicts",
+              "supersedes",
+              "derived_from",
+              "documented_in"
+            ],
+            "title": "Relation Type",
+            "type": "string"
+          },
+          "risk": {
+            "default": "low",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "hidden"
+            ],
+            "title": "Risk",
+            "type": "string"
+          },
+          "source_node_id": {
+            "title": "Source Node Id",
+            "type": "string"
+          },
+          "status": {
+            "default": "active",
+            "title": "Status",
+            "type": "string"
+          },
+          "target_node_id": {
+            "title": "Target Node Id",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "edge_id",
+          "source_node_id",
+          "target_node_id",
+          "relation_type"
+        ],
+        "title": "MemoryGraphEdgeResponse",
+        "type": "object"
+      },
+      "MemoryGraphEvidenceResponse": {
+        "properties": {
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "evidence_id": {
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "excerpt": {
+            "default": "",
+            "title": "Excerpt",
             "type": "string"
           },
           "label": {
             "title": "Label",
             "type": "string"
           },
-          "risk_tier": {
+          "relative_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Relative Path"
+          },
+          "source_type": {
+            "title": "Source Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "evidence_id",
+          "source_type",
+          "label",
+          "confidence",
+          "created_at"
+        ],
+        "title": "MemoryGraphEvidenceResponse",
+        "type": "object"
+      },
+      "MemoryGraphGenerationResponse": {
+        "properties": {
+          "backend": {
+            "default": "sqlite",
+            "enum": [
+              "sqlite",
+              "kuzu"
+            ],
+            "title": "Backend",
+            "type": "string"
+          },
+          "fallback_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fallback Code"
+          },
+          "generation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generation Id"
+          },
+          "source_revision": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Source Revision",
+            "type": "integer"
+          },
+          "status": {
+            "default": "unavailable",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "title": "MemoryGraphGenerationResponse",
+        "type": "object"
+      },
+      "MemoryGraphLifecycleResponse": {
+        "properties": {
+          "active_for_recall": {
+            "default": false,
+            "title": "Active For Recall",
+            "type": "boolean"
+          },
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "confidence",
+          "updated_at"
+        ],
+        "title": "MemoryGraphLifecycleResponse",
+        "type": "object"
+      },
+      "MemoryGraphNodeDetailResponse": {
+        "properties": {
+          "allowed_actions": {
+            "items": {
+              "enum": [
+                "confirm",
+                "correct",
+                "forget",
+                "archive"
+              ],
+              "type": "string"
+            },
+            "title": "Allowed Actions",
+            "type": "array"
+          },
+          "claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Claim Ids",
+            "type": "array"
+          },
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "edge_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Edge Ids",
+            "type": "array"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/MemoryGraphEvidenceResponse"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "evidence_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Evidence Count",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "entity",
+              "claim",
+              "source",
+              "wiki_page",
+              "projection"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "lifecycle": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MemoryGraphLifecycleResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "node_id": {
+            "title": "Node Id",
+            "type": "string"
+          },
+          "redaction_note": {
+            "default": "原始证据和本机路径仅按需显示。",
+            "title": "Redaction Note",
+            "type": "string"
+          },
+          "risk": {
             "enum": [
               "low",
+              "medium",
+              "high",
               "hidden"
             ],
-            "title": "Risk Tier",
+            "title": "Risk",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "subtitle": {
+            "default": "",
+            "title": "Subtitle",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version_chain": {
+            "items": {
+              "$ref": "#/components/schemas/MemoryGraphVersionResponse"
+            },
+            "title": "Version Chain",
+            "type": "array"
+          },
+          "wiki_pages": {
+            "items": {
+              "$ref": "#/components/schemas/MemoryGraphWikiBindingResponse"
+            },
+            "title": "Wiki Pages",
+            "type": "array"
+          }
+        },
+        "required": [
+          "node_id",
+          "kind",
+          "type",
+          "label",
+          "status",
+          "risk",
+          "confidence",
+          "updated_at"
+        ],
+        "title": "MemoryGraphNodeDetailResponse",
+        "type": "object"
+      },
+      "MemoryGraphNodeResponse": {
+        "properties": {
+          "allowed_actions": {
+            "items": {
+              "enum": [
+                "confirm",
+                "correct",
+                "forget",
+                "archive"
+              ],
+              "type": "string"
+            },
+            "title": "Allowed Actions",
+            "type": "array"
+          },
+          "confidence": {
+            "default": 0.0,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "confidence_label": {
+            "title": "Confidence Label",
+            "type": "string"
+          },
+          "evidence_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Evidence Count",
+            "type": "integer"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "node_id": {
+            "title": "Node Id",
+            "type": "string"
+          },
+          "risk": {
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "hidden"
+            ],
+            "title": "Risk",
             "type": "string"
           },
           "size": {
@@ -3414,32 +3786,114 @@
           }
         },
         "required": [
-          "id",
+          "node_id",
           "type",
           "label",
           "subtitle",
           "status",
-          "risk_tier",
+          "risk",
           "size",
           "confidence_label",
           "source_label",
           "updated_at"
         ],
-        "title": "MemoryGraphProjectionNodeResponse",
+        "title": "MemoryGraphNodeResponse",
         "type": "object"
       },
-      "MemoryGraphProjectionResponse": {
+      "MemoryGraphRebuildResponse": {
+        "properties": {
+          "backend": {
+            "default": "kuzu",
+            "enum": [
+              "sqlite",
+              "kuzu"
+            ],
+            "title": "Backend",
+            "type": "string"
+          },
+          "degraded": {
+            "default": false,
+            "title": "Degraded",
+            "type": "boolean"
+          },
+          "edge_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Edge Count",
+            "type": "integer"
+          },
+          "fallback_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fallback Code"
+          },
+          "generation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generation Id"
+          },
+          "node_count": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Node Count",
+            "type": "integer"
+          },
+          "operation_id": {
+            "title": "Operation Id",
+            "type": "string"
+          },
+          "replayed": {
+            "default": false,
+            "title": "Replayed",
+            "type": "boolean"
+          },
+          "source_revision": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Source Revision",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operation_id",
+          "status"
+        ],
+        "title": "MemoryGraphRebuildResponse",
+        "type": "object"
+      },
+      "MemoryGraphResponse": {
         "properties": {
           "clusters": {
             "items": {
-              "$ref": "#/components/schemas/MemoryGraphProjectionClusterResponse"
+              "$ref": "#/components/schemas/MemoryGraphClusterResponse"
             },
             "title": "Clusters",
             "type": "array"
           },
+          "degraded_mode": {
+            "default": false,
+            "title": "Degraded Mode",
+            "type": "boolean"
+          },
           "edges": {
             "items": {
-              "$ref": "#/components/schemas/MemoryGraphProjectionEdgeResponse"
+              "$ref": "#/components/schemas/MemoryGraphEdgeResponse"
             },
             "title": "Edges",
             "type": "array"
@@ -3448,9 +3902,12 @@
             "title": "Generated At",
             "type": "string"
           },
+          "generation": {
+            "$ref": "#/components/schemas/MemoryGraphGenerationResponse"
+          },
           "nodes": {
             "items": {
-              "$ref": "#/components/schemas/MemoryGraphProjectionNodeResponse"
+              "$ref": "#/components/schemas/MemoryGraphNodeResponse"
             },
             "title": "Nodes",
             "type": "array"
@@ -3460,17 +3917,27 @@
             "title": "Redaction Note",
             "type": "string"
           },
+          "schema_version": {
+            "default": "llmwiki-graph-v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
           "summary": {
-            "$ref": "#/components/schemas/MemoryGraphProjectionSummaryResponse"
+            "$ref": "#/components/schemas/MemoryGraphSummaryResponse"
+          },
+          "vault": {
+            "$ref": "#/components/schemas/MemoryGraphVaultScopeResponse"
           }
         },
         "required": [
-          "generated_at"
+          "generated_at",
+          "vault",
+          "generation"
         ],
-        "title": "MemoryGraphProjectionResponse",
+        "title": "MemoryGraphResponse",
         "type": "object"
       },
-      "MemoryGraphProjectionSummaryResponse": {
+      "MemoryGraphSummaryResponse": {
         "properties": {
           "cleanup_count": {
             "default": 0,
@@ -3493,7 +3960,102 @@
             "type": "integer"
           }
         },
-        "title": "MemoryGraphProjectionSummaryResponse",
+        "title": "MemoryGraphSummaryResponse",
+        "type": "object"
+      },
+      "MemoryGraphVaultScopeResponse": {
+        "properties": {
+          "label": {
+            "default": "active_vault",
+            "title": "Label",
+            "type": "string"
+          },
+          "vault_id": {
+            "title": "Vault Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "vault_id"
+        ],
+        "title": "MemoryGraphVaultScopeResponse",
+        "type": "object"
+      },
+      "MemoryGraphVersionResponse": {
+        "properties": {
+          "current": {
+            "default": false,
+            "title": "Current",
+            "type": "boolean"
+          },
+          "object_id": {
+            "title": "Object Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "object_id",
+          "status",
+          "updated_at"
+        ],
+        "title": "MemoryGraphVersionResponse",
+        "type": "object"
+      },
+      "MemoryGraphWikiBindingResponse": {
+        "properties": {
+          "binding_id": {
+            "title": "Binding Id",
+            "type": "string"
+          },
+          "content_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Hash"
+          },
+          "relative_path": {
+            "title": "Relative Path",
+            "type": "string"
+          },
+          "revision": {
+            "default": 0,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "binding_id",
+          "title",
+          "relative_path",
+          "status",
+          "updated_at"
+        ],
+        "title": "MemoryGraphWikiBindingResponse",
         "type": "object"
       },
       "MemoryHygieneActionRequest": {
@@ -3634,385 +4196,6 @@
           "action_label"
         ],
         "title": "MemoryHygieneSuggestionResponse",
-        "type": "object"
-      },
-      "MemoryProfileActionRequest": {
-        "properties": {
-          "action": {
-            "enum": [
-              "forget",
-              "mark_inaccurate",
-              "keep",
-              "make_temporary",
-              "mark_stale"
-            ],
-            "title": "Action",
-            "type": "string"
-          },
-          "confirmed": {
-            "default": false,
-            "title": "Confirmed",
-            "type": "boolean"
-          },
-          "expires_at": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Expires At"
-          },
-          "feedback_text": {
-            "default": "",
-            "title": "Feedback Text",
-            "type": "string"
-          }
-        },
-        "required": [
-          "action"
-        ],
-        "title": "MemoryProfileActionRequest",
-        "type": "object"
-      },
-      "MemoryProfileActionResponse": {
-        "properties": {
-          "item_id": {
-            "title": "Item Id",
-            "type": "string"
-          },
-          "message": {
-            "title": "Message",
-            "type": "string"
-          },
-          "ok": {
-            "title": "Ok",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "ok",
-          "message",
-          "item_id"
-        ],
-        "title": "MemoryProfileActionResponse",
-        "type": "object"
-      },
-      "MemoryProfileAvailableActionResponse": {
-        "properties": {
-          "action": {
-            "enum": [
-              "forget",
-              "mark_inaccurate",
-              "keep",
-              "make_temporary",
-              "mark_stale"
-            ],
-            "title": "Action",
-            "type": "string"
-          },
-          "label": {
-            "title": "Label",
-            "type": "string"
-          },
-          "requires_confirmation": {
-            "default": true,
-            "title": "Requires Confirmation",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "action",
-          "label"
-        ],
-        "title": "MemoryProfileAvailableActionResponse",
-        "type": "object"
-      },
-      "MemoryProfileDetailResponse": {
-        "properties": {
-          "available_actions": {
-            "items": {
-              "$ref": "#/components/schemas/MemoryProfileAvailableActionResponse"
-            },
-            "title": "Available Actions",
-            "type": "array"
-          },
-          "category_label": {
-            "title": "Category Label",
-            "type": "string"
-          },
-          "confidence_label": {
-            "title": "Confidence Label",
-            "type": "string"
-          },
-          "id": {
-            "title": "Id",
-            "type": "string"
-          },
-          "importance_label": {
-            "title": "Importance Label",
-            "type": "string"
-          },
-          "permissions": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Permissions",
-            "type": "array"
-          },
-          "safety_note": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Safety Note"
-          },
-          "source_label": {
-            "title": "Source Label",
-            "type": "string"
-          },
-          "source_summary": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/MemoryProfileSourceSummaryResponse"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "status_label": {
-            "title": "Status Label",
-            "type": "string"
-          },
-          "summary": {
-            "title": "Summary",
-            "type": "string"
-          },
-          "updated_at": {
-            "title": "Updated At",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "summary",
-          "category_label",
-          "status_label",
-          "confidence_label",
-          "importance_label",
-          "source_label",
-          "updated_at"
-        ],
-        "title": "MemoryProfileDetailResponse",
-        "type": "object"
-      },
-      "MemoryProfileProjectionItemResponse": {
-        "properties": {
-          "available_actions": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Available Actions",
-            "type": "array"
-          },
-          "can_revoke": {
-            "default": false,
-            "title": "Can Revoke",
-            "type": "boolean"
-          },
-          "category": {
-            "title": "Category",
-            "type": "string"
-          },
-          "confidence": {
-            "title": "Confidence",
-            "type": "number"
-          },
-          "id": {
-            "title": "Id",
-            "type": "string"
-          },
-          "importance": {
-            "title": "Importance",
-            "type": "number"
-          },
-          "permissions_summary": {
-            "title": "Permissions Summary",
-            "type": "string"
-          },
-          "risk_label": {
-            "title": "Risk Label",
-            "type": "string"
-          },
-          "source_label": {
-            "title": "Source Label",
-            "type": "string"
-          },
-          "status_label": {
-            "title": "Status Label",
-            "type": "string"
-          },
-          "summary": {
-            "title": "Summary",
-            "type": "string"
-          },
-          "updated_at": {
-            "title": "Updated At",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "category",
-          "summary",
-          "confidence",
-          "importance",
-          "status_label",
-          "risk_label",
-          "source_label",
-          "updated_at",
-          "permissions_summary"
-        ],
-        "title": "MemoryProfileProjectionItemResponse",
-        "type": "object"
-      },
-      "MemoryProfileProjectionResponse": {
-        "properties": {
-          "boundaries": {
-            "items": {
-              "$ref": "#/components/schemas/MemoryProfileProjectionItemResponse"
-            },
-            "title": "Boundaries",
-            "type": "array"
-          },
-          "conflicts": {
-            "items": {
-              "$ref": "#/components/schemas/MemoryProfileProjectionItemResponse"
-            },
-            "title": "Conflicts",
-            "type": "array"
-          },
-          "filtered": {
-            "items": {
-              "$ref": "#/components/schemas/MemoryProfileProjectionItemResponse"
-            },
-            "title": "Filtered",
-            "type": "array"
-          },
-          "generated_at": {
-            "title": "Generated At",
-            "type": "string"
-          },
-          "identity": {
-            "items": {
-              "$ref": "#/components/schemas/MemoryProfileProjectionItemResponse"
-            },
-            "title": "Identity",
-            "type": "array"
-          },
-          "needs_confirmation": {
-            "items": {
-              "$ref": "#/components/schemas/MemoryProfileProjectionItemResponse"
-            },
-            "title": "Needs Confirmation",
-            "type": "array"
-          },
-          "preferences": {
-            "items": {
-              "$ref": "#/components/schemas/MemoryProfileProjectionItemResponse"
-            },
-            "title": "Preferences",
-            "type": "array"
-          },
-          "projects": {
-            "items": {
-              "$ref": "#/components/schemas/MemoryProfileProjectionItemResponse"
-            },
-            "title": "Projects",
-            "type": "array"
-          },
-          "recent_state": {
-            "items": {
-              "$ref": "#/components/schemas/MemoryProfileProjectionItemResponse"
-            },
-            "title": "Recent State",
-            "type": "array"
-          },
-          "redaction_note": {
-            "default": "敏感内容、原始证据、凭据、完整授权信息和本机绝对路径不会显示在画像里。",
-            "title": "Redaction Note",
-            "type": "string"
-          },
-          "relationships": {
-            "items": {
-              "$ref": "#/components/schemas/MemoryProfileProjectionItemResponse"
-            },
-            "title": "Relationships",
-            "type": "array"
-          }
-        },
-        "required": [
-          "generated_at"
-        ],
-        "title": "MemoryProfileProjectionResponse",
-        "type": "object"
-      },
-      "MemoryProfileSourceSummaryResponse": {
-        "properties": {
-          "description": {
-            "title": "Description",
-            "type": "string"
-          },
-          "evidence_count_label": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Evidence Count Label"
-          },
-          "label": {
-            "title": "Label",
-            "type": "string"
-          },
-          "last_seen_label": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Seen Label"
-          },
-          "safety_note": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Safety Note"
-          }
-        },
-        "required": [
-          "label",
-          "description"
-        ],
-        "title": "MemoryProfileSourceSummaryResponse",
         "type": "object"
       },
       "MemoryProposalActionResponse": {
@@ -4654,6 +4837,13 @@
             "title": "Chunk Id",
             "type": "string"
           },
+          "citation_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Citation Refs",
+            "type": "array"
+          },
           "content_hash": {
             "anyOf": [
               {
@@ -4664,6 +4854,20 @@
               }
             ],
             "title": "Content Hash"
+          },
+          "entity_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Entity Refs",
+            "type": "array"
+          },
+          "evidence_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Refs",
+            "type": "array"
           },
           "fact_id": {
             "anyOf": [
@@ -4806,6 +5010,110 @@
           "score"
         ],
         "title": "MemorySearchResult",
+        "type": "object"
+      },
+      "MetricValueResponse": {
+        "properties": {
+          "denominator": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "default": 0,
+            "title": "Denominator"
+          },
+          "evidence_status": {
+            "enum": [
+              "sufficient",
+              "insufficient_sample"
+            ],
+            "title": "Evidence Status",
+            "type": "string"
+          },
+          "numerator": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "default": 0,
+            "title": "Numerator"
+          },
+          "p50_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P50 Ms"
+          },
+          "p95_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P95 Ms"
+          },
+          "queue_peak": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Queue Peak"
+          },
+          "revocation_count": {
+            "default": 0,
+            "title": "Revocation Count",
+            "type": "integer"
+          },
+          "sample_size": {
+            "default": 0,
+            "title": "Sample Size",
+            "type": "integer"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "window_days": {
+            "enum": [
+              7,
+              30
+            ],
+            "title": "Window Days",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "window_days",
+          "evidence_status"
+        ],
+        "title": "MetricValueResponse",
         "type": "object"
       },
       "ModelConfigRequest": {
@@ -5511,6 +5819,129 @@
         "title": "QueryArchiveResponse",
         "type": "object"
       },
+      "RecallFeedbackRequest": {
+        "properties": {
+          "answer_reference": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "pattern": "^(?:answer[-_]|recall[-_]|claim_|candidate_|fact_|entity_|wiki_|source_|reminder_|action_|lookup_|message_|run_|sidecar_|citation_)[A-Za-z0-9][A-Za-z0-9._:-]{7,159}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answer Reference"
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "maximum": 86400000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms"
+          },
+          "reference": {
+            "maxLength": 160,
+            "minLength": 1,
+            "pattern": "^(?:answer[-_]|recall[-_]|claim_|candidate_|fact_|entity_|wiki_|source_|reminder_|action_|lookup_|message_|run_|sidecar_|citation_)[A-Za-z0-9][A-Za-z0-9._:-]{7,159}$",
+            "title": "Reference",
+            "type": "string"
+          },
+          "repetition_count": {
+            "anyOf": [
+              {
+                "maximum": 1000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repetition Count"
+          },
+          "signal": {
+            "enum": [
+              "helpful",
+              "incorrect",
+              "missing",
+              "context_repeated",
+              "context_not_repeated",
+              "wiki_reused"
+            ],
+            "title": "Signal",
+            "type": "string"
+          },
+          "source_scope": {
+            "default": "personal_memory",
+            "maxLength": 40,
+            "pattern": "^[A-Za-z0-9_:-]+$",
+            "title": "Source Scope",
+            "type": "string"
+          },
+          "wiki_reference": {
+            "anyOf": [
+              {
+                "maxLength": 160,
+                "pattern": "^(?:answer[-_]|recall[-_]|claim_|candidate_|fact_|entity_|wiki_|source_|reminder_|action_|lookup_|message_|run_|sidecar_|citation_)[A-Za-z0-9][A-Za-z0-9._:-]{7,159}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wiki Reference"
+          }
+        },
+        "required": [
+          "signal",
+          "reference"
+        ],
+        "title": "RecallFeedbackRequest",
+        "type": "object"
+      },
+      "RecallFeedbackResponse": {
+        "properties": {
+          "event_id": {
+            "title": "Event Id",
+            "type": "string"
+          },
+          "signal": {
+            "enum": [
+              "helpful",
+              "incorrect",
+              "missing",
+              "context_repeated",
+              "context_not_repeated",
+              "wiki_reused"
+            ],
+            "title": "Signal",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "recorded",
+              "replayed"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "event_id",
+          "signal"
+        ],
+        "title": "RecallFeedbackResponse",
+        "type": "object"
+      },
       "RejectProposalRequest": {
         "properties": {
           "reason": {
@@ -5523,6 +5954,189 @@
           "reason"
         ],
         "title": "RejectProposalRequest",
+        "type": "object"
+      },
+      "ReminderDeliveryAttemptResponse": {
+        "properties": {
+          "attempt_id": {
+            "title": "Attempt Id",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "dispatch_kind": {
+            "enum": [
+              "automatic",
+              "manual"
+            ],
+            "title": "Dispatch Kind",
+            "type": "string"
+          },
+          "display_invoked_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Invoked At"
+          },
+          "duplicate": {
+            "default": false,
+            "title": "Duplicate",
+            "type": "boolean"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "idempotency_key": {
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "reminder_id": {
+            "title": "Reminder Id",
+            "type": "string"
+          },
+          "reserved_at": {
+            "title": "Reserved At",
+            "type": "string"
+          },
+          "result_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Code"
+          },
+          "status": {
+            "enum": [
+              "reserved",
+              "display_invoked",
+              "unknown_after_crash",
+              "unsupported",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "trigger_at": {
+            "title": "Trigger At",
+            "type": "string"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "attempt_id",
+          "reminder_id",
+          "trigger_at",
+          "dispatch_kind",
+          "idempotency_key",
+          "status",
+          "reserved_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ReminderDeliveryAttemptResponse",
+        "type": "object"
+      },
+      "ReminderDeliveryReserveRequest": {
+        "properties": {
+          "dispatch_kind": {
+            "default": "automatic",
+            "enum": [
+              "automatic",
+              "manual"
+            ],
+            "title": "Dispatch Kind",
+            "type": "string"
+          },
+          "reminder_id": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Reminder Id",
+            "type": "string"
+          },
+          "trigger_at": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Trigger At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reminder_id",
+          "trigger_at"
+        ],
+        "title": "ReminderDeliveryReserveRequest",
+        "type": "object"
+      },
+      "ReminderDeliveryResultRequest": {
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "result_code": {
+            "enum": [
+              "shown",
+              "unsupported",
+              "failed"
+            ],
+            "title": "Result Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "result_code"
+        ],
+        "title": "ReminderDeliveryResultRequest",
+        "type": "object"
+      },
+      "ReminderRuntimeRecoveryResponse": {
+        "properties": {
+          "recovered_reminders": {
+            "minimum": 0.0,
+            "title": "Recovered Reminders",
+            "type": "integer"
+          },
+          "unknown_attempts": {
+            "minimum": 0.0,
+            "title": "Unknown Attempts",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "unknown_attempts",
+          "recovered_reminders"
+        ],
+        "title": "ReminderRuntimeRecoveryResponse",
         "type": "object"
       },
       "RetrievalContribution": {
@@ -6072,6 +6686,88 @@
           }
         },
         "title": "SettingsStatusResponse",
+        "type": "object"
+      },
+      "SidecarRecoveryRequest": {
+        "properties": {
+          "cause": {
+            "enum": [
+              "process_exited",
+              "spawn_failed",
+              "startup_failed",
+              "readiness_failed"
+            ],
+            "title": "Cause",
+            "type": "string"
+          },
+          "incident_id": {
+            "pattern": "^[a-f0-9]{32}$",
+            "title": "Incident Id",
+            "type": "string"
+          },
+          "ready_at": {
+            "format": "date-time",
+            "title": "Ready At",
+            "type": "string"
+          },
+          "restart_attempt": {
+            "maximum": 5.0,
+            "minimum": 1.0,
+            "title": "Restart Attempt",
+            "type": "integer"
+          },
+          "unhealthy_at": {
+            "format": "date-time",
+            "title": "Unhealthy At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "incident_id",
+          "unhealthy_at",
+          "ready_at",
+          "cause",
+          "restart_attempt"
+        ],
+        "title": "SidecarRecoveryRequest",
+        "type": "object"
+      },
+      "SidecarRecoveryResponse": {
+        "properties": {
+          "incident_id": {
+            "title": "Incident Id",
+            "type": "string"
+          },
+          "ready_event_id": {
+            "title": "Ready Event Id",
+            "type": "string"
+          },
+          "recovery_time_ms": {
+            "minimum": 0.0,
+            "title": "Recovery Time Ms",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "recorded",
+              "replayed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "unhealthy_event_id": {
+            "title": "Unhealthy Event Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "incident_id",
+          "unhealthy_event_id",
+          "ready_event_id",
+          "recovery_time_ms"
+        ],
+        "title": "SidecarRecoveryResponse",
         "type": "object"
       },
       "TaskApprovalResponse": {
@@ -8728,6 +9424,20 @@
             "title": "Disputed",
             "type": "boolean"
           },
+          "entity_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Entity Ids",
+            "type": "array"
+          },
+          "evidence_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Ids",
+            "type": "array"
+          },
           "expiry": {
             "anyOf": [
               {
@@ -8738,6 +9448,18 @@
               }
             ],
             "title": "Expiry"
+          },
+          "fact_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Fact Ids",
+            "type": "array"
+          },
+          "inference": {
+            "default": false,
+            "title": "Inference",
+            "type": "boolean"
           },
           "links": {
             "items": {
@@ -8755,6 +9477,12 @@
             ],
             "title": "Operation",
             "type": "string"
+          },
+          "revision": {
+            "default": 1,
+            "minimum": 1.0,
+            "title": "Revision",
+            "type": "integer"
           },
           "section": {
             "anyOf": [
@@ -8818,6 +9546,28 @@
               }
             ],
             "title": "Type"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "wiki_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wiki Id"
           }
         },
         "required": [
@@ -9007,12 +9757,44 @@
             "title": "Content",
             "type": "string"
           },
+          "entity_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Entity Ids",
+            "type": "array"
+          },
+          "evidence_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Ids",
+            "type": "array"
+          },
+          "fact_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Fact Ids",
+            "type": "array"
+          },
           "links": {
             "items": {
               "type": "string"
             },
             "title": "Links",
             "type": "array"
+          },
+          "page_type": {
+            "default": "synthesis",
+            "enum": [
+              "synthesis",
+              "comparison",
+              "decision",
+              "report"
+            ],
+            "title": "Page Type",
+            "type": "string"
           },
           "source_paths": {
             "items": {
@@ -9043,6 +9825,17 @@
             "minLength": 1,
             "title": "Title",
             "type": "string"
+          },
+          "user_decision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Decision"
           }
         },
         "required": [
@@ -9736,6 +10529,54 @@
         ]
       }
     },
+    "/api/diagnostics/memory-graph/rebuild": {
+      "post": {
+        "description": "Rebuild only the derived Kuzu projection; SQLite remains authoritative.",
+        "operationId": "rebuild_memory_graph_projection_api_diagnostics_memory_graph_rebuild_post",
+        "parameters": [
+          {
+            "description": "Stable identifier for one local write intent. Retries must reuse the same value.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "description": "Stable identifier for one local write intent. Retries must reuse the same value.",
+              "maxLength": 64,
+              "minLength": 64,
+              "pattern": "^[0-9a-f]{64}$",
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryGraphRebuildResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rebuild Memory Graph Projection",
+        "tags": [
+          "diagnostics"
+        ]
+      }
+    },
     "/api/diagnostics/negotiation-stats": {
       "get": {
         "operationId": "negotiation_stats_api_diagnostics_negotiation_stats_get",
@@ -10146,79 +10987,10 @@
         ]
       }
     },
-    "/api/memory/graph-projection": {
+    "/api/memory/graph": {
       "get": {
-        "operationId": "get_memory_graph_projection_api_memory_graph_projection_get",
+        "operationId": "get_memory_graph_api_memory_graph_get",
         "parameters": [
-          {
-            "in": "query",
-            "name": "max_nodes",
-            "required": false,
-            "schema": {
-              "default": 40,
-              "title": "Max Nodes",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MemoryGraphProjectionResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Memory Graph Projection",
-        "tags": [
-          "memory"
-        ]
-      }
-    },
-    "/api/memory/graph/export-preview": {
-      "get": {
-        "operationId": "export_memory_graph_preview_api_memory_graph_export_preview_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "format",
-            "required": false,
-            "schema": {
-              "default": "markdown",
-              "title": "Format",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "status",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Status"
-            }
-          },
           {
             "in": "query",
             "name": "query",
@@ -10226,6 +10998,7 @@
             "schema": {
               "anyOf": [
                 {
+                  "maxLength": 200,
                   "type": "string"
                 },
                 {
@@ -10237,54 +11010,12 @@
           },
           {
             "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 100,
-              "title": "Limit",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MemoryGraphExportPreviewResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Export Memory Graph Preview",
-        "tags": [
-          "memory"
-        ]
-      }
-    },
-    "/api/memory/graph/facts": {
-      "get": {
-        "operationId": "list_memory_graph_facts_api_memory_graph_facts_get",
-        "parameters": [
-          {
-            "in": "query",
             "name": "status",
             "required": false,
             "schema": {
               "anyOf": [
                 {
+                  "maxLength": 40,
                   "type": "string"
                 },
                 {
@@ -10296,18 +11027,19 @@
           },
           {
             "in": "query",
-            "name": "query",
+            "name": "entity_type",
             "required": false,
             "schema": {
               "anyOf": [
                 {
+                  "maxLength": 40,
                   "type": "string"
                 },
                 {
                   "type": "null"
                 }
               ],
-              "title": "Query"
+              "title": "Entity Type"
             }
           },
           {
@@ -10315,7 +11047,9 @@
             "name": "limit",
             "required": false,
             "schema": {
-              "default": 50,
+              "default": 60,
+              "maximum": 80,
+              "minimum": 5,
               "title": "Limit",
               "type": "integer"
             }
@@ -10326,7 +11060,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MemoryGraphFactListResponse"
+                  "$ref": "#/components/schemas/MemoryGraphResponse"
                 }
               }
             },
@@ -10343,73 +11077,22 @@
             "description": "Validation Error"
           }
         },
-        "summary": "List Memory Graph Facts",
+        "summary": "Get Memory Graph",
         "tags": [
           "memory"
         ]
       }
     },
-    "/api/memory/graph/facts/{fact_id}/actions/{action}": {
-      "post": {
-        "operationId": "apply_memory_graph_fact_action_api_memory_graph_facts__fact_id__actions__action__post",
+    "/api/memory/graph/claims/{claim_id}": {
+      "get": {
+        "operationId": "get_memory_graph_claim_api_memory_graph_claims__claim_id__get",
         "parameters": [
           {
             "in": "path",
-            "name": "fact_id",
+            "name": "claim_id",
             "required": true,
             "schema": {
-              "title": "Fact Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "action",
-            "required": true,
-            "schema": {
-              "$ref": "#/components/schemas/MemoryGraphFactAction"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MemoryGraphFactActionResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Apply Memory Graph Fact Action",
-        "tags": [
-          "memory"
-        ]
-      }
-    },
-    "/api/memory/graph/facts/{fact_id}/archive": {
-      "post": {
-        "deprecated": true,
-        "operationId": "archive_memory_graph_fact_api_memory_graph_facts__fact_id__archive_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "fact_id",
-            "required": true,
-            "schema": {
-              "title": "Fact Id",
+              "title": "Claim Id",
               "type": "string"
             }
           }
@@ -10419,7 +11102,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MemoryGraphFactActionResponse"
+                  "$ref": "#/components/schemas/MemoryGraphClaimDetailResponse"
                 }
               }
             },
@@ -10436,23 +11119,88 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Archive Memory Graph Fact",
+        "summary": "Get Memory Graph Claim",
         "tags": [
           "memory"
         ]
       }
     },
-    "/api/memory/graph/facts/{fact_id}/confirm": {
+    "/api/memory/graph/claims/{claim_id}/actions": {
       "post": {
-        "deprecated": true,
-        "operationId": "confirm_memory_graph_fact_api_memory_graph_facts__fact_id__confirm_post",
+        "operationId": "act_on_memory_graph_claim_api_memory_graph_claims__claim_id__actions_post",
         "parameters": [
           {
             "in": "path",
-            "name": "fact_id",
+            "name": "claim_id",
             "required": true,
             "schema": {
-              "title": "Fact Id",
+              "title": "Claim Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable identifier for one local write intent. Retries must reuse the same value.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "description": "Stable identifier for one local write intent. Retries must reuse the same value.",
+              "maxLength": 64,
+              "minLength": 64,
+              "pattern": "^[0-9a-f]{64}$",
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryGraphActionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryGraphActionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Act On Memory Graph Claim",
+        "tags": [
+          "memory"
+        ]
+      }
+    },
+    "/api/memory/graph/edges/{edge_id}": {
+      "get": {
+        "operationId": "get_memory_graph_edge_api_memory_graph_edges__edge_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "edge_id",
+            "required": true,
+            "schema": {
+              "title": "Edge Id",
               "type": "string"
             }
           }
@@ -10462,7 +11210,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MemoryGraphFactActionResponse"
+                  "$ref": "#/components/schemas/MemoryGraphEdgeDetailResponse"
                 }
               }
             },
@@ -10479,23 +11227,88 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Confirm Memory Graph Fact",
+        "summary": "Get Memory Graph Edge",
         "tags": [
           "memory"
         ]
       }
     },
-    "/api/memory/graph/facts/{fact_id}/reject": {
+    "/api/memory/graph/edges/{edge_id}/actions": {
       "post": {
-        "deprecated": true,
-        "operationId": "reject_memory_graph_fact_api_memory_graph_facts__fact_id__reject_post",
+        "operationId": "act_on_memory_graph_edge_api_memory_graph_edges__edge_id__actions_post",
         "parameters": [
           {
             "in": "path",
-            "name": "fact_id",
+            "name": "edge_id",
             "required": true,
             "schema": {
-              "title": "Fact Id",
+              "title": "Edge Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable identifier for one local write intent. Retries must reuse the same value.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "description": "Stable identifier for one local write intent. Retries must reuse the same value.",
+              "maxLength": 64,
+              "minLength": 64,
+              "pattern": "^[0-9a-f]{64}$",
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryGraphActionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryGraphActionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Act On Memory Graph Edge",
+        "tags": [
+          "memory"
+        ]
+      }
+    },
+    "/api/memory/graph/nodes/{node_id}": {
+      "get": {
+        "operationId": "get_memory_graph_node_api_memory_graph_nodes__node_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "node_id",
+            "required": true,
+            "schema": {
+              "title": "Node Id",
               "type": "string"
             }
           }
@@ -10505,7 +11318,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MemoryGraphFactActionResponse"
+                  "$ref": "#/components/schemas/MemoryGraphNodeDetailResponse"
                 }
               }
             },
@@ -10522,33 +11335,56 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Reject Memory Graph Fact",
+        "summary": "Get Memory Graph Node",
         "tags": [
           "memory"
         ]
       }
     },
-    "/api/memory/graph/facts/{fact_id}/sensitive-block": {
+    "/api/memory/graph/nodes/{node_id}/actions": {
       "post": {
-        "deprecated": true,
-        "operationId": "sensitive_block_memory_graph_fact_api_memory_graph_facts__fact_id__sensitive_block_post",
+        "operationId": "act_on_memory_graph_node_api_memory_graph_nodes__node_id__actions_post",
         "parameters": [
           {
             "in": "path",
-            "name": "fact_id",
+            "name": "node_id",
             "required": true,
             "schema": {
-              "title": "Fact Id",
+              "title": "Node Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Stable identifier for one local write intent. Retries must reuse the same value.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "description": "Stable identifier for one local write intent. Retries must reuse the same value.",
+              "maxLength": 64,
+              "minLength": 64,
+              "pattern": "^[0-9a-f]{64}$",
+              "title": "Idempotency-Key",
               "type": "string"
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryGraphActionRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MemoryGraphFactActionResponse"
+                  "$ref": "#/components/schemas/MemoryGraphActionResponse"
                 }
               }
             },
@@ -10565,50 +11401,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Sensitive Block Memory Graph Fact",
-        "tags": [
-          "memory"
-        ]
-      }
-    },
-    "/api/memory/graph/facts/{fact_id}/wrong": {
-      "post": {
-        "deprecated": true,
-        "operationId": "wrong_memory_graph_fact_api_memory_graph_facts__fact_id__wrong_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "fact_id",
-            "required": true,
-            "schema": {
-              "title": "Fact Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MemoryGraphFactActionResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Wrong Memory Graph Fact",
+        "summary": "Act On Memory Graph Node",
         "tags": [
           "memory"
         ]
@@ -10714,143 +11507,6 @@
           }
         },
         "summary": "Get Local Asset Stats",
-        "tags": [
-          "memory"
-        ]
-      }
-    },
-    "/api/memory/profile-projection": {
-      "get": {
-        "operationId": "get_memory_profile_projection_api_memory_profile_projection_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 120,
-              "title": "Limit",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MemoryProfileProjectionResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Memory Profile Projection",
-        "tags": [
-          "memory"
-        ]
-      }
-    },
-    "/api/memory/profile-projection/items/{item_id}": {
-      "get": {
-        "operationId": "get_memory_profile_projection_item_api_memory_profile_projection_items__item_id__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "item_id",
-            "required": true,
-            "schema": {
-              "title": "Item Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MemoryProfileDetailResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Get Memory Profile Projection Item",
-        "tags": [
-          "memory"
-        ]
-      }
-    },
-    "/api/memory/profile-projection/items/{item_id}/actions": {
-      "post": {
-        "operationId": "apply_memory_profile_projection_action_api_memory_profile_projection_items__item_id__actions_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "item_id",
-            "required": true,
-            "schema": {
-              "title": "Item Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/MemoryProfileActionRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MemoryProfileActionResponse"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Apply Memory Profile Projection Action",
         "tags": [
           "memory"
         ]
@@ -11263,6 +11919,167 @@
         "summary": "Search Memory",
         "tags": [
           "memory"
+        ]
+      }
+    },
+    "/api/metrics/local-impact": {
+      "get": {
+        "operationId": "get_local_impact_api_metrics_local_impact_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "window_days",
+            "required": false,
+            "schema": {
+              "default": 7,
+              "enum": [
+                7,
+                30
+              ],
+              "title": "Window Days",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalImpactResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Local Impact",
+        "tags": [
+          "metrics"
+        ]
+      }
+    },
+    "/api/metrics/recall-feedback": {
+      "post": {
+        "operationId": "record_recall_feedback_api_metrics_recall_feedback_post",
+        "parameters": [
+          {
+            "description": "Stable identifier for one local write intent. Retries must reuse the same value.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "description": "Stable identifier for one local write intent. Retries must reuse the same value.",
+              "maxLength": 64,
+              "minLength": 64,
+              "pattern": "^[0-9a-f]{64}$",
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecallFeedbackRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecallFeedbackResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Record Recall Feedback",
+        "tags": [
+          "metrics"
+        ]
+      }
+    },
+    "/api/metrics/sidecar-recovery": {
+      "post": {
+        "operationId": "record_sidecar_recovery_api_metrics_sidecar_recovery_post",
+        "parameters": [
+          {
+            "description": "Stable identifier for one local write intent. Retries must reuse the same value.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "description": "Stable identifier for one local write intent. Retries must reuse the same value.",
+              "maxLength": 64,
+              "minLength": 64,
+              "pattern": "^[0-9a-f]{64}$",
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SidecarRecoveryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SidecarRecoveryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Record Sidecar Recovery",
+        "tags": [
+          "metrics"
         ]
       }
     },
@@ -11942,6 +12759,136 @@
           }
         },
         "summary": "Get Current Task",
+        "tags": [
+          "tasks"
+        ]
+      }
+    },
+    "/api/tasks/reminder-delivery/attempts/{attempt_id}/display": {
+      "post": {
+        "operationId": "record_reminder_display_attempt_api_tasks_reminder_delivery_attempts__attempt_id__display_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "attempt_id",
+            "required": true,
+            "schema": {
+              "title": "Attempt Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReminderDeliveryResultRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReminderDeliveryAttemptResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Record Reminder Display Attempt",
+        "tags": [
+          "tasks"
+        ]
+      }
+    },
+    "/api/tasks/reminder-delivery/recover": {
+      "post": {
+        "operationId": "recover_reminder_runtime_api_tasks_reminder_delivery_recover_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReminderRuntimeRecoveryResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Recover Reminder Runtime",
+        "tags": [
+          "tasks"
+        ]
+      }
+    },
+    "/api/tasks/reminder-delivery/reservations": {
+      "post": {
+        "operationId": "reserve_reminder_delivery_api_tasks_reminder_delivery_reservations_post",
+        "parameters": [
+          {
+            "description": "Stable identifier for one local write intent. Retries must reuse the same value.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "description": "Stable identifier for one local write intent. Retries must reuse the same value.",
+              "maxLength": 64,
+              "minLength": 64,
+              "pattern": "^[0-9a-f]{64}$",
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReminderDeliveryReserveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReminderDeliveryAttemptResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reserve Reminder Delivery",
         "tags": [
           "tasks"
         ]

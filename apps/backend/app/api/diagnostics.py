@@ -1,11 +1,11 @@
 import json
 from collections import Counter
-
 from fastapi import APIRouter, Depends, Request, status
 
 from ..config import get_settings
+from ..models.api import DiagnosticsExportResponse, LocalStateResetRequest, LocalStateResetResponse, NegotiationStatsResponse, MemoryGraphRebuildResponse
 from ..errors import AppError
-from ..models.api import DiagnosticsExportResponse, LocalStateResetRequest, LocalStateResetResponse, NegotiationStatsResponse
+from .idempotency import IdempotencyKeyHeader
 from ..scheduler import ReminderSchedulerProtocol
 from ..services.diagnostics import DiagnosticsExporter
 from ..services.local_state_reset import (
@@ -14,10 +14,63 @@ from ..services.local_state_reset import (
     LocalStateResetService,
     MemoryStateResetService,
 )
-from .wiring import cached_active_vault_id, clear_cached_active_vault_id, database
+from .wiring import cached_active_vault_id, clear_cached_active_vault_id, database, production_action_lifecycle
 from .wiring import refresh_retrieval_vector_index, reminder_scheduler, reset_chat_runs
 
 router = APIRouter(prefix="/diagnostics", tags=["diagnostics"])
+
+
+@router.post("/memory-graph/rebuild", response_model=MemoryGraphRebuildResponse)
+async def rebuild_memory_graph_projection(
+    request: Request,
+    idempotency_key: IdempotencyKeyHeader,
+) -> MemoryGraphRebuildResponse:
+    """Rebuild only the derived Kuzu projection; SQLite remains authoritative."""
+    key = idempotency_key
+    from ..agents.contracts import ActionProposal
+    from ..agents.nodes.policy_guard import evaluate_action_proposal
+
+    proposal = ActionProposal(
+        proposal_id=f"proposal:memory.graph.rebuild:{key[:24]}",
+        explicit_intent_ref=f"memory-graph-rebuild:{key}",
+        action_type="memory.graph.rebuild",
+        target_ref="memory-graph-projection",
+        parameters={},
+        expected_effect="从 SQLite 权威数据重建一个可删除的 Kuzu 图投影。",
+        source_message_id=key,
+    )
+    policy = evaluate_action_proposal(proposal)
+    if policy.decision != "approved":
+        raise AppError("graph_rebuild_not_allowed", "图谱重建未通过本机安全策略。", 422)
+    policy = policy.model_copy(update={"idempotency_key": key})
+    outcome = await production_action_lifecycle(request).execute(
+        proposal,
+        policy,
+        source_run_id=str(
+            getattr(getattr(request, "state", None), "request_id", None)
+            or f"memory-graph-rebuild:{key[:24]}"
+        ),
+    )
+    receipt = outcome.receipt
+    if receipt.status != "verified":
+        raise AppError(
+            "graph_rebuild_recovery_required",
+            "图谱重建结果无法安全确认，SQLite 查询仍可用，请查看本地恢复记录。",
+            409,
+        )
+    result = dict(receipt.result)
+    return MemoryGraphRebuildResponse(
+        operation_id=outcome.action.action_id,
+        status=str(result.get("status") or "failed_recovery"),
+        backend=str(result.get("backend") or "kuzu"),
+        generation_id=str(result["generation_id"]) if result.get("generation_id") else None,
+        source_revision=int(result.get("source_revision") or 0),
+        node_count=int(result.get("node_count") or 0),
+        edge_count=int(result.get("edge_count") or 0),
+        degraded=bool(result.get("degraded")),
+        fallback_code=str(result["fallback_code"]) if result.get("fallback_code") else None,
+        replayed=outcome.duplicate,
+    )
 
 AGENT_OUTCOME_LABELS = {
     "retrieval_agent": "cited answer",
@@ -129,7 +182,7 @@ async def reset_memory_state(request: Request, reset_request: LocalStateResetReq
     if reset_request.confirmation != MEMORY_RESET_CONFIRMATION_TEXT:
         raise AppError(
             code="memory_reset_confirmation_required",
-            message=f"璇疯緭鍏ョ‘璁よ瘝 {MEMORY_RESET_CONFIRMATION_TEXT} 鍚庡啀閲嶇疆璁板繂鐘舵€併€?",
+            message=f"请输入确认词 {MEMORY_RESET_CONFIRMATION_TEXT} 后再重置记忆状态。",
             status_code=status.HTTP_400_BAD_REQUEST,
         )
     service = MemoryStateResetService(database(request), get_settings().data_dir)

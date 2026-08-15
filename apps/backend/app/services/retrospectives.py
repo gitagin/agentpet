@@ -4,6 +4,7 @@ import json
 import re
 import sqlite3
 from collections import Counter, defaultdict
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -12,22 +13,60 @@ from app.models.retrospectives import (
     RetrospectiveMemoryItem,
     RetrospectivePreference,
     RetrospectiveReportPeriod,
-    RetrospectiveReportResponse,
     RetrospectiveSourceReference,
     RetrospectiveTaskStats,
     RetrospectiveTopic,
     RetrospectiveWindow,
 )
 from app.storage.database import open_database_connection
-from app.models.wiki import WikiPageResponse
-from app.services.agent_actions import AgentActionCreate, AgentActionService, markdown_snapshot
-from app.services.memory import SafeMarkdownWriter
+from app.services.memory import MarkdownWriteError, SafeMarkdownWriter, content_hash_text
 from app.utils.hash import sha256_hex
 from app.utils.time import utc_now_iso
 
 
 RETROSPECTIVE_WINDOWS = (1, 7, 30, 90)
 REPORT_ROOT = "Wiki/Companion/Reports"
+REPORT_ACTION_TYPES = {
+    "retrospective": "wiki.retrospective_report.write",
+    "weekly": "wiki.weekly_report.write",
+    "monthly": "wiki.monthly_report.write",
+}
+_REPORT_MARKER_PATTERN = re.compile(
+    r"^<!-- llmwiki-retrospective-report "
+    r"action_id=(?P<action_id>[A-Za-z0-9._:-]{1,128}) "
+    r"action_type=(?P<action_type>[a-z][a-z0-9_.-]{0,127}) "
+    r"report_kind=(?P<report_kind>retrospective|weekly|monthly) "
+    r"content_hash=(?P<content_hash>[a-f0-9]{64}) "
+    r"path_hash=(?P<path_hash>[a-f0-9]{64}) "
+    r"page_status=(?P<page_status>created|updated) -->$",
+    re.MULTILINE,
+)
+
+
+@dataclass(frozen=True, slots=True)
+class RetrospectiveReportDraft:
+    report_kind: str
+    action_type: str
+    window: RetrospectiveWindow
+    title: str
+    relative_path: str
+    markdown: str
+    content_hash: str
+
+
+@dataclass(frozen=True, slots=True)
+class RetrospectiveReportWriteResult:
+    report_kind: str
+    action_type: str
+    action_id: str
+    title: str
+    relative_path: str
+    operation: str
+    status: str
+    index_job_id: str | None
+    markdown: str
+    content_hash: str
+    action_marker: str
 
 
 class RetrospectiveService:
@@ -37,7 +76,6 @@ class RetrospectiveService:
         *,
         vault_id: str,
         writer: SafeMarkdownWriter | None = None,
-        agent_actions: AgentActionService | None = None,
         index_refresh=None,
         now_provider=None,
     ) -> None:
@@ -47,7 +85,6 @@ class RetrospectiveService:
         self.conn.execute("PRAGMA foreign_keys = ON")
         self.vault_id = vault_id
         self.writer = writer
-        self.agent_actions = agent_actions
         self.index_refresh = index_refresh
         self.now_provider = now_provider or utc_now_iso
 
@@ -100,61 +137,188 @@ class RetrospectiveService:
             has_data=any(summary.values()),
         )
 
-    def write_report(self, days: int):
-        return self._write_report(self.build_window(days), report_kind="retrospective")
-
-    def write_period_report(self, period: RetrospectiveReportPeriod):
-        report_period = _normalize_report_period(period)
-        days = 7 if report_period == "weekly" else 30
-        label = "周报" if report_period == "weekly" else "月报"
-        window = self.build_window(days).model_copy(update={"label": label})
-        return self._write_report(window, report_kind=report_period)
-
-    def _write_report(self, window: RetrospectiveWindow, *, report_kind: str):
-        if self.writer is None or self.agent_actions is None:
-            raise RuntimeError("retrospective_report_requires_vault")
-        markdown = retrospective_report_markdown(window, report_kind=report_kind)
-        target_path = _report_path(window, report_kind=report_kind)
-        before = markdown_snapshot(self.writer, [target_path])
-        self.writer.write(target_path, markdown)
-        index_job_id = self.index_refresh(target_path) if self.index_refresh is not None else None
-        after = markdown_snapshot(self.writer, [target_path])
-        action_type = f"wiki.{report_kind}_report.write"
-        if report_kind == "retrospective":
-            action_type = "wiki.retrospective_report.write"
-        action = self.agent_actions.record(
-            AgentActionCreate(
-                action_type=action_type,
-                title=f"已生成 {window.label} Markdown 报告",
-                summary=f"本地 {window.label} 报告写入 {target_path}",
-                risk_tier="low",
-                decision="auto",
-                status="completed",
-                target_paths=(target_path,),
-                before_snapshot=before,
-                after_snapshot=after,
-                metadata={
-                    "days": window.days,
-                    "report_kind": report_kind,
-                    "source_counts": window.summary,
-                    "source_paths": _source_paths(window),
-                },
-                reversible=True,
-                completed_at=utc_now_iso(),
-            )
+    def prepare_report(
+        self,
+        *,
+        days: int = 7,
+        period: RetrospectiveReportPeriod | None = None,
+    ) -> RetrospectiveReportDraft:
+        report_kind = _normalize_report_period(period) if period is not None else "retrospective"
+        report_days = 7 if report_kind == "weekly" else 30 if report_kind == "monthly" else days
+        window = self.build_window(report_days)
+        if report_kind in {"weekly", "monthly"}:
+            label = "周报" if report_kind == "weekly" else "月报"
+            window = window.model_copy(update={"label": label})
+        markdown = _canonical_report_markdown(
+            retrospective_report_markdown(window, report_kind=report_kind)
         )
-        return RetrospectiveReportResponse(
-            page=WikiPageResponse(
-                title=_report_title(window, report_kind=report_kind),
-                relative_path=target_path,
-                operation="replace",
-                status="updated" if before.get("exists", {}).get(target_path) else "created",
-                index_job_id=index_job_id,
-                action_id=action.action_id,
-            ),
-            action=action,
+        return RetrospectiveReportDraft(
+            report_kind=report_kind,
+            action_type=REPORT_ACTION_TYPES[report_kind],
+            window=window,
+            title=_report_title(window, report_kind=report_kind),
+            relative_path=_report_path(window, report_kind=report_kind),
             markdown=markdown,
+            content_hash=content_hash_text(markdown),
         )
+
+    def write_report_draft(
+        self,
+        draft: RetrospectiveReportDraft,
+        *,
+        action_id: str,
+        action_type: str,
+    ) -> RetrospectiveReportWriteResult:
+        if self.writer is None:
+            raise RuntimeError("retrospective_report_requires_vault")
+        expected_action_type = REPORT_ACTION_TYPES.get(draft.report_kind)
+        if action_type != draft.action_type or action_type != expected_action_type:
+            raise ValueError("retrospective_report_action_type_mismatch")
+        target = self.writer.resolve_markdown_path(draft.relative_path)
+        status = "updated" if target.exists() else "created"
+        marker = _report_action_marker(
+            action_id=action_id,
+            action_type=action_type,
+            report_kind=draft.report_kind,
+            content_hash=draft.content_hash,
+            relative_path=draft.relative_path,
+            page_status=status,
+        )
+        bound_markdown = f"{draft.markdown.rstrip()}\n\n{marker}\n"
+        self.writer.write(draft.relative_path, bound_markdown)
+        index_job_id = self.index_refresh(draft.relative_path) if self.index_refresh is not None else None
+        return RetrospectiveReportWriteResult(
+            report_kind=draft.report_kind,
+            action_type=action_type,
+            action_id=action_id,
+            title=draft.title,
+            relative_path=draft.relative_path,
+            operation="replace",
+            status=status,
+            index_job_id=index_job_id,
+            markdown=draft.markdown,
+            content_hash=draft.content_hash,
+            action_marker=marker,
+        )
+
+    def read_report_effects(
+        self,
+        *,
+        action_id: str,
+        action_type: str,
+        report_kind: str,
+        expected_relative_path: str | None = None,
+        expected_content_hash: str | None = None,
+    ) -> tuple[dict[str, object], ...]:
+        if self.writer is None or REPORT_ACTION_TYPES.get(report_kind) != action_type:
+            return ()
+        paths = self._report_paths(expected_relative_path)
+        matches: list[dict[str, object]] = []
+        for relative_path in paths:
+            effect = self._read_report_effect(
+                relative_path,
+                action_id=action_id,
+                action_type=action_type,
+                report_kind=report_kind,
+                expected_content_hash=expected_content_hash,
+            )
+            if effect is not None:
+                matches.append(effect)
+        return tuple(matches)
+
+    def read_bound_report_markdown(
+        self,
+        relative_path: str,
+        *,
+        action_id: str,
+        action_type: str,
+        report_kind: str,
+        content_hash: str,
+    ) -> str:
+        effect = self._read_report_effect(
+            relative_path,
+            action_id=action_id,
+            action_type=action_type,
+            report_kind=report_kind,
+            expected_content_hash=content_hash,
+        )
+        if effect is None:
+            raise RuntimeError("retrospective_report_authoritative_read_failed")
+        target = self.writer.resolve_markdown_path(relative_path) if self.writer is not None else None
+        if target is None:
+            raise RuntimeError("retrospective_report_requires_vault")
+        return _report_body(target.read_text(encoding="utf-8"))
+
+    def _report_paths(self, expected_relative_path: str | None) -> tuple[str, ...]:
+        if self.writer is None:
+            return ()
+        if expected_relative_path is not None:
+            try:
+                self.writer.resolve_markdown_path(expected_relative_path)
+            except (MarkdownWriteError, ValueError):
+                return ()
+            return (expected_relative_path,)
+        report_root = self.writer.vault_root.joinpath(*REPORT_ROOT.split("/"))
+        if not report_root.exists():
+            return ()
+        return tuple(
+            path.relative_to(self.writer.vault_root).as_posix()
+            for path in sorted(report_root.glob("*.md"))
+            if path.is_file()
+        )
+
+    def _read_report_effect(
+        self,
+        relative_path: str,
+        *,
+        action_id: str,
+        action_type: str,
+        report_kind: str,
+        expected_content_hash: str | None,
+    ) -> dict[str, object] | None:
+        if self.writer is None:
+            return None
+        try:
+            target = self.writer.resolve_markdown_path(relative_path)
+            if not target.exists():
+                return None
+            text = target.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError, ValueError):
+            return None
+        markers = list(_REPORT_MARKER_PATTERN.finditer(text))
+        if len(markers) != 1:
+            return None
+        marker = markers[0]
+        if text[marker.end() :].strip():
+            return None
+        fields = marker.groupdict()
+        if (
+            fields["action_id"] != action_id
+            or fields["action_type"] != action_type
+            or fields["report_kind"] != report_kind
+            or fields["path_hash"] != sha256_hex(relative_path)
+        ):
+            return None
+        markdown = _report_body(text)
+        content_hash = content_hash_text(markdown)
+        if fields["content_hash"] != content_hash:
+            return None
+        if expected_content_hash is not None and expected_content_hash != content_hash:
+            return None
+        return {
+            "report_kind": report_kind,
+            "action_type": action_type,
+            "action_id": action_id,
+            "title": _report_title_from_markdown(markdown),
+            "target_path": relative_path,
+            "content_hash": content_hash,
+            "action_marker": marker.group(0),
+            "operation": "replace",
+            "status": fields["page_status"],
+            "target_paths": [relative_path],
+            "state_ref": f"retrospective-report:{action_id}",
+            "observed_effect": "bound_retrospective_markdown",
+        }
 
     def _now(self) -> datetime:
         value = self.now_provider()
@@ -508,6 +672,50 @@ def _clean_term(value: str) -> str:
     text = " ".join(value.strip().split())
     text = re.sub(r"[`*_#\[\]{}()<>]", "", text)
     return text[:48]
+
+
+def _canonical_report_markdown(markdown: str) -> str:
+    return f"{markdown.rstrip()}\n"
+
+
+def _report_action_marker(
+    *,
+    action_id: str,
+    action_type: str,
+    report_kind: str,
+    content_hash: str,
+    relative_path: str,
+    page_status: str,
+) -> str:
+    if not re.fullmatch(r"[A-Za-z0-9._:-]{1,128}", action_id):
+        raise ValueError("retrospective_report_action_id_invalid")
+    if REPORT_ACTION_TYPES.get(report_kind) != action_type:
+        raise ValueError("retrospective_report_action_type_mismatch")
+    if not re.fullmatch(r"[a-f0-9]{64}", content_hash):
+        raise ValueError("retrospective_report_content_hash_invalid")
+    if page_status not in {"created", "updated"}:
+        raise ValueError("retrospective_report_status_invalid")
+    return (
+        "<!-- llmwiki-retrospective-report "
+        f"action_id={action_id} "
+        f"action_type={action_type} "
+        f"report_kind={report_kind} "
+        f"content_hash={content_hash} "
+        f"path_hash={sha256_hex(relative_path)} "
+        f"page_status={page_status} -->"
+    )
+
+
+def _report_body(markdown: str) -> str:
+    markers = list(_REPORT_MARKER_PATTERN.finditer(markdown))
+    if len(markers) != 1 or markdown[markers[0].end() :].strip():
+        raise ValueError("retrospective_report_marker_invalid")
+    return _canonical_report_markdown(markdown[: markers[0].start()])
+
+
+def _report_title_from_markdown(markdown: str) -> str:
+    match = re.search(r"^title:\s*(?P<title>[^\r\n]+?)\s*$", markdown, re.MULTILINE)
+    return match.group("title") if match is not None else "Local retrospective report"
 
 
 def _report_path(window: RetrospectiveWindow, *, report_kind: str = "retrospective") -> str:

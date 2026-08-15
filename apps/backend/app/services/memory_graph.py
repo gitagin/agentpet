@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import json
-import logging
 import sqlite3
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Iterator, Mapping
 
 from app.models.common import new_id
 from app.models.enums import MemoryFactStatus
@@ -15,7 +15,20 @@ from app.utils.hash import sha256_hex
 from app.utils.time import utc_now_iso
 
 
-logger = logging.getLogger(__name__)
+@contextmanager
+def _sqlite_write_transaction(conn: sqlite3.Connection) -> Iterator[None]:
+    owns_transaction = not conn.in_transaction
+    if owns_transaction:
+        conn.execute("BEGIN")
+    try:
+        yield
+    except BaseException:
+        if owns_transaction:
+            conn.rollback()
+        raise
+    else:
+        if owns_transaction:
+            conn.commit()
 
 
 @dataclass(frozen=True)
@@ -36,6 +49,8 @@ class MemoryFactCandidate:
     expires_at: str | None = None
     metadata_json: str | None = None
     importance: float = 0.5
+    subject_identity_key: str | None = None
+    object_identity_key: str | None = None
 
 
 @dataclass(frozen=True)
@@ -65,6 +80,12 @@ class MemoryGraphFact:
     metadata_json: str = "{}"
     importance: float = 0.5
     superseded_by: str | None = None
+    statement_kind: str | None = None
+    subject_entity_id: str | None = None
+    subject_fact_id: str | None = None
+    object_entity_id: str | None = None
+    object_fact_id: str | None = None
+    relation_type: str | None = None
 
 
 @dataclass(frozen=True)
@@ -75,34 +96,38 @@ class MemoryGraphWriteResult:
 
 
 class MemoryGraphStore:
-    def __init__(self, db: str | Path | sqlite3.Connection, *, graph_root: str | Path | None = None):
+    def __init__(
+        self,
+        db: str | Path | sqlite3.Connection,
+    ):
         self._owns_connection = not isinstance(db, sqlite3.Connection)
         self.conn = open_database_connection(db)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA foreign_keys = ON")
-        self.graph_root = Path(graph_root) if graph_root else None
-        self._kuzu = _KuzuMirror(self.graph_root) if self.graph_root is not None else None
 
     def close(self) -> None:
         if self._owns_connection:
             self.conn.close()
 
-    def upsert_candidate(self, candidate: MemoryFactCandidate) -> MemoryGraphWriteResult:
-        fact_key = _fact_key(candidate.subject, candidate.predicate, candidate.object)
-        conflict_key = _conflict_key(candidate.subject, candidate.predicate)
+    def upsert_candidate(
+        self,
+        candidate: MemoryFactCandidate,
+        *,
+        detect_conflict: bool = True,
+    ) -> MemoryGraphWriteResult:
+        fact_key = _candidate_fact_key(candidate)
+        conflict_key = _candidate_conflict_key(candidate)
         existing = self._get_by_fact_key(fact_key)
         if existing is not None:
-            updated = self._increment_support(existing.id)
+            updated = self.record_support(existing.id)
             return MemoryGraphWriteResult(fact=updated, inserted=False, reason="already_recorded")
 
-        conflict = self._find_active_conflict(conflict_key, candidate.object)
+        conflict = self._find_active_conflict(conflict_key, candidate.object) if detect_conflict else None
         status = MemoryFactStatus.ACTIVE if conflict is None and candidate.confidence >= 0.65 else MemoryFactStatus.QUARANTINED
         reason = None
-        conflicts_with = None
         if conflict is not None:
             status = MemoryFactStatus.QUARANTINED
             reason = "conflict_detected"
-            conflicts_with = conflict.id
         elif candidate.confidence < 0.65:
             reason = "low_confidence"
 
@@ -110,7 +135,7 @@ class MemoryGraphStore:
         fact_id = new_id()
         metadata_json = _normalize_metadata_json(candidate.metadata_json)
         importance = _normalize_importance(candidate.importance)
-        with self.conn:
+        with _sqlite_write_transaction(self.conn):
             self.conn.execute(
                 """
                 INSERT INTO memory_graph_facts (
@@ -143,29 +168,26 @@ class MemoryGraphStore:
                     candidate.expires_at,
                     metadata_json,
                     importance,
-                    conflicts_with,
+                    None,
                     now,
                     now,
                 ),
             )
             self._record_event(fact_id, "create", reason)
         fact = self.get(fact_id)
-        self._mirror_fact(fact)
         return MemoryGraphWriteResult(fact=fact, inserted=True, reason=reason)
 
     def insert_candidate(self, candidate: MemoryFactCandidate, *, reason: str = "candidate_review_required") -> MemoryGraphWriteResult:
-        fact_key = _fact_key(candidate.subject, candidate.predicate, candidate.object)
+        fact_key = _candidate_fact_key(candidate)
         existing = self._get_by_fact_key(fact_key)
         if existing is not None:
             return MemoryGraphWriteResult(fact=existing, inserted=False, reason="already_recorded")
 
         now = utc_now_iso()
         fact_id = new_id()
-        conflict = self._find_active_conflict(_conflict_key(candidate.subject, candidate.predicate), candidate.object)
-        conflicts_with = conflict.id if conflict is not None else None
         metadata_json = _normalize_metadata_json(candidate.metadata_json)
         importance = _normalize_importance(candidate.importance)
-        with self.conn:
+        with _sqlite_write_transaction(self.conn):
             self.conn.execute(
                 """
                 INSERT INTO memory_graph_facts (
@@ -180,7 +202,7 @@ class MemoryGraphStore:
                 (
                     fact_id,
                     fact_key,
-                    _conflict_key(candidate.subject, candidate.predicate),
+                    _candidate_conflict_key(candidate),
                     candidate.category,
                     candidate.subject,
                     candidate.predicate,
@@ -198,14 +220,13 @@ class MemoryGraphStore:
                     candidate.expires_at,
                     metadata_json,
                     importance,
-                    conflicts_with,
+                    None,
                     now,
                     now,
                 ),
             )
             self._record_event(fact_id, "create", reason)
         fact = self.get(fact_id)
-        self._mirror_fact(fact)
         return MemoryGraphWriteResult(fact=fact, inserted=True, reason=reason)
 
     def list_facts(
@@ -276,19 +297,19 @@ class MemoryGraphStore:
         status: MemoryFactStatus | str,
         *,
         reason: str | None = None,
+        lifecycle_metadata: Mapping[str, object] | None = None,
         superseded_by: str | None = None,
     ) -> MemoryGraphFact:
         normalized = MemoryFactStatus(status)
         existing = self.get(fact_id)
-        metadata_json = (
-            _metadata_with_superseded_by(existing.metadata_json, superseded_by)
-            if superseded_by is not None
-            else existing.metadata_json
-        )
-        with self.conn:
+        with _sqlite_write_transaction(self.conn):
             self.conn.execute(
-                "UPDATE memory_graph_facts SET status = ?, metadata_json = ?, updated_at = ? WHERE id = ?",
-                (normalized.value, metadata_json, utc_now_iso(), fact_id),
+                """
+                UPDATE memory_graph_facts
+                SET status = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (normalized.value, utc_now_iso(), fact_id),
             )
             self._record_event(fact_id, normalized.value, reason)
             self._record_lifecycle_event(
@@ -296,11 +317,98 @@ class MemoryGraphStore:
                 from_status=_fact_status_to_lifecycle(existing.status),
                 to_status=_fact_status_to_lifecycle(normalized),
                 reason=reason,
-                metadata={"superseded_by": superseded_by} if superseded_by else None,
+                metadata=dict(lifecycle_metadata or {}),
             )
+            if superseded_by:
+                self._record_supersedes_relation(
+                    replaced=existing,
+                    replacement_id=superseded_by,
+                    reason=reason,
+                )
         fact = self.get(fact_id)
-        self._mirror_fact(fact)
         return fact
+
+    def _record_supersedes_relation(
+        self,
+        *,
+        replaced: MemoryGraphFact,
+        replacement_id: str,
+        reason: str | None,
+    ) -> None:
+        """Persist a typed replacement edge for legacy graph-store callers.
+
+        The entity graph service is the normal relation writer.  This small
+        compatibility path keeps the lower-level store's lifecycle API
+        authoritative when older callers provide ``superseded_by`` directly.
+        """
+        if not _has_authority_relations(self.conn):
+            return
+        replacement = self.get(replacement_id)
+        now = utc_now_iso()
+        self.conn.execute(
+            """
+            UPDATE memory_graph_facts
+            SET status = 'archived', updated_at = ?
+            WHERE statement_kind = 'relation'
+              AND relation_type = 'supersedes'
+              AND object_fact_id = ?
+              AND status = 'active'
+              AND subject_fact_id <> ?
+            """,
+            (now, replaced.id, replacement.id),
+        )
+        relation_id = new_id()
+        source_text = reason or f"{replacement.subject} supersedes {replaced.subject}"
+        relation_key = _hash_key("relation-v1", "supersedes", replacement.id, replaced.id)
+        self.conn.execute(
+            """
+            INSERT OR IGNORE INTO memory_graph_facts (
+                id, fact_key, conflict_key, category, subject, predicate, object,
+                status, confidence, source_text, source_type, conversation_id,
+                user_message_id, agent_run_id, memory_type, entity_type,
+                occurred_at, expires_at, metadata_json, importance, support_count,
+                conflicts_with, created_at, updated_at, statement_kind,
+                subject_fact_id, object_fact_id, relation_type
+            )
+            VALUES (?, ?, ?, 'relation', ?, 'supersedes', ?, 'active', 1.0, ?,
+                    'lifecycle', NULL, NULL, NULL, 'relation', NULL, NULL, NULL,
+                    '{}', 0.5, 1, NULL, ?, ?, 'relation', ?, ?, 'supersedes')
+            """,
+            (
+                relation_id,
+                relation_key,
+                _hash_key("relation-conflict", "supersedes", replaced.id),
+                replacement.subject,
+                replaced.subject,
+                source_text,
+                now,
+                now,
+                replacement.id,
+                replaced.id,
+            ),
+        )
+        relation_row = self.conn.execute(
+            "SELECT id FROM memory_graph_facts WHERE fact_key = ?",
+            (relation_key,),
+        ).fetchone()
+        if relation_row is None:
+            return
+        evidence_id = "evidence-lifecycle-supersedes-" + sha256_hex(relation_key)[:32]
+        self.conn.execute(
+            """
+            INSERT OR IGNORE INTO memory_evidence (
+                id, fact_id, source_type, source_text_hash, source_excerpt,
+                confidence, metadata_json, created_at
+            ) VALUES (?, ?, 'lifecycle', ?, ?, 1.0, '{}', ?)
+            """,
+            (
+                evidence_id,
+                str(relation_row[0]),
+                sha256_hex(source_text),
+                source_text[:1000],
+                now,
+            ),
+        )
 
     def _get_by_fact_key(self, fact_key: str) -> MemoryGraphFact | None:
         row = self.conn.execute("SELECT * FROM memory_graph_facts WHERE fact_key = ?", (fact_key,)).fetchone()
@@ -321,8 +429,8 @@ class MemoryGraphStore:
         ).fetchone()
         return self._map(row) if row else None
 
-    def _increment_support(self, fact_id: str) -> MemoryGraphFact:
-        with self.conn:
+    def record_support(self, fact_id: str) -> MemoryGraphFact:
+        with _sqlite_write_transaction(self.conn):
             self.conn.execute(
                 """
                 UPDATE memory_graph_facts
@@ -373,11 +481,9 @@ class MemoryGraphStore:
             ),
         )
 
-    def _mirror_fact(self, fact: MemoryGraphFact) -> None:
-        if self._kuzu is not None:
-            self._kuzu.upsert_fact(fact)
-
     def _map(self, row: sqlite3.Row) -> MemoryGraphFact:
+        conflicts_with = self._contradiction_for(str(row["id"]))
+        superseded_by = self._replacement_for(str(row["id"]))
         return MemoryGraphFact(
             id=row["id"],
             fact_key=row["fact_key"],
@@ -394,7 +500,7 @@ class MemoryGraphStore:
             user_message_id=row["user_message_id"],
             agent_run_id=row["agent_run_id"],
             support_count=int(row["support_count"]),
-            conflicts_with=row["conflicts_with"],
+            conflicts_with=conflicts_with,
             created_at=row["created_at"],
             updated_at=row["updated_at"],
             memory_type=row["memory_type"],
@@ -403,127 +509,20 @@ class MemoryGraphStore:
             expires_at=row["expires_at"],
             metadata_json=row["metadata_json"] or "{}",
             importance=float(row["importance"]),
-            superseded_by=_superseded_by_from_metadata(row["metadata_json"]),
+            superseded_by=superseded_by,
+            statement_kind=row["statement_kind"] if "statement_kind" in row.keys() else None,
+            subject_entity_id=row["subject_entity_id"] if "subject_entity_id" in row.keys() else None,
+            subject_fact_id=row["subject_fact_id"] if "subject_fact_id" in row.keys() else None,
+            object_entity_id=row["object_entity_id"] if "object_entity_id" in row.keys() else None,
+            object_fact_id=row["object_fact_id"] if "object_fact_id" in row.keys() else None,
+            relation_type=row["relation_type"] if "relation_type" in row.keys() else None,
         )
 
+    def _replacement_for(self, fact_id: str) -> str | None:
+        return authority_superseded_by(self.conn, fact_id)
 
-class _KuzuMirror:
-    def __init__(self, root: Path) -> None:
-        self.root = root
-        self._ready = False
-        try:
-            import kuzu
-        except ImportError:
-            self._kuzu = None
-            logger.info("Kuzu mirror dependency is not installed; memory graph mirroring is disabled")
-            return
-        self._kuzu = kuzu
-        database_path = self._database_path(root)
-        try:
-            database_path.parent.mkdir(parents=True, exist_ok=True)
-            self.db = kuzu.Database(str(database_path))
-            self.conn = kuzu.Connection(self.db)
-            self._ensure_schema()
-            self._ready = True
-        except Exception:
-            logger.warning(
-                "Kuzu mirror initialization failed; memory graph mirroring is disabled",
-                exc_info=True,
-                extra={"graph_root": str(root)},
-            )
-            self._ready = False
-
-    def _database_path(self, root: Path) -> Path:
-        if root.exists() and root.is_dir():
-            return root / "memory_graph.kuzu"
-        return root
-
-    def _ensure_schema(self) -> None:
-        self._execute("CREATE NODE TABLE IF NOT EXISTS Entity(name STRING, PRIMARY KEY(name))")
-        self._execute(
-            """
-            CREATE NODE TABLE IF NOT EXISTS MemoryFact(
-                id STRING,
-                category STRING,
-                predicate STRING,
-                object STRING,
-                status STRING,
-                confidence DOUBLE,
-                source_text STRING,
-                support_count INT64,
-                updated_at STRING,
-                PRIMARY KEY(id)
-            )
-            """
-        )
-        self._execute(
-            """
-            CREATE NODE TABLE IF NOT EXISTS Source(id STRING, source_type STRING, text STRING, PRIMARY KEY(id))
-            """
-        )
-        self._execute("CREATE REL TABLE IF NOT EXISTS SUBJECT_OF(FROM Entity TO MemoryFact)")
-        self._execute("CREATE REL TABLE IF NOT EXISTS DERIVED_FROM(FROM MemoryFact TO Source)")
-
-    def upsert_fact(self, fact: MemoryGraphFact) -> None:
-        if not self._ready:
-            return
-        try:
-            self._execute("MERGE (e:Entity {name: $name})", {"name": fact.subject})
-            self._execute(
-                """
-                MERGE (f:MemoryFact {id: $id})
-                SET f.category = $category,
-                    f.predicate = $predicate,
-                    f.object = $object,
-                    f.status = $status,
-                    f.confidence = $confidence,
-                    f.source_text = $source_text,
-                    f.support_count = $support_count,
-                    f.updated_at = $updated_at
-                """,
-                {
-                    "id": fact.id,
-                    "category": fact.category,
-                    "predicate": fact.predicate,
-                    "object": fact.object,
-                    "status": fact.status.value,
-                    "confidence": fact.confidence,
-                    "source_text": fact.source_text,
-                    "support_count": fact.support_count,
-                    "updated_at": fact.updated_at,
-                },
-            )
-            self._execute(
-                "MERGE (s:Source {id: $id}) SET s.source_type = $source_type, s.text = $text",
-                {"id": fact.agent_run_id or fact.id, "source_type": fact.source_type, "text": fact.source_text},
-            )
-            self._execute(
-                """
-                MATCH (e:Entity {name: $subject}), (f:MemoryFact {id: $id})
-                MERGE (e)-[:SUBJECT_OF]->(f)
-                """,
-                {"subject": fact.subject, "id": fact.id},
-            )
-            self._execute(
-                """
-                MATCH (f:MemoryFact {id: $id}), (s:Source {id: $source_id})
-                MERGE (f)-[:DERIVED_FROM]->(s)
-                """,
-                {"id": fact.id, "source_id": fact.agent_run_id or fact.id},
-            )
-        except Exception:
-            logger.warning(
-                "Kuzu mirror update failed; disabling memory graph mirroring",
-                exc_info=True,
-                extra={"fact_id": fact.id, "subject": fact.subject},
-            )
-            self._ready = False
-
-    def _execute(self, query: str, params: dict[str, object] | None = None) -> None:
-        if params is None:
-            self.conn.execute(query)
-        else:
-            self.conn.execute(query, params)
+    def _contradiction_for(self, fact_id: str) -> str | None:
+        return authority_contradicted_by(self.conn, fact_id)
 
 
 def facts_to_context_lines(facts: Iterable[MemoryGraphFact]) -> list[str]:
@@ -540,6 +539,25 @@ def _fact_key(subject: str, predicate: str, object_value: str) -> str:
 
 def _conflict_key(subject: str, predicate: str) -> str:
     return _hash_key(subject, predicate)
+
+
+def _candidate_fact_key(candidate: MemoryFactCandidate) -> str:
+    if candidate.subject_identity_key is None and candidate.object_identity_key is None:
+        return _fact_key(candidate.subject, candidate.predicate, candidate.object)
+    subject = _typed_key_part("subject", candidate.subject_identity_key, candidate.subject)
+    object_value = _typed_key_part("object", candidate.object_identity_key, candidate.object)
+    return _hash_key("typed-v1", subject, candidate.predicate, object_value)
+
+
+def _candidate_conflict_key(candidate: MemoryFactCandidate) -> str:
+    if candidate.subject_identity_key is None:
+        return _conflict_key(candidate.subject, candidate.predicate)
+    subject = _typed_key_part("subject", candidate.subject_identity_key, candidate.subject)
+    return _hash_key("typed-v1", subject, candidate.predicate)
+
+
+def _typed_key_part(kind: str, identity: str | None, value: str) -> str:
+    return f"{kind}:identity:{identity}" if identity is not None else f"{kind}:literal:{value}"
 
 
 def _hash_key(*parts: str) -> str:
@@ -562,28 +580,57 @@ def _normalize_metadata_json(value: str | None) -> str:
     return json.dumps(parsed, sort_keys=True, separators=(",", ":"))
 
 
-def _metadata_with_superseded_by(value: str, superseded_by: str) -> str:
-    try:
-        parsed = json.loads(value or "{}")
-    except json.JSONDecodeError:
-        parsed = {}
-    if not isinstance(parsed, dict):
-        parsed = {}
-    parsed["superseded_by"] = superseded_by
-    return json.dumps(parsed, sort_keys=True, separators=(",", ":"))
+def _has_authority_relations(conn: sqlite3.Connection) -> bool:
+    columns = {
+        str(row[1])
+        for row in conn.execute("PRAGMA table_info(memory_graph_facts)").fetchall()
+    }
+    return {
+        "statement_kind",
+        "relation_type",
+        "subject_fact_id",
+        "object_fact_id",
+    }.issubset(columns)
 
 
-def _superseded_by_from_metadata(value: str | None) -> str | None:
-    if not value:
+def authority_superseded_by(conn: sqlite3.Connection, fact_id: str) -> str | None:
+    """Read the current replacement only from the typed authority relation."""
+    if not _has_authority_relations(conn):
         return None
-    try:
-        parsed = json.loads(value)
-    except json.JSONDecodeError:
+    row = conn.execute(
+        """
+        SELECT subject_fact_id
+        FROM memory_graph_facts
+        WHERE statement_kind = 'relation'
+          AND relation_type = 'supersedes'
+          AND object_fact_id = ?
+          AND status = 'active'
+        ORDER BY updated_at DESC, id DESC
+        LIMIT 1
+        """,
+        (fact_id,),
+    ).fetchone()
+    return str(row[0]) if row is not None and row[0] else None
+
+
+def authority_contradicted_by(conn: sqlite3.Connection, fact_id: str) -> str | None:
+    """Read the current contradiction only from the typed authority relation."""
+    if not _has_authority_relations(conn):
         return None
-    if not isinstance(parsed, dict):
-        return None
-    superseded_by = parsed.get("superseded_by")
-    return superseded_by if isinstance(superseded_by, str) and superseded_by else None
+    row = conn.execute(
+        """
+        SELECT CASE WHEN subject_fact_id = ? THEN object_fact_id ELSE subject_fact_id END
+        FROM memory_graph_facts
+        WHERE statement_kind = 'relation'
+          AND relation_type = 'contradicts'
+          AND status = 'active'
+          AND (subject_fact_id = ? OR object_fact_id = ?)
+        ORDER BY updated_at DESC, id DESC
+        LIMIT 1
+        """,
+        (fact_id, fact_id, fact_id),
+    ).fetchone()
+    return str(row[0]) if row is not None and row[0] else None
 
 
 def _fact_status_to_lifecycle(status: MemoryFactStatus) -> LifecycleStatus | None:

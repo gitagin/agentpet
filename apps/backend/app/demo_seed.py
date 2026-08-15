@@ -214,7 +214,7 @@ def _write_demo_markdown(vault_root: Path) -> int:
         ),
         vault_root.joinpath(*_DEMO_PROJECT_PATH.split("/")): (
             "# Agent Pet Demo\n\n"
-            "## 目标\n\n展示 LangGraph 有界多角色协作、本地记忆检索、引用、任务和确认边界。\n\n"
+            "## 目标\n\n展示 LangGraph 有界证据复核、本地记忆检索、引用、任务和确认边界。\n\n"
             "## 黄金路径\n\n1. 带来源的偏好回答。\n2. 一句话创建提醒并整理记忆。\n"
         ),
     }

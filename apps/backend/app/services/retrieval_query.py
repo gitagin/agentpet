@@ -713,10 +713,10 @@ def _protected_atoms(
 
 
 def _preserves_atoms(text: str, atoms: Sequence[str]) -> bool:
-    return all(_contains_exact_atom(text, atom) for atom in atoms)
+    return all(contains_exact_retrieval_atom(text, atom) for atom in atoms)
 
 
-def _contains_exact_atom(text: str, atom: str) -> bool:
+def contains_exact_retrieval_atom(text: str, atom: str) -> bool:
     if not re.search(r"[A-Za-z0-9]", atom):
         return atom in text
     return (

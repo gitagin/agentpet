@@ -29,6 +29,7 @@ def test_langgraph_action_agent_archives_query_by_default() -> None:
                 wiki_workflow=wiki_workflow,
                 model_registry=AgentModelRegistry({AgentId.ACTION_AGENT: wiki_model}),
                 automation_settings=SimpleNamespace(use_negotiation=False),
+                allow_ephemeral_lifecycle=True,
             )
         )
         state = make_state("archive to wiki query archive: Runtime answer")
@@ -59,6 +60,7 @@ def test_langgraph_action_agent_synthesizes_by_default() -> None:
                 wiki_workflow=wiki_workflow,
                 model_registry=AgentModelRegistry({AgentId.ACTION_AGENT: wiki_model}),
                 automation_settings=SimpleNamespace(use_negotiation=False),
+                allow_ephemeral_lifecycle=True,
             )
         )
 
@@ -86,6 +88,7 @@ def test_langgraph_action_agent_runs_lint_report_by_default() -> None:
                 wiki_workflow=wiki_workflow,
                 model_registry=AgentModelRegistry({AgentId.ACTION_AGENT: wiki_model}),
                 automation_settings=SimpleNamespace(use_negotiation=False),
+                allow_ephemeral_lifecycle=True,
             )
         )
 
@@ -113,6 +116,7 @@ def test_langgraph_action_agent_falls_back_to_proposal_flow_when_auto_organize_d
                 wiki_workflow=wiki_workflow,
                 model_registry=AgentModelRegistry({AgentId.ACTION_AGENT: wiki_model}),
                 automation_settings=AutomationSettingsResponse(auto_wiki_organize=False, use_negotiation=False),
+                allow_ephemeral_lifecycle=True,
             )
         )
         state = make_state("archive to wiki query archive: Runtime answer")

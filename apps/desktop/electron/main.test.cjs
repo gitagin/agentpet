@@ -19,7 +19,12 @@ function loadMainWithMocks(mocks) {
   }
 }
 
-function createBootstrapMocks({ hasSingleInstanceLock = true, existingWindows = [] } = {}) {
+function createBootstrapMocks({
+  hasSingleInstanceLock = true,
+  existingWindows = [],
+  ready = false,
+  residentLaunch = false,
+} = {}) {
   const appListeners = {};
   const app = {
     commandLine: {
@@ -27,7 +32,7 @@ function createBootstrapMocks({ hasSingleInstanceLock = true, existingWindows = 
     },
     getPath: vi.fn(() => "C:\\AgentPet"),
     requestSingleInstanceLock: vi.fn(() => hasSingleInstanceLock),
-    whenReady: vi.fn(() => new Promise(() => undefined)),
+    whenReady: vi.fn(() => (ready ? Promise.resolve() : new Promise(() => undefined))),
     on: vi.fn((eventName, callback) => {
       appListeners[eventName] = callback;
     }),
@@ -58,8 +63,18 @@ function createBootstrapMocks({ hasSingleInstanceLock = true, existingWindows = 
   };
   const createWindowManager = vi.fn(() => windows);
   const createSidecarManager = vi.fn(() => sidecar);
-  const createTrayManager = vi.fn(() => ({ createTray: vi.fn() }));
+  const tray = { createTray: vi.fn() };
+  const createTrayManager = vi.fn(() => tray);
   const createProxyManager = vi.fn(() => ({}));
+  const resident = {
+    recoverBackendState: vi.fn(),
+    handleSidecarReady: vi.fn(),
+    startPowerMonitoring: vi.fn(),
+    stopPowerMonitoring: vi.fn(),
+  };
+  const createResidentRuntime = vi.fn(() => resident);
+  const isResidentLaunch = vi.fn(() => residentLaunch);
+  const dispatchReminderNotification = vi.fn();
   const registerIpcHandlers = vi.fn();
   const clearCache = vi.fn();
 
@@ -76,9 +91,13 @@ function createBootstrapMocks({ hasSingleInstanceLock = true, existingWindows = 
         register: vi.fn(),
         unregisterAll: vi.fn(),
       },
+      powerMonitor: {},
       session: {
         defaultSession: {
           clearCache,
+          webRequest: {
+            onHeadersReceived: vi.fn(),
+          },
         },
       },
     },
@@ -95,7 +114,12 @@ function createBootstrapMocks({ hasSingleInstanceLock = true, existingWindows = 
     "./proxy.js": {
       createProxyManager,
     },
+    "./resident.js": {
+      createResidentRuntime,
+      isResidentLaunch,
+    },
     "./ipc.js": {
+      dispatchReminderNotification,
       registerIpcHandlers,
     },
   };
@@ -105,11 +129,15 @@ function createBootstrapMocks({ hasSingleInstanceLock = true, existingWindows = 
     appListeners,
     clearCache,
     createSidecarManager,
+    createResidentRuntime,
     createWindowManager,
+    dispatchReminderNotification,
     fs,
     mocks,
     registerIpcHandlers,
+    resident,
     sidecar,
+    tray,
     windows,
   };
 }
@@ -177,5 +205,48 @@ describe("Electron main bootstrap", () => {
     expect(existingWindow.restore).toHaveBeenCalledOnce();
     expect(existingWindow.focus).toHaveBeenCalledOnce();
     expect(windows.showControlWindow).not.toHaveBeenCalled();
+  });
+
+  it("starts a login resident instance in the tray without opening a visible window", async () => {
+    const {
+      createResidentRuntime,
+      createSidecarManager,
+      dispatchReminderNotification,
+      mocks,
+      resident,
+      sidecar,
+      tray,
+      windows,
+    } = createBootstrapMocks({
+      ready: true,
+      residentLaunch: true,
+    });
+
+    loadMainWithMocks(mocks);
+    await vi.waitFor(() => {
+      expect(sidecar.startSidecar).toHaveBeenCalledOnce();
+    });
+
+    expect(tray.createTray).toHaveBeenCalledOnce();
+    expect(resident.startPowerMonitoring).toHaveBeenCalledOnce();
+    expect(windows.createPetWindow).not.toHaveBeenCalled();
+    expect(createResidentRuntime).toHaveBeenCalledWith(expect.objectContaining({
+      dispatchReminderNotification,
+      sidecar,
+    }));
+    await createSidecarManager.mock.calls[0][0].onReady();
+    expect(resident.handleSidecarReady).toHaveBeenCalledOnce();
+  });
+
+  it("opens the pet window during an ordinary interactive launch", async () => {
+    const { mocks, sidecar, tray, windows } = createBootstrapMocks({ ready: true });
+
+    loadMainWithMocks(mocks);
+    await vi.waitFor(() => {
+      expect(sidecar.startSidecar).toHaveBeenCalledOnce();
+    });
+
+    expect(tray.createTray).toHaveBeenCalledOnce();
+    expect(windows.createPetWindow).toHaveBeenCalledOnce();
   });
 });

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, globalShortcut, session } = require("electron");
+const { app, BrowserWindow, Menu, globalShortcut, powerMonitor, session } = require("electron");
 const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -6,7 +6,8 @@ const { createWindowManager } = require("./windows.js");
 const { createTrayManager } = require("./tray.js");
 const { createSidecarManager } = require("./sidecar.js");
 const { createProxyManager } = require("./proxy.js");
-const { registerIpcHandlers } = require("./ipc.js");
+const { dispatchReminderNotification, registerIpcHandlers } = require("./ipc.js");
+const { createResidentRuntime, isResidentLaunch } = require("./resident.js");
 
 const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL || "http://127.0.0.1:5173";
 const SIDECAR_HOST = "127.0.0.1";
@@ -79,6 +80,7 @@ const hasSingleInstanceLock =
 if (!hasSingleInstanceLock) {
   app.quit();
 } else {
+  const residentLaunch = isResidentLaunch(process.argv);
   const sessionToken = process.env.AGENT_PET_SESSION_TOKEN || crypto.randomBytes(32).toString("base64url");
   const rendererUiStatePath = path.join(app.getPath("userData"), "renderer-ui-state.json");
   const managedSidecarDataDir = path.join(app.getPath("userData"), "backend-state");
@@ -117,6 +119,7 @@ if (!hasSingleInstanceLock) {
     state,
     quitApp,
   });
+  let resident = null;
   const sidecar = createSidecarManager({
     host: sidecarRuntime.host,
     port: sidecarRuntime.port,
@@ -126,11 +129,24 @@ if (!hasSingleInstanceLock) {
     managedSidecarDataDir,
     state,
     showControlWindow: windows.showControlWindow,
+    onReady: () => {
+      if (typeof resident?.handleSidecarReady === "function") {
+        return resident.handleSidecarReady();
+      }
+      return resident?.recoverBackendState?.();
+    },
   });
   const proxy = createProxyManager({
     baseUrl: sidecarRuntime.baseUrl,
     getBaseUrl: getSidecarBaseUrl,
     sessionToken,
+  });
+  resident = createResidentRuntime({
+    electronApp: app,
+    powerMonitor,
+    sidecar,
+    proxy,
+    dispatchReminderNotification,
   });
   const tray = createTrayManager({
     createPetWindow: windows.createPetWindow,
@@ -146,6 +162,7 @@ if (!hasSingleInstanceLock) {
     persistRendererUiState,
     sidecar,
     proxy,
+    resident,
     windows,
   });
 
@@ -157,8 +174,11 @@ if (!hasSingleInstanceLock) {
     Menu.setApplicationMenu(null);
     installContentSecurityPolicy();
     sidecar.startSidecar();
-    windows.createPetWindow();
+    if (!residentLaunch) {
+      windows.createPetWindow();
+    }
     tray.createTray();
+    resident.startPowerMonitoring();
     globalShortcut.register("CommandOrControl+Shift+A", windows.showControlWindow);
 
     app.on("activate", () => {
@@ -176,6 +196,7 @@ if (!hasSingleInstanceLock) {
 
   app.on("before-quit", () => {
     state.isQuitting = true;
+    resident.stopPowerMonitoring();
     windows.clearPetWindowDrag();
     sidecar.stopSidecar();
   });

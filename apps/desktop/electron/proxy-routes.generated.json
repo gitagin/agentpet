@@ -3,7 +3,7 @@
   "source": {
     "openapiVersion": "3.1.0",
     "apiVersion": "0.0.1-alpha",
-    "sha256": "8c1a4dd20fdbb5f23272c8991fd177c7c690f3263fc90c39b9346f7c5295b17f"
+    "sha256": "c2c4934de78feab2a9d859c89f1d7957027bc72de3a0a683a0ac6a8cf517b59b"
   },
   "routes": [
     {
@@ -97,6 +97,12 @@
       ]
     },
     {
+      "path": "/api/diagnostics/memory-graph/rebuild",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
       "path": "/api/diagnostics/negotiation-stats",
       "methods": [
         "GET"
@@ -163,55 +169,43 @@
       ]
     },
     {
-      "path": "/api/memory/graph-projection",
+      "path": "/api/memory/graph",
       "methods": [
         "GET"
       ]
     },
     {
-      "path": "/api/memory/graph/export-preview",
+      "path": "/api/memory/graph/claims/{claim_id}",
       "methods": [
         "GET"
       ]
     },
     {
-      "path": "/api/memory/graph/facts",
+      "path": "/api/memory/graph/claims/{claim_id}/actions",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/memory/graph/edges/{edge_id}",
       "methods": [
         "GET"
       ]
     },
     {
-      "path": "/api/memory/graph/facts/{fact_id}/actions/{action}",
+      "path": "/api/memory/graph/edges/{edge_id}/actions",
       "methods": [
         "POST"
       ]
     },
     {
-      "path": "/api/memory/graph/facts/{fact_id}/archive",
+      "path": "/api/memory/graph/nodes/{node_id}",
       "methods": [
-        "POST"
+        "GET"
       ]
     },
     {
-      "path": "/api/memory/graph/facts/{fact_id}/confirm",
-      "methods": [
-        "POST"
-      ]
-    },
-    {
-      "path": "/api/memory/graph/facts/{fact_id}/reject",
-      "methods": [
-        "POST"
-      ]
-    },
-    {
-      "path": "/api/memory/graph/facts/{fact_id}/sensitive-block",
-      "methods": [
-        "POST"
-      ]
-    },
-    {
-      "path": "/api/memory/graph/facts/{fact_id}/wrong",
+      "path": "/api/memory/graph/nodes/{node_id}/actions",
       "methods": [
         "POST"
       ]
@@ -232,24 +226,6 @@
       "path": "/api/memory/local-assets",
       "methods": [
         "GET"
-      ]
-    },
-    {
-      "path": "/api/memory/profile-projection",
-      "methods": [
-        "GET"
-      ]
-    },
-    {
-      "path": "/api/memory/profile-projection/items/{item_id}",
-      "methods": [
-        "GET"
-      ]
-    },
-    {
-      "path": "/api/memory/profile-projection/items/{item_id}/actions",
-      "methods": [
-        "POST"
       ]
     },
     {
@@ -303,6 +279,18 @@
     },
     {
       "path": "/api/memory/search",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/metrics/local-impact",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/api/metrics/recall-feedback",
       "methods": [
         "POST"
       ]
@@ -405,6 +393,24 @@
       "path": "/api/tasks/current",
       "methods": [
         "GET"
+      ]
+    },
+    {
+      "path": "/api/tasks/reminder-delivery/attempts/{attempt_id}/display",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/tasks/reminder-delivery/recover",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/tasks/reminder-delivery/reservations",
+      "methods": [
+        "POST"
       ]
     },
     {

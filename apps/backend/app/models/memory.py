@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from .enums import MemoryProposalType
 from .event_payloads import AgentActionDecisionFields, AgentMemoryProposalFields, ContextBudgetFields, ContinuityProposalFields, MemoryProposalActionFields
@@ -24,7 +24,7 @@ class RetrievalContribution(BaseModel):
 
 
 class MemorySearchResult(BaseModel):
-    note_id: str; chunk_id: str; relative_path: str; title: str; heading: str | None = None; snippet: str; score: float; content_hash: str | None = None; source_scope: str = "knowledge_base"; retrieval_mode: str = "fts"; retrieval_channels: list[str] = Field(default_factory=list); channel_ranks: dict[str, int] = Field(default_factory=dict); retrieval_contributions: list[RetrievalContribution] = Field(default_factory=list); recall_permissions: MemoryRecallPermissions = Field(default_factory=MemoryRecallPermissions); activation_score: float | None = None; score_breakdown: dict[str, float] = Field(default_factory=dict); filtered_reason: str | None = None; memory_kind: str | None = None; memory_scope: str | None = None; lifecycle_status: str | None = None; risk_tier: str | None = None; fact_id: str | None = None; candidate_id: str | None = None
+    note_id: str; chunk_id: str; relative_path: str; title: str; heading: str | None = None; snippet: str; score: float; content_hash: str | None = None; source_scope: str = "knowledge_base"; retrieval_mode: str = "fts"; retrieval_channels: list[str] = Field(default_factory=list); channel_ranks: dict[str, int] = Field(default_factory=dict); retrieval_contributions: list[RetrievalContribution] = Field(default_factory=list); recall_permissions: MemoryRecallPermissions = Field(default_factory=MemoryRecallPermissions); activation_score: float | None = None; score_breakdown: dict[str, float] = Field(default_factory=dict); filtered_reason: str | None = None; memory_kind: str | None = None; memory_scope: str | None = None; lifecycle_status: str | None = None; risk_tier: str | None = None; fact_id: str | None = None; candidate_id: str | None = None; entity_refs: list[str] = Field(default_factory=list); evidence_refs: list[str] = Field(default_factory=list); citation_refs: list[str] = Field(default_factory=list)
 
 
 class MemorySearchResponse(BaseModel):
@@ -143,27 +143,7 @@ class AgentActionRevertResponse(BaseModel):
     action: AgentActionResponse; reverted: AgentActionResponse
 
 
-class MemoryGraphFactResponse(BaseModel):
-    fact_id: str; category: str; subject: str; predicate: str; object: str; status: str; lifecycle_status: str | None = None; confidence: float; source_text: str; source_type: str; support_count: int = 1; conflicts_with: str | None = None; superseded_by: str | None = None; memory_type: str | None = None; entity_type: str | None = None; occurred_at: str | None = None; expires_at: str | None = None; metadata_json: str | None = None; importance: float = 0.5; created_at: str; updated_at: str
-
-
-class MemoryGraphExportItem(BaseModel):
-    fact_id: str; category: str; subject: str; predicate: str; object: str; status: str; lifecycle_status: str | None = None; confidence: float; source_type: str; support_count: int = 1; conflicts_with: str | None = None; superseded_by: str | None = None; memory_type: str | None = None; entity_type: str | None = None; occurred_at: str | None = None; expires_at: str | None = None; metadata: dict[str, object] = Field(default_factory=dict); importance: float = 0.5; created_at: str; updated_at: str  # noqa: A003 - `object` is the graph-triple field name (API contract); annotation-only names don't shadow the builtin at runtime
-
-
-class MemoryGraphExportPreviewResponse(BaseModel):
-    generated_at: str; format: Literal["json", "markdown"] = "markdown"; item_count: int; items: list[MemoryGraphExportItem] = Field(default_factory=list); json_preview: str; markdown_preview: str; redaction_note: str
-
-
-class MemoryGraphFactListResponse(BaseModel):
-    facts: list[MemoryGraphFactResponse] = Field(default_factory=list)
-
-
-class MemoryGraphFactActionResponse(BaseModel):
-    fact_id: str; status: str
-
-
-MemoryGraphProjectionNodeType = Literal[
+MemoryGraphNodeType = Literal[
     "user",
     "preference",
     "boundary",
@@ -176,60 +156,222 @@ MemoryGraphProjectionNodeType = Literal[
     "archived",
     "cleanup",
 ]
-MemoryGraphProjectionStatus = Literal["active", "pending", "archived", "hidden"]
-MemoryGraphProjectionRiskTier = Literal["low", "hidden"]
-MemoryGraphProjectionEdgeType = Literal[
+MemoryGraphStatus = Literal["active", "pending", "archived", "hidden"]
+MemoryGraphRisk = Literal["low", "medium", "high", "hidden"]
+MemoryGraphAction = Literal["confirm", "correct", "forget", "archive"]
+
+MemoryGraphEdgeType = Literal[
+    "prefers",
+    "avoids",
+    "works_on",
+    "knows",
     "related_to",
+    "occurred_in",
     "supports",
-    "came_from",
-    "updates",
-    "conflicts_with",
-    "belongs_to",
+    "contradicts",
+    "supersedes",
+    "derived_from",
+    "documented_in",
 ]
 
 
-class MemoryGraphProjectionNodeResponse(BaseModel):
-    id: str
-    type: MemoryGraphProjectionNodeType
+class MemoryGraphNodeResponse(BaseModel):
+    node_id: str
+    type: MemoryGraphNodeType
     label: str
     subtitle: str
-    status: MemoryGraphProjectionStatus
-    risk_tier: MemoryGraphProjectionRiskTier
+    status: MemoryGraphStatus
+    risk: MemoryGraphRisk
     size: float = Field(ge=0.0, le=2.0)
     confidence_label: str
     source_label: str
     updated_at: str
-    available_actions: list[str] = Field(default_factory=list)
+    allowed_actions: list[MemoryGraphAction] = Field(default_factory=list)
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    evidence_count: int = Field(default=0, ge=0)
 
 
-class MemoryGraphProjectionEdgeResponse(BaseModel):
-    id: str
-    from_: str = Field(alias="from")
-    to: str
-    type: MemoryGraphProjectionEdgeType
-    strength: float = Field(ge=0.0, le=1.0)
+class MemoryGraphEdgeResponse(BaseModel):
+    edge_id: str
+    source_node_id: str
+    target_node_id: str
+    relation_type: MemoryGraphEdgeType
+    risk: MemoryGraphRisk = "low"
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    evidence_count: int = Field(default=0, ge=0)
+    status: str = "active"
+    updated_at: str | None = None
+    allowed_actions: list[MemoryGraphAction] = Field(default_factory=list)
 
 
-class MemoryGraphProjectionClusterResponse(BaseModel):
-    id: str
+class MemoryGraphClusterResponse(BaseModel):
+    cluster_id: str
     label: str
     node_ids: list[str] = Field(default_factory=list)
 
 
-class MemoryGraphProjectionSummaryResponse(BaseModel):
+class MemoryGraphSummaryResponse(BaseModel):
     total_nodes: int = 0
     pending_count: int = 0
     cleanup_count: int = 0
     hidden_count: int = 0
 
 
-class MemoryGraphProjectionResponse(BaseModel):
+MemoryGraphBackend = Literal["sqlite", "kuzu"]
+
+
+class MemoryGraphGenerationResponse(BaseModel):
+    generation_id: str | None = None
+    backend: MemoryGraphBackend = "sqlite"
+    source_revision: int = Field(default=0, ge=0)
+    status: str = "unavailable"
+    fallback_code: str | None = None
+
+
+class MemoryGraphVaultScopeResponse(BaseModel):
+    vault_id: str
+    label: str = "active_vault"
+
+
+class MemoryGraphEvidenceResponse(BaseModel):
+    evidence_id: str
+    source_type: str
+    label: str
+    excerpt: str = ""
+    confidence: float = Field(ge=0.0, le=1.0)
+    created_at: str
+    relative_path: str | None = None
+
+
+class MemoryGraphVersionResponse(BaseModel):
+    object_id: str
+    status: str
+    updated_at: str
+    current: bool = False
+
+
+class MemoryGraphLifecycleResponse(BaseModel):
+    status: str
+    active_for_recall: bool = False
+    confidence: float = Field(ge=0.0, le=1.0)
+    updated_at: str
+    expires_at: str | None = None
+    reason: str | None = None
+
+
+class MemoryGraphWikiBindingResponse(BaseModel):
+    binding_id: str
+    title: str
+    relative_path: str
+    status: str
+    revision: int = 0
+    content_hash: str | None = None
+    updated_at: str
+
+
+class MemoryGraphNodeDetailResponse(BaseModel):
+    node_id: str
+    kind: Literal["entity", "claim", "source", "wiki_page", "projection"]
+    type: str
+    label: str
+    subtitle: str = ""
+    status: str
+    risk: MemoryGraphRisk
+    confidence: float = Field(ge=0.0, le=1.0)
+    updated_at: str
+    lifecycle: MemoryGraphLifecycleResponse | None = None
+    evidence: list[MemoryGraphEvidenceResponse] = Field(default_factory=list)
+    wiki_pages: list[MemoryGraphWikiBindingResponse] = Field(default_factory=list)
+    version_chain: list[MemoryGraphVersionResponse] = Field(default_factory=list)
+    edge_ids: list[str] = Field(default_factory=list)
+    allowed_actions: list[MemoryGraphAction] = Field(default_factory=list)
+    claim_ids: list[str] = Field(default_factory=list)
+    evidence_count: int = Field(default=0, ge=0)
+    redaction_note: str = "原始证据和本机路径仅按需显示。"
+
+
+class MemoryGraphEdgeDetailResponse(BaseModel):
+    edge_id: str
+    relation_type: MemoryGraphEdgeType
+    source_node_id: str
+    target_node_id: str
+    status: str
+    risk: MemoryGraphRisk = "low"
+    lifecycle: MemoryGraphLifecycleResponse | None = None
+    evidence: list[MemoryGraphEvidenceResponse] = Field(default_factory=list)
+    wiki_pages: list[MemoryGraphWikiBindingResponse] = Field(default_factory=list)
+    version_chain: list[MemoryGraphVersionResponse] = Field(default_factory=list)
+    allowed_actions: list[MemoryGraphAction] = Field(default_factory=list)
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    evidence_count: int = Field(default=0, ge=0)
+    updated_at: str | None = None
+    redaction_note: str = "原始证据和本机路径仅按需显示。"
+
+
+class MemoryGraphClaimDetailResponse(BaseModel):
+    claim_id: str
+    subject_label: str
+    subject_node_id: str | None = None
+    predicate: str
+    literal_value: str
+    fact_type: str
+    status: str
+    risk: MemoryGraphRisk = "low"
+    confidence: float = Field(ge=0.0, le=1.0)
+    source_type: str
+    lifecycle: MemoryGraphLifecycleResponse
+    evidence: list[MemoryGraphEvidenceResponse] = Field(default_factory=list)
+    wiki_pages: list[MemoryGraphWikiBindingResponse] = Field(default_factory=list)
+    version_chain: list[MemoryGraphVersionResponse] = Field(default_factory=list)
+    superseded_by_claim_id: str | None = None
+    allowed_actions: list[MemoryGraphAction] = Field(default_factory=list)
+    evidence_count: int = Field(default=0, ge=0)
+    updated_at: str
+    redaction_note: str = "原始证据和本机路径仅按需显示。"
+
+
+class MemoryGraphResponse(BaseModel):
     generated_at: str
-    nodes: list[MemoryGraphProjectionNodeResponse] = Field(default_factory=list)
-    edges: list[MemoryGraphProjectionEdgeResponse] = Field(default_factory=list)
-    clusters: list[MemoryGraphProjectionClusterResponse] = Field(default_factory=list)
-    summary: MemoryGraphProjectionSummaryResponse = Field(default_factory=MemoryGraphProjectionSummaryResponse)
+    nodes: list[MemoryGraphNodeResponse] = Field(default_factory=list)
+    edges: list[MemoryGraphEdgeResponse] = Field(default_factory=list)
+    clusters: list[MemoryGraphClusterResponse] = Field(default_factory=list)
+    summary: MemoryGraphSummaryResponse = Field(default_factory=MemoryGraphSummaryResponse)
     redaction_note: str = "敏感内容、原始证据、授权信息和本机路径不会显示。"
+    schema_version: str = "llmwiki-graph-v1"
+    vault: MemoryGraphVaultScopeResponse
+    generation: MemoryGraphGenerationResponse
+    degraded_mode: bool = False
+
+
+class MemoryGraphActionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    action: MemoryGraphAction
+    confirmed: bool = False
+    replacement: dict[str, object] | None = None
+
+
+class MemoryGraphActionResponse(BaseModel):
+    operation_id: str
+    target_id: str
+    action: MemoryGraphAction
+    status: str
+    replayed: bool = False
+    message: str = ""
+    replacement_id: str | None = None
+
+
+class MemoryGraphRebuildResponse(BaseModel):
+    operation_id: str
+    status: str
+    backend: MemoryGraphBackend = "kuzu"
+    generation_id: str | None = None
+    source_revision: int = Field(default=0, ge=0)
+    node_count: int = Field(default=0, ge=0)
+    edge_count: int = Field(default=0, ge=0)
+    degraded: bool = False
+    fallback_code: str | None = None
+    replayed: bool = False
 
 
 MemoryFeedbackTargetType = Literal["candidate", "fact"]
@@ -302,80 +444,6 @@ class MemoryReviewResponse(BaseModel):
     summary: MemoryReviewSummaryResponse
     items: list[MemoryReviewItemResponse] = Field(default_factory=list)
     redaction_note: str = "Sensitive text, credentials, raw evidence, and full Authorization headers are not included."
-
-
-class MemoryProfileProjectionItemResponse(BaseModel):
-    id: str
-    category: str
-    summary: str
-    confidence: float
-    importance: float
-    status_label: str
-    risk_label: str
-    source_label: str
-    updated_at: str
-    permissions_summary: str
-    can_revoke: bool = False
-    available_actions: list[str] = Field(default_factory=list)
-
-
-class MemoryProfileProjectionResponse(BaseModel):
-    generated_at: str
-    identity: list[MemoryProfileProjectionItemResponse] = Field(default_factory=list)
-    preferences: list[MemoryProfileProjectionItemResponse] = Field(default_factory=list)
-    boundaries: list[MemoryProfileProjectionItemResponse] = Field(default_factory=list)
-    projects: list[MemoryProfileProjectionItemResponse] = Field(default_factory=list)
-    relationships: list[MemoryProfileProjectionItemResponse] = Field(default_factory=list)
-    recent_state: list[MemoryProfileProjectionItemResponse] = Field(default_factory=list)
-    conflicts: list[MemoryProfileProjectionItemResponse] = Field(default_factory=list)
-    needs_confirmation: list[MemoryProfileProjectionItemResponse] = Field(default_factory=list)
-    filtered: list[MemoryProfileProjectionItemResponse] = Field(default_factory=list)
-    redaction_note: str = "敏感内容、原始证据、凭据、完整授权信息和本机绝对路径不会显示在画像里。"
-
-
-MemoryProfileAction = Literal["forget", "mark_inaccurate", "keep", "make_temporary", "mark_stale"]
-
-
-class MemoryProfileAvailableActionResponse(BaseModel):
-    action: MemoryProfileAction
-    label: str
-    requires_confirmation: bool = True
-
-
-class MemoryProfileSourceSummaryResponse(BaseModel):
-    label: str
-    description: str
-    evidence_count_label: str | None = None
-    last_seen_label: str | None = None
-    safety_note: str | None = None
-
-
-class MemoryProfileDetailResponse(BaseModel):
-    id: str
-    summary: str
-    category_label: str
-    status_label: str
-    confidence_label: str
-    importance_label: str
-    source_label: str
-    permissions: list[str] = Field(default_factory=list)
-    safety_note: str | None = None
-    updated_at: str
-    source_summary: MemoryProfileSourceSummaryResponse | None = None
-    available_actions: list[MemoryProfileAvailableActionResponse] = Field(default_factory=list)
-
-
-class MemoryProfileActionRequest(BaseModel):
-    action: MemoryProfileAction
-    confirmed: bool = False
-    expires_at: str | None = None
-    feedback_text: str = ""
-
-
-class MemoryProfileActionResponse(BaseModel):
-    ok: bool
-    message: str
-    item_id: str
 
 
 class MemoryReceiptItemResponse(BaseModel):

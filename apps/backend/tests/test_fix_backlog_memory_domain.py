@@ -9,14 +9,16 @@ from app.models.api import MemorySearchResult
 from app.models.enums import MemoryFactStatus
 from app.services.diary_memory import DiaryMemoryObjectSource, DiaryMemoryStore
 from app.services.diary_memory_extractor import DiaryMemoryObject
-from app.services.memory_graph import MemoryFactCandidate
 from app.services.memory_lifecycle import MemoryLifecycleService
+from app.services.memory_entity_graph import MemoryEntityGraphStore
 from app.services.memory_read import (
+    GraphMemorySourceAdapter,
     MemoryItem,
     MemorySourceRead,
     UnifiedMemorySearchService,
     memory_item_from_search_result,
 )
+from app.utils.public_references import public_memory_reference
 from tests.conftest import auth_headers
 
 
@@ -153,18 +155,16 @@ def insert_diary_memory(db_path: Path, *, vault_id: str, index: int) -> None:
 def insert_graph_fact(db_path: Path) -> str:
     lifecycle = MemoryLifecycleService(db_path)
     try:
-        return lifecycle.graph.upsert_candidate(
-            MemoryFactCandidate(
-                category="preference",
-                memory_type="preference",
-                subject="fusiontoken graph memory",
-                predicate="is",
-                object="active",
-                source_text="fusiontoken graph memory is active",
-                confidence=0.95,
-                importance=0.9,
-            )
-        ).fact.id
+        subject = lifecycle.entity_graph.ensure_self()
+        return lifecycle.entity_graph.create_claim(
+            subject_entity_id=subject.id,
+            predicate="is",
+            literal_value="active",
+            category="preference",
+            source_text="fusiontoken graph memory is active",
+            confidence=0.95,
+            evidence_id="fusiontoken-evidence",
+        ).id
     finally:
         lifecycle.close()
 
@@ -193,46 +193,105 @@ def test_memory_search_all_does_not_let_diary_consume_top_k(client_factory, tmp_
         assert payload["metadata"]["memory_fusion"]["algorithm"] == "reciprocal_rank_fusion"
 
 
-def test_parameterized_graph_action_preserves_fact_status_and_audits_once(
+def test_graph_memory_read_exposes_real_source_and_opaque_references(client_factory, tmp_path: Path) -> None:
+    with client_factory(data_dir=tmp_path / "data") as client:
+        vault_id = bind_vault(client, tmp_path)
+        db_path = client.app.state.database.path
+        store = MemoryEntityGraphStore(db_path)
+        try:
+            subject = store.ensure_self()
+            evidence_id = "atlas-source-evidence"
+            fact = store.create_claim(
+                subject_entity_id=subject.id,
+                predicate="works_on",
+                literal_value="Atlas",
+                category="project_context",
+                source_text="I work on project Atlas.",
+                confidence=0.95,
+                evidence_id=evidence_id,
+            )
+            unbound_fact = store.create_claim(
+                subject_entity_id=subject.id,
+                predicate="knows",
+                literal_value="Orchid",
+                category="project_context",
+                source_text="I know project Orchid.",
+                confidence=0.95,
+                evidence_id="unbound-orchid-evidence",
+            )
+            store.bind_artifact(
+                fact_id=fact.id,
+                vault_id=vault_id,
+                artifact_type="wiki_page",
+                artifact_ref="Wiki/Projects/Atlas.md",
+            )
+        finally:
+            store.close()
+
+        source = GraphMemorySourceAdapter(
+            lambda: MemoryEntityGraphStore(db_path),
+            answerable_only=True,
+            vault_id=vault_id,
+        )
+        read = source.search(
+            query="What is the status of project Atlas?",
+            top_k=5,
+            mode="fts",
+            source_scope="personal_memory",
+        )
+
+        item = next(candidate for candidate in read.items if candidate.result.fact_id == fact.id)
+        result = item.result
+        assert result.relative_path == "Wiki/Projects/Atlas.md"
+        assert result.entity_refs == [public_memory_reference("entity", subject.id)]
+        assert result.evidence_refs == [public_memory_reference("evidence", evidence_id)]
+        assert result.citation_refs == [
+            public_memory_reference("citation", "Wiki/Projects/Atlas.md")
+        ]
+        assert item.entity_refs == tuple(result.entity_refs)
+        assert item.evidence_refs == tuple(result.evidence_refs)
+        assert item.citation_refs == tuple(result.citation_refs)
+        assert fact.id not in " ".join((*item.entity_refs, *item.evidence_refs, *item.citation_refs))
+
+        unbound_read = source.search(
+            query="What is project Orchid?",
+            top_k=5,
+            mode="fts",
+            source_scope="personal_memory",
+        )
+        unbound_item = next(candidate for candidate in unbound_read.items if candidate.result.fact_id == unbound_fact.id)
+        assert unbound_item.result.relative_path == ""
+        assert unbound_item.result.evidence_refs == [
+            public_memory_reference("evidence", "unbound-orchid-evidence")
+        ]
+        assert unbound_item.result.citation_refs == unbound_item.result.evidence_refs
+
+
+def test_removed_parameterized_graph_actions_are_not_exposed(
     client_factory,
     tmp_path: Path,
 ) -> None:
     with client_factory(data_dir=tmp_path / "data") as client:
         fact_id = insert_graph_fact(client.app.state.database.path)
 
-        wrong = client.post(
+        removed_parameterized = client.post(
             f"/api/memory/graph/facts/{fact_id}/actions/wrong",
             headers=auth(),
         )
-        assert wrong.status_code == 200
-        assert wrong.json() == {"fact_id": fact_id, "status": "wrong"}
-
-        unknown = client.post(
-            f"/api/memory/graph/facts/{fact_id}/actions/not-an-action",
+        removed_legacy = client.post(
+            f"/api/memory/graph/facts/{fact_id}/wrong",
             headers=auth(),
         )
-        assert unknown.status_code == 422
-
-        restored = client.post(
-            f"/api/memory/graph/facts/{fact_id}/actions/confirm",
-            headers=auth(),
-        )
-        assert restored.status_code == 200
-        assert restored.json()["status"] == "active"
+        assert removed_parameterized.status_code == 404
+        assert removed_legacy.status_code == 404
 
         with sqlite3.connect(client.app.state.database.path) as conn:
-            wrong_audits = conn.execute(
-                "SELECT COUNT(*) FROM audit_logs WHERE action = 'memory.graph.wrong'"
-            ).fetchone()[0]
             stored_status = conn.execute(
                 "SELECT status FROM memory_graph_facts WHERE id = ?",
                 (fact_id,),
             ).fetchone()[0]
-        assert wrong_audits == 1
         assert stored_status == "active"
 
         schema = client.get("/openapi.json").json()
-        canonical = schema["paths"]["/api/memory/graph/facts/{fact_id}/actions/{action}"]["post"]
-        legacy = schema["paths"]["/api/memory/graph/facts/{fact_id}/wrong"]["post"]
-        assert canonical.get("deprecated") is not True
-        assert legacy["deprecated"] is True
+        assert "/api/memory/graph/facts/{fact_id}/actions/{action}" not in schema["paths"]
+        assert "/api/memory/graph/facts/{fact_id}/wrong" not in schema["paths"]

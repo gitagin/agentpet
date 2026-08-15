@@ -8,6 +8,7 @@ hook_root = backend_root / "packaging" / "pyinstaller_hooks"
 
 datas = [
     (str(backend_root / "migrations"), "migrations"),
+    (str(backend_root / "app" / "resources" / "wiki" / "AGENTS.md"), "app/resources/wiki"),
     (str(backend_root / "app" / "services" / "wiki.py"), "app/services"),
 ]
 for distribution in (

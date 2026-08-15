@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
+import pytest
+
 from apps.backend.tests._schema import migrate_db
 
 from app.agents.contracts import ActionProposal
@@ -285,3 +287,206 @@ def test_verified_reversible_markdown_action_keeps_snapshot_for_auditable_rollba
     assert writer.resolve_markdown_path(target_path).read_text(encoding="utf-8") == old_text
     assert updated.status == "reverted"
     assert reverted.metadata["reverted_action_id"] == original_action_id
+
+
+def test_effect_before_receipt_is_recovered_from_authoritative_reader_without_retry(tmp_path: Path) -> None:
+    ledger = _ledger(tmp_path)
+    state: dict[str, object] = {}
+    adapter_calls = 0
+
+    async def adapter(proposal, policy, claim):
+        nonlocal adapter_calls
+        adapter_calls += 1
+        state["value"] = "written"
+        raise RuntimeError("crashed after local commit")
+
+    async def reader(receipt):
+        if state:
+            return {"value": state["value"], "state_ref": "task:recovered"}
+        return None
+
+    proposal = _proposal("task.create", target="task:recover", parameters={"title": "Recover"})
+    coordinator = ActionLifecycleCoordinator(
+        ledger=ledger,
+        adapters={"task.create": adapter},
+        readers={"task.create": reader},
+    )
+    outcome = asyncio.run(coordinator.execute(proposal, evaluate_action_proposal(proposal), source_run_id="run-1"))
+
+    assert outcome.receipt.status == "verified"
+    assert outcome.receipt.result["recovered_from_authoritative_state"] is True
+    assert adapter_calls == 1
+    assert ledger.find_execution(evaluate_action_proposal(proposal).idempotency_key).status == "completed"
+
+
+def test_cancellation_after_verified_receipt_does_not_regress_completed_action(tmp_path: Path) -> None:
+    ledger = _ledger(tmp_path)
+
+    async def adapter(proposal, policy, claim):
+        return AdapterExecutionResult(
+            result={"expected_state": {"value": "done"}},
+            after_snapshot={"value": "done"},
+        )
+
+    async def reader(receipt):
+        return {"value": "done", "state_ref": "task:terminal"}
+
+    proposal = _proposal("task.create", target="task:terminal", parameters={"title": "Terminal"})
+    policy = evaluate_action_proposal(proposal)
+    coordinator = ActionLifecycleCoordinator(
+        ledger=ledger,
+        adapters={"task.create": adapter},
+        readers={"task.create": reader},
+    )
+    original_verify = coordinator._verify_and_complete
+
+    async def cancel_after_completion(*args, **kwargs):
+        outcome = await original_verify(*args, **kwargs)
+        assert outcome.action.status == "completed"
+        raise asyncio.CancelledError
+
+    coordinator._verify_and_complete = cancel_after_completion  # type: ignore[method-assign]
+
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(coordinator.execute(proposal, policy, source_run_id="run-terminal"))
+
+    persisted = ledger.find_execution(policy.idempotency_key)
+    assert persisted is not None
+    assert persisted.status == "completed"
+    assert persisted.error is None
+    assert "execution_interrupted" not in persisted.metadata
+
+
+def test_reader_multiple_authoritative_matches_fails_closed(tmp_path: Path) -> None:
+    async def adapter(proposal, policy, claim):
+        raise RuntimeError("uncertain effect")
+
+    async def reader(receipt):
+        return [
+            {"value": "one", "state_ref": "task:1"},
+            {"value": "one", "state_ref": "task:2"},
+        ]
+
+    proposal = _proposal("task.create", target="task:ambiguous", parameters={"title": "Ambiguous"})
+    coordinator = ActionLifecycleCoordinator(
+        ledger=_ledger(tmp_path),
+        adapters={"task.create": adapter},
+        readers={"task.create": reader},
+    )
+    outcome = asyncio.run(coordinator.execute(proposal, evaluate_action_proposal(proposal), source_run_id="run-1"))
+
+    assert outcome.receipt.status == "failed_recovery"
+    assert outcome.receipt.safe_error_code == "ambiguous_authoritative_state"
+
+
+def test_same_idempotency_key_concurrent_calls_create_one_effect(tmp_path: Path) -> None:
+    ledger = _ledger(tmp_path)
+    state = {"writes": 0}
+
+    async def adapter(proposal, policy, claim):
+        state["writes"] += 1
+        await asyncio.sleep(0)
+        return AdapterExecutionResult(
+            result={"expected_state": {"value": "done"}},
+            after_snapshot={"value": "done"},
+        )
+
+    async def reader(receipt):
+        return {"value": "done", "state_ref": "task:concurrent"} if state["writes"] else None
+
+    proposal = _proposal("task.create", target="task:concurrent", parameters={"title": "Concurrent"})
+    policy = evaluate_action_proposal(proposal)
+    coordinator = ActionLifecycleCoordinator(
+        ledger=ledger,
+        adapters={"task.create": adapter},
+        readers={"task.create": reader},
+    )
+
+    async def run_both():
+        return await asyncio.gather(
+            coordinator.execute(proposal, policy, source_run_id="run-1"),
+            coordinator.execute(proposal, policy, source_run_id="run-2"),
+        )
+
+    outcomes = asyncio.run(run_both())
+    assert all(item.receipt.status == "verified" for item in outcomes)
+    assert state["writes"] == 1
+    assert all(item.receipt.status == "verified" for item in outcomes)
+    assert sum(item.duplicate for item in outcomes) == 1
+
+
+def test_corrupt_stored_receipt_fails_closed_without_replaying_effect(tmp_path: Path) -> None:
+    ledger = _ledger(tmp_path)
+    state = {"writes": 0}
+
+    async def adapter(proposal, policy, claim):
+        state["writes"] += 1
+        return AdapterExecutionResult(
+            result={"expected_state": {"value": "done"}},
+            after_snapshot={"value": "done"},
+        )
+
+    async def reader(receipt):
+        return {"value": "done", "state_ref": "task:corrupt-receipt"}
+
+    proposal = _proposal("task.create", target="task:corrupt-receipt", parameters={"title": "Receipt"})
+    policy = evaluate_action_proposal(proposal)
+    coordinator = ActionLifecycleCoordinator(
+        ledger=ledger,
+        adapters={"task.create": adapter},
+        readers={"task.create": reader},
+    )
+    first = asyncio.run(coordinator.execute(proposal, policy, source_run_id="run-1"))
+    action = ledger.find_execution(policy.idempotency_key)
+    assert action is not None and first.receipt.status == "verified"
+    ledger.update_execution(
+        action.action_id,
+        status="completed",
+        metadata={"execution_receipt": {"not": "a receipt"}},
+    )
+
+    replay = asyncio.run(coordinator.execute(proposal, policy, source_run_id="run-2"))
+
+    assert replay.duplicate is True
+    assert replay.receipt.status == "failed_recovery"
+    assert replay.receipt.safe_error_code == "stored_receipt_invalid"
+    assert state["writes"] == 1
+
+
+def test_same_idempotency_key_with_different_canonical_payload_is_rejected(tmp_path: Path) -> None:
+    ledger = _ledger(tmp_path)
+    state = {"writes": 0}
+
+    async def adapter(proposal, policy, claim):
+        state["writes"] += 1
+        return AdapterExecutionResult(
+            result={"expected_state": {"value": "done"}},
+            after_snapshot={"value": "done"},
+        )
+
+    async def reader(receipt):
+        return {"value": "done", "state_ref": "task:payload-conflict"}
+
+    proposal = _proposal("task.create", target="task:payload-conflict", parameters={"title": "Original"})
+    policy = evaluate_action_proposal(proposal)
+    coordinator = ActionLifecycleCoordinator(
+        ledger=ledger,
+        adapters={"task.create": adapter},
+        readers={"task.create": reader},
+    )
+    asyncio.run(coordinator.execute(proposal, policy, source_run_id="run-1"))
+
+    conflicting_proposal = proposal.model_copy(
+        update={"parameters": {"title": "Changed"}, "idempotency_key": policy.idempotency_key}
+    )
+    conflicting_policy = policy.model_copy(
+        update={"canonical_parameters": {"title": "Changed"}}
+    )
+    outcome = asyncio.run(
+        coordinator.execute(conflicting_proposal, conflicting_policy, source_run_id="run-2")
+    )
+
+    assert outcome.duplicate is True
+    assert outcome.receipt.status == "failed_recovery"
+    assert outcome.receipt.safe_error_code == "idempotency_key_conflict"
+    assert state["writes"] == 1

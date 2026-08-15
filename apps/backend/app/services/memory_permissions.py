@@ -9,6 +9,8 @@ from app.models.api import MemoryRecallPermissions, MemorySearchResult
 from app.services.memory_activation import MemoryActivationDecision
 from app.services.memory_candidates import MemoryActivationEventCreate, MemoryCandidateStore
 from app.services.memory_taxonomy import LifecycleStatus, MemoryKind, MemoryScope, RecallPermissions, RiskTier
+from app.utils.metric_references import is_public_reference
+from app.utils.public_references import safe_relative_source_reference
 
 
 logger = logging.getLogger(__name__)
@@ -278,6 +280,15 @@ def _contextual_permissions(result: MemorySearchResult, *, query: str) -> Memory
     permissions = result.recall_permissions
     memory_kind = result.memory_kind or ""
     snippet = result.snippet
+    if result.memory_scope == MemoryScope.SENSITIVE.value or result.risk_tier == RiskTier.HIGH.value:
+        return permissions.model_copy(
+            update={
+                "can_style_response": False,
+                "can_answer_context": False,
+                "can_proactively_mention": False,
+                "can_suggest_action": False,
+            }
+        )
     if _is_unconfirmed_or_inactive_result(result):
         return permissions.model_copy(
             update={
@@ -329,7 +340,16 @@ def _is_unconfirmed_or_inactive_result(result: MemorySearchResult) -> bool:
 
 def _source_context_line(result: MemorySearchResult) -> str:
     heading = f" / {result.heading}" if result.heading else ""
-    return f"- {result.relative_path}{heading}: {result.snippet}"
+    source_ref = safe_relative_source_reference(result.relative_path)
+    citation_refs = tuple(
+        reference
+        for reference in dict.fromkeys(result.citation_refs)
+        if reference.startswith("citation_") and is_public_reference(reference)
+    )
+    provenance = [f"source={source_ref or '(none)'}"]
+    if citation_refs:
+        provenance.append(f"citations={','.join(citation_refs)}")
+    return f"- {'; '.join(provenance)}{heading}: {result.snippet}"
 
 
 def _direct_relevance(query: str, text: str) -> bool:

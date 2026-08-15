@@ -70,6 +70,20 @@ export class ApiClient {
     });
   }
 
+  async postWithHeaders<T>(
+    path: string,
+    body: unknown,
+    headers: Record<string, string>,
+    signal?: AbortSignal,
+  ): Promise<T> {
+    return this.request<T>(path, {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers,
+      signal,
+    });
+  }
+
   async put<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
     return this.request<T>(path, {
       method: "PUT",

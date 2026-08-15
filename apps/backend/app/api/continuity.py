@@ -14,8 +14,13 @@ from ..services.continuity import (
     ContinuityProposalStateError,
     ContinuityService,
 )
-from ..services.agent_actions import AgentActionCreate
-from .wiring import audit_reason, continuity_service_dependency, record_agent_action, record_audit
+from .services.adapters import RuntimeContinuityAdapter
+from .wiring import (
+    audit_reason,
+    continuity_service_dependency,
+    production_action_lifecycle,
+    record_audit,
+)
 
 router = APIRouter(prefix="/continuity", tags=["continuity"])
 
@@ -56,10 +61,12 @@ async def list_continuity_proposals(
 async def confirm_continuity_proposal(
     proposal_id: str,
     request: Request,
-    service: ContinuityService = Depends(continuity_service_dependency),
 ) -> ContinuityProposalActionResponse:
     try:
-        proposal = service.confirm_proposal(proposal_id)
+        action = await RuntimeContinuityAdapter(
+            request,
+            production_action_lifecycle(request),
+        ).confirm_proposal(proposal_id)
     except Exception as exc:
         record_audit(
             request,
@@ -72,25 +79,9 @@ async def confirm_continuity_proposal(
         request,
         action="continuity.proposal.confirm",
         result="success",
-        reason=audit_reason(request, proposal_id=proposal.id, kind=proposal.kind),
+        reason=audit_reason(request, proposal_id=action.proposal_id),
     )
-    record_agent_action(
-        request,
-        AgentActionCreate(
-            action_type=f"continuity.{proposal.kind}",
-            title="已更新桌宠连续性状态",
-            summary=proposal.summary,
-            source_agent_run_id=proposal.agent_run_id,
-            source_conversation_id=proposal.source_conversation_id,
-            source_message_id=proposal.source_message_id,
-            risk_tier="medium",
-            decision="ask",
-            status="completed",
-            metadata={"proposal_id": proposal.id, "kind": proposal.kind, "confidence": proposal.confidence},
-            reversible=False,
-        ),
-    )
-    return ContinuityProposalActionResponse(proposal_id=proposal.id, status=proposal.status)
+    return action
 
 
 @router.post("/proposals/{proposal_id}/reject", response_model=ContinuityProposalActionResponse)
@@ -98,10 +89,12 @@ async def reject_continuity_proposal(
     proposal_id: str,
     reject_request: RejectProposalRequest,
     request: Request,
-    service: ContinuityService = Depends(continuity_service_dependency),
 ) -> ContinuityProposalActionResponse:
     try:
-        proposal = service.reject_proposal(proposal_id, reject_request.reason)
+        action = await RuntimeContinuityAdapter(
+            request,
+            production_action_lifecycle(request),
+        ).reject_proposal(proposal_id, reject_request.reason)
     except Exception as exc:
         record_audit(
             request,
@@ -114,25 +107,9 @@ async def reject_continuity_proposal(
         request,
         action="continuity.proposal.reject",
         result="success",
-        reason=audit_reason(request, proposal_id=proposal.id, kind=proposal.kind),
+        reason=audit_reason(request, proposal_id=action.proposal_id),
     )
-    record_agent_action(
-        request,
-        AgentActionCreate(
-            action_type="continuity.proposal.reject",
-            title="已取消连续性候选",
-            summary=proposal.summary,
-            source_agent_run_id=proposal.agent_run_id,
-            source_conversation_id=proposal.source_conversation_id,
-            source_message_id=proposal.source_message_id,
-            risk_tier="low",
-            decision="auto",
-            status="completed",
-            metadata={"proposal_id": proposal.id, "kind": proposal.kind},
-            reversible=False,
-        ),
-    )
-    return ContinuityProposalActionResponse(proposal_id=proposal.id, status=proposal.status)
+    return action
 
 
 def _proposal_response(proposal) -> ContinuityProposalResponse:

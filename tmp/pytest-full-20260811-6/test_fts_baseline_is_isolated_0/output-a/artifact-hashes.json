@@ -1,0 +1,10 @@
+{
+  "artifacts": {
+    "corpus-manifest.md": "f6ce94ca9140bc161e802b4d8f6df0740d039dd46ec2f2d25269dd2d55ec58bd",
+    "failure-catalog.md": "dc0a83340aad1a542601c0005b40d34be42b8c732eb5048142a4a3056e9a8835",
+    "fts-baseline.json": "a4ba006f8ac9ed3de5333c157a4b489dfc68fe719c965a9996c22e6b5055cc94",
+    "slice-results.md": "4d3c484537b2977409ea9b1f21a6bbf7387ee7a503193295f6074c2ba076b973"
+  },
+  "hash_algorithm": "sha256",
+  "schema_version": "retrieval-eval-artifact-hashes.v1"
+}

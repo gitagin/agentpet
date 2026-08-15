@@ -280,7 +280,7 @@ def test_retrospective_service_counts_diary_objects_with_offset_timezone_inside_
     assert seven.diary_summaries[0].id == "diary-offset-1"
 
 
-def test_retrospective_report_write_records_reversible_agent_action(tmp_path):
+def test_retrospective_report_write_binds_authoritative_markdown_to_action(tmp_path):
     conn = migrated_connection()
     vault = tmp_path / "Vault"
     conn.execute("INSERT INTO vaults(id, root_path, name) VALUES ('vault-1', ?, 'Vault')", (str(vault),))
@@ -300,37 +300,44 @@ def test_retrospective_report_write_records_reversible_agent_action(tmp_path):
     )
     conn.commit()
     writer = SafeMarkdownWriter(vault)
-    action_service = AgentActionService(AgentActionStore(conn), writer=writer)
     service = RetrospectiveService(
         conn,
         vault_id="vault-1",
         writer=writer,
-        agent_actions=action_service,
         index_refresh=lambda path: f"indexed:{path}",
         now_provider=lambda: datetime(2026, 6, 2, tzinfo=timezone.utc),
     )
 
-    response = service.write_report(7)
+    draft = service.prepare_report(days=7)
+    response = service.write_report_draft(
+        draft,
+        action_id="action-retrospective-test",
+        action_type="wiki.retrospective_report.write",
+    )
 
-    report_path = vault.joinpath(*response.page.relative_path.split("/"))
-    assert response.page.relative_path.startswith("Wiki/Companion/Reports/")
-    assert response.page.index_job_id == f"indexed:{response.page.relative_path}"
-    assert response.action.action_type == "wiki.retrospective_report.write"
-    assert response.action.title == "已生成 7-day Markdown 报告"
-    assert response.page.title == "7-day 长期回顾"
-    assert response.action.reversible is True
+    report_path = vault.joinpath(*response.relative_path.split("/"))
+    assert response.relative_path.startswith("Wiki/Companion/Reports/")
+    assert response.index_job_id == f"indexed:{response.relative_path}"
+    assert response.action_type == "wiki.retrospective_report.write"
+    assert response.action_id == "action-retrospective-test"
+    assert response.title == "7-day 长期回顾"
     assert report_path.exists()
     report_text = report_path.read_text(encoding="utf-8")
     assert "reporting" in report_text
     assert "## 主要主题" in report_text
     assert "## 重要对话和日记摘要" in report_text
     assert "本报告只使用本地 SQLite 与 Vault 中已有的可追踪记录" in report_text
-
-    updated, reverted = action_service.revert(response.action.action_id)
-
-    assert updated.status == "reverted"
-    assert reverted.action_type == "agent_action.revert"
-    assert not report_path.exists()
+    assert "action_id=action-retrospective-test" in report_text
+    effects = service.read_report_effects(
+        action_id=response.action_id,
+        action_type=response.action_type,
+        report_kind=response.report_kind,
+        expected_relative_path=response.relative_path,
+        expected_content_hash=response.content_hash,
+    )
+    assert len(effects) == 1
+    assert effects[0]["target_path"] == response.relative_path
+    assert effects[0]["content_hash"] == response.content_hash
 
 
 def test_retrospective_service_returns_empty_windows_without_history(tmp_path):

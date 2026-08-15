@@ -259,6 +259,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/diagnostics/memory-graph/rebuild": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rebuild Memory Graph Projection
+         * @description Rebuild only the derived Kuzu projection; SQLite remains authoritative.
+         */
+        post: operations["rebuild_memory_graph_projection_api_diagnostics_memory_graph_rebuild_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/diagnostics/negotiation-stats": {
         parameters: {
             query?: never;
@@ -446,15 +466,15 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/memory/graph-projection": {
+    "/api/memory/graph": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Get Memory Graph Projection */
-        get: operations["get_memory_graph_projection_api_memory_graph_projection_get"];
+        /** Get Memory Graph */
+        get: operations["get_memory_graph_api_memory_graph_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -463,15 +483,15 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/memory/graph/export-preview": {
+    "/api/memory/graph/claims/{claim_id}": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Export Memory Graph Preview */
-        get: operations["export_memory_graph_preview_api_memory_graph_export_preview_get"];
+        /** Get Memory Graph Claim */
+        get: operations["get_memory_graph_claim_api_memory_graph_claims__claim_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -480,15 +500,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/memory/graph/facts": {
+    "/api/memory/graph/claims/{claim_id}/actions": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** List Memory Graph Facts */
-        get: operations["list_memory_graph_facts_api_memory_graph_facts_get"];
+        get?: never;
+        put?: never;
+        /** Act On Memory Graph Claim */
+        post: operations["act_on_memory_graph_claim_api_memory_graph_claims__claim_id__actions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/memory/graph/edges/{edge_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Memory Graph Edge */
+        get: operations["get_memory_graph_edge_api_memory_graph_edges__edge_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -497,7 +534,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/memory/graph/facts/{fact_id}/actions/{action}": {
+    "/api/memory/graph/edges/{edge_id}/actions": {
         parameters: {
             query?: never;
             header?: never;
@@ -506,35 +543,32 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Apply Memory Graph Fact Action */
-        post: operations["apply_memory_graph_fact_action_api_memory_graph_facts__fact_id__actions__action__post"];
+        /** Act On Memory Graph Edge */
+        post: operations["act_on_memory_graph_edge_api_memory_graph_edges__edge_id__actions_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/memory/graph/facts/{fact_id}/archive": {
+    "/api/memory/graph/nodes/{node_id}": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Get Memory Graph Node */
+        get: operations["get_memory_graph_node_api_memory_graph_nodes__node_id__get"];
         put?: never;
-        /**
-         * Archive Memory Graph Fact
-         * @deprecated
-         */
-        post: operations["archive_memory_graph_fact_api_memory_graph_facts__fact_id__archive_post"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/memory/graph/facts/{fact_id}/confirm": {
+    "/api/memory/graph/nodes/{node_id}/actions": {
         parameters: {
             query?: never;
             header?: never;
@@ -543,71 +577,8 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * Confirm Memory Graph Fact
-         * @deprecated
-         */
-        post: operations["confirm_memory_graph_fact_api_memory_graph_facts__fact_id__confirm_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/memory/graph/facts/{fact_id}/reject": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Reject Memory Graph Fact
-         * @deprecated
-         */
-        post: operations["reject_memory_graph_fact_api_memory_graph_facts__fact_id__reject_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/memory/graph/facts/{fact_id}/sensitive-block": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Sensitive Block Memory Graph Fact
-         * @deprecated
-         */
-        post: operations["sensitive_block_memory_graph_fact_api_memory_graph_facts__fact_id__sensitive_block_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/memory/graph/facts/{fact_id}/wrong": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Wrong Memory Graph Fact
-         * @deprecated
-         */
-        post: operations["wrong_memory_graph_fact_api_memory_graph_facts__fact_id__wrong_post"];
+        /** Act On Memory Graph Node */
+        post: operations["act_on_memory_graph_node_api_memory_graph_nodes__node_id__actions_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -659,57 +630,6 @@ export interface paths {
         get: operations["get_local_asset_stats_api_memory_local_assets_get"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/memory/profile-projection": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Memory Profile Projection */
-        get: operations["get_memory_profile_projection_api_memory_profile_projection_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/memory/profile-projection/items/{item_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get Memory Profile Projection Item */
-        get: operations["get_memory_profile_projection_item_api_memory_profile_projection_items__item_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/memory/profile-projection/items/{item_id}/actions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Apply Memory Profile Projection Action */
-        post: operations["apply_memory_profile_projection_action_api_memory_profile_projection_items__item_id__actions_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -864,6 +784,57 @@ export interface paths {
         put?: never;
         /** Search Memory */
         post: operations["search_memory_api_memory_search_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/metrics/local-impact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Local Impact */
+        get: operations["get_local_impact_api_metrics_local_impact_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/metrics/recall-feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record Recall Feedback */
+        post: operations["record_recall_feedback_api_metrics_recall_feedback_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/metrics/sidecar-recovery": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record Sidecar Recovery */
+        post: operations["record_sidecar_recovery_api_metrics_sidecar_recovery_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1140,6 +1111,57 @@ export interface paths {
         get: operations["get_current_task_api_tasks_current_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tasks/reminder-delivery/attempts/{attempt_id}/display": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record Reminder Display Attempt */
+        post: operations["record_reminder_display_attempt_api_tasks_reminder_delivery_attempts__attempt_id__display_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tasks/reminder-delivery/recover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Recover Reminder Runtime */
+        post: operations["recover_reminder_runtime_api_tasks_reminder_delivery_recover_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tasks/reminder-delivery/reservations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reserve Reminder Delivery */
+        post: operations["reserve_reminder_delivery_api_tasks_reminder_delivery_reservations_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2685,6 +2707,33 @@ export interface components {
              */
             wiki_page_count: number;
         };
+        /** LocalImpactResponse */
+        LocalImpactResponse: {
+            /**
+             * Evidence Status
+             * @enum {string}
+             */
+            evidence_status: "sufficient" | "insufficient_sample";
+            /** Failure Counts */
+            failure_counts?: {
+                [key: string]: number;
+            };
+            /** Generated At */
+            generated_at: string;
+            /** Metric Version */
+            metric_version: string;
+            /** Metrics */
+            metrics?: {
+                [key: string]: components["schemas"]["MetricValueResponse"];
+            };
+            /** Sample Size */
+            sample_size: number;
+            /**
+             * Window Days
+             * @enum {integer}
+             */
+            window_days: 7 | 30;
+        };
         /** LocalStateResetRequest */
         LocalStateResetRequest: {
             /** Confirmation */
@@ -2760,186 +2809,334 @@ export interface components {
              */
             target_type: "candidate" | "fact";
         };
-        /** MemoryGraphExportItem */
-        MemoryGraphExportItem: {
-            /** Category */
-            category: string;
-            /** Confidence */
-            confidence: number;
-            /** Conflicts With */
-            conflicts_with?: string | null;
-            /** Created At */
-            created_at: string;
-            /** Entity Type */
-            entity_type?: string | null;
-            /** Expires At */
-            expires_at?: string | null;
-            /** Fact Id */
-            fact_id: string;
+        /** MemoryGraphActionRequest */
+        MemoryGraphActionRequest: {
             /**
-             * Importance
-             * @default 0.5
-             */
-            importance: number;
-            /** Lifecycle Status */
-            lifecycle_status?: string | null;
-            /** Memory Type */
-            memory_type?: string | null;
-            /** Metadata */
-            metadata?: {
-                [key: string]: unknown;
-            };
-            /** Object */
-            object: string;
-            /** Occurred At */
-            occurred_at?: string | null;
-            /** Predicate */
-            predicate: string;
-            /** Source Type */
-            source_type: string;
-            /** Status */
-            status: string;
-            /** Subject */
-            subject: string;
-            /** Superseded By */
-            superseded_by?: string | null;
-            /**
-             * Support Count
-             * @default 1
-             */
-            support_count: number;
-            /** Updated At */
-            updated_at: string;
-        };
-        /** MemoryGraphExportPreviewResponse */
-        MemoryGraphExportPreviewResponse: {
-            /**
-             * Format
-             * @default markdown
+             * Action
              * @enum {string}
              */
-            format: "json" | "markdown";
-            /** Generated At */
-            generated_at: string;
-            /** Item Count */
-            item_count: number;
-            /** Items */
-            items?: components["schemas"]["MemoryGraphExportItem"][];
-            /** Json Preview */
-            json_preview: string;
-            /** Markdown Preview */
-            markdown_preview: string;
-            /** Redaction Note */
-            redaction_note: string;
+            action: "confirm" | "correct" | "forget" | "archive";
+            /**
+             * Confirmed
+             * @default false
+             */
+            confirmed: boolean;
+            /** Replacement */
+            replacement?: {
+                [key: string]: unknown;
+            } | null;
         };
-        /**
-         * MemoryGraphFactAction
-         * @enum {string}
-         */
-        MemoryGraphFactAction: "confirm" | "reject" | "wrong" | "sensitive-block" | "archive";
-        /** MemoryGraphFactActionResponse */
-        MemoryGraphFactActionResponse: {
-            /** Fact Id */
-            fact_id: string;
+        /** MemoryGraphActionResponse */
+        MemoryGraphActionResponse: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "confirm" | "correct" | "forget" | "archive";
+            /**
+             * Message
+             * @default
+             */
+            message: string;
+            /** Operation Id */
+            operation_id: string;
+            /** Replacement Id */
+            replacement_id?: string | null;
+            /**
+             * Replayed
+             * @default false
+             */
+            replayed: boolean;
             /** Status */
             status: string;
+            /** Target Id */
+            target_id: string;
         };
-        /** MemoryGraphFactListResponse */
-        MemoryGraphFactListResponse: {
-            /** Facts */
-            facts?: components["schemas"]["MemoryGraphFactResponse"][];
-        };
-        /** MemoryGraphFactResponse */
-        MemoryGraphFactResponse: {
-            /** Category */
-            category: string;
+        /** MemoryGraphClaimDetailResponse */
+        MemoryGraphClaimDetailResponse: {
+            /** Allowed Actions */
+            allowed_actions?: ("confirm" | "correct" | "forget" | "archive")[];
+            /** Claim Id */
+            claim_id: string;
             /** Confidence */
             confidence: number;
-            /** Conflicts With */
-            conflicts_with?: string | null;
-            /** Created At */
-            created_at: string;
-            /** Entity Type */
-            entity_type?: string | null;
-            /** Expires At */
-            expires_at?: string | null;
-            /** Fact Id */
-            fact_id: string;
+            /** Evidence */
+            evidence?: components["schemas"]["MemoryGraphEvidenceResponse"][];
             /**
-             * Importance
-             * @default 0.5
+             * Evidence Count
+             * @default 0
              */
-            importance: number;
-            /** Lifecycle Status */
-            lifecycle_status?: string | null;
-            /** Memory Type */
-            memory_type?: string | null;
-            /** Metadata Json */
-            metadata_json?: string | null;
-            /** Object */
-            object: string;
-            /** Occurred At */
-            occurred_at?: string | null;
+            evidence_count: number;
+            /** Fact Type */
+            fact_type: string;
+            lifecycle: components["schemas"]["MemoryGraphLifecycleResponse"];
+            /** Literal Value */
+            literal_value: string;
             /** Predicate */
             predicate: string;
-            /** Source Text */
-            source_text: string;
+            /**
+             * Redaction Note
+             * @default 原始证据和本机路径仅按需显示。
+             */
+            redaction_note: string;
+            /**
+             * Risk
+             * @default low
+             * @enum {string}
+             */
+            risk: "low" | "medium" | "high" | "hidden";
             /** Source Type */
             source_type: string;
             /** Status */
             status: string;
-            /** Subject */
-            subject: string;
-            /** Superseded By */
-            superseded_by?: string | null;
-            /**
-             * Support Count
-             * @default 1
-             */
-            support_count: number;
+            /** Subject Label */
+            subject_label: string;
+            /** Subject Node Id */
+            subject_node_id?: string | null;
+            /** Superseded By Claim Id */
+            superseded_by_claim_id?: string | null;
             /** Updated At */
             updated_at: string;
+            /** Version Chain */
+            version_chain?: components["schemas"]["MemoryGraphVersionResponse"][];
+            /** Wiki Pages */
+            wiki_pages?: components["schemas"]["MemoryGraphWikiBindingResponse"][];
         };
-        /** MemoryGraphProjectionClusterResponse */
-        MemoryGraphProjectionClusterResponse: {
-            /** Id */
-            id: string;
+        /** MemoryGraphClusterResponse */
+        MemoryGraphClusterResponse: {
+            /** Cluster Id */
+            cluster_id: string;
             /** Label */
             label: string;
             /** Node Ids */
             node_ids?: string[];
         };
-        /** MemoryGraphProjectionEdgeResponse */
-        MemoryGraphProjectionEdgeResponse: {
-            /** From */
-            from: string;
-            /** Id */
-            id: string;
-            /** Strength */
-            strength: number;
-            /** To */
-            to: string;
+        /** MemoryGraphEdgeDetailResponse */
+        MemoryGraphEdgeDetailResponse: {
+            /** Allowed Actions */
+            allowed_actions?: ("confirm" | "correct" | "forget" | "archive")[];
             /**
-             * Type
+             * Confidence
+             * @default 0
+             */
+            confidence: number;
+            /** Edge Id */
+            edge_id: string;
+            /** Evidence */
+            evidence?: components["schemas"]["MemoryGraphEvidenceResponse"][];
+            /**
+             * Evidence Count
+             * @default 0
+             */
+            evidence_count: number;
+            lifecycle?: components["schemas"]["MemoryGraphLifecycleResponse"] | null;
+            /**
+             * Redaction Note
+             * @default 原始证据和本机路径仅按需显示。
+             */
+            redaction_note: string;
+            /**
+             * Relation Type
              * @enum {string}
              */
-            type: "related_to" | "supports" | "came_from" | "updates" | "conflicts_with" | "belongs_to";
+            relation_type: "prefers" | "avoids" | "works_on" | "knows" | "related_to" | "occurred_in" | "supports" | "contradicts" | "supersedes" | "derived_from" | "documented_in";
+            /**
+             * Risk
+             * @default low
+             * @enum {string}
+             */
+            risk: "low" | "medium" | "high" | "hidden";
+            /** Source Node Id */
+            source_node_id: string;
+            /** Status */
+            status: string;
+            /** Target Node Id */
+            target_node_id: string;
+            /** Updated At */
+            updated_at?: string | null;
+            /** Version Chain */
+            version_chain?: components["schemas"]["MemoryGraphVersionResponse"][];
+            /** Wiki Pages */
+            wiki_pages?: components["schemas"]["MemoryGraphWikiBindingResponse"][];
         };
-        /** MemoryGraphProjectionNodeResponse */
-        MemoryGraphProjectionNodeResponse: {
-            /** Available Actions */
-            available_actions?: string[];
-            /** Confidence Label */
-            confidence_label: string;
-            /** Id */
-            id: string;
+        /** MemoryGraphEdgeResponse */
+        MemoryGraphEdgeResponse: {
+            /** Allowed Actions */
+            allowed_actions?: ("confirm" | "correct" | "forget" | "archive")[];
+            /**
+             * Confidence
+             * @default 0
+             */
+            confidence: number;
+            /** Edge Id */
+            edge_id: string;
+            /**
+             * Evidence Count
+             * @default 0
+             */
+            evidence_count: number;
+            /**
+             * Relation Type
+             * @enum {string}
+             */
+            relation_type: "prefers" | "avoids" | "works_on" | "knows" | "related_to" | "occurred_in" | "supports" | "contradicts" | "supersedes" | "derived_from" | "documented_in";
+            /**
+             * Risk
+             * @default low
+             * @enum {string}
+             */
+            risk: "low" | "medium" | "high" | "hidden";
+            /** Source Node Id */
+            source_node_id: string;
+            /**
+             * Status
+             * @default active
+             */
+            status: string;
+            /** Target Node Id */
+            target_node_id: string;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /** MemoryGraphEvidenceResponse */
+        MemoryGraphEvidenceResponse: {
+            /** Confidence */
+            confidence: number;
+            /** Created At */
+            created_at: string;
+            /** Evidence Id */
+            evidence_id: string;
+            /**
+             * Excerpt
+             * @default
+             */
+            excerpt: string;
             /** Label */
             label: string;
+            /** Relative Path */
+            relative_path?: string | null;
+            /** Source Type */
+            source_type: string;
+        };
+        /** MemoryGraphGenerationResponse */
+        MemoryGraphGenerationResponse: {
             /**
-             * Risk Tier
+             * Backend
+             * @default sqlite
              * @enum {string}
              */
-            risk_tier: "low" | "hidden";
+            backend: "sqlite" | "kuzu";
+            /** Fallback Code */
+            fallback_code?: string | null;
+            /** Generation Id */
+            generation_id?: string | null;
+            /**
+             * Source Revision
+             * @default 0
+             */
+            source_revision: number;
+            /**
+             * Status
+             * @default unavailable
+             */
+            status: string;
+        };
+        /** MemoryGraphLifecycleResponse */
+        MemoryGraphLifecycleResponse: {
+            /**
+             * Active For Recall
+             * @default false
+             */
+            active_for_recall: boolean;
+            /** Confidence */
+            confidence: number;
+            /** Expires At */
+            expires_at?: string | null;
+            /** Reason */
+            reason?: string | null;
+            /** Status */
+            status: string;
+            /** Updated At */
+            updated_at: string;
+        };
+        /** MemoryGraphNodeDetailResponse */
+        MemoryGraphNodeDetailResponse: {
+            /** Allowed Actions */
+            allowed_actions?: ("confirm" | "correct" | "forget" | "archive")[];
+            /** Claim Ids */
+            claim_ids?: string[];
+            /** Confidence */
+            confidence: number;
+            /** Edge Ids */
+            edge_ids?: string[];
+            /** Evidence */
+            evidence?: components["schemas"]["MemoryGraphEvidenceResponse"][];
+            /**
+             * Evidence Count
+             * @default 0
+             */
+            evidence_count: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "entity" | "claim" | "source" | "wiki_page" | "projection";
+            /** Label */
+            label: string;
+            lifecycle?: components["schemas"]["MemoryGraphLifecycleResponse"] | null;
+            /** Node Id */
+            node_id: string;
+            /**
+             * Redaction Note
+             * @default 原始证据和本机路径仅按需显示。
+             */
+            redaction_note: string;
+            /**
+             * Risk
+             * @enum {string}
+             */
+            risk: "low" | "medium" | "high" | "hidden";
+            /** Status */
+            status: string;
+            /**
+             * Subtitle
+             * @default
+             */
+            subtitle: string;
+            /** Type */
+            type: string;
+            /** Updated At */
+            updated_at: string;
+            /** Version Chain */
+            version_chain?: components["schemas"]["MemoryGraphVersionResponse"][];
+            /** Wiki Pages */
+            wiki_pages?: components["schemas"]["MemoryGraphWikiBindingResponse"][];
+        };
+        /** MemoryGraphNodeResponse */
+        MemoryGraphNodeResponse: {
+            /** Allowed Actions */
+            allowed_actions?: ("confirm" | "correct" | "forget" | "archive")[];
+            /**
+             * Confidence
+             * @default 0
+             */
+            confidence: number;
+            /** Confidence Label */
+            confidence_label: string;
+            /**
+             * Evidence Count
+             * @default 0
+             */
+            evidence_count: number;
+            /** Label */
+            label: string;
+            /** Node Id */
+            node_id: string;
+            /**
+             * Risk
+             * @enum {string}
+             */
+            risk: "low" | "medium" | "high" | "hidden";
             /** Size */
             size: number;
             /** Source Label */
@@ -2959,25 +3156,79 @@ export interface components {
             /** Updated At */
             updated_at: string;
         };
-        /** MemoryGraphProjectionResponse */
-        MemoryGraphProjectionResponse: {
+        /** MemoryGraphRebuildResponse */
+        MemoryGraphRebuildResponse: {
+            /**
+             * Backend
+             * @default kuzu
+             * @enum {string}
+             */
+            backend: "sqlite" | "kuzu";
+            /**
+             * Degraded
+             * @default false
+             */
+            degraded: boolean;
+            /**
+             * Edge Count
+             * @default 0
+             */
+            edge_count: number;
+            /** Fallback Code */
+            fallback_code?: string | null;
+            /** Generation Id */
+            generation_id?: string | null;
+            /**
+             * Node Count
+             * @default 0
+             */
+            node_count: number;
+            /** Operation Id */
+            operation_id: string;
+            /**
+             * Replayed
+             * @default false
+             */
+            replayed: boolean;
+            /**
+             * Source Revision
+             * @default 0
+             */
+            source_revision: number;
+            /** Status */
+            status: string;
+        };
+        /** MemoryGraphResponse */
+        MemoryGraphResponse: {
             /** Clusters */
-            clusters?: components["schemas"]["MemoryGraphProjectionClusterResponse"][];
+            clusters?: components["schemas"]["MemoryGraphClusterResponse"][];
+            /**
+             * Degraded Mode
+             * @default false
+             */
+            degraded_mode: boolean;
             /** Edges */
-            edges?: components["schemas"]["MemoryGraphProjectionEdgeResponse"][];
+            edges?: components["schemas"]["MemoryGraphEdgeResponse"][];
             /** Generated At */
             generated_at: string;
+            generation: components["schemas"]["MemoryGraphGenerationResponse"];
             /** Nodes */
-            nodes?: components["schemas"]["MemoryGraphProjectionNodeResponse"][];
+            nodes?: components["schemas"]["MemoryGraphNodeResponse"][];
             /**
              * Redaction Note
              * @default 敏感内容、原始证据、授权信息和本机路径不会显示。
              */
             redaction_note: string;
-            summary?: components["schemas"]["MemoryGraphProjectionSummaryResponse"];
+            /**
+             * Schema Version
+             * @default llmwiki-graph-v1
+             */
+            schema_version: string;
+            summary?: components["schemas"]["MemoryGraphSummaryResponse"];
+            vault: components["schemas"]["MemoryGraphVaultScopeResponse"];
         };
-        /** MemoryGraphProjectionSummaryResponse */
-        MemoryGraphProjectionSummaryResponse: {
+        /** MemoryGraphSummaryResponse */
+        MemoryGraphSummaryResponse: {
             /**
              * Cleanup Count
              * @default 0
@@ -2998,6 +3249,50 @@ export interface components {
              * @default 0
              */
             total_nodes: number;
+        };
+        /** MemoryGraphVaultScopeResponse */
+        MemoryGraphVaultScopeResponse: {
+            /**
+             * Label
+             * @default active_vault
+             */
+            label: string;
+            /** Vault Id */
+            vault_id: string;
+        };
+        /** MemoryGraphVersionResponse */
+        MemoryGraphVersionResponse: {
+            /**
+             * Current
+             * @default false
+             */
+            current: boolean;
+            /** Object Id */
+            object_id: string;
+            /** Status */
+            status: string;
+            /** Updated At */
+            updated_at: string;
+        };
+        /** MemoryGraphWikiBindingResponse */
+        MemoryGraphWikiBindingResponse: {
+            /** Binding Id */
+            binding_id: string;
+            /** Content Hash */
+            content_hash?: string | null;
+            /** Relative Path */
+            relative_path: string;
+            /**
+             * Revision
+             * @default 0
+             */
+            revision: number;
+            /** Status */
+            status: string;
+            /** Title */
+            title: string;
+            /** Updated At */
+            updated_at: string;
         };
         /** MemoryHygieneActionRequest */
         MemoryHygieneActionRequest: {
@@ -3066,147 +3361,6 @@ export interface components {
              * @enum {string}
              */
             type: "stale_recent_state" | "low_confidence_stale" | "sensitive_candidate";
-        };
-        /** MemoryProfileActionRequest */
-        MemoryProfileActionRequest: {
-            /**
-             * Action
-             * @enum {string}
-             */
-            action: "forget" | "mark_inaccurate" | "keep" | "make_temporary" | "mark_stale";
-            /**
-             * Confirmed
-             * @default false
-             */
-            confirmed: boolean;
-            /** Expires At */
-            expires_at?: string | null;
-            /**
-             * Feedback Text
-             * @default
-             */
-            feedback_text: string;
-        };
-        /** MemoryProfileActionResponse */
-        MemoryProfileActionResponse: {
-            /** Item Id */
-            item_id: string;
-            /** Message */
-            message: string;
-            /** Ok */
-            ok: boolean;
-        };
-        /** MemoryProfileAvailableActionResponse */
-        MemoryProfileAvailableActionResponse: {
-            /**
-             * Action
-             * @enum {string}
-             */
-            action: "forget" | "mark_inaccurate" | "keep" | "make_temporary" | "mark_stale";
-            /** Label */
-            label: string;
-            /**
-             * Requires Confirmation
-             * @default true
-             */
-            requires_confirmation: boolean;
-        };
-        /** MemoryProfileDetailResponse */
-        MemoryProfileDetailResponse: {
-            /** Available Actions */
-            available_actions?: components["schemas"]["MemoryProfileAvailableActionResponse"][];
-            /** Category Label */
-            category_label: string;
-            /** Confidence Label */
-            confidence_label: string;
-            /** Id */
-            id: string;
-            /** Importance Label */
-            importance_label: string;
-            /** Permissions */
-            permissions?: string[];
-            /** Safety Note */
-            safety_note?: string | null;
-            /** Source Label */
-            source_label: string;
-            source_summary?: components["schemas"]["MemoryProfileSourceSummaryResponse"] | null;
-            /** Status Label */
-            status_label: string;
-            /** Summary */
-            summary: string;
-            /** Updated At */
-            updated_at: string;
-        };
-        /** MemoryProfileProjectionItemResponse */
-        MemoryProfileProjectionItemResponse: {
-            /** Available Actions */
-            available_actions?: string[];
-            /**
-             * Can Revoke
-             * @default false
-             */
-            can_revoke: boolean;
-            /** Category */
-            category: string;
-            /** Confidence */
-            confidence: number;
-            /** Id */
-            id: string;
-            /** Importance */
-            importance: number;
-            /** Permissions Summary */
-            permissions_summary: string;
-            /** Risk Label */
-            risk_label: string;
-            /** Source Label */
-            source_label: string;
-            /** Status Label */
-            status_label: string;
-            /** Summary */
-            summary: string;
-            /** Updated At */
-            updated_at: string;
-        };
-        /** MemoryProfileProjectionResponse */
-        MemoryProfileProjectionResponse: {
-            /** Boundaries */
-            boundaries?: components["schemas"]["MemoryProfileProjectionItemResponse"][];
-            /** Conflicts */
-            conflicts?: components["schemas"]["MemoryProfileProjectionItemResponse"][];
-            /** Filtered */
-            filtered?: components["schemas"]["MemoryProfileProjectionItemResponse"][];
-            /** Generated At */
-            generated_at: string;
-            /** Identity */
-            identity?: components["schemas"]["MemoryProfileProjectionItemResponse"][];
-            /** Needs Confirmation */
-            needs_confirmation?: components["schemas"]["MemoryProfileProjectionItemResponse"][];
-            /** Preferences */
-            preferences?: components["schemas"]["MemoryProfileProjectionItemResponse"][];
-            /** Projects */
-            projects?: components["schemas"]["MemoryProfileProjectionItemResponse"][];
-            /** Recent State */
-            recent_state?: components["schemas"]["MemoryProfileProjectionItemResponse"][];
-            /**
-             * Redaction Note
-             * @default 敏感内容、原始证据、凭据、完整授权信息和本机绝对路径不会显示在画像里。
-             */
-            redaction_note: string;
-            /** Relationships */
-            relationships?: components["schemas"]["MemoryProfileProjectionItemResponse"][];
-        };
-        /** MemoryProfileSourceSummaryResponse */
-        MemoryProfileSourceSummaryResponse: {
-            /** Description */
-            description: string;
-            /** Evidence Count Label */
-            evidence_count_label?: string | null;
-            /** Label */
-            label: string;
-            /** Last Seen Label */
-            last_seen_label?: string | null;
-            /** Safety Note */
-            safety_note?: string | null;
         };
         /** MemoryProposalActionResponse */
         MemoryProposalActionResponse: {
@@ -3456,8 +3610,14 @@ export interface components {
             };
             /** Chunk Id */
             chunk_id: string;
+            /** Citation Refs */
+            citation_refs?: string[];
             /** Content Hash */
             content_hash?: string | null;
+            /** Entity Refs */
+            entity_refs?: string[];
+            /** Evidence Refs */
+            evidence_refs?: string[];
             /** Fact Id */
             fact_id?: string | null;
             /** Filtered Reason */
@@ -3501,6 +3661,47 @@ export interface components {
             source_scope: string;
             /** Title */
             title: string;
+        };
+        /** MetricValueResponse */
+        MetricValueResponse: {
+            /**
+             * Denominator
+             * @default 0
+             */
+            denominator: number;
+            /**
+             * Evidence Status
+             * @enum {string}
+             */
+            evidence_status: "sufficient" | "insufficient_sample";
+            /**
+             * Numerator
+             * @default 0
+             */
+            numerator: number;
+            /** P50 Ms */
+            p50_ms?: number | null;
+            /** P95 Ms */
+            p95_ms?: number | null;
+            /** Queue Peak */
+            queue_peak?: number | null;
+            /**
+             * Revocation Count
+             * @default 0
+             */
+            revocation_count: number;
+            /**
+             * Sample Size
+             * @default 0
+             */
+            sample_size: number;
+            /** Value */
+            value?: number | null;
+            /**
+             * Window Days
+             * @enum {integer}
+             */
+            window_days: 7 | 30;
         };
         /** ModelConfigRequest */
         ModelConfigRequest: {
@@ -3747,10 +3948,116 @@ export interface components {
             lint: components["schemas"]["QueryArchiveLintResponse"];
             page: components["schemas"]["WikiPageResponse"];
         };
+        /** RecallFeedbackRequest */
+        RecallFeedbackRequest: {
+            /** Answer Reference */
+            answer_reference?: string | null;
+            /** Duration Ms */
+            duration_ms?: number | null;
+            /** Reference */
+            reference: string;
+            /** Repetition Count */
+            repetition_count?: number | null;
+            /**
+             * Signal
+             * @enum {string}
+             */
+            signal: "helpful" | "incorrect" | "missing" | "context_repeated" | "context_not_repeated" | "wiki_reused";
+            /**
+             * Source Scope
+             * @default personal_memory
+             */
+            source_scope: string;
+            /** Wiki Reference */
+            wiki_reference?: string | null;
+        };
+        /** RecallFeedbackResponse */
+        RecallFeedbackResponse: {
+            /** Event Id */
+            event_id: string;
+            /**
+             * Signal
+             * @enum {string}
+             */
+            signal: "helpful" | "incorrect" | "missing" | "context_repeated" | "context_not_repeated" | "wiki_reused";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "recorded" | "replayed";
+        };
         /** RejectProposalRequest */
         RejectProposalRequest: {
             /** Reason */
             reason: string;
+        };
+        /** ReminderDeliveryAttemptResponse */
+        ReminderDeliveryAttemptResponse: {
+            /** Attempt Id */
+            attempt_id: string;
+            /** Created At */
+            created_at: string;
+            /**
+             * Dispatch Kind
+             * @enum {string}
+             */
+            dispatch_kind: "automatic" | "manual";
+            /** Display Invoked At */
+            display_invoked_at?: string | null;
+            /**
+             * Duplicate
+             * @default false
+             */
+            duplicate: boolean;
+            /** Error */
+            error?: string | null;
+            /** Idempotency Key */
+            idempotency_key: string;
+            /** Reminder Id */
+            reminder_id: string;
+            /** Reserved At */
+            reserved_at: string;
+            /** Result Code */
+            result_code?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "reserved" | "display_invoked" | "unknown_after_crash" | "unsupported" | "failed";
+            /** Trigger At */
+            trigger_at: string;
+            /** Updated At */
+            updated_at: string;
+        };
+        /** ReminderDeliveryReserveRequest */
+        ReminderDeliveryReserveRequest: {
+            /**
+             * Dispatch Kind
+             * @default automatic
+             * @enum {string}
+             */
+            dispatch_kind: "automatic" | "manual";
+            /** Reminder Id */
+            reminder_id: string;
+            /** Trigger At */
+            trigger_at: string;
+        };
+        /** ReminderDeliveryResultRequest */
+        ReminderDeliveryResultRequest: {
+            /** Error */
+            error?: string | null;
+            /**
+             * Result Code
+             * @enum {string}
+             */
+            result_code: "shown" | "unsupported" | "failed";
+        };
+        /** ReminderRuntimeRecoveryResponse */
+        ReminderRuntimeRecoveryResponse: {
+            /** Recovered Reminders */
+            recovered_reminders: number;
+            /** Unknown Attempts */
+            unknown_attempts: number;
         };
         /** RetrievalContribution */
         RetrievalContribution: {
@@ -3955,6 +4262,44 @@ export interface components {
              * @default false
              */
             vault_configured: boolean;
+        };
+        /** SidecarRecoveryRequest */
+        SidecarRecoveryRequest: {
+            /**
+             * Cause
+             * @enum {string}
+             */
+            cause: "process_exited" | "spawn_failed" | "startup_failed" | "readiness_failed";
+            /** Incident Id */
+            incident_id: string;
+            /**
+             * Ready At
+             * Format: date-time
+             */
+            ready_at: string;
+            /** Restart Attempt */
+            restart_attempt: number;
+            /**
+             * Unhealthy At
+             * Format: date-time
+             */
+            unhealthy_at: string;
+        };
+        /** SidecarRecoveryResponse */
+        SidecarRecoveryResponse: {
+            /** Incident Id */
+            incident_id: string;
+            /** Ready Event Id */
+            ready_event_id: string;
+            /** Recovery Time Ms */
+            recovery_time_ms: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "recorded" | "replayed";
+            /** Unhealthy Event Id */
+            unhealthy_event_id: string;
         };
         /** TaskApprovalResponse */
         TaskApprovalResponse: {
@@ -5054,8 +5399,19 @@ export interface components {
              * @default false
              */
             disputed: boolean;
+            /** Entity Ids */
+            entity_ids?: string[];
+            /** Evidence Ids */
+            evidence_ids?: string[];
             /** Expiry */
             expiry?: string | null;
+            /** Fact Ids */
+            fact_ids?: string[];
+            /**
+             * Inference
+             * @default false
+             */
+            inference: boolean;
             /** Links */
             links?: string[];
             /**
@@ -5064,6 +5420,11 @@ export interface components {
              * @enum {string}
              */
             operation: "create" | "append" | "replace_section";
+            /**
+             * Revision
+             * @default 1
+             */
+            revision: number;
             /** Section */
             section?: string | null;
             /** Source Message Id */
@@ -5078,6 +5439,10 @@ export interface components {
             title: string;
             /** Type */
             type?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
+            /** Wiki Id */
+            wiki_id?: string | null;
         };
         /** WikiResearchQuestion */
         WikiResearchQuestion: {
@@ -5143,8 +5508,20 @@ export interface components {
         WikiSynthesizeRequest: {
             /** Content */
             content: string;
+            /** Entity Ids */
+            entity_ids?: string[];
+            /** Evidence Ids */
+            evidence_ids?: string[];
+            /** Fact Ids */
+            fact_ids?: string[];
             /** Links */
             links?: string[];
+            /**
+             * Page Type
+             * @default synthesis
+             * @enum {string}
+             */
+            page_type: "synthesis" | "comparison" | "decision" | "report";
             /** Source Paths */
             source_paths?: string[];
             /** Tags */
@@ -5153,6 +5530,8 @@ export interface components {
             target_path?: string | null;
             /** Title */
             title: string;
+            /** User Decision */
+            user_decision?: string | null;
         };
         /** WikiSynthesizeResponse */
         WikiSynthesizeResponse: {
@@ -5624,6 +6003,38 @@ export interface operations {
             };
         };
     };
+    rebuild_memory_graph_projection_api_diagnostics_memory_graph_rebuild_post: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Stable identifier for one local write intent. Retries must reuse the same value. */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MemoryGraphRebuildResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     negotiation_stats_api_diagnostics_negotiation_stats_get: {
         parameters: {
             query?: never;
@@ -5945,43 +6356,12 @@ export interface operations {
             };
         };
     };
-    get_memory_graph_projection_api_memory_graph_projection_get: {
+    get_memory_graph_api_memory_graph_get: {
         parameters: {
             query?: {
-                max_nodes?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MemoryGraphProjectionResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    export_memory_graph_preview_api_memory_graph_export_preview_get: {
-        parameters: {
-            query?: {
-                format?: string;
-                status?: string | null;
                 query?: string | null;
+                status?: string | null;
+                entity_type?: string | null;
                 limit?: number;
             };
             header?: never;
@@ -5996,7 +6376,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MemoryGraphExportPreviewResponse"];
+                    "application/json": components["schemas"]["MemoryGraphResponse"];
                 };
             };
             /** @description Validation Error */
@@ -6010,46 +6390,12 @@ export interface operations {
             };
         };
     };
-    list_memory_graph_facts_api_memory_graph_facts_get: {
-        parameters: {
-            query?: {
-                status?: string | null;
-                query?: string | null;
-                limit?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MemoryGraphFactListResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    apply_memory_graph_fact_action_api_memory_graph_facts__fact_id__actions__action__post: {
+    get_memory_graph_claim_api_memory_graph_claims__claim_id__get: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                fact_id: string;
-                action: components["schemas"]["MemoryGraphFactAction"];
+                claim_id: string;
             };
             cookie?: never;
         };
@@ -6061,7 +6407,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MemoryGraphFactActionResponse"];
+                    "application/json": components["schemas"]["MemoryGraphClaimDetailResponse"];
                 };
             };
             /** @description Validation Error */
@@ -6075,16 +6421,23 @@ export interface operations {
             };
         };
     };
-    archive_memory_graph_fact_api_memory_graph_facts__fact_id__archive_post: {
+    act_on_memory_graph_claim_api_memory_graph_claims__claim_id__actions_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Stable identifier for one local write intent. Retries must reuse the same value. */
+                "Idempotency-Key": string;
+            };
             path: {
-                fact_id: string;
+                claim_id: string;
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemoryGraphActionRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -6092,7 +6445,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MemoryGraphFactActionResponse"];
+                    "application/json": components["schemas"]["MemoryGraphActionResponse"];
                 };
             };
             /** @description Validation Error */
@@ -6106,12 +6459,12 @@ export interface operations {
             };
         };
     };
-    confirm_memory_graph_fact_api_memory_graph_facts__fact_id__confirm_post: {
+    get_memory_graph_edge_api_memory_graph_edges__edge_id__get: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                fact_id: string;
+                edge_id: string;
             };
             cookie?: never;
         };
@@ -6123,7 +6476,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MemoryGraphFactActionResponse"];
+                    "application/json": components["schemas"]["MemoryGraphEdgeDetailResponse"];
                 };
             };
             /** @description Validation Error */
@@ -6137,16 +6490,23 @@ export interface operations {
             };
         };
     };
-    reject_memory_graph_fact_api_memory_graph_facts__fact_id__reject_post: {
+    act_on_memory_graph_edge_api_memory_graph_edges__edge_id__actions_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Stable identifier for one local write intent. Retries must reuse the same value. */
+                "Idempotency-Key": string;
+            };
             path: {
-                fact_id: string;
+                edge_id: string;
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemoryGraphActionRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -6154,7 +6514,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MemoryGraphFactActionResponse"];
+                    "application/json": components["schemas"]["MemoryGraphActionResponse"];
                 };
             };
             /** @description Validation Error */
@@ -6168,12 +6528,12 @@ export interface operations {
             };
         };
     };
-    sensitive_block_memory_graph_fact_api_memory_graph_facts__fact_id__sensitive_block_post: {
+    get_memory_graph_node_api_memory_graph_nodes__node_id__get: {
         parameters: {
             query?: never;
             header?: never;
             path: {
-                fact_id: string;
+                node_id: string;
             };
             cookie?: never;
         };
@@ -6185,7 +6545,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MemoryGraphFactActionResponse"];
+                    "application/json": components["schemas"]["MemoryGraphNodeDetailResponse"];
                 };
             };
             /** @description Validation Error */
@@ -6199,16 +6559,23 @@ export interface operations {
             };
         };
     };
-    wrong_memory_graph_fact_api_memory_graph_facts__fact_id__wrong_post: {
+    act_on_memory_graph_node_api_memory_graph_nodes__node_id__actions_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Stable identifier for one local write intent. Retries must reuse the same value. */
+                "Idempotency-Key": string;
+            };
             path: {
-                fact_id: string;
+                node_id: string;
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MemoryGraphActionRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -6216,7 +6583,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["MemoryGraphFactActionResponse"];
+                    "application/json": components["schemas"]["MemoryGraphActionResponse"];
                 };
             };
             /** @description Validation Error */
@@ -6310,103 +6677,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LocalAssetStatsResponse"];
-                };
-            };
-        };
-    };
-    get_memory_profile_projection_api_memory_profile_projection_get: {
-        parameters: {
-            query?: {
-                limit?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MemoryProfileProjectionResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_memory_profile_projection_item_api_memory_profile_projection_items__item_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                item_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MemoryProfileDetailResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    apply_memory_profile_projection_action_api_memory_profile_projection_items__item_id__actions_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                item_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["MemoryProfileActionRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["MemoryProfileActionResponse"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -6700,6 +6970,109 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MemorySearchResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_local_impact_api_metrics_local_impact_get: {
+        parameters: {
+            query?: {
+                window_days?: 7 | 30;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocalImpactResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_recall_feedback_api_metrics_recall_feedback_post: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Stable identifier for one local write intent. Retries must reuse the same value. */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecallFeedbackRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecallFeedbackResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_sidecar_recovery_api_metrics_sidecar_recovery_post: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Stable identifier for one local write intent. Retries must reuse the same value. */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SidecarRecoveryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SidecarRecoveryResponse"];
                 };
             };
             /** @description Validation Error */
@@ -7269,6 +7642,97 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CurrentTaskResponse"];
+                };
+            };
+        };
+    };
+    record_reminder_display_attempt_api_tasks_reminder_delivery_attempts__attempt_id__display_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                attempt_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReminderDeliveryResultRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderDeliveryAttemptResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recover_reminder_runtime_api_tasks_reminder_delivery_recover_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderRuntimeRecoveryResponse"];
+                };
+            };
+        };
+    };
+    reserve_reminder_delivery_api_tasks_reminder_delivery_reservations_post: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Stable identifier for one local write intent. Retries must reuse the same value. */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReminderDeliveryReserveRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderDeliveryAttemptResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

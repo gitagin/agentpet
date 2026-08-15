@@ -60,6 +60,16 @@ def test_memory_candidate_store_records_candidate_evidence_and_events(tmp_path: 
                 metadata={"message_role": "user"},
             )
         )
+        replayed_evidence = store.add_evidence(
+            MemoryEvidenceCreate(
+                candidate_id=candidate.id,
+                source_type="chat_message",
+                source_text="Please keep implementation notes concise.",
+                source_excerpt="keep implementation notes concise",
+                confidence=0.95,
+                metadata={"message_role": "user"},
+            )
+        )
         transition = store.transition(
             candidate_id=candidate.id,
             to_status=LifecycleStatus.STALE,
@@ -90,13 +100,14 @@ def test_memory_candidate_store_records_candidate_evidence_and_events(tmp_path: 
         store.close()
 
     assert duplicate.id == candidate.id
-    assert duplicate.evidence_count == 2
+    assert duplicate.evidence_count == 1
     assert evidence.candidate_id == candidate.id
+    assert replayed_evidence.id == evidence.id
     assert evidence.source_excerpt == "keep implementation notes concise"
     assert transition.from_status is LifecycleStatus.ACTIVE
     assert transition.to_status is LifecycleStatus.STALE
     assert refreshed.status is LifecycleStatus.STALE
-    assert refreshed.evidence_count == 3
+    assert refreshed.evidence_count == 2
     assert refreshed.metadata == {"source": "unit-test"}
 
     with sqlite3.connect(db_path) as conn:

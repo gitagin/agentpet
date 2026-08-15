@@ -59,10 +59,9 @@ class MemoryHygieneService:
         self,
         db: str | Path | sqlite3.Connection,
         *,
-        graph_root: str | Path | None = None,
         now_provider: Callable[[], datetime] | None = None,
     ) -> None:
-        self.lifecycle = MemoryLifecycleService(db, graph_root=graph_root)
+        self.lifecycle = MemoryLifecycleService(db)
         self.conn = self.lifecycle.conn
         self.now_provider = now_provider or (lambda: datetime.now(timezone.utc))
 
@@ -251,13 +250,21 @@ class MemoryHygieneService:
             self.conn.execute(
                 """
                 UPDATE memory_candidates
-                SET evidence_count = evidence_count + ?,
+                SET evidence_count = (
+                        SELECT COUNT(*)
+                        FROM memory_evidence
+                        WHERE candidate_id = ?
+                    ),
                     confidence = MAX(confidence, ?),
                     importance = MAX(importance, ?),
                     updated_at = ?
                 WHERE id = ?
                 """,
-                (duplicate.evidence_count, duplicate.confidence, duplicate.importance, now, keeper_id),
+                (keeper_id, duplicate.confidence, duplicate.importance, now, keeper_id),
+            )
+            self.conn.execute(
+                "UPDATE memory_candidates SET evidence_count = 0, updated_at = ? WHERE id = ?",
+                (now, duplicate.id),
             )
 
     def _reject_stale_low_confidence_candidates(

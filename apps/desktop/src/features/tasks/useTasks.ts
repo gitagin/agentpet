@@ -30,39 +30,28 @@ export function useTasks({ api, pollingEnabled, sidecarReady, onNotice, onTaskSt
     undefined,
     () => createInitialTaskState(formatTimezoneForUser(Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC")),
   );
-  const triggeredReminderNotificationIds = useRef<Set<string>>(new Set());
   const callbacks = useRef({ onNotice, onTaskStage });
 
   callbacks.current = { onNotice, onTaskStage };
 
-  const notifyTriggeredReminders = useCallback(async (items: TaskItem[]) => {
+  const dispatchManualReminder = useCallback(async (task: TaskItem) => {
     const notify = window.agentDesktop?.showReminderNotification;
-    if (!notify) {
-      if (items.some((task) => task.reminder_id?.trim() && task.reminder_status === "triggered")) {
-        dispatch({
-          type: "setReminderNotification",
-          summary: {
-            status: "unsupported",
-            detail: "当前运行环境不支持系统通知。",
-          },
-        });
-      }
+    const reminderId = task.reminder_id?.trim();
+    const triggerAt = task.remind_at || task.triggered_at || "";
+    if (!reminderId || task.reminder_status !== "triggered" || !triggerAt) {
       return;
     }
-
-    for (const task of items) {
-      const reminderId = task.reminder_id?.trim();
-      if (!reminderId || task.reminder_status !== "triggered") {
-        continue;
-      }
-      if (triggeredReminderNotificationIds.current.has(reminderId)) {
-        continue;
-      }
-      triggeredReminderNotificationIds.current.add(reminderId);
+    if (!notify) {
+      dispatch({ type: "setReminderNotification", summary: { status: "unsupported", detail: "当前运行环境不支持系统通知。" } });
+      return;
+    }
+    try {
       const result = await notify({
         reminder_id: reminderId,
+        trigger_at: triggerAt,
+        dispatch_kind: "manual",
         title: task.title || "Agent Pet 提醒",
-        body: task.description || task.source_text || task.remind_at || "提醒已到期。",
+        body: task.description || "提醒已到期。",
       });
       dispatch({
         type: "setReminderNotification",
@@ -70,16 +59,19 @@ export function useTasks({ api, pollingEnabled, sidecarReady, onNotice, onTaskSt
           status: result.status,
           detail:
             result.status === "shown"
-              ? `已发送提醒：${task.title || reminderId}`
+              ? `已调用系统显示：${task.title || reminderId}`
               : result.reason || `提醒 ${reminderId} 返回 ${result.status}`,
         },
       });
-      if (result.status === "unsupported" || result.status === "failed") {
+      if (result.status !== "shown") {
         callbacks.current.onNotice({
           tone: "error",
-          message: `系统通知未送达：${result.reason || result.status}`,
+          message: `系统通知结果未确认，任务仍会保留：${result.reason || result.status}`,
         });
       }
+    } catch (error) {
+      dispatch({ type: "setReminderNotification", summary: { status: "unknown", detail: "手动提醒调用结果未知。" } });
+      callbacks.current.onNotice({ tone: "error", message: "手动提醒调用结果未知，任务仍会保留。" });
     }
   }, []);
 
@@ -90,7 +82,6 @@ export function useTasks({ api, pollingEnabled, sidecarReady, onNotice, onTaskSt
     try {
       const response = await api.listTasks();
       dispatch({ type: "setTasks", tasks: response.tasks });
-      void notifyTriggeredReminders(response.tasks);
     } catch (error) {
       if (!options.silent) {
         callbacks.current.onNotice({ tone: "error", message: describeError(error, "任务加载失败") });
@@ -100,7 +91,7 @@ export function useTasks({ api, pollingEnabled, sidecarReady, onNotice, onTaskSt
         dispatch({ type: "setLoading", loading: false });
       }
     }
-  }, [api, notifyTriggeredReminders]);
+  }, [api]);
 
   const createTask = useCallback(async (event: FormEvent) => {
     event.preventDefault();
@@ -147,7 +138,7 @@ export function useTasks({ api, pollingEnabled, sidecarReady, onNotice, onTaskSt
   }, [api, loadTasks]);
 
   useEffect(() => {
-    if (!pollingEnabled || !window.agentDesktop?.showReminderNotification || !sidecarReady) {
+    if (!pollingEnabled || !sidecarReady) {
       return;
     }
 
@@ -178,6 +169,12 @@ export function useTasks({ api, pollingEnabled, sidecarReady, onNotice, onTaskSt
     lastReminderNotification: state.lastReminderNotification as ReminderNotificationSummary,
     loadingTasks: state.loading,
     loadTasks,
+    retryReminder: (taskId: string) => {
+      const task = state.tasks.find((item) => item.task_id === taskId);
+      if (task) {
+        void dispatchManualReminder(task);
+      }
+    },
     taskActionIds: state.actionIds,
     taskDraft: state.draft,
     tasks: state.tasks,

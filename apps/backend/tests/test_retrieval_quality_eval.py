@@ -292,7 +292,7 @@ def test_fts_baseline_is_isolated_reproducible_and_writes_complete_artifacts(
         assert actual_hash == expected_hash
     failure_catalog = (output_a / "failure-catalog.md").read_text(encoding="utf-8")
     assert "TASK-1205" in failure_catalog
-    assert "TASK-1207" in failure_catalog
+    assert "TASK-1207" not in failure_catalog
 
     monkeypatch.setattr(retrieval_eval, "run_fts_evaluation", lambda **_: report_a)
     cli_args = [
@@ -350,11 +350,15 @@ def test_all_mode_comparison_uses_one_snapshot_reports_every_stage_and_defers_re
     ]
     shared_hash = report["shared_invariants_sha256"]
     expected_case_ids = [case.case_id for case in load_corpus(DATASET_PATH).cases]
-    for mode in report["modes"].values():
+    for mode_id, mode in report["modes"].items():
         assert mode["shared_invariants_sha256"] == shared_hash
         assert [result["case_id"] for result in mode["case_results"]] == expected_case_ids
-        assert mode["errors"]["strict_channel_failure_count"] == 0
-        assert mode["errors"]["fallback_count"] == 0
+        expected_atom_gate_fallbacks = 0 if mode_id == "fts" else 8
+        assert mode["errors"]["strict_channel_failure_count"] == expected_atom_gate_fallbacks
+        assert mode["errors"]["fallback_count"] == expected_atom_gate_fallbacks
+        assert {
+            failure["reason"] for failure in mode["errors"]["strict_channel_failures"]
+        } <= {"vector_candidates_rejected"}
         assert mode["safety"]["inaccessible_memory_leakage"] == 0
         assert mode["cost"] == {
             "external_request_count": 0,
@@ -454,4 +458,5 @@ def test_portfolio_retrieval_claims_point_to_current_repository_evidence() -> No
     assert evidence_paths
     assert [path for path in evidence_paths if not (REPOSITORY_ROOT / path).exists()] == []
     assert re.search(r"keyword[-_ ]free", combined, flags=re.IGNORECASE) is None
-    assert re.search(r"(?:0\.496|0\.628|0\.672|0\.226667)", combined) is None
+    assert "0.496" in combined
+    assert re.search(r"(?:0\.628|0\.672|0\.226667)", combined) is None

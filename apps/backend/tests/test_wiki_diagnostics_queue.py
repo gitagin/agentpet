@@ -115,7 +115,10 @@ def test_wiki_diagnostics_queue_is_deterministic_and_side_effect_free(tmp_path: 
     assert second_snapshot == first_snapshot
     assert all(item.repair_preview is not None for item in first_items)
     missing_concept = next(item for item in first_items if item.diagnostic_type == "missing_concept")
-    assert "type: concept" in missing_concept.repair_preview.markdown_preview
+    assert "审查概念候选" in missing_concept.repair_preview.markdown_preview
+    assert "Wiki/Inbox.md" in missing_concept.repair_preview.markdown_preview
+    assert "type: concept" not in missing_concept.repair_preview.markdown_preview
+    assert "核心定义" not in missing_concept.repair_preview.markdown_preview
 
     assert trap_wiki.calls == []
     assert not (wiki_root / "AGENTS.md").exists()

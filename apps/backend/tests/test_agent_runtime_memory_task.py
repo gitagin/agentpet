@@ -30,6 +30,7 @@ def test_langgraph_runtime_preserves_core_tool_agents() -> None:
                 memory=memory,
                 tasks=tasks,
                 automation_settings=SimpleNamespace(use_negotiation=False),
+                allow_ephemeral_lifecycle=True,
             )
         )
 
@@ -62,6 +63,7 @@ def test_langgraph_action_agent_defers_memory_to_auto_background_archive_by_defa
                     {AgentId.ACTION_AGENT: memory_model}
                 ),
                 automation_settings=SimpleNamespace(use_negotiation=False),
+                allow_ephemeral_lifecycle=True,
             )
         )
 
@@ -93,6 +95,7 @@ def test_langgraph_chat_agent_maps_model_memory_tool_call_to_proposal_event_when
                     {AgentId.ACTION_AGENT: memory_model}
                 ),
                 automation_settings=AutomationSettingsResponse(auto_long_term_memory=False, use_negotiation=False),
+                allow_ephemeral_lifecycle=True,
             )
         )
 
@@ -122,6 +125,7 @@ def test_langgraph_action_agent_creates_task_without_legacy_task_model_call() ->
                 tasks=tasks,
                 model_registry=AgentModelRegistry({AgentId.ACTION_AGENT: task_model}),
                 automation_settings=SimpleNamespace(use_negotiation=False),
+                allow_ephemeral_lifecycle=True,
             )
         )
 
@@ -150,6 +154,7 @@ def test_langgraph_action_agent_creates_task_when_provider_rejects_model_params(
                 tasks=tasks,
                 model_registry=AgentModelRegistry({AgentId.ACTION_AGENT: task_model}),
                 automation_settings=SimpleNamespace(use_negotiation=False),
+                allow_ephemeral_lifecycle=True,
             )
         )
 
@@ -180,6 +185,7 @@ def test_demo_compound_request_creates_task_and_memory_receipts() -> None:
                     auto_long_term_memory=False,
                     use_negotiation=False,
                 ),
+                allow_ephemeral_lifecycle=True,
             )
         )
 
@@ -232,6 +238,7 @@ def test_demo_compound_request_ignores_unsplit_classifier_title() -> None:
                     auto_long_term_memory=False,
                     use_negotiation=False,
                 ),
+                allow_ephemeral_lifecycle=True,
             )
         )
 
@@ -285,6 +292,7 @@ def test_high_risk_chat_request_only_records_confirmation() -> None:
             AgentRuntimeServices(
                 automation_settings=SimpleNamespace(use_negotiation=False),
                 agent_action_recorder=record_action,
+                allow_ephemeral_lifecycle=True,
             )
         )
         return [event async for event in runtime.run(make_state("删除所有本地记忆文件"))]
@@ -310,6 +318,7 @@ def test_langgraph_chat_agent_returns_error_when_model_tool_call_fails() -> None
                     {AgentId.ACTION_AGENT: FakeFailingToolCallingChatModel()}
                 ),
                 automation_settings=AutomationSettingsResponse(auto_long_term_memory=False, use_negotiation=False),
+                allow_ephemeral_lifecycle=True,
             )
         )
 

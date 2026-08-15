@@ -86,7 +86,12 @@ class Database:
             self._on_path_access(self)
         return self._path
 
-    def connect(self, *, check_same_thread: bool = True) -> sqlite3.Connection:
+    def connect(
+        self,
+        *,
+        check_same_thread: bool = True,
+        read_only: bool = False,
+    ) -> sqlite3.Connection:
         """Open a configured connection.
 
         The caller owns the connection lifetime and must close it.
@@ -94,6 +99,15 @@ class Database:
         only commits/rolls back and never closes, which historically
         leaked one file descriptor per call site.
         """
+        if read_only:
+            path = self._path.resolve(strict=True)
+            conn = sqlite3.connect(
+                f"file:{path.as_posix()}?mode=ro",
+                uri=True,
+                timeout=CONNECT_TIMEOUT_SECONDS,
+                check_same_thread=check_same_thread,
+            )
+            return configure_connection(conn)
         self._path.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(
             self._path,
@@ -109,16 +123,22 @@ class Database:
         return conn
 
     @contextmanager
-    def session(self, *, check_same_thread: bool = True) -> Iterator[sqlite3.Connection]:
+    def session(
+        self,
+        *,
+        check_same_thread: bool = True,
+        read_only: bool = False,
+    ) -> Iterator[sqlite3.Connection]:
         """Scoped connection: commit on success, rollback on error, always close."""
-        conn = self.connect(check_same_thread=check_same_thread)
+        conn = self.connect(check_same_thread=check_same_thread, read_only=read_only)
         try:
             yield conn
         except BaseException:
             conn.rollback()
             raise
         else:
-            conn.commit()
+            if not read_only:
+                conn.commit()
         finally:
             conn.close()
 

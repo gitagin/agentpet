@@ -19,6 +19,7 @@ import type {
   GlobalModelDraft,
   LastIndexRun,
   NegotiationSettingsDraft,
+  SettingsStatusLoadState,
   TtsSettingsDraft,
 } from "./settingsTypes";
 
@@ -34,8 +35,8 @@ const defaultGlobalModelDraft: GlobalModelDraft = {
 };
 
 const defaultNegotiationSettingsDraft: NegotiationSettingsDraft = {
-  use_negotiation: true,
-  max_rounds: 5,
+  use_negotiation: null,
+  max_rounds: null,
 };
 
 const defaultTtsSettingsDraft: TtsSettingsDraft = {
@@ -60,7 +61,7 @@ const defaultTtsSettingsDraft: TtsSettingsDraft = {
   night_quiet_mode: true,
 };
 
-function defaultAutomationSettings(): AutomationSettings {
+function defaultAutomationSettingsDraft(): AutomationSettingsDraft {
   return {
     auto_chat_diary: false,
     auto_structured_memory: false,
@@ -68,15 +69,15 @@ function defaultAutomationSettings(): AutomationSettings {
     auto_wiki_organize: false,
     local_privacy_mode: false,
     proactive_trigger_frequency: "low",
-    use_negotiation: true,
-    max_rounds: 5,
+    use_negotiation: null,
+    max_rounds: null,
     high_risk_confirmation_required: true,
     updated_at: null,
   };
 }
 
 function automationSettingsDraftFromStatus(response: SettingsStatusResponse): AutomationSettingsDraft {
-  return { ...response.automation, high_risk_confirmation_required: true };
+  return { ...response.automation };
 }
 
 function negotiationSettingsDraftFromStatus(response: SettingsStatusResponse): NegotiationSettingsDraft {
@@ -144,7 +145,7 @@ export type SettingsState = {
   savingAgentModelIds: Set<string>;
   testingAgentModelIds: Set<string>;
   settingsStatus: SettingsStatusResponse | null;
-  loadingSettingsStatus: boolean;
+  settingsStatusLoadState: SettingsStatusLoadState;
   vaultId: string | null;
   vaultPath: string;
   vaultStatus: VaultStatusResponse | null;
@@ -167,7 +168,7 @@ export type SettingsAction =
   | { type: "saveTtsSettingsSuccess"; settings: TtsSettingsResponse }
   | { type: "updateNegotiationSettingsDraft"; patch: Partial<NegotiationSettingsDraft> }
   | { type: "setNegotiationSettingsSaveStatus"; status: AsyncStatus }
-  | { type: "saveNegotiationSettingsSuccess"; draft: NegotiationSettingsDraft }
+  | { type: "saveNegotiationSettingsSuccess"; draft: Pick<AutomationSettings, "use_negotiation" | "max_rounds"> }
   | { type: "updateAgentModelDraft"; agentId: AgentModelId; patch: Partial<AgentModelDraft> }
   | { type: "startSavingAgentModel"; agentId: AgentModelId }
   | { type: "finishSavingAgentModel"; agentId: AgentModelId }
@@ -181,7 +182,8 @@ export type SettingsAction =
   | { type: "startTestingAgentModel"; agentId: AgentModelId }
   | { type: "finishTestingAgentModel"; agentId: AgentModelId }
   | { type: "setAgentModelTestResult"; agentId: AgentModelId; result?: ModelTestResponse }
-  | { type: "setLoadingSettingsStatus"; loading: boolean }
+  | { type: "setSettingsStatusLoadState"; status: SettingsStatusLoadState }
+  | { type: "cancelSettingsStatusLoad" }
   | { type: "setVaultPath"; vaultPath: string }
   | { type: "setVaultStatus"; vaultId: string | null; vaultPath: string; vaultStatus?: VaultStatusResponse | null }
   | { type: "setVaultId"; vaultId: string | null }
@@ -197,7 +199,7 @@ export function createInitialSettingsState(): SettingsState {
     globalModelSaveStatus: "idle",
     globalModelTestStatus: "idle",
     globalModelTestResult: undefined,
-    automationSettingsDraft: defaultAutomationSettings(),
+    automationSettingsDraft: defaultAutomationSettingsDraft(),
     automationSettingsSaveStatus: "idle",
     ttsSettingsDraft: defaultTtsSettingsDraft,
     ttsSettingsSaveStatus: "idle",
@@ -206,7 +208,7 @@ export function createInitialSettingsState(): SettingsState {
     savingAgentModelIds: new Set(),
     testingAgentModelIds: new Set(),
     settingsStatus: null,
-    loadingSettingsStatus: false,
+    settingsStatusLoadState: "unknown",
     vaultId: null,
     vaultPath: "",
     vaultStatus: null,
@@ -221,6 +223,7 @@ export function settingsReducer(state: SettingsState, action: SettingsAction): S
       return {
         ...state,
         settingsStatus: action.response,
+        settingsStatusLoadState: "ready",
         globalModelDraft: globalModelDraftFromStatus(action.response),
         globalModelSaveStatus: "idle",
         globalModelTestStatus: "idle",
@@ -238,16 +241,13 @@ export function settingsReducer(state: SettingsState, action: SettingsAction): S
         ...state,
         vaultId: action.activeVaultId || null,
         globalModelDraft: { ...state.globalModelDraft, configured: action.modelConfigured },
-        settingsStatus: {
-          model_provider: state.settingsStatus?.model_provider || null,
-          model_base_url: state.settingsStatus?.model_base_url || null,
-          chat_model: state.settingsStatus?.chat_model || null,
-          model_configured: action.modelConfigured,
-          vault_configured: action.vaultConfigured,
-          agent_models: state.settingsStatus?.agent_models,
-          automation: state.settingsStatus?.automation || defaultAutomationSettings(),
-          tts_settings: state.settingsStatus?.tts_settings,
-        },
+        settingsStatus: state.settingsStatus
+          ? {
+              ...state.settingsStatus,
+              model_configured: action.modelConfigured,
+              vault_configured: action.vaultConfigured,
+            }
+          : null,
       };
     case "updateGlobalModelDraft":
       return {
@@ -294,7 +294,6 @@ export function settingsReducer(state: SettingsState, action: SettingsAction): S
         automationSettingsDraft: {
           ...state.automationSettingsDraft,
           ...action.patch,
-          high_risk_confirmation_required: true,
         },
         automationSettingsSaveStatus: "idle",
       };
@@ -305,7 +304,6 @@ export function settingsReducer(state: SettingsState, action: SettingsAction): S
         ...state,
         automationSettingsDraft: {
           ...action.settings,
-          high_risk_confirmation_required: true,
         },
         automationSettingsSaveStatus: "success",
         negotiationSettingsDraft: {
@@ -315,10 +313,7 @@ export function settingsReducer(state: SettingsState, action: SettingsAction): S
         settingsStatus: state.settingsStatus
           ? {
               ...state.settingsStatus,
-              automation: {
-                ...action.settings,
-                high_risk_confirmation_required: true,
-              },
+              automation: action.settings,
             }
           : state.settingsStatus,
       };
@@ -371,9 +366,12 @@ export function settingsReducer(state: SettingsState, action: SettingsAction): S
         negotiationSettingsDraft: { ...state.negotiationSettingsDraft, ...action.patch },
         automationSettingsDraft: {
           ...state.automationSettingsDraft,
-          use_negotiation: action.patch.use_negotiation ?? state.automationSettingsDraft.use_negotiation,
-          max_rounds: action.patch.max_rounds ?? state.automationSettingsDraft.max_rounds,
-          high_risk_confirmation_required: true,
+          use_negotiation: "use_negotiation" in action.patch
+            ? action.patch.use_negotiation ?? null
+            : state.automationSettingsDraft.use_negotiation,
+          max_rounds: "max_rounds" in action.patch
+            ? action.patch.max_rounds ?? null
+            : state.automationSettingsDraft.max_rounds,
         },
         negotiationSettingsSaveStatus: "idle",
       };
@@ -388,7 +386,6 @@ export function settingsReducer(state: SettingsState, action: SettingsAction): S
           ...state.automationSettingsDraft,
           use_negotiation: action.draft.use_negotiation,
           max_rounds: action.draft.max_rounds,
-          high_risk_confirmation_required: true,
         },
         settingsStatus: state.settingsStatus
           ? {
@@ -466,8 +463,13 @@ export function settingsReducer(state: SettingsState, action: SettingsAction): S
         ...state,
         agentModelTestResults: { ...state.agentModelTestResults, [action.agentId]: action.result },
       };
-    case "setLoadingSettingsStatus":
-      return { ...state, loadingSettingsStatus: action.loading };
+    case "setSettingsStatusLoadState":
+      return { ...state, settingsStatusLoadState: action.status };
+    case "cancelSettingsStatusLoad":
+      return {
+        ...state,
+        settingsStatusLoadState: state.settingsStatus ? "ready" : "unknown",
+      };
     case "setVaultPath":
       return { ...state, vaultPath: action.vaultPath };
     case "setVaultStatus":

@@ -69,6 +69,33 @@ def test_evidence_envelope_has_stable_id_and_preserves_exact_source_values() -> 
     assert envelope.retrieval_provenance == ("fts", "vector")
 
 
+def test_evidence_gate_accepts_evidenced_graph_memory_without_file_artifact() -> None:
+    evidence_ref = "evidence_7b43c46d6c2cc7ad51e03683"
+    result = _result(
+        note_id="opaque-memory-note",
+        chunk_id="opaque-memory-chunk",
+        relative_path="",
+        title="Structured memory",
+        heading="editor",
+        snippet="editor prefers VS Code",
+        source_scope="personal_memory",
+        retrieval_mode="graph_activation",
+        retrieval_channels=["graph"],
+        lifecycle_status="active",
+        evidence_refs=[evidence_ref],
+        citation_refs=[evidence_ref],
+    )
+
+    gate = gate_evidence([result])
+
+    assert gate.rejected_reasons == ()
+    assert len(gate.accepted) == 1
+    envelope = gate.accepted[0]
+    assert envelope.source == f"personal_memory:{evidence_ref}"
+    assert envelope.result.relative_path == ""
+    assert envelope.result.citation_refs == [evidence_ref]
+
+
 @pytest.mark.parametrize(
     ("updates", "reason"),
     [
@@ -161,6 +188,7 @@ def test_changed_exact_values_are_rejected_and_marked_for_task_1211_review() -> 
     )
 
     assert response == _unsupported_exact_value_response()
+    assert state.grounding_validation == "failed"
     assert graph_state["grounding_review"] == {
         "required": True,
         "owner_task": "TASK-1211",

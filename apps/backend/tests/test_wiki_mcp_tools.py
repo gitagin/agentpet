@@ -124,8 +124,11 @@ def test_wiki_mcp_plan_tools_do_not_write_markdown_pages(tmp_path: Path) -> None
     synthesis = asyncio.run(
         adapter.plan_synthesis(
             title="Runtime Synthesis",
-            content="Runtime source supports synthesis.",
-            source_paths=["Wiki/Sources/Runtime-Source.md"],
+            content="Runtime source and recovery evidence support synthesis.",
+            source_paths=[
+                "Wiki/Sources/Runtime-Source.md",
+                "Wiki/Sources/Runtime-Recovery.md",
+            ],
         )
     )
     lint = asyncio.run(adapter.plan_lint(write_report=True))

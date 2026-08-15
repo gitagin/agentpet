@@ -34,11 +34,12 @@ type UseSettingsOptions = {
   onSettingsStatusLoaded?: (response: SettingsStatusResponse) => void;
 };
 
-const DEMO_NEGOTIATION_MAX_ROUNDS = 2;
-
 function automationSettingsRequestFromDraft(
   draft: AutomationSettingsDraft,
-): AutomationSettingsUpdateRequest {
+): AutomationSettingsUpdateRequest | null {
+  if (draft.use_negotiation === null || draft.max_rounds === null) {
+    return null;
+  }
   return {
     auto_chat_diary: draft.auto_chat_diary,
     auto_structured_memory: draft.auto_structured_memory,
@@ -47,7 +48,7 @@ function automationSettingsRequestFromDraft(
     local_privacy_mode: draft.local_privacy_mode,
     proactive_trigger_frequency: draft.proactive_trigger_frequency,
     use_negotiation: draft.use_negotiation,
-    max_rounds: DEMO_NEGOTIATION_MAX_ROUNDS,
+    max_rounds: draft.max_rounds,
   };
 }
 
@@ -64,7 +65,7 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
   }, []);
 
   const loadSettingsStatus = useCallback(async (options: { silent?: boolean; signal?: AbortSignal } = {}) => {
-    dispatch({ type: "setLoadingSettingsStatus", loading: true });
+    dispatch({ type: "setSettingsStatusLoadState", status: "loading" });
     if (!options.silent) {
       onNotice(null);
     }
@@ -78,14 +79,14 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
       return response;
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
+        dispatch({ type: "cancelSettingsStatusLoad" });
         return null;
       }
+      dispatch({ type: "setSettingsStatusLoadState", status: "error" });
       if (!options.silent) {
         onNotice({ tone: "error", message: describeError(error, "设置状态读取失败") });
       }
       return null;
-    } finally {
-      dispatch({ type: "setLoadingSettingsStatus", loading: false });
     }
   }, [api, applySettingsStatus, onNotice, onSettingsStatusLoaded]);
 
@@ -165,24 +166,32 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
 
   const saveAutomationSettings = useCallback(async () => {
     const draft = state.automationSettingsDraft;
+    const request = automationSettingsRequestFromDraft(draft);
+    if (state.settingsStatusLoadState !== "ready" || !request) {
+      onNotice({ tone: "error", message: "设置状态尚未从服务端读取，暂时不能保存；请先刷新设置。" });
+      return;
+    }
 
     dispatch({ type: "setAutomationSettingsSaveStatus", status: "loading" });
     onNotice(null);
     try {
-      const settings = await api.saveAutomationSettings(
-        automationSettingsRequestFromDraft(draft),
-      );
+      await api.saveAutomationSettings(request);
       const refreshed = await loadSettingsStatus({ silent: true });
+      if (!refreshed) {
+        dispatch({ type: "setAutomationSettingsSaveStatus", status: "error" });
+        onNotice({ tone: "error", message: "设置已提交，但无法从服务端读回确认；请刷新后检查。" });
+        return;
+      }
       dispatch({
         type: "saveAutomationSettingsSuccess",
-        settings: { ...(refreshed?.automation || settings), max_rounds: DEMO_NEGOTIATION_MAX_ROUNDS },
+        settings: refreshed.automation,
       });
       onNotice({ tone: "success", message: "自动整理设置已保存。" });
     } catch (error) {
       dispatch({ type: "setAutomationSettingsSaveStatus", status: "error" });
       onNotice({ tone: "error", message: describeError(error, "自动整理设置保存失败") });
     }
-  }, [api, loadSettingsStatus, onNotice, state.automationSettingsDraft]);
+  }, [api, loadSettingsStatus, onNotice, state.automationSettingsDraft, state.settingsStatusLoadState]);
 
   const updateTtsSettingsDraft = useCallback((patch: Partial<TtsSettingsDraft>) => {
     dispatch({ type: "updateTtsSettingsDraft", patch });
@@ -230,31 +239,45 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
 
   const saveNegotiationSettings = useCallback(async () => {
     const draft = state.negotiationSettingsDraft;
+    const request = automationSettingsRequestFromDraft({
+      ...state.automationSettingsDraft,
+      use_negotiation: draft.use_negotiation,
+      max_rounds: draft.max_rounds,
+    });
+    if (state.settingsStatusLoadState !== "ready" || !request) {
+      onNotice({ tone: "error", message: "设置状态尚未从服务端读取，暂时不能保存；请先刷新设置。" });
+      return;
+    }
 
     dispatch({ type: "setNegotiationSettingsSaveStatus", status: "loading" });
     onNotice(null);
     try {
-      const settings = await api.saveAutomationSettings({
-        ...automationSettingsRequestFromDraft(state.automationSettingsDraft),
-        use_negotiation: draft.use_negotiation,
-        max_rounds: DEMO_NEGOTIATION_MAX_ROUNDS,
-      });
+      await api.saveAutomationSettings(request);
       const refreshed = await loadSettingsStatus({ silent: true });
-      const automation = {
-        ...(refreshed?.automation || settings),
-        max_rounds: DEMO_NEGOTIATION_MAX_ROUNDS,
-      };
+      if (!refreshed) {
+        dispatch({ type: "setNegotiationSettingsSaveStatus", status: "error" });
+        onNotice({ tone: "error", message: "设置已提交，但无法从服务端读回确认；请刷新后检查。" });
+        return;
+      }
+      const automation = refreshed.automation;
       dispatch({ type: "saveAutomationSettingsSuccess", settings: automation });
       dispatch({
         type: "saveNegotiationSettingsSuccess",
         draft: { use_negotiation: automation.use_negotiation, max_rounds: automation.max_rounds },
       });
-      onNotice({ tone: "success", message: "有界协作设置已保存，最多复核 2 轮。" });
+      onNotice({ tone: "success", message: `证据复核设置已保存，最多复核 ${automation.max_rounds} 轮。` });
     } catch (error) {
       dispatch({ type: "setNegotiationSettingsSaveStatus", status: "error" });
-      onNotice({ tone: "error", message: describeError(error, "有界协作设置保存失败") });
+      onNotice({ tone: "error", message: describeError(error, "证据复核设置保存失败") });
     }
-  }, [api, loadSettingsStatus, onNotice, state.automationSettingsDraft, state.negotiationSettingsDraft]);
+  }, [
+    api,
+    loadSettingsStatus,
+    onNotice,
+    state.automationSettingsDraft,
+    state.negotiationSettingsDraft,
+    state.settingsStatusLoadState,
+  ]);
 
   const updateAgentModelDraft = useCallback((agentId: AgentModelId, patch: Partial<AgentModelDraft>) => {
     dispatch({ type: "updateAgentModelDraft", agentId, patch });
@@ -496,7 +519,8 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
     globalModelTestStatus: state.globalModelTestStatus,
     indexingVault: state.indexingVault,
     lastIndexRun: state.lastIndexRun,
-    loadingSettingsStatus: state.loadingSettingsStatus,
+    loadingSettingsStatus: state.settingsStatusLoadState === "loading",
+    settingsStatusLoadState: state.settingsStatusLoadState,
     loadSettingsStatus,
     loadVaultStatus,
     negotiationSettingsDraft: state.negotiationSettingsDraft,

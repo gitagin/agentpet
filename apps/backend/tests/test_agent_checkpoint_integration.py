@@ -51,7 +51,7 @@ def save_checkpoint(
         payload={"kind": "ingest", "title": "Safe", "content": "Safe", "auto_organize": True},
         risk_score=policy.risk_tier,
         decision="ask",
-        status="pending_confirm",
+        status="pending_confirmation",
         proposal_id=proposal.proposal_id,
         policy_version=policy.policy_version,
         idempotency_key=policy.idempotency_key,

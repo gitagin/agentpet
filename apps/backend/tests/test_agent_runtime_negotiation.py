@@ -203,11 +203,12 @@ def test_negotiation_switch_keeps_compound_action_on_deterministic_graph() -> No
                 memory=FakeMemory(),
                 tasks=FakeTasks(),
                 chat_model=chat_model,
-                automation_settings=SimpleNamespace(
-                    use_negotiation=True,
-                    auto_long_term_memory=False,
-                ),
-            )
+                    automation_settings=SimpleNamespace(
+                        use_negotiation=True,
+                        auto_long_term_memory=False,
+                    ),
+                    allow_ephemeral_lifecycle=True,
+                )
         )
         return chat_model, [event async for event in runtime.run(make_state(prompt))]
 

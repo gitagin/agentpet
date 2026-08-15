@@ -246,7 +246,7 @@ def test_hygiene_supersedes_weaker_old_conflicting_fact(tmp_path: Path) -> None:
                 confidence=0.8,
             )
         ).fact
-        newer = service.lifecycle.graph.insert_candidate(
+        newer = service.lifecycle.graph.upsert_candidate(
             MemoryFactCandidate(
                 category=MemoryKind.PREFERENCE.value,
                 memory_type=MemoryKind.PREFERENCE.value,
@@ -279,8 +279,20 @@ def test_hygiene_supersedes_weaker_old_conflicting_fact(tmp_path: Path) -> None:
             "SELECT to_status, metadata_json FROM memory_lifecycle_events WHERE fact_id = ? ORDER BY created_at DESC LIMIT 1",
             (old.id,),
         ).fetchone()
+        supersedes = conn.execute(
+            """
+            SELECT subject_fact_id
+            FROM memory_graph_facts
+            WHERE statement_kind = 'relation'
+              AND relation_type = 'supersedes'
+              AND object_fact_id = ?
+              AND status = 'active'
+            """,
+            (old.id,),
+        ).fetchone()
     assert old_row["status"] == "superseded"
-    assert json.loads(old_row["metadata_json"])["superseded_by"] == newer.id
+    assert "superseded_by" not in json.loads(old_row["metadata_json"])
+    assert supersedes["subject_fact_id"] == newer.id
     assert active_objects == ["pear"]
     assert lifecycle["to_status"] == "superseded"
-    assert json.loads(lifecycle["metadata_json"])["superseded_by"] == newer.id
+    assert json.loads(lifecycle["metadata_json"])["replacement_fact_id"] == newer.id

@@ -316,14 +316,20 @@ def test_apply_sensitive_candidate_rejects_candidate_and_records_safe_action(cli
             action = conn.execute("SELECT * FROM agent_actions WHERE id = ?", (body["action_id"],)).fetchone()
         assert action["action_type"] == "memory.hygiene.apply"
         metadata = json.loads(action["metadata_json"])
-        assert metadata == {
-            "suggestion_type": "sensitive_candidate",
-            "suggestion_id": body["suggestion_id"],
-            "result_status": "rejected",
-            "safe_summary": True,
-        }
+        assert metadata["control_state"] == "completed"
+        assert metadata["execution_receipt"]["status"] == "verified"
+        assert metadata["execution_receipt"]["action_type"] == "memory.hygiene.apply"
+        assert metadata["execution_receipt"]["result"]["suggestion_id"] == body["suggestion_id"]
+        assert metadata["execution_receipt"]["result"]["suggestion_type"] == "sensitive_candidate"
+        assert metadata["execution_receipt"]["result"]["status"] == "rejected"
+        assert metadata["verification_result"]["status"] == "verified"
         assert_safe_payload(
-            {"summary": action["summary"], "metadata": metadata},
+            {
+                "summary": action["summary"],
+                "metadata": metadata,
+                "before_snapshot": json.loads(action["before_snapshot_json"]),
+                "after_snapshot": json.loads(action["after_snapshot_json"]),
+            },
             (candidate_id, "sk-hygiene-sensitive", "secret.md"),
         )
 

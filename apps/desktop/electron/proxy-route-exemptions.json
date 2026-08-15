@@ -1,4 +1,10 @@
 {
   "schemaVersion": 1,
-  "routes": []
+  "routes": [
+    {
+      "method": "POST",
+      "path": "/api/metrics/sidecar-recovery",
+      "reason": "Electron main process reports resident sidecar recovery; renderer writes are not authorized."
+    }
+  ]
 }

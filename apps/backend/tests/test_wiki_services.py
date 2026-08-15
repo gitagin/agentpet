@@ -8,7 +8,7 @@ from apps.backend.tests._schema import migrated_connection
 from app.services.agent_actions import AgentActionCreate, AgentActionService, AgentActionStore
 from app.services.memory import MarkdownWriteError, SafeMarkdownWriter
 from app.services.retrospectives import RetrospectiveService
-from app.services.wiki import SensitiveWikiRejectedError, WikiService, WIKI_PAGE_TEMPLATE_SECTIONS, resolve_wiki_path
+from app.services.wiki import SensitiveWikiRejectedError, WikiService, WikiWriteError, resolve_wiki_path
 from app.storage.markdown import read_markdown
 
 
@@ -44,19 +44,17 @@ def test_wiki_service_writes_pages_under_wiki(tmp_path) -> None:
     assert (tmp_path / "Wiki" / "log.md").exists()
 
 
-def test_wiki_default_schema_documents_seven_rules_and_template(tmp_path) -> None:
+def test_wiki_default_schema_documents_typed_pages_and_evidence_rules(tmp_path) -> None:
     service = WikiService(SafeMarkdownWriter(tmp_path))
 
     schema = service.get_schema_status().content
 
-    for section in WIKI_PAGE_TEMPLATE_SECTIONS:
-        assert section in schema
-    assert "硬边界" in schema
-    assert "证据与触发来源" in schema
-    assert "审查与自检" in schema
-    assert "版本与日志" in schema
-    assert "术语与格式陷阱" in schema
-    assert "双层日志" in schema
+    assert "## 页面类型" in schema
+    assert "### source" in schema
+    assert "### synthesis" in schema
+    assert "### decision" in schema
+    assert "至少两个独立 evidence" in schema
+    assert "不是每页必须填满的八段模板" in schema
 
 
 def test_wiki_service_refreshes_index_and_appends_log(tmp_path) -> None:
@@ -67,6 +65,7 @@ def test_wiki_service_refreshes_index_and_appends_log(tmp_path) -> None:
             content="Retrieval uses wiki pages.",
             target_path="Wiki/Concepts/Retrieval.md",
             tags=["retrieval"],
+            sources=["Wiki/Sources/Retrieval.md"],
         )
     )
 
@@ -108,6 +107,10 @@ def test_wiki_service_writes_obsidian_frontmatter_and_index_metadata(tmp_path) -
     assert parsed.frontmatter["disputed"] == "true"
     assert parsed.frontmatter["aliases"] == ["Runtime", "Agent Graph"]
     assert parsed.frontmatter["sources"] == ["Wiki/Sources/Runtime.md"]
+    assert parsed.frontmatter["entity_ids"] == []
+    assert parsed.frontmatter["fact_ids"] == []
+    assert parsed.frontmatter["revision"] == "1"
+    assert parsed.frontmatter["updated_at"]
 
     index = service.refresh_index()
     entry = next(item for item in index.entries if item.relative_path == "Wiki/Concepts/Agent-Runtime.md")
@@ -116,6 +119,40 @@ def test_wiki_service_writes_obsidian_frontmatter_and_index_metadata(tmp_path) -
     assert entry.aliases == ["Runtime", "Agent Graph"]
     assert entry.sources == ["Wiki/Sources/Runtime.md"]
     assert "| concept | [[Wiki/Concepts/Agent-Runtime.md]] | Runtime coordinates agents. | Runtime, Agent Graph | 1 |" in index.content
+
+
+def test_wiki_service_rejects_typed_page_without_source_before_writing(tmp_path) -> None:
+    service = WikiService(SafeMarkdownWriter(tmp_path))
+
+    with pytest.raises(WikiWriteError) as exc_info:
+        service.write_page(
+            WikiPageWriteRequest(
+                title="Unverified concept",
+                content="A claim without evidence.",
+                target_path="Wiki/Concepts/Unverified.md",
+                page_type="concept",
+            )
+        )
+
+    assert exc_info.value.reason == "concept_requires_source_reference"
+    assert not (tmp_path / "Wiki").exists()
+
+
+def test_wiki_service_rejects_page_type_path_mismatch(tmp_path) -> None:
+    service = WikiService(SafeMarkdownWriter(tmp_path))
+
+    with pytest.raises(WikiWriteError) as exc_info:
+        service.write_page(
+            WikiPageWriteRequest(
+                title="Wrong type",
+                content="## 用户决定\n\nUse option A.",
+                target_path="Wiki/Concepts/Wrong-Type.md",
+                page_type="decision",
+                sources=["Wiki/Sources/Decision.md"],
+            )
+        )
+
+    assert exc_info.value.reason == "wiki_page_type_path_mismatch"
 
 
 def test_wiki_graph_summary_detects_hubs_orphans_broken_links_and_deep_links(tmp_path) -> None:
@@ -186,6 +223,34 @@ def test_wiki_service_replaces_named_section(tmp_path) -> None:
     assert "Old text" not in text
 
 
+def test_wiki_replace_and_append_sync_frontmatter_revision(tmp_path) -> None:
+    service = WikiService(SafeMarkdownWriter(tmp_path))
+    request = WikiPageWriteRequest(
+        title="Durable concept",
+        content="## 定义\n\nFirst version.\n\n## 来源\n\n- [[Wiki/Sources/First.md]]",
+        target_path="Wiki/Concepts/Durable-Concept.md",
+        page_type="concept",
+        sources=["Wiki/Sources/First.md"],
+        operation="replace_section",
+        section="定义",
+    )
+    service.write_page(request)
+    service.write_page(
+        request.model_copy(
+            update={
+                "content": "## 定义\n\nSecond version.\n\n## 来源\n\n- [[Wiki/Sources/Second.md]]",
+                "sources": ["Wiki/Sources/Second.md"],
+            }
+        )
+    )
+
+    parsed = read_markdown(tmp_path / "Wiki" / "Concepts" / "Durable-Concept.md")
+    assert parsed.frontmatter["revision"] == "2"
+    assert parsed.frontmatter["sources"] == ["Wiki/Sources/Second.md"]
+    assert "First version." not in parsed.body
+    assert "Second version." in parsed.body
+
+
 def test_wiki_target_path_must_stay_under_wiki() -> None:
     with pytest.raises(MarkdownWriteError):
         resolve_wiki_path("Bad", "Memories/Bad.md")
@@ -225,7 +290,7 @@ def test_wiki_service_rejects_sensitive_policy_metadata_before_core_files(tmp_pa
     assert not (tmp_path / "Wiki").exists()
 
 
-def test_weekly_report_writes_markdown_asset_with_sources_and_reversible_action(tmp_path) -> None:
+def test_weekly_report_writes_action_bound_markdown_with_sources(tmp_path) -> None:
     conn = migrated_connection()
     vault = tmp_path / "Vault"
     now = "2026-06-02T00:00:00Z"
@@ -281,18 +346,23 @@ def test_weekly_report_writes_markdown_asset_with_sources_and_reversible_action(
         conn,
         vault_id="vault-1",
         writer=writer,
-        agent_actions=action_service,
         now_provider=lambda: datetime(2026, 6, 2, tzinfo=timezone.utc),
     )
 
-    response = service.write_period_report("weekly")
+    weekly_draft = service.prepare_report(period="weekly")
+    response = service.write_report_draft(
+        weekly_draft,
+        action_id="action-weekly-report-test",
+        action_type=weekly_draft.action_type,
+    )
 
-    assert response.page.relative_path.startswith("Wiki/Companion/Reports/")
-    assert "-weekly-" in response.page.relative_path
-    assert response.action.action_type == "wiki.weekly_report.write"
-    assert response.action.reversible is True
-    report_path = vault.joinpath(*response.page.relative_path.split("/"))
+    assert response.relative_path.startswith("Wiki/Companion/Reports/")
+    assert "-weekly-" in response.relative_path
+    assert response.action_type == "wiki.weekly_report.write"
+    report_path = vault.joinpath(*response.relative_path.split("/"))
     markdown = report_path.read_text(encoding="utf-8")
+    assert response.action_marker in markdown
+    assert "action_id=action-weekly-report-test" in response.action_marker
     assert "type: weekly_report" in markdown
     assert "updated_at: 2026-06-02T00:00:00Z" in markdown
     assert "## 本周主要主题" in markdown
@@ -302,22 +372,26 @@ def test_weekly_report_writes_markdown_asset_with_sources_and_reversible_action(
     assert "## 值得回顾的问题" in markdown
     assert "`Memories/Daily/2026-06-01.md`" in markdown
     assert "`Wiki/Weekly-Knowledge.md`" in markdown
+    effects = service.read_report_effects(
+        action_id=response.action_id,
+        action_type=response.action_type,
+        report_kind=response.report_kind,
+        expected_relative_path=response.relative_path,
+        expected_content_hash=response.content_hash,
+    )
+    assert len(effects) == 1
+    assert effects[0]["action_id"] == "action-weekly-report-test"
 
-    monthly_response = service.write_period_report("monthly")
-    monthly_path = vault.joinpath(*monthly_response.page.relative_path.split("/"))
+    monthly_draft = service.prepare_report(period="monthly")
+    monthly_response = service.write_report_draft(
+        monthly_draft,
+        action_id="action-monthly-report-test",
+        action_type=monthly_draft.action_type,
+    )
+    monthly_path = vault.joinpath(*monthly_response.relative_path.split("/"))
     monthly_markdown = monthly_path.read_text(encoding="utf-8")
-    assert "-monthly-" in monthly_response.page.relative_path
-    assert monthly_response.action.action_type == "wiki.monthly_report.write"
+    assert "-monthly-" in monthly_response.relative_path
+    assert monthly_response.action_type == "wiki.monthly_report.write"
+    assert "action_id=action-monthly-report-test" in monthly_response.action_marker
     assert "type: monthly_report" in monthly_markdown
     assert "## 本月主要主题" in monthly_markdown
-
-    monthly_updated, monthly_reverted = action_service.revert(monthly_response.action.action_id)
-    assert monthly_updated.status == "reverted"
-    assert monthly_reverted.action_type == "agent_action.revert"
-    assert not monthly_path.exists()
-
-    updated, reverted = action_service.revert(response.action.action_id)
-
-    assert updated.status == "reverted"
-    assert reverted.action_type == "agent_action.revert"
-    assert not report_path.exists()

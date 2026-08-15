@@ -10,9 +10,7 @@ from ...services.companion_consolidation import CompanionConsolidationService
 from ...services.companion_retrieval import CompanionRetrievalReportStore
 from ...services.diary_memory import DiaryMemoryService
 from ...services.local_assets import LocalAssetStatsService
-from ...services.memory_feedback import MemoryFeedbackService
-from ...services.memory_graph import MemoryGraphStore
-from ...services.memory_graph_actions import MemoryGraphFactActionService
+from ...services.memory_entity_graph import MemoryEntityGraphStore
 from ...services.memory_graph_projection import MemoryGraphProjectionService
 from ...services.memory_hygiene_suggestions import MemoryHygieneSuggestionService
 from ...services.memory_read import (
@@ -22,7 +20,6 @@ from ...services.memory_read import (
     UnifiedMemorySearchService,
 )
 from ...services.memory_receipts import MemoryReceiptService
-from ...services.memory_profile_projection import MemoryProfileProjectionService
 from ...services.memory_review import MemoryReviewService
 from ...services.retrospectives import RetrospectiveService
 from ..wiring import (
@@ -32,9 +29,7 @@ from ..wiring import (
     companion_retrieval_report_store,
     database,
     diary_memory_service,
-    memory_graph_store,
-    memory_lifecycle_service,
-    record_agent_action,
+    memory_entity_graph_store,
     retrospective_service,
     retrieval_service,
 )
@@ -53,8 +48,8 @@ async def diary_memory_service_dependency(request: Request) -> AsyncIterator[Dia
         service.close()
 
 
-async def memory_graph_store_dependency(request: Request) -> AsyncIterator[MemoryGraphStore]:
-    store = memory_graph_store(request)
+async def memory_entity_graph_store_dependency(request: Request) -> AsyncIterator[MemoryEntityGraphStore]:
+    store = memory_entity_graph_store(request)
     try:
         yield store
     finally:
@@ -62,15 +57,16 @@ async def memory_graph_store_dependency(request: Request) -> AsyncIterator[Memor
 
 
 async def memory_graph_projection_service_dependency(
+    request: Request,
     conn: sqlite3.Connection = Depends(database_connection_dependency),
 ) -> AsyncIterator[MemoryGraphProjectionService]:
-    yield MemoryGraphProjectionService(conn)
-
-
-async def memory_profile_projection_service_dependency(
-    conn: sqlite3.Connection = Depends(database_connection_dependency),
-) -> AsyncIterator[MemoryProfileProjectionService]:
-    yield MemoryProfileProjectionService(conn)
+    try:
+        vault_id = active_vault_id(request)
+    except AppError as exc:
+        if exc.code != "vault_not_configured":
+            raise
+        vault_id = None
+    yield MemoryGraphProjectionService(conn, vault_id=vault_id)
 
 
 async def memory_receipt_service_dependency(
@@ -112,8 +108,6 @@ async def retrospective_service_dependency(request: Request) -> AsyncIterator[Re
         yield service
     finally:
         service.close()
-        if service.agent_actions is not None:
-            service.agent_actions.close()
 
 
 async def companion_consolidation_service_dependency(
@@ -143,31 +137,14 @@ def unified_memory_search_service_dependency(request: Request) -> UnifiedMemoryS
                 retrieval_service(request),
                 vault_id=active_vault_id(request),
             ),
-            GraphMemorySourceAdapter(lambda: memory_graph_store(request)),
+            GraphMemorySourceAdapter(
+                lambda: memory_entity_graph_store(request),
+                answerable_only=True,
+                vault_id=active_vault_id(request),
+            ),
             DiaryMemorySourceAdapter(lambda: diary_memory_service(request)),
         )
     )
-
-
-async def graph_fact_action_service_dependency(
-    request: Request,
-) -> AsyncIterator[MemoryGraphFactActionService]:
-    service = MemoryGraphFactActionService(memory_lifecycle_service(request))
-    try:
-        yield service
-    finally:
-        service.close()
-
-
-async def memory_feedback_service_dependency(
-    request: Request,
-) -> AsyncIterator[MemoryFeedbackService]:
-    with database(request).session() as conn:
-        yield MemoryFeedbackService(
-            conn,
-            lifecycle_factory=lambda: memory_lifecycle_service(request),
-            action_recorder=lambda action: record_agent_action(request, action),
-        )
 
 
 async def memory_review_service_dependency(

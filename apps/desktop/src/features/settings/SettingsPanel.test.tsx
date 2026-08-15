@@ -28,12 +28,12 @@ const automationSettingsDraft: AutomationSettingsDraft = {
   local_privacy_mode: false,
   proactive_trigger_frequency: "low",
   use_negotiation: true,
-  max_rounds: 2,
+  max_rounds: 7,
   high_risk_confirmation_required: true,
   updated_at: null,
 };
 
-function renderSettingsPanel() {
+function renderSettingsPanel(settingsStatusLoadState: "unknown" | "loading" | "ready" | "error" = "ready") {
   const onRefreshSettings = vi.fn();
   const onTestGlobalModel = vi.fn();
   const onSelectVaultDirectory = vi.fn();
@@ -50,6 +50,7 @@ function renderSettingsPanel() {
         automationSettingsDraft,
         automationSettingsSaveStatus: "idle",
         loadingSettingsStatus: false,
+        settingsStatusLoadState,
         vaultId: null,
         vaultPath: "",
         vaultStatus: null,
@@ -102,7 +103,7 @@ describe("SettingsPanel", () => {
     const guide = within(screen.getByRole("region", { name: "设置引导" }));
 
     expect(screen.getByText("基础设置")).toBeInTheDocument();
-    expect(screen.getByText("有界协作")).toBeInTheDocument();
+    expect(screen.getByText("证据复核")).toBeInTheDocument();
     fireEvent.click(guide.getByRole("button", { name: "测试对话能力" }));
     fireEvent.click(guide.getByRole("button", { name: "选择保存位置" }));
     fireEvent.click(guide.getByRole("button", { name: "刷新状态" }));
@@ -112,17 +113,34 @@ describe("SettingsPanel", () => {
     expect(onRefreshSettings).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps local privacy and bounded collaboration visible with a fixed two-round cap", () => {
+  it("edits the server-provided negotiation settings without replacing the round count", () => {
     const { onUpdateAutomationSettingsDraft } = renderSettingsPanel();
     const automation = within(screen.getByRole("region", { name: "记忆整理和主动提醒" }));
 
     expect(automation.getByText("本地隐私模式")).toBeInTheDocument();
-    expect(automation.getByText("复杂问题有界协作")).toBeInTheDocument();
-    expect(automation.getByText("协作上限固定为 2 轮")).toBeInTheDocument();
-    expect(automation.queryByRole("spinbutton")).not.toBeInTheDocument();
+    expect(automation.getByText("记忆检索有界复核")).toBeInTheDocument();
+    expect(automation.getByText(/后台记录慢记忆候选和证据/)).toBeInTheDocument();
+    expect(automation.getByRole("spinbutton", { name: "证据复核轮次上限" })).toHaveValue(7);
 
-    fireEvent.click(automation.getByLabelText(/复杂问题有界协作/));
-    expect(onUpdateAutomationSettingsDraft).toHaveBeenCalledWith({ use_negotiation: false, max_rounds: 2 });
+    fireEvent.click(automation.getByLabelText(/记忆检索有界复核/));
+    expect(onUpdateAutomationSettingsDraft).toHaveBeenCalledWith({ use_negotiation: false });
+
+    fireEvent.change(automation.getByRole("spinbutton", { name: "证据复核轮次上限" }), {
+      target: { value: "9" },
+    });
+    expect(onUpdateAutomationSettingsDraft).toHaveBeenCalledWith({ max_rounds: 9 });
+  });
+
+  it("shows a retry-only state and no editable values when the authoritative read fails", () => {
+    const { onRefreshSettings } = renderSettingsPanel("error");
+    const automation = within(screen.getByRole("region", { name: "记忆整理和主动提醒" }));
+
+    expect(automation.getByRole("alert")).toHaveTextContent("编辑已停用");
+    expect(automation.queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(automation.getByRole("button", { name: "保存设置" })).toBeDisabled();
+
+    fireEvent.click(automation.getByRole("button", { name: "刷新设置" }));
+    expect(onRefreshSettings).toHaveBeenCalledOnce();
   });
 
   it("uses an in-app confirmation dialog before resetting memory", () => {

@@ -317,7 +317,7 @@ class FakeWiki:
         self.requests.append(request)
         return WikiPageResponse(
             title=request.title,
-            relative_path="Wiki/Runtime.md",
+            relative_path=request.target_path or "Wiki/Runtime.md",
             operation=request.operation,
             status="updated",
             index_job_id="scheduled:vault-1",

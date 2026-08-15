@@ -184,8 +184,31 @@ class PromptProfileProvider:
             """
             SELECT
                 category, subject, predicate, object, status, confidence,
-                source_type, support_count, conflicts_with, memory_type,
-                entity_type, expires_at, metadata_json, importance, updated_at
+                source_type, support_count, memory_type, entity_type,
+                expires_at, metadata_json, importance, updated_at,
+                (
+                    SELECT r.subject_fact_id
+                    FROM memory_graph_facts r
+                    WHERE r.statement_kind = 'relation'
+                      AND r.relation_type = 'supersedes'
+                      AND r.object_fact_id = memory_graph_facts.id
+                      AND r.status = 'active'
+                    ORDER BY r.updated_at DESC, r.id DESC
+                    LIMIT 1
+                ) AS authority_superseded_by,
+                (
+                    SELECT CASE
+                        WHEN r.subject_fact_id = memory_graph_facts.id THEN r.object_fact_id
+                        ELSE r.subject_fact_id
+                    END
+                    FROM memory_graph_facts r
+                    WHERE r.statement_kind = 'relation'
+                      AND r.relation_type = 'contradicts'
+                      AND r.status = 'active'
+                      AND (r.subject_fact_id = memory_graph_facts.id OR r.object_fact_id = memory_graph_facts.id)
+                    ORDER BY r.updated_at DESC, r.id DESC
+                    LIMIT 1
+                ) AS authority_contradicted_by
             FROM memory_graph_facts
             WHERE status = 'active'
               AND (
@@ -252,8 +275,8 @@ def _candidate_from_graph_fact(row: sqlite3.Row) -> _PromptProfileCandidate | No
         risk_tier=risk,
         confidence=_clamp(row["confidence"]),
         expires_at=row["expires_at"],
-        superseded_by=metadata.get("superseded_by"),
-        conflicts_with=row["conflicts_with"],
+        superseded_by=row["authority_superseded_by"],
+        conflicts_with=row["authority_contradicted_by"],
     ):
         return None
     permission_group = _permission_group(kind)

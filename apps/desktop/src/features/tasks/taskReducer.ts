@@ -1,7 +1,7 @@
 import type { TaskDraft, TaskItem } from "../../types";
 
 export type ReminderNotificationSummary = {
-  status: "idle" | "shown" | "duplicate" | "unsupported" | "failed";
+  status: "idle" | "shown" | "duplicate" | "unsupported" | "failed" | "unknown";
   detail: string;
 };
 
@@ -83,10 +83,11 @@ export function taskReducer(state: TaskState, action: TaskAction): TaskState {
 export function formatReminderNotificationStatus(summary: ReminderNotificationSummary): string {
   const labels: Record<ReminderNotificationSummary["status"], string> = {
     idle: "未触发",
-    shown: "已送达",
+    shown: "已调用系统显示",
     duplicate: "已去重",
     unsupported: "不支持",
     failed: "失败",
+    unknown: "结果未知",
   };
   return `${labels[summary.status]}，${summary.detail}`;
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { DesktopSidecarStatus } from "../../types";
-import { getSidecarActionMessage } from "./connectionStatus";
+import { formatSidecarState, getSidecarActionMessage } from "./connectionStatus";
 
 function failedStatus(code: string): DesktopSidecarStatus {
   return {
@@ -29,4 +29,12 @@ describe("getSidecarActionMessage", () => {
       expect(message).not.toContain("Python 和 uvicorn");
     },
   );
+
+  it.each([
+    ["recovering", "正在恢复"],
+    ["manual-retry", "等待手动重试"],
+    ["suspended", "已暂停"],
+  ] as const)("formats the %s resident-runtime state", (state, label) => {
+    expect(formatSidecarState(state)).toBe(label);
+  });
 });

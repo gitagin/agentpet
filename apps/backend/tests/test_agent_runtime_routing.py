@@ -11,7 +11,9 @@ from tests.agent_runtime_fakes import (
     FakeMemory,
     FakeRegistryChatModel,
     FakeRetrieval,
+    FakeSemanticModel,
     FakeTasks,
+    FakeWiki,
     FakeWikiWorkflow,
     assert_langgraph_events,
     first_event,
@@ -20,10 +22,11 @@ from tests.agent_runtime_fakes import (
 )
 
 from app.agents import AgentRuntimeServices, AgentToolSet, LangGraphAgentRuntime, route_intent
+from app.agents.checkpointer import SQLiteCheckpointStore
 from app.agents.runtime_helpers import _strip_memory_command
-from app.models.api import AutomationSettingsResponse
 from app.models.enums import AgentIntent
 from app.services.chat_model import AgentId, AgentModelRegistry
+from app.storage.database import Database, MigrationRunner
 
 
 @pytest.mark.parametrize(
@@ -90,8 +93,8 @@ def test_agent_model_registry_returns_stable_agent_clients() -> None:
 
     with pytest.raises(Exception) as exc_info:
         registry.get(AgentId.ACTION_AGENT)
-    assert getattr(exc_info.value, "code") == "agent_model_not_configured"
-    assert getattr(exc_info.value, "agent_id") == AgentId.ACTION_AGENT
+    assert exc_info.value.code == "agent_model_not_configured"
+    assert exc_info.value.agent_id == AgentId.ACTION_AGENT
 
 
 def test_langgraph_runtime_uses_independent_registry_models_and_allowed_tools() -> None:
@@ -117,9 +120,10 @@ def test_langgraph_runtime_uses_independent_registry_models_and_allowed_tools() 
                         AgentId.RETRIEVAL_AGENT: retrieval_model,
                         AgentId.ACTION_AGENT: action_model,
                     }
-                ),
-                automation_settings=SimpleNamespace(use_negotiation=False),
-            )
+                    ),
+                    automation_settings=SimpleNamespace(use_negotiation=False),
+                    allow_ephemeral_lifecycle=True,
+                )
         )
 
         chat_events = [event async for event in runtime.run(make_state("hello"))]
@@ -186,3 +190,76 @@ def test_langgraph_runtime_returns_stable_error_when_registry_missing_agent_mode
 
     assert_langgraph_events(events, ["error"])
     assert first_event(events, "error").code == "agent_model_not_configured"
+
+
+def test_high_risk_explicit_target_is_classified_then_executes_once_after_approval(tmp_path) -> None:
+    database = Database(tmp_path / "state.sqlite3")
+    MigrationRunner(database).apply()
+    checkpoint_store = SQLiteCheckpointStore(database)
+    semantic_model = FakeSemanticModel(
+        {
+            "intent": "action",
+            "retrieval_scope": None,
+            "retrieval_query": None,
+            "action_type": "wiki",
+            "action_params": {
+                "kind": "page",
+                "title": "Safe target",
+                "content": "Approved replacement content.",
+                "target_path": "Wiki/Safe.md",
+            },
+            "confidence": 0.99,
+            "reason": "explicit_high_risk_target",
+        }
+    )
+    wiki = FakeWiki()
+    runtime = LangGraphAgentRuntime(
+        AgentRuntimeServices(
+            wiki=wiki,
+            model_registry=AgentModelRegistry({AgentId.SEMANTIC_ANALYSIS_AGENT: semantic_model}),
+            automation_settings=SimpleNamespace(
+                auto_wiki_organize=True,
+                use_negotiation=False,
+            ),
+            checkpoint_store=checkpoint_store,
+            allow_ephemeral_lifecycle=True,
+        )
+    )
+    state = make_state("覆盖 Wiki/Safe.md 文档，内容改为已确认")
+
+    asyncio.run(_collect(runtime.run(state)))
+
+    assert len(semantic_model.calls) == 1
+    assert wiki.requests == []
+    assert state.checkpoint_id is not None
+    checkpoint = checkpoint_store.get(state.checkpoint_id)
+    assert checkpoint.status == "pending_confirmation"
+    assert checkpoint.state["action_proposal"]["action_type"] == "wiki.page.write"
+    assert checkpoint.state["action_proposal"]["target_ref"] == "Wiki/Safe.md"
+    assert checkpoint.state["policy_decision"]["canonical_parameters"]["target_path"] == "Wiki/Safe.md"
+
+    approved = asyncio.run(
+        runtime.resume_checkpoint(
+            state.checkpoint_id,
+            decision_id=str(checkpoint.state["decision_id"]),
+            decision="approved",
+            policy_version=str(checkpoint.state["policy_decision"]["policy_version"]),
+        )
+    )
+    replayed = asyncio.run(
+        runtime.resume_checkpoint(
+            state.checkpoint_id,
+            decision_id="decision-replay-is-terminal",
+            decision="approved",
+            policy_version=str(checkpoint.state["policy_decision"]["policy_version"]),
+        )
+    )
+
+    assert approved == {"checkpoint_id": state.checkpoint_id, "status": "completed", "effect_applied": True}
+    assert replayed == {"checkpoint_id": state.checkpoint_id, "status": "completed", "effect_applied": False}
+    assert len(wiki.requests) == 1
+    assert wiki.requests[0].target_path == "Wiki/Safe.md"
+
+
+async def _collect(events):
+    return [event async for event in events]

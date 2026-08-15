@@ -12,14 +12,15 @@ from ...models.api import (
     MemoryProposalResponse,
     RejectProposalRequest,
 )
-from ...services.agent_actions import AgentActionCreate
 from ...services.memory import MemoryService
 from ...services.memory_policy import evaluate_memory_content
+from ..services.adapters import RuntimeMemoryAdapter
+from ..services.factory import memory_service
 from ..wiring import (
     audit_reason,
     map_memory_error,
     memory_service_dependency,
-    record_agent_action,
+    production_action_lifecycle,
     record_audit,
 )
 
@@ -30,7 +31,6 @@ router = APIRouter(prefix="/memory", tags=["memory"])
 async def create_memory_proposal(
     proposal_request: MemoryProposalCreateRequest,
     request: Request,
-    service: MemoryService = Depends(memory_service_dependency),
 ) -> MemoryProposalResponse:
     policy = evaluate_memory_content(proposal_request.content)
     if not policy.allowed:
@@ -47,13 +47,28 @@ async def create_memory_proposal(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             details={"reason": policy.reason or "sensitive_content"},
         )
+    # Validate the target before creating a lifecycle claim.  Invalid input
+    # has no business effect and should retain the writer's precise, actionable
+    # error instead of becoming a generic policy-denied receipt.
+    service = memory_service(request)
     try:
-        proposal = service.create_proposal(
-            type=proposal_request.type,
-            content=proposal_request.content,
+        service.writer.resolve_markdown_path(proposal_request.target_path)
+    except Exception as exc:
+        record_audit(
+            request,
+            action="memory.proposal.create",
+            result="denied",
             target_path=proposal_request.target_path,
-            source_message_id=proposal_request.source_message_id,
+            reason=audit_reason(request, code=exc.__class__.__name__),
         )
+        raise map_memory_error(exc) from exc
+    finally:
+        service.close()
+    try:
+        action = await RuntimeMemoryAdapter(
+            request,
+            production_action_lifecycle(request),
+        ).create_proposal(proposal_request)
     except Exception as exc:
         record_audit(
             request,
@@ -67,29 +82,14 @@ async def create_memory_proposal(
         request,
         action="memory.proposal.create",
         result="success",
-        target_path=proposal.target_path,
-        reason=audit_reason(request, proposal_id=proposal.id),
-    )
-    record_agent_action(
-        request,
-        AgentActionCreate(
-            action_type="memory.proposal.ask",
-            title="需要确认长期记忆",
-            summary=proposal.content[:180],
-            source_message_id=proposal.source_message_id,
-            risk_tier="medium",
-            decision="ask",
-            status="pending",
-            target_paths=(proposal.target_path,),
-            metadata={"proposal_id": proposal.id, "proposal_type": proposal.type.value},
-            reversible=False,
-        ),
+        target_path=proposal_request.target_path,
+        reason=audit_reason(request, proposal_id=action.proposal_id),
     )
     return MemoryProposalResponse(
-        proposal_id=proposal.id,
-        status=proposal.status.value,
-        preview_markdown=proposal.content,
-        target_path=proposal.target_path,
+        proposal_id=action.proposal_id,
+        status=action.status,
+        preview_markdown=proposal_request.content,
+        target_path=proposal_request.target_path,
     )
 
 
@@ -115,10 +115,12 @@ async def list_memory_proposals(
 async def confirm_memory_proposal(
     proposal_id: str,
     request: Request,
-    service: MemoryService = Depends(memory_service_dependency),
 ) -> MemoryProposalActionResponse:
     try:
-        result = service.confirm_proposal(proposal_id)
+        action = await RuntimeMemoryAdapter(
+            request,
+            production_action_lifecycle(request),
+        ).confirm_proposal(proposal_id)
     except Exception as exc:
         record_audit(
             request,
@@ -131,30 +133,10 @@ async def confirm_memory_proposal(
         request,
         action="memory.proposal.confirm",
         result="success",
-        target_path=result.written_path,
-        reason=audit_reason(request, proposal_id=result.proposal_id, index_job_id=result.index_job_id),
+        target_path=action.written_path,
+        reason=audit_reason(request, proposal_id=action.proposal_id, index_job_id=action.index_job_id),
     )
-    action = record_agent_action(
-        request,
-        AgentActionCreate(
-            action_type="memory.proposal.confirm",
-            title="已写入长期记忆",
-            summary=result.written_path or "",
-            risk_tier="medium",
-            decision="ask",
-            status="completed",
-            target_paths=tuple([result.written_path] if result.written_path else []),
-            metadata={"proposal_id": result.proposal_id, "index_job_id": result.index_job_id},
-            reversible=False,
-        ),
-    )
-    return MemoryProposalActionResponse(
-        proposal_id=result.proposal_id,
-        status=result.status.value,
-        written_path=result.written_path,
-        index_job_id=result.index_job_id,
-        action_id=action.action_id,
-    )
+    return action
 
 
 @router.post("/proposals/{proposal_id}/reject", response_model=MemoryProposalActionResponse)
@@ -162,10 +144,12 @@ async def reject_memory_proposal(
     proposal_id: str,
     reject_request: RejectProposalRequest,
     request: Request,
-    service: MemoryService = Depends(memory_service_dependency),
 ) -> MemoryProposalActionResponse:
     try:
-        proposal = service.reject_proposal(proposal_id, reject_request.reason)
+        action = await RuntimeMemoryAdapter(
+            request,
+            production_action_lifecycle(request),
+        ).reject_proposal(proposal_id, reject_request.reason)
     except Exception as exc:
         record_audit(
             request,
@@ -178,25 +162,6 @@ async def reject_memory_proposal(
         request,
         action="memory.proposal.reject",
         result="success",
-        target_path=proposal.target_path,
-        reason=audit_reason(request, proposal_id=proposal.id),
+        reason=audit_reason(request, proposal_id=action.proposal_id),
     )
-    action = record_agent_action(
-        request,
-        AgentActionCreate(
-            action_type="memory.proposal.reject",
-            title="已取消长期记忆候选",
-            summary=proposal.rejected_reason or "",
-            risk_tier="low",
-            decision="auto",
-            status="completed",
-            target_paths=(proposal.target_path,),
-            metadata={"proposal_id": proposal.id},
-            reversible=False,
-        ),
-    )
-    return MemoryProposalActionResponse(
-        proposal_id=proposal.id,
-        status=proposal.status.value,
-        action_id=action.action_id,
-    )
+    return action

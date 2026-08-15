@@ -28,17 +28,16 @@ import type {
   MemoryProposalCreateResponse,
   MemoryProposalDraft,
   MemoryProposalListResponse,
-  MemoryGraphExportPreviewResponse,
-  MemoryGraphFactActionResponse,
-  MemoryGraphFactListResponse,
-  MemoryGraphProjectionResponse,
+  MemoryGraphResponse,
+  MemoryGraphNodeDetail,
+  MemoryGraphEdgeDetail,
+  MemoryGraphClaimDetail,
+  MemoryGraphActionRequest,
+  MemoryGraphActionResponse,
+  MemoryGraphRebuildResponse,
   MemoryFeedbackResponse,
   MemoryHygieneActionResponse,
   MemoryHygienePreviewResponse,
-  MemoryProfileActionRequest,
-  MemoryProfileActionResponse,
-  MemoryProfileDetail,
-  MemoryProfileProjectionResponse,
   MemoryReceiptResponse,
   MemorySearchResponse,
   MemoryReviewActionRequest,
@@ -171,29 +170,78 @@ export class DesktopApi {
     return this.client.get<LocalAssetStatsResponse>("/api/memory/local-assets", signal);
   }
 
-  getMemoryProfileProjection(signal?: AbortSignal): Promise<MemoryProfileProjectionResponse> {
-    return this.client.get<MemoryProfileProjectionResponse>("/api/memory/profile-projection", signal);
+  getMemoryGraph(signal?: AbortSignal): Promise<MemoryGraphResponse> {
+    return this.client.get<MemoryGraphResponse>("/api/memory/graph", signal);
   }
 
-  getMemoryGraphProjection(signal?: AbortSignal): Promise<MemoryGraphProjectionResponse> {
-    return this.client.get<MemoryGraphProjectionResponse>("/api/memory/graph-projection", signal);
-  }
-
-  getMemoryProfileDetail(itemId: string, signal?: AbortSignal): Promise<MemoryProfileDetail> {
-    return this.client.get<MemoryProfileDetail>(
-      `/api/memory/profile-projection/items/${encodeURIComponent(itemId)}`,
+  getMemoryGraphNode(nodeId: string, signal?: AbortSignal): Promise<MemoryGraphNodeDetail> {
+    return this.client.get<MemoryGraphNodeDetail>(
+      `/api/memory/graph/nodes/${encodeURIComponent(nodeId)}`,
       signal,
     );
   }
 
-  submitMemoryProfileAction(
-    itemId: string,
-    request: MemoryProfileActionRequest,
+  getMemoryGraphEdge(edgeId: string, signal?: AbortSignal): Promise<MemoryGraphEdgeDetail> {
+    return this.client.get<MemoryGraphEdgeDetail>(
+      `/api/memory/graph/edges/${encodeURIComponent(edgeId)}`,
+      signal,
+    );
+  }
+
+  getMemoryGraphClaim(claimId: string, signal?: AbortSignal): Promise<MemoryGraphClaimDetail> {
+    return this.client.get<MemoryGraphClaimDetail>(
+      `/api/memory/graph/claims/${encodeURIComponent(claimId)}`,
+      signal,
+    );
+  }
+
+  applyMemoryGraphNodeAction(
+    nodeId: string,
+    request: MemoryGraphActionRequest,
+    idempotencyKey: string,
     signal?: AbortSignal,
-  ): Promise<MemoryProfileActionResponse> {
-    return this.client.post<MemoryProfileActionResponse>(
-      `/api/memory/profile-projection/items/${encodeURIComponent(itemId)}/actions`,
+  ): Promise<MemoryGraphActionResponse> {
+    return this.client.postWithHeaders<MemoryGraphActionResponse>(
+      `/api/memory/graph/nodes/${encodeURIComponent(nodeId)}/actions`,
       request,
+      { "Idempotency-Key": idempotencyKey },
+      signal,
+    );
+  }
+
+  applyMemoryGraphEdgeAction(
+    edgeId: string,
+    request: MemoryGraphActionRequest,
+    idempotencyKey: string,
+    signal?: AbortSignal,
+  ): Promise<MemoryGraphActionResponse> {
+    return this.client.postWithHeaders<MemoryGraphActionResponse>(
+      `/api/memory/graph/edges/${encodeURIComponent(edgeId)}/actions`,
+      request,
+      { "Idempotency-Key": idempotencyKey },
+      signal,
+    );
+  }
+
+  applyMemoryGraphClaimAction(
+    claimId: string,
+    request: MemoryGraphActionRequest,
+    idempotencyKey: string,
+    signal?: AbortSignal,
+  ): Promise<MemoryGraphActionResponse> {
+    return this.client.postWithHeaders<MemoryGraphActionResponse>(
+      `/api/memory/graph/claims/${encodeURIComponent(claimId)}/actions`,
+      request,
+      { "Idempotency-Key": idempotencyKey },
+      signal,
+    );
+  }
+
+  rebuildMemoryGraph(idempotencyKey: string, signal?: AbortSignal): Promise<MemoryGraphRebuildResponse> {
+    return this.client.postWithHeaders<MemoryGraphRebuildResponse>(
+      "/api/diagnostics/memory-graph/rebuild",
+      {},
+      { "Idempotency-Key": idempotencyKey },
       signal,
     );
   }
@@ -230,74 +278,6 @@ export class DesktopApi {
 
   listMemoryProposals(signal?: AbortSignal): Promise<MemoryProposalListResponse> {
     return this.client.get<MemoryProposalListResponse>("/api/memory/proposals", signal);
-  }
-
-  listMemoryGraphFacts(
-    status?: string | null,
-    query?: string | null,
-    limit = 50,
-    signal?: AbortSignal,
-  ): Promise<MemoryGraphFactListResponse> {
-    const params = new URLSearchParams({ limit: String(limit) });
-    if (status?.trim()) {
-      params.set("status", status.trim());
-    }
-    if (query?.trim()) {
-      params.set("query", query.trim());
-    }
-    return this.client.get<MemoryGraphFactListResponse>(`/api/memory/graph/facts?${params.toString()}`, signal);
-  }
-
-  confirmMemoryGraphFact(factId: string, signal?: AbortSignal): Promise<MemoryGraphFactActionResponse> {
-    return this.client.post<MemoryGraphFactActionResponse>(
-      `/api/memory/graph/facts/${encodeURIComponent(factId)}/confirm`,
-      {},
-      signal,
-    );
-  }
-
-  markMemoryGraphFactWrong(factId: string, signal?: AbortSignal): Promise<MemoryGraphFactActionResponse> {
-    return this.client.post<MemoryGraphFactActionResponse>(
-      `/api/memory/graph/facts/${encodeURIComponent(factId)}/wrong`,
-      {},
-      signal,
-    );
-  }
-
-  archiveMemoryGraphFact(factId: string, signal?: AbortSignal): Promise<MemoryGraphFactActionResponse> {
-    return this.client.post<MemoryGraphFactActionResponse>(
-      `/api/memory/graph/facts/${encodeURIComponent(factId)}/archive`,
-      {},
-      signal,
-    );
-  }
-
-  sensitiveBlockMemoryGraphFact(factId: string, signal?: AbortSignal): Promise<MemoryGraphFactActionResponse> {
-    return this.client.post<MemoryGraphFactActionResponse>(
-      `/api/memory/graph/facts/${encodeURIComponent(factId)}/sensitive-block`,
-      {},
-      signal,
-    );
-  }
-
-  getMemoryGraphExportPreview(
-    format: "json" | "markdown" = "markdown",
-    status?: string | null,
-    query?: string | null,
-    limit = 100,
-    signal?: AbortSignal,
-  ): Promise<MemoryGraphExportPreviewResponse> {
-    const params = new URLSearchParams({ format, limit: String(limit) });
-    if (status?.trim()) {
-      params.set("status", status.trim());
-    }
-    if (query?.trim()) {
-      params.set("query", query.trim());
-    }
-    return this.client.get<MemoryGraphExportPreviewResponse>(
-      `/api/memory/graph/export-preview?${params.toString()}`,
-      signal,
-    );
   }
 
   runCompanionConsolidation(

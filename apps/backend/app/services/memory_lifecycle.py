@@ -12,7 +12,8 @@ from app.services.memory_candidates import (
     MemoryCandidateStore,
     MemoryFeedbackEventCreate,
 )
-from app.services.memory_graph import MemoryFactCandidate, MemoryGraphFact, MemoryGraphStore
+from app.services.memory_graph import MemoryGraphFact
+from app.services.memory_entity_graph import MemoryEntityGraphStore
 from app.services.memory_taxonomy import LifecycleStatus, MemoryKind, MemoryScope, SourceTrack
 from app.storage.database import open_database_connection
 from app.utils.time import utc_now_iso
@@ -55,13 +56,18 @@ class MemoryLifecycleTransitionError(ValueError):
 
 
 class MemoryLifecycleService:
-    def __init__(self, db: str | Path | sqlite3.Connection, *, graph_root: str | Path | None = None) -> None:
+    def __init__(self, db: str | Path | sqlite3.Connection) -> None:
         self._owns_connection = not isinstance(db, sqlite3.Connection)
         self.conn = open_database_connection(db)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA foreign_keys = ON")
         self.candidates = MemoryCandidateStore(self.conn)
-        self.graph = MemoryGraphStore(self.conn, graph_root=graph_root)
+        self.entity_graph = MemoryEntityGraphStore(self.conn)
+        self._graph = self.entity_graph.graph
+
+    @property
+    def graph(self) -> MemoryEntityGraphStore:
+        return self.entity_graph
 
     def close(self) -> None:
         if self._owns_connection:
@@ -104,6 +110,7 @@ class MemoryLifecycleService:
                 to_status,
                 reason=reason,
                 superseded_by=superseded_by,
+                agent_action_id=agent_action_id,
             )
         raise MemoryLifecycleTransitionError(f"unsupported_memory_target_type:{target_type}")
 
@@ -117,6 +124,7 @@ class MemoryLifecycleService:
         source_agent_run_id: str | None = None,
         source_message_id: str | None = None,
         agent_action_id: str | None = None,
+        _sync_linked_fact: bool = True,
     ) -> MemoryLifecycleTransitionResult:
         target = LifecycleStatus(to_status)
         candidate = self.candidates.get_candidate(candidate_id)
@@ -131,6 +139,13 @@ class MemoryLifecycleService:
             superseded_by=superseded_by,
             metadata={"trigger": reason, "superseded_by": superseded_by} if superseded_by else {"trigger": reason},
         )
+        if _sync_linked_fact:
+            self._sync_linked_fact_status(
+                candidate,
+                target=target,
+                reason=reason,
+                superseded_by=superseded_by,
+            )
         return MemoryLifecycleTransitionResult(
             target_type="candidate",
             target_id=candidate.id,
@@ -140,6 +155,32 @@ class MemoryLifecycleService:
             superseded_by=superseded_by,
         )
 
+    def _sync_linked_fact_status(
+        self,
+        candidate: MemoryCandidateRecord,
+        *,
+        target: LifecycleStatus,
+        reason: str,
+        superseded_by: str | None,
+    ) -> None:
+        fact_id = candidate.fact_id
+        if not fact_id:
+            return
+        replacement_fact_id = None
+        if superseded_by:
+            replacement = self.candidates.get_candidate(superseded_by)
+            replacement_fact_id = replacement.fact_id
+            if replacement_fact_id is None:
+                return
+        fact_status = _candidate_status_to_fact_status(target)
+        self.transition_fact(
+            fact_id,
+            fact_status,
+            reason=reason,
+            superseded_by=replacement_fact_id,
+            _sync_candidates=False,
+        )
+
     def transition_fact(
         self,
         fact_id: str,
@@ -147,18 +188,62 @@ class MemoryLifecycleService:
         *,
         reason: str,
         superseded_by: str | None = None,
+        agent_action_id: str | None = None,
+        _sync_candidates: bool = True,
     ) -> MemoryLifecycleTransitionResult:
         fact_target = _coerce_fact_status(to_status)
         target = _fact_lifecycle_status(fact_target)
-        fact = self.graph.get(fact_id)
+        fact = self._graph.get(fact_id)
         current = _fact_lifecycle_status(fact.status)
         _validate_fact_transition(current, target, superseded_by=superseded_by)
-        self.graph.update_status(
-            fact.id,
-            fact_target,
-            reason=reason,
-            superseded_by=superseded_by,
+        previous_event_rowid = int(
+            self.conn.execute(
+                "SELECT COALESCE(MAX(rowid), 0) FROM memory_lifecycle_events WHERE fact_id = ?",
+                (fact_id,),
+            ).fetchone()[0]
         )
+        with self.entity_graph.atomic():
+            self.entity_graph.update_status(
+                fact.id,
+                fact_target,
+                reason=reason,
+                lifecycle_metadata=(
+                    {"replacement_fact_id": superseded_by}
+                    if superseded_by
+                    else None
+                ),
+            )
+        if agent_action_id is not None:
+            events = self.conn.execute(
+                """
+                SELECT id
+                FROM memory_lifecycle_events
+                WHERE fact_id = ?
+                  AND to_status = ?
+                  AND reason = ?
+                  AND rowid > ?
+                ORDER BY created_at, id
+                """,
+                (
+                    fact_id,
+                    target.value,
+                    reason,
+                    previous_event_rowid,
+                ),
+            ).fetchall()
+            if len(events) != 1:
+                raise MemoryLifecycleTransitionError("fact_lifecycle_event_binding_ambiguous")
+            with self.conn:
+                self.conn.execute(
+                    "UPDATE memory_lifecycle_events SET agent_action_id = ? WHERE id = ?",
+                    (agent_action_id, str(events[0][0])),
+                )
+        if _sync_candidates:
+            self._sync_linked_candidates(
+                fact.id,
+                target=target,
+                reason=reason,
+            )
         return MemoryLifecycleTransitionResult(
             target_type="fact",
             target_id=fact.id,
@@ -167,6 +252,28 @@ class MemoryLifecycleService:
             reason=reason,
             superseded_by=superseded_by,
         )
+
+    def _sync_linked_candidates(
+        self,
+        fact_id: str,
+        *,
+        target: LifecycleStatus,
+        reason: str,
+    ) -> None:
+        rows = self.conn.execute(
+            "SELECT id, status FROM memory_candidates WHERE fact_id = ?",
+            (fact_id,),
+        ).fetchall()
+        for row in rows:
+            current = LifecycleStatus(str(row["status"]))
+            if current is target:
+                continue
+            self.candidates.transition(
+                candidate_id=str(row["id"]),
+                to_status=target,
+                reason=reason,
+                metadata={"trigger": "linked_fact", "fact_id": fact_id},
+            )
 
     def mark_candidate_completed(self, candidate_id: str, *, reason: str = "user_marked_completed") -> MemoryCandidateRecord:
         candidate = self.candidates.get_candidate(candidate_id)
@@ -177,11 +284,11 @@ class MemoryLifecycleService:
         return self.candidates.get_candidate(candidate.id)
 
     def mark_fact_completed(self, fact_id: str, *, reason: str = "user_marked_completed") -> MemoryGraphFact:
-        fact = self.graph.get(fact_id)
+        fact = self._graph.get(fact_id)
         if not _fact_is_project_context(fact):
             raise MemoryLifecycleTransitionError("only_project_context_can_be_marked_completed")
         self.transition_fact(fact.id, LifecycleStatus.ARCHIVED, reason=reason)
-        return self.graph.get(fact.id)
+        return self._graph.get(fact.id)
 
     def supersede_candidate(
         self,
@@ -194,9 +301,45 @@ class MemoryLifecycleService:
         old = self.candidates.get_candidate(old_candidate_id)
         replacement = self.candidates.get_candidate(replacement_candidate_id)
         _ensure_boundary_can_be_superseded(old_kind=old.memory_kind, replacement_kind=replacement.memory_kind, allow=allow_boundary_override)
+        if old.fact_id and not replacement.fact_id:
+            raise MemoryLifecycleTransitionError("replacement_candidate_fact_required")
         if replacement.status is LifecycleStatus.CANDIDATE:
             self.transition_candidate(replacement.id, LifecycleStatus.ACTIVE, reason="replacement_promoted")
-        self.transition_candidate(old.id, LifecycleStatus.SUPERSEDED, reason=reason, superseded_by=replacement.id)
+            replacement = self.candidates.get_candidate(replacement.id)
+        if old.status is LifecycleStatus.SUPERSEDED:
+            if old.superseded_by != replacement.id:
+                raise MemoryLifecycleTransitionError("candidate_supersession_conflict")
+            if old.fact_id and replacement.fact_id:
+                self.supersede_fact(
+                    old.fact_id,
+                    replacement.fact_id,
+                    reason=reason,
+                    allow_boundary_override=allow_boundary_override,
+                    _sync_candidates=False,
+                )
+            return old, replacement
+        if old.fact_id and replacement.fact_id:
+            self.supersede_fact(
+                old.fact_id,
+                replacement.fact_id,
+                reason=reason,
+                allow_boundary_override=allow_boundary_override,
+                _sync_candidates=False,
+            )
+            self.transition_candidate(
+                old.id,
+                LifecycleStatus.SUPERSEDED,
+                reason=reason,
+                superseded_by=replacement.id,
+                _sync_linked_fact=False,
+            )
+        else:
+            self.transition_candidate(
+                old.id,
+                LifecycleStatus.SUPERSEDED,
+                reason=reason,
+                superseded_by=replacement.id,
+            )
         return self.candidates.get_candidate(old.id), self.candidates.get_candidate(replacement.id)
 
     def supersede_fact(
@@ -206,18 +349,43 @@ class MemoryLifecycleService:
         *,
         reason: str = "new_memory_supersedes_old",
         allow_boundary_override: bool = False,
+        _sync_candidates: bool = True,
     ) -> tuple[MemoryGraphFact, MemoryGraphFact]:
-        old = self.graph.get(old_fact_id)
-        replacement = self.graph.get(replacement_fact_id)
+        old = self._graph.get(old_fact_id)
+        replacement = self._graph.get(replacement_fact_id)
         _ensure_boundary_can_be_superseded(
             old_kind=_fact_memory_kind(old),
             replacement_kind=_fact_memory_kind(replacement),
             allow=allow_boundary_override,
         )
-        if _fact_lifecycle_status(replacement.status) is LifecycleStatus.CANDIDATE:
-            self.transition_fact(replacement.id, LifecycleStatus.ACTIVE, reason="replacement_promoted")
-        self.transition_fact(old.id, LifecycleStatus.SUPERSEDED, reason=reason, superseded_by=replacement.id)
-        return self.graph.get(old.id), self.graph.get(replacement.id)
+        if _fact_lifecycle_status(old.status) is LifecycleStatus.SUPERSEDED:
+            if old.superseded_by != replacement.id:
+                raise MemoryLifecycleTransitionError("fact_supersession_conflict")
+            return old, replacement
+        with self.entity_graph.atomic():
+            if _fact_lifecycle_status(replacement.status) is LifecycleStatus.CANDIDATE:
+                self.transition_fact(replacement.id, LifecycleStatus.ACTIVE, reason="replacement_promoted")
+            self.entity_graph.create_relation(
+                relation_type="supersedes",
+                subject_fact_id=replacement.id,
+                object_fact_id=old.id,
+                source_text=reason,
+                source_type="user_feedback",
+                confidence=1.0,
+                evidence_id=f"supersedes-{replacement.id}-{old.id}",
+            )
+            self.transition_fact(
+                old.id,
+                LifecycleStatus.SUPERSEDED,
+                reason=reason,
+                superseded_by=replacement.id,
+                _sync_candidates=_sync_candidates,
+            )
+            self.entity_graph.archive_resolved_contradictions(
+                old.id,
+                reason="resolved_by_supersession",
+            )
+        return self._graph.get(old.id), self._graph.get(replacement.id)
 
     def mark_old_project_candidates_stale(self, *, older_than_updated_at: str, limit: int = 100) -> tuple[str, ...]:
         rows = self.conn.execute(
@@ -265,6 +433,7 @@ class MemoryLifecycleService:
                 operation,
                 feedback_text=feedback_text,
                 replacement_text=replacement_text,
+                replacement_object=replacement_object,
                 expires_at=expires_at,
                 source_agent_run_id=source_agent_run_id,
                 source_message_id=source_message_id,
@@ -333,6 +502,7 @@ class MemoryLifecycleService:
         *,
         feedback_text: str,
         replacement_text: str | None,
+        replacement_object: str | None,
         expires_at: str | None,
         source_agent_run_id: str | None,
         source_message_id: str | None,
@@ -383,7 +553,18 @@ class MemoryLifecycleService:
             completed = self.mark_candidate_completed(candidate.id)
             return completed.status, None
         if operation == "edit":
-            replacement = self._create_replacement_candidate(candidate, replacement_text)
+            replacement_value = replacement_text or replacement_object
+            replacement = self._create_replacement_candidate(candidate, replacement_value)
+            if candidate.fact_id:
+                replacement_fact = self._create_replacement_fact(
+                    self._graph.get(candidate.fact_id),
+                    feedback_text=feedback_text,
+                    replacement_text=replacement_value,
+                    replacement_subject=None,
+                    replacement_predicate=None,
+                    replacement_object=None,
+                )
+                replacement = self.candidates.attach_fact(replacement.id, replacement_fact.id)
             old, _ = self.supersede_candidate(candidate.id, replacement.id, reason="user_edited_memory", allow_boundary_override=True)
             return old.status, replacement.id
         if operation == "make_temporary":
@@ -403,7 +584,7 @@ class MemoryLifecycleService:
         replacement_object: str | None,
         expires_at: str | None,
     ) -> tuple[LifecycleStatus, str | None]:
-        fact = self.graph.get(fact_id)
+        fact = self._graph.get(fact_id)
         if operation == "keep":
             result = self.transition_fact(fact.id, LifecycleStatus.ACTIVE, reason="user_kept_memory")
             return result.to_status, None
@@ -427,12 +608,48 @@ class MemoryLifecycleService:
                 replacement_predicate=replacement_predicate,
                 replacement_object=replacement_object,
             )
-            old, _ = self.supersede_fact(fact.id, replacement.id, reason="user_edited_memory", allow_boundary_override=True)
+            linked_candidates = self._linked_candidates(fact.id)
+            if linked_candidates:
+                replacement_value = replacement_object or replacement_text
+                for candidate in linked_candidates:
+                    replacement_candidate = self._create_replacement_candidate(
+                        candidate,
+                        replacement_value,
+                    )
+                    replacement_candidate = self.candidates.attach_fact(
+                        replacement_candidate.id,
+                        replacement.id,
+                    )
+                    if replacement_candidate.fact_id != replacement.id:
+                        raise MemoryLifecycleTransitionError(
+                            "replacement_candidate_fact_conflict"
+                        )
+                    self.supersede_candidate(
+                        candidate.id,
+                        replacement_candidate.id,
+                        reason="user_edited_memory",
+                        allow_boundary_override=True,
+                    )
+                old = self._graph.get(fact.id)
+            else:
+                old, _ = self.supersede_fact(
+                    fact.id,
+                    replacement.id,
+                    reason="user_edited_memory",
+                    allow_boundary_override=True,
+                )
             return _fact_lifecycle_status(old.status), replacement.id
         if operation == "make_temporary":
             updated = self._make_fact_temporary(fact, expires_at)
             return _fact_lifecycle_status(updated.status), None
         raise MemoryLifecycleTransitionError("invalid_memory_feedback_operation")
+
+    def _linked_candidates(self, fact_id: str) -> tuple[MemoryCandidateRecord, ...]:
+        rows = self.conn.execute(
+            "SELECT id FROM memory_candidates WHERE fact_id = ? ORDER BY created_at, id",
+            (fact_id,),
+        ).fetchall()
+        return tuple(self.candidates.get_candidate(str(row[0])) for row in rows)
 
     def _create_replacement_candidate(
         self,
@@ -471,26 +688,32 @@ class MemoryLifecycleService:
         replacement_object: str | None,
     ) -> MemoryGraphFact:
         object_value = replacement_object or replacement_text
-        replacement = self.graph.insert_candidate(
-            MemoryFactCandidate(
-                category=old.category,
-                subject=replacement_subject or old.subject,
-                predicate=replacement_predicate or old.predicate,
-                object=_required_text(object_value, "edit_requires_replacement_text"),
-                source_text=feedback_text or replacement_text or object_value or "",
-                source_type="user_feedback",
+        value = _required_text(object_value, "edit_requires_replacement_text")
+        subject = replacement_subject or old.subject
+        predicate = replacement_predicate or old.predicate
+        entity_id = old.subject_entity_id
+        if entity_id is None:
+            entity_type = old.entity_type if old.entity_type in {
+                "self", "person", "project", "preference", "boundary", "goal", "event", "concept", "source", "wiki_page", "decision"
+            } else "concept"
+            matches = self.entity_graph.find_candidates(entity_type=entity_type, name=subject)
+            if len(matches) > 1:
+                raise MemoryLifecycleTransitionError("edit_subject_ambiguous")
+            entity_id = matches[0].id if matches else self.entity_graph.create_entity(
+                entity_type=entity_type,
+                canonical_name=subject,
                 confidence=max(old.confidence, 0.8),
-                conversation_id=old.conversation_id,
-                user_message_id=old.user_message_id,
-                agent_run_id=old.agent_run_id,
-                memory_type=old.memory_type,
-                entity_type=old.entity_type,
-                occurred_at=old.occurred_at,
-                expires_at=old.expires_at,
-                metadata_json=old.metadata_json,
-                importance=old.importance,
-            )
-        ).fact
+            ).id
+        replacement = self.entity_graph.create_claim(
+            subject_entity_id=entity_id,
+            predicate=predicate,
+            literal_value=value,
+            category=old.category,
+            source_text=feedback_text or replacement_text or value,
+            source_type="user_feedback",
+            confidence=max(old.confidence, 0.8),
+            evidence_id=f"evidence-feedback-{old.id}-{entity_id}",
+        )
         if replacement.id == old.id:
             raise MemoryLifecycleTransitionError("edit_replacement_must_change_memory")
         return replacement
@@ -528,7 +751,7 @@ class MemoryLifecycleService:
                 """,
                 (MemoryKind.RECENT_STATE.value, expiry, utc_now_iso(), fact.id),
             )
-        return self.graph.get(fact.id)
+        return self._graph.get(fact.id)
 
 
 def _validate_transition(
@@ -585,6 +808,15 @@ def _coerce_fact_status(status: LifecycleStatus | MemoryFactStatus | str) -> Mem
     if isinstance(status, LifecycleStatus):
         return MemoryFactStatus(status.value)
     return MemoryFactStatus(str(status))
+
+
+def _candidate_status_to_fact_status(status: LifecycleStatus) -> MemoryFactStatus:
+    try:
+        return MemoryFactStatus(status.value)
+    except ValueError as exc:
+        raise MemoryLifecycleTransitionError(
+            f"candidate_status_not_supported_by_fact:{status.value}"
+        ) from exc
 
 
 def _validate_fact_transition(

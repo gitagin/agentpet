@@ -32,6 +32,7 @@ from app.models.api import (
 )
 from app.services.chat_model import AgentModelRegistry, ChatModelRunResult
 from app.agents.checkpointer import SQLiteCheckpointStore
+from app.agents.contracts import ActionProposal, PolicyDecision
 
 class RetrievalServiceProtocol(Protocol):
     async def search(
@@ -136,6 +137,17 @@ class AgentActionRecorderProtocol(Protocol):
     def __call__(self, action: Any) -> AgentActionResponse: ...
 
 
+class ActionLifecycleCoordinatorProtocol(Protocol):
+    async def execute(
+        self,
+        proposal: ActionProposal,
+        policy: PolicyDecision,
+        *,
+        source_run_id: str,
+        source_conversation_id: str | None = None,
+    ) -> Any: ...
+
+
 class MemoryActivationRecorderProtocol(Protocol):
     def record_usage(
         self,
@@ -177,6 +189,8 @@ class AgentRuntimeServices:
     memory_activation_recorder: MemoryActivationRecorderProtocol | None = None
     prompt_profile_provider: PromptProfileProviderProtocol | None = None
     checkpoint_store: SQLiteCheckpointStore | None = None
+    action_lifecycle: ActionLifecycleCoordinatorProtocol | None = None
+    allow_ephemeral_lifecycle: bool = False
 
 
 class AgentServices(Protocol):

@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from apps.backend.tests._schema import migrate_db
 from app.services.long_term_memory import LongTermMemoryService, extract_long_term_memory_candidate
 from app.services.memory import SafeMarkdownWriter
+from app.services.memory_entity_graph import MemoryEntityGraphStore
 from app.services.memory_graph import MemoryGraphStore
 
 
@@ -180,5 +181,51 @@ def test_model_extraction_failure_logs_warning_and_skips_candidates(tmp_path, ca
         assert result.written is False
         assert result.reason == "no_explicit_memory"
         assert "Long-term memory model extraction failed; skipping model candidates" in caplog.text
+    finally:
+        service.close()
+
+
+def test_model_candidate_retry_reuses_source_identity_without_answer_activation(tmp_path):
+    class Model:
+        def complete(self, *, user_message: str, system_prompt: str | None = None) -> str:
+            return (
+                '[{"category":"project","subject":"Atlas","predicate":"status",'
+                '"object":"in progress","source_text":"Atlas is in progress.",'
+                '"confidence":0.9,"entity_type":"project","memory_type":"project"}]'
+            )
+
+    database = migrate_db(tmp_path / "state.sqlite3")
+    graph = MemoryEntityGraphStore(database)
+    service = LongTermMemoryService(
+        SafeMarkdownWriter(tmp_path),
+        graph_store=graph,
+        extraction_model=Model(),
+        extraction_model_name="test-model",
+    )
+    try:
+        first = service.remember_from_user_message(
+            "Atlas is in progress for this project.",
+            conversation_id="conversation-model",
+            user_message_id="message-model",
+            agent_run_id="run-model-1",
+        )
+        second = service.remember_from_user_message(
+            "Atlas is in progress for this project.",
+            conversation_id="conversation-model",
+            user_message_id="message-model",
+            agent_run_id="run-model-2",
+        )
+
+        assert first.graph_fact_id == second.graph_fact_id
+        assert first.graph_status == "candidate"
+        assert second.graph_status == "candidate"
+        assert graph.conn.execute("SELECT COUNT(*) FROM memory_entities").fetchone()[0] == 1
+        assert graph.conn.execute(
+            "SELECT COUNT(*) FROM memory_graph_facts WHERE statement_kind = 'claim'"
+        ).fetchone()[0] == 1
+        assert graph.conn.execute("SELECT COUNT(*) FROM memory_entity_evidence").fetchone()[0] == 1
+        fact = graph.get(first.graph_fact_id)
+        assert fact.support_count == 1
+        assert graph.answerable_facts(query="Atlas") == []
     finally:
         service.close()

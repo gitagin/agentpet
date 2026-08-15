@@ -97,6 +97,9 @@ describe("settingsReducer", () => {
     expect(state.savingAgentModelIds.size).toBe(0);
     expect(state.testingAgentModelIds.size).toBe(0);
     expect(state.settingsStatus).toBeNull();
+    expect(state.settingsStatusLoadState).toBe("unknown");
+    expect(state.automationSettingsDraft.use_negotiation).toBeNull();
+    expect(state.automationSettingsDraft.max_rounds).toBeNull();
     expect(state.vaultPath).toBe("");
     expect(state.indexingVault).toBe(false);
   });
@@ -109,6 +112,8 @@ describe("settingsReducer", () => {
     const draft = state.agentModelDrafts.find((item) => item.agent_id === agentId);
 
     expect(state.settingsStatus?.model_configured).toBe(true);
+    expect(state.settingsStatusLoadState).toBe("ready");
+    expect(state.automationSettingsDraft.max_rounds).toBe(5);
     expect(draft).toMatchObject({
       provider: "openai-compatible",
       base_url: "http://127.0.0.1:8765/v1",
@@ -211,7 +216,10 @@ describe("settingsReducer", () => {
   });
 
   it("updates vault and indexing state", () => {
-    const loading = settingsReducer(createInitialSettingsState(), { type: "setLoadingSettingsStatus", loading: true });
+    const loading = settingsReducer(createInitialSettingsState(), {
+      type: "setSettingsStatusLoadState",
+      status: "loading",
+    });
     const withPath = settingsReducer(loading, { type: "setVaultPath", vaultPath: "%USERPROFILE%/Vault" });
     const withVault = settingsReducer(withPath, {
       type: "setVaultStatus",
@@ -235,13 +243,34 @@ describe("settingsReducer", () => {
     });
     const indexing = settingsReducer(withIndex, { type: "setIndexingVault", indexingVault: true });
 
-    expect(loading.loadingSettingsStatus).toBe(true);
+    expect(loading.settingsStatusLoadState).toBe("loading");
     expect(withPath.vaultPath).toBe("%USERPROFILE%/Vault");
     expect(withVault.vaultId).toBe("vault-1");
     expect(withVault.vaultStatus?.root_path_label).toBe("%USERPROFILE%\\...\\Vault");
     expect(withVault.vaultStatus?.markdown_count).toBe(3);
     expect(indexing.lastIndexRun?.jobId).toBe("job-1");
     expect(indexing.indexingVault).toBe(true);
+  });
+
+  it("marks a failed refresh as non-authoritative until a later status is applied", () => {
+    const ready = settingsReducer(createInitialSettingsState(), {
+      type: "applySettingsStatus",
+      response: settingsStatus(),
+    });
+    const failed = settingsReducer(ready, {
+      type: "setSettingsStatusLoadState",
+      status: "error",
+    });
+    const refreshed = settingsReducer(failed, {
+      type: "applySettingsStatus",
+      response: settingsStatus({
+        automation: { ...settingsStatus().automation, max_rounds: 8 },
+      }),
+    });
+
+    expect(failed.settingsStatusLoadState).toBe("error");
+    expect(refreshed.settingsStatusLoadState).toBe("ready");
+    expect(refreshed.automationSettingsDraft.max_rounds).toBe(8);
   });
 
   it("resets state and returns saved masked value", () => {

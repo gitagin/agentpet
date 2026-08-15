@@ -2,6 +2,7 @@ from collections.abc import AsyncIterator
 import asyncio
 from datetime import date as date_cls
 from datetime import datetime, time, timedelta, timezone
+import inspect
 import logging
 import re
 import sqlite3
@@ -26,19 +27,21 @@ from ..errors import AppError
 from ..agents.events import sse_stream
 from ..agents.state import AgentState
 from ..models.api import ChatAcceptedResponse, ChatDailyHistoryMessage, ChatDailyHistoryResponse, ChatRequest
-from ..services.agent_actions import AgentActionCreate, AutomationPolicy
+from ..services.agent_actions import AutomationPolicy
 from ..services.chat_pipeline import agent_action_event, archive_chat_memory, automation_settings
 from ..services.memory_policy import evaluate_memory_content
+from ..services.post_reply_memory_jobs import PostReplyMemoryJobRecord, PostReplyMemoryJobStore
+from ..services.product_metrics import ProductMetricsService
 from ..services.prompt_context_types import PromptRecentTurn
 from ..models.common import new_id
 from ..models.enums import AgentId, AgentRunStatus, ConversationStatus, MessageRole, MessageStatus
 from ..storage.database import Database
 from ..utils.time import utc_now_iso
+from ..agents.retrieval.compression import gate_evidence
 from .wiring import (
     AppContext,
     add_chat_run,
     agent_runtime,
-    record_agent_action,
     audit_reason,
     chat_model_client,
     claim_chat_run,
@@ -83,6 +86,13 @@ _STREAM_MAX_PARTIAL_FLUSHES = 18
 # a weak reference to tasks, so without this set a scheduled archive job can
 # be garbage collected mid-flight and silently never complete.
 _POST_REPLY_TASKS: set["asyncio.Task[None]"] = set()
+# Durable post-reply work is deliberately bounded. A permanently failing
+# local provider remains visible as a failed row for manual retry instead of
+# creating an unbounded restart loop.
+POST_REPLY_MAX_ATTEMPTS = 3
+_POST_REPLY_LEASE_SECONDS = 300
+_POST_REPLY_RECOVERY_LIMIT = 100
+_POST_REPLY_WORKER_ID = f"post-reply-worker-{new_id()}"
 
 
 @router.post("", response_model=ChatAcceptedResponse)
@@ -564,7 +574,6 @@ async def _persisting_stream(request: Request, state: AgentState) -> AsyncIterat
                             request,
                             state,
                             assistant_message_id,
-                            "".join(token_chunks),
                             error_code,
                             error_message,
                             persister=partial_persister,
@@ -588,7 +597,7 @@ async def _persisting_stream(request: Request, state: AgentState) -> AsyncIterat
                     error_code, error_message = public_agent_error(event.code)
                     final_status = AgentRunStatus.FAILED.value
                     await partial_persister.persist_terminal(
-                        "".join(token_chunks),
+                        "",
                         MessageStatus.FAILED.value,
                     )
                     yield AgentErrorEvent(
@@ -607,7 +616,6 @@ async def _persisting_stream(request: Request, state: AgentState) -> AsyncIterat
                 request,
                 state,
                 assistant_message_id,
-                "".join(token_chunks),
                 error_code,
                 error_message,
                 persister=partial_persister,
@@ -621,7 +629,6 @@ async def _persisting_stream(request: Request, state: AgentState) -> AsyncIterat
                 request,
                 state,
                 assistant_message_id,
-                "".join(token_chunks),
                 error_code,
                 error_message,
                 persister=partial_persister,
@@ -642,7 +649,7 @@ async def _persisting_stream(request: Request, state: AgentState) -> AsyncIterat
             error_code = "stream_cancelled"
             error_message = "客户端中断了回复流。"
             await partial_persister.persist_terminal(
-                "".join(token_chunks),
+                "",
                 MessageStatus.CANCELLED.value,
             )
         if not final_state_persisted:
@@ -698,6 +705,53 @@ def _persist_stream_terminal_state(
             error_code=error_code,
         ),
     )
+    if final_status == AgentRunStatus.SUCCESS.value:
+        _record_grounded_answer_metric(request, state, assistant_message_id)
+
+
+def _record_grounded_answer_metric(
+    request: Request,
+    state: AgentState,
+    assistant_message_id: str,
+) -> None:
+    if state.grounding_validation != "passed":
+        return
+    try:
+        with database(request).session() as conn:
+            run = conn.execute(
+                "SELECT status FROM agent_runs WHERE id = ?",
+                (state.agent_run_id,),
+            ).fetchone()
+        if run is None or str(run["status"]) != AgentRunStatus.SUCCESS.value:
+            return
+    except Exception:
+        return
+    accepted = tuple(
+        envelope.result
+        for envelope in gate_evidence(state.citations).accepted
+        if envelope.result.recall_permissions.can_answer_context
+    )
+    if not accepted:
+        return
+    source_scopes = {citation.source_scope for citation in accepted}
+    source_scope = next(iter(source_scopes)) if len(source_scopes) == 1 else "all"
+    try:
+        metrics = ProductMetricsService(database(request).path)
+        try:
+            metrics.record(
+                event_type="grounded_answer",
+                idempotency_key=f"grounded-answer:{assistant_message_id}",
+                subject_id=assistant_message_id,
+                dimensions={
+                    "citation_valid": True,
+                    "source_scope": source_scope,
+                    "route": state.intent.value if state.intent is not None else "unknown",
+                },
+            )
+        finally:
+            metrics.close()
+    except Exception:
+        return
 
 
 def _post_reply_work_blocked(state: AgentState) -> bool:
@@ -708,18 +762,97 @@ def _post_reply_work_blocked(state: AgentState) -> bool:
 
 
 def _schedule_post_reply_work(request: Request, state: AgentState, assistant_message_id: str, final_text: str) -> None:
+    """Persist a post-reply job before starting any memory side effect.
+
+    A few unit tests exercise this helper with a deliberately tiny fake app
+    that has no database. Those tests retain the old in-process worker path;
+    a real FastAPI app always has ``app.state.database`` and therefore never
+    executes effects before the durable enqueue succeeds.
+    """
     context = AppContext(
         app=request.app,
         request_id=getattr(getattr(request, "state", None), "request_id", None),
     )
-    task = asyncio.create_task(
-        _complete_assistant_message_background(
+    database_instance = _post_reply_database(context)
+    if database_instance is None:
+        _spawn_post_reply_task(
             context,
             state.model_copy(deep=True),
             assistant_message_id,
             final_text,
+            job_id=None,
         )
+        return
+
+    job_id = new_id()
+    store: PostReplyMemoryJobStore | None = None
+    try:
+        store = PostReplyMemoryJobStore(database_instance.path)
+        record = store.enqueue(
+            job_id=job_id,
+            agent_run_id=state.agent_run_id,
+            conversation_id=state.conversation_id,
+            user_message_id=state.message_id,
+            assistant_message_id=assistant_message_id,
+            stage_states={
+                "schema_version": 1,
+                "suppress_post_reply_automation": bool(state.suppress_post_reply_automation),
+                "local_privacy_mode": bool(state.local_privacy_mode),
+            },
+        )
+    except Exception:
+        # The foreground answer is already durable, but running memory effects
+        # without a claim would make a retry after restart non-idempotent.
+        logger.error(
+            "Post-reply job enqueue failed; memory effects were not scheduled for agent_run_id=%s",
+            state.agent_run_id,
+            exc_info=True,
+        )
+        return
+    finally:
+        if store is not None:
+            store.close()
+
+    _spawn_post_reply_task(
+        context,
+        state.model_copy(deep=True),
+        assistant_message_id,
+        final_text,
+        job_id=record.id,
     )
+
+
+def _spawn_post_reply_task(
+    context: AppContext,
+    state: AgentState,
+    assistant_message_id: str,
+    final_text: str,
+    *,
+    job_id: str | None,
+) -> None:
+    if job_id is None:
+        coroutine = _complete_assistant_message_background(
+            context,
+            state,
+            assistant_message_id,
+            final_text,
+        )
+    else:
+        coroutine = _run_persisted_post_reply_job(
+            context,
+            state,
+            assistant_message_id,
+            final_text,
+            job_id,
+        )
+    try:
+        task = asyncio.create_task(coroutine)
+    except RuntimeError:
+        # Avoid leaking an un-awaited coroutine if a caller invokes the helper
+        # outside an active event loop. The durable row remains recoverable.
+        coroutine.close()
+        logger.warning("Post-reply task could not be scheduled because no event loop is running")
+        return
     _POST_REPLY_TASKS.add(task)
     task.add_done_callback(_finalize_post_reply_task)
 
@@ -734,10 +867,259 @@ async def _complete_assistant_message_background(
     state: AgentState,
     assistant_message_id: str,
     final_text: str,
+    job_id: str | None = None,
 ) -> None:
-    await _archive_chat_memory_in_background(context, state, assistant_message_id, final_text)
+    """Run post-reply effects, optionally under a durable job lease.
+
+    ``job_id`` is optional so existing callers and test doubles with the
+    historical four-argument worker signature remain valid. Production
+    scheduling always supplies it through ``_run_persisted_post_reply_job``.
+    """
+    if job_id is None:
+        await _run_post_reply_effects(context, state, assistant_message_id, final_text)
+        return
+
+    database_instance = _post_reply_database(context)
+    if database_instance is None:
+        await _run_post_reply_effects(context, state, assistant_message_id, final_text)
+        return
+
+    owner = _post_reply_owner(job_id)
+    store = PostReplyMemoryJobStore(database_instance.path)
+    try:
+        record, claimed = store.claim(
+            job_id,
+            owner=owner,
+            lease_seconds=_POST_REPLY_LEASE_SECONDS,
+            max_attempts=POST_REPLY_MAX_ATTEMPTS,
+        )
+        if not claimed or record is None:
+            if record is not None and record.attempts >= POST_REPLY_MAX_ATTEMPTS:
+                store.mark_exhausted(job_id)
+                logger.warning("Post-reply job retry budget exhausted for job_id=%s", job_id)
+            return
+
+        stage_states = {
+            "schema_version": 1,
+            "status": "running",
+            "attempt": record.attempts,
+        }
+        store.update_stage_states(job_id, owner=owner, stage_states=stage_states)
+        try:
+            effect_states = await _run_post_reply_effects(
+                context,
+                state,
+                assistant_message_id,
+                final_text,
+            )
+            stage_states.update(effect_states)
+            stage_states["status"] = "completed"
+            store.complete(job_id, owner=owner, stage_states=stage_states)
+        except asyncio.CancelledError:
+            # Shutdown should leave the job eligible for the next process,
+            # without consuming an attempt merely because the loop stopped.
+            store.release(job_id, owner=owner, error_code="post_reply_shutdown")
+            raise
+        except Exception:
+            stage_states["status"] = "failed"
+            store.fail(
+                job_id,
+                owner=owner,
+                stage_states=stage_states,
+                error_code="post_reply_effect_failed",
+            )
+            raise
+    finally:
+        store.close()
+
+
+async def _run_persisted_post_reply_job(
+    context: AppContext,
+    state: AgentState,
+    assistant_message_id: str,
+    final_text: str,
+    job_id: str,
+) -> None:
+    """Bridge durable scheduling to legacy monkeypatchable worker callables."""
+    worker = _complete_assistant_message_background
+    if _worker_accepts_job_id(worker):
+        await worker(context, state, assistant_message_id, final_text, job_id=job_id)
+        return
+
+    # Older tests/extensions replace the worker with a four-argument function.
+    # Claim and finalize around that function so even the compatibility path
+    # preserves the same at-most-one active executor guarantee.
+    database_instance = _post_reply_database(context)
+    if database_instance is None:
+        await worker(context, state, assistant_message_id, final_text)
+        return
+    owner = _post_reply_owner(job_id)
+    store = PostReplyMemoryJobStore(database_instance.path)
+    try:
+        record, claimed = store.claim(
+            job_id,
+            owner=owner,
+            lease_seconds=_POST_REPLY_LEASE_SECONDS,
+            max_attempts=POST_REPLY_MAX_ATTEMPTS,
+        )
+        if not claimed or record is None:
+            return
+        try:
+            await worker(context, state, assistant_message_id, final_text)
+            store.complete(
+                job_id,
+                owner=owner,
+                stage_states={"schema_version": 1, "status": "completed", "attempt": record.attempts},
+            )
+        except asyncio.CancelledError:
+            store.release(job_id, owner=owner, error_code="post_reply_shutdown")
+            raise
+        except Exception:
+            store.fail(
+                job_id,
+                owner=owner,
+                stage_states={"schema_version": 1, "status": "failed", "attempt": record.attempts},
+                error_code="post_reply_effect_failed",
+            )
+            raise
+    finally:
+        store.close()
+
+
+async def _run_post_reply_effects(
+    context: AppContext,
+    state: AgentState,
+    assistant_message_id: str,
+    final_text: str,
+) -> dict[str, object]:
+    actions = await _archive_chat_memory_in_background(context, state, assistant_message_id, final_text)
+    continuity_events = 0
     async for _ in _create_continuity_proposals(context, state, assistant_answer=final_text):
-        pass
+        continuity_events += 1
+    return {
+        "archive_action_count": len(actions),
+        "continuity_event_count": continuity_events,
+    }
+
+
+def _worker_accepts_job_id(worker: object) -> bool:
+    try:
+        signature = inspect.signature(worker)
+    except (TypeError, ValueError):
+        return False
+    return "job_id" in signature.parameters or any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD
+        for parameter in signature.parameters.values()
+    )
+
+
+def _post_reply_database(context: AppContext):
+    state = getattr(context.app, "state", None)
+    return getattr(state, "database", None)
+
+
+def _post_reply_owner(job_id: str) -> str:
+    return f"{_POST_REPLY_WORKER_ID}:{job_id}"
+
+
+def recover_post_reply_memory_jobs(app: object, *, limit: int = _POST_REPLY_RECOVERY_LIMIT) -> int:
+    """Recover pending post-reply work during application startup.
+
+    Only rows whose assistant message is already terminal and readable are
+    scheduled. The queue stores message ids rather than prompt text, so a
+    restart reconstructs an ``AgentState`` from the authoritative SQLite
+    rows and never trusts an in-memory snapshot from the previous process.
+    """
+    context = AppContext(app=app)  # type: ignore[arg-type]
+    database_instance = _post_reply_database(context)
+    if database_instance is None:
+        return 0
+    store: PostReplyMemoryJobStore | None = None
+    scheduled = 0
+    try:
+        store = PostReplyMemoryJobStore(database_instance.path)
+        store.requeue_expired(max_attempts=POST_REPLY_MAX_ATTEMPTS)
+        for record in store.list_pending(limit=limit):
+            if record.attempts >= POST_REPLY_MAX_ATTEMPTS:
+                store.mark_exhausted(record.id)
+                continue
+            if record.status == "failed":
+                if not store.requeue_failed(record.id, max_attempts=POST_REPLY_MAX_ATTEMPTS):
+                    continue
+                refreshed = store.get(record.id)
+                if refreshed is None:
+                    continue
+                record = refreshed
+            payload = _rebuild_post_reply_payload(context, record)
+            if payload is None:
+                store.mark_exhausted(record.id, error_code="post_reply_messages_unavailable")
+                continue
+            state, answer = payload
+            _spawn_post_reply_task(
+                context,
+                state,
+                record.assistant_message_id,
+                answer,
+                job_id=record.id,
+            )
+            scheduled += 1
+    except Exception:
+        logger.error("Post-reply job recovery failed; rows remain durable for a later startup", exc_info=True)
+    finally:
+        if store is not None:
+            store.close()
+    return scheduled
+
+
+def _rebuild_post_reply_payload(
+    context: AppContext,
+    record: PostReplyMemoryJobRecord,
+) -> tuple[AgentState, str] | None:
+    database_instance = _post_reply_database(context)
+    if database_instance is None:
+        return None
+    with database_instance.session() as conn:
+        row = conn.execute(
+            """
+            SELECT
+                runs.status AS run_status,
+                user_messages.content AS user_content,
+                assistant_messages.content AS assistant_content,
+                assistant_messages.status AS assistant_status
+            FROM agent_runs AS runs
+            JOIN messages AS user_messages
+              ON user_messages.id = runs.user_message_id
+             AND user_messages.id = ?
+            JOIN messages AS assistant_messages
+              ON assistant_messages.id = runs.assistant_message_id
+             AND assistant_messages.id = ?
+            WHERE runs.id = ?
+              AND runs.conversation_id = ?
+            """,
+            (
+                record.user_message_id,
+                record.assistant_message_id,
+                record.agent_run_id,
+                record.conversation_id,
+            ),
+        ).fetchone()
+    if row is None or str(row["assistant_status"]) != MessageStatus.COMPLETED.value:
+        return None
+    answer = str(row["assistant_content"] or "")
+    user_message = str(row["user_content"] or "")
+    if not answer.strip() or not user_message.strip():
+        return None
+    states = record.stage_states
+    state = AgentState(
+        conversation_id=record.conversation_id,
+        message_id=record.user_message_id,
+        agent_run_id=record.agent_run_id,
+        user_message=user_message,
+        status=AgentRunStatus.SUCCESS,
+        suppress_post_reply_automation=bool(states.get("suppress_post_reply_automation", False)),
+        local_privacy_mode=bool(states.get("local_privacy_mode", False)),
+    )
+    return state, answer
 
 
 def _log_post_reply_task_result(task: asyncio.Task[None]) -> None:
@@ -762,16 +1144,15 @@ async def _fail_message(
     request: Request,
     state: AgentState,
     assistant_message_id: str,
-    content: str,
     code: str,
     _message: str,
     *,
     persister: _StreamPartialPersister | None = None,
 ) -> AgentErrorEvent:
     if persister is None:
-        _update_assistant_message(request, assistant_message_id, content, MessageStatus.FAILED.value)
+        _update_assistant_message(request, assistant_message_id, "", MessageStatus.FAILED.value)
     else:
-        await persister.persist_terminal(content, MessageStatus.FAILED.value)
+        await persister.persist_terminal("", MessageStatus.FAILED.value)
     safe_code, safe_message = public_agent_error(code)
     return AgentErrorEvent(agent_run_id=state.agent_run_id, code=safe_code, message=safe_message)
 
@@ -832,7 +1213,16 @@ async def _create_continuity_proposals(
             )
             if automation.auto_structured_memory and decision.decision != "ask":
                 try:
-                    confirmed = service.confirm_proposal(proposal.id)
+                    from .services.adapters import execute_continuity_activation
+
+                    outcome = await execute_continuity_activation(
+                        request,
+                        proposal_id=proposal.id,
+                        kind=proposal.kind,
+                        source_message_id=proposal.source_message_id,
+                        source_run_id=state.agent_run_id,
+                        source_conversation_id=state.conversation_id,
+                    )
                 except Exception:
                     # Explicit failure branch: auto-confirm failed, so fall
                     # through and surface the proposal for manual confirmation
@@ -843,29 +1233,14 @@ async def _create_continuity_proposals(
                         exc_info=True,
                     )
                 else:
-                    action = record_agent_action(
-                        request,
-                        AgentActionCreate(
-                            action_type=f"continuity.{confirmed.kind}",
-                            title="已自动更新桌宠连续性",
-                            summary=confirmed.summary,
-                            source_agent_run_id=confirmed.agent_run_id,
-                            source_conversation_id=confirmed.source_conversation_id,
-                            source_message_id=confirmed.source_message_id,
-                            risk_tier=decision.risk_tier,
-                            decision=decision.decision,
-                            status="completed",
-                            metadata={
-                                "proposal_id": confirmed.id,
-                                "kind": confirmed.kind,
-                                "confidence": confirmed.confidence,
-                                "policy_reason": decision.reason,
-                            },
-                            reversible=False,
-                        ),
+                    if outcome.receipt.status == "verified":
+                        yield agent_action_event(state.agent_run_id, outcome.action)
+                        continue
+                    logger.warning(
+                        "Continuity auto-confirm lifecycle was not verified for proposal_id=%s: %s",
+                        proposal.id,
+                        outcome.receipt.safe_error_code or outcome.receipt.status,
                     )
-                    yield agent_action_event(state.agent_run_id, action)
-                    continue
             yield AgentContinuityProposalEvent(
                 agent_run_id=state.agent_run_id,
                 proposal_id=proposal.id,

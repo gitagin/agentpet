@@ -1,4 +1,5 @@
 from .common import *
+from .contracts import unique_evidence, validate_page_type
 from .planning_candidates import _entity_kind_from_key
 from .utility import _table_cell, _unique
 
@@ -9,8 +10,6 @@ def _source_summary_markdown(
 ) -> str:
     summary = _summary_from_source(request.content)
     lines = [
-        "## 来源摘要",
-        "",
         f"- 来源类型：`{request.source_type}`",
         f"- 来源哈希：`{source_hash}`",
     ]
@@ -18,7 +17,7 @@ def _source_summary_markdown(
         lines.append(f"- 来源地址：{request.source_uri}")
     if links:
         lines.append("- 关联链接：" + ", ".join(f"[[{link}]]" for link in links))
-    lines.extend(["", summary])
+    lines.extend(["", "## 不可变摘录", "", summary])
     return "\n".join(lines).strip()
 
 
@@ -26,10 +25,16 @@ def _concept_update_markdown(title: str, request: WikiIngestPreviewRequest, sour
     excerpt = _summary_from_source(request.content, max_lines=3)
     return "\n".join(
         [
-            f"## 来源：{request.title}",
+            "## 定义",
+            "",
+            f"{title} 的当前定义来自已保存来源，尚未由独立证据扩展。",
+            "",
+            "## 来源",
             "",
             f"- 来源页面：`{source_path}`",
             f"- 来源类型：`{request.source_type}`",
+            "",
+            "## 证据摘录",
             "",
             excerpt,
         ]
@@ -42,52 +47,21 @@ def _entity_update_markdown(
     source_path: str,
 ) -> str:
     lines = [
-        f"## 来源：{request.title}",
+        "## 实体定义",
+        "",
+        f"{candidate.title}（{candidate.kind}）由来源中的明确实体信号指向。",
+        "",
+        "## 已确认事实",
+        "",
+        _summary_from_source(request.content, max_lines=4),
+        "",
+        "## 来源",
         "",
         f"- 实体类型：`{candidate.kind}`",
         f"- 来源页面：`{source_path}`",
     ]
     if candidate.evidence:
-        lines.append(f"- 提取信号：{candidate.evidence}")
-    lines.extend(["", _summary_from_source(request.content, max_lines=4)])
-    return "\n".join(lines).strip()
-
-
-def _comparison_update_markdown(
-    candidate,
-    request: WikiIngestPreviewRequest,
-    source_path: str,
-) -> str:
-    lines = [
-        f"## 来源：{request.title}",
-        "",
-        f"- 来源页面：`{source_path}`",
-        f"- 对比页面：[[{candidate.left}]] 和 [[{candidate.right}]]",
-        f"- 提取信号：{candidate.reason or '对比'}",
-        "",
-        _summary_from_source(request.content, max_lines=4),
-    ]
-    return "\n".join(lines).strip()
-
-
-def _ingest_synthesis_markdown(
-    request: WikiIngestPreviewRequest,
-    *,
-    source_path: str,
-    related_titles: list[str],
-    entity_candidates: list,
-    comparison_candidates: list,
-) -> str:
-    lines = [
-        f"## 综合：{request.title}",
-        "",
-        f"- 来源页面：`{source_path}`",
-        f"- 关联概念：{', '.join(related_titles) if related_titles else '无'}",
-        f"- 实体：{', '.join(candidate.title for candidate in entity_candidates) if entity_candidates else '无'}",
-        f"- 对比：{', '.join(_comparison_title(candidate) for candidate in comparison_candidates) if comparison_candidates else '无'}",
-        "",
-        _summary_from_source(request.content, max_lines=5),
-    ]
+        lines.extend([f"- 提取信号：{candidate.evidence}"])
     return "\n".join(lines).strip()
 
 
@@ -126,23 +100,17 @@ def _maintenance_signals(content: str) -> list[str]:
     ]
 
 
-def _comparison_title(candidate) -> str:
-    return f"{candidate.left} vs {candidate.right}"
-
-
 def _query_archive_markdown(request: QueryArchiveRequest, citations: list[MemorySearchResult]) -> str:
     lines = [
-        "## 查询归档",
-        "",
-        "### 问题",
+        "## 范围",
         "",
         request.question.strip(),
         "",
-        "### 回答",
+        "## 结果",
         "",
         request.answer.strip(),
         "",
-        "### 引用",
+        "## 证据",
         "",
         "| 来源 | 标题 | 范围 | 检索方式 | 摘要 |",
         "| --- | --- | --- | --- | --- |",
@@ -162,7 +130,7 @@ def _query_archive_markdown(request: QueryArchiveRequest, citations: list[Memory
             + " |"
         )
     if request.agent_run_id or request.source_message_id:
-        lines.extend(["", "### 元数据", ""])
+        lines.extend(["", "## 生成信息", ""])
         if request.agent_run_id:
             lines.append(f"- 智能体运行：`{request.agent_run_id}`")
         if request.source_message_id:
@@ -171,15 +139,48 @@ def _query_archive_markdown(request: QueryArchiveRequest, citations: list[Memory
 
 
 def _synthesis_markdown(request: WikiSynthesizeRequest) -> str:
-    lines = [
-        "## 综合整理",
-        "",
-        request.content.strip(),
-    ]
-    if request.source_paths:
-        lines.extend(["", "### 来源页面", ""])
-        for path in request.source_paths:
-            lines.append(f"- [[{path}]]")
+    page_type = request.page_type
+    sources = list(unique_evidence(request.source_paths))
+    evidence_ids = list(unique_evidence(request.evidence_ids))
+    validate_page_type(
+        page_type,
+        sources=sources,
+        evidence_ids=evidence_ids,
+        user_decision=request.user_decision,
+        inference=page_type != "decision",
+    )
+    source_lines = [f"- [[{path}]]" for path in sources]
+    evidence_lines = [f"- `{item}`" for item in evidence_ids]
+    if page_type == "decision":
+        sections = [("用户决定", request.user_decision or ""), ("背景", request.content)]
+    elif page_type == "comparison":
+        sections = [
+            ("比较对象", request.title),
+            ("差异", request.content),
+            ("共同证据", "\n".join(source_lines or evidence_lines)),
+        ]
+    elif page_type == "report":
+        sections = [("范围", request.title), ("结果", request.content)]
+    else:
+        sections = [("问题", request.title), ("结论", request.content)]
+    lines: list[str] = []
+    for heading, body in sections:
+        cleaned = body.strip()
+        if not cleaned:
+            continue
+        lines.extend([f"## {heading}", "", cleaned])
+    if page_type == "decision":
+        lines.extend(["", "## 依据", "", *(source_lines or evidence_lines)])
+    elif page_type in {"synthesis", "comparison"}:
+        lines.extend(["", "## 支持证据", "", *(source_lines or evidence_lines)])
+    elif page_type == "report":
+        lines.extend(["", "## 证据", "", *(source_lines or evidence_lines)])
+    if source_lines:
+        lines.extend(["", "## 来源", "", *source_lines])
+    if page_type in {"synthesis", "comparison"}:
+        lines.extend(["", "## 反证与不确定性", "", "未解决冲突不会进入确定性结论。"])
+    if page_type == "decision" and request.links:
+        lines.extend(["", "## 替代方案", "", *[f"- [[{path}]]" for path in _unique(request.links)]])
     return "\n".join(lines).strip()
 
 

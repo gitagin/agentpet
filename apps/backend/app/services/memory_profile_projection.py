@@ -7,6 +7,7 @@ import sqlite3
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from app.services.memory_candidates import CANDIDATE_SOURCE_TYPE_PREFIX
 from app.services.memory_policy import evaluate_memory_content
 from app.services.memory_taxonomy import LOW_CONFIDENCE_THRESHOLD, LifecycleStatus, MemoryKind, MemoryScope, RiskTier, SourceTrack
 from app.storage.database import open_database_connection
@@ -171,9 +172,29 @@ class MemoryProfileProjectionService:
             """
             SELECT
                 id, category, subject, predicate, object, status, confidence,
-                source_type, support_count, conflicts_with, memory_type,
-                entity_type, expires_at, metadata_json, importance, updated_at
-            FROM memory_graph_facts
+                source_type, support_count, memory_type, entity_type,
+                expires_at, metadata_json, importance, updated_at,
+                (
+                    SELECT r.subject_fact_id
+                    FROM memory_graph_facts r
+                    WHERE r.statement_kind = 'relation'
+                      AND r.relation_type = 'supersedes'
+                      AND r.object_fact_id = f.id
+                      AND r.status = 'active'
+                    ORDER BY r.updated_at DESC, r.id DESC
+                    LIMIT 1
+                ) AS authority_superseded_by,
+                (
+                    SELECT CASE WHEN r.subject_fact_id = f.id THEN r.object_fact_id ELSE r.subject_fact_id END
+                    FROM memory_graph_facts r
+                    WHERE r.statement_kind = 'relation'
+                      AND r.relation_type = 'contradicts'
+                      AND r.status = 'active'
+                      AND (r.subject_fact_id = f.id OR r.object_fact_id = f.id)
+                    ORDER BY r.updated_at DESC, r.id DESC
+                    LIMIT 1
+                ) AS authority_contradicted_by
+            FROM memory_graph_facts f
             ORDER BY updated_at DESC, id DESC
             LIMIT ?
             """,
@@ -238,7 +259,12 @@ class MemoryProfileProjectionService:
         if row is None:
             return _SourceStats(count=0, source_values=(), last_seen_at=None)
 
-        evidence = _evidence_stats(self.conn, "candidate_id", candidate_id)
+        evidence = _evidence_stats(
+            self.conn,
+            "candidate_id",
+            candidate_id,
+            exclude_source_prefix=CANDIDATE_SOURCE_TYPE_PREFIX,
+        )
         evidence_count = int(evidence["count"]) if evidence else 0
         fallback_count = int(row["evidence_count"] or 0)
         source_values = _split_source_values(evidence["source_values"] if evidence else None)
@@ -345,7 +371,7 @@ def _fact_item(row: sqlite3.Row) -> tuple[str, MemoryProfileProjectionItem]:
     kind = str(row["memory_type"] or row["category"] or MemoryKind.FACT.value)
     confidence = _clamp(row["confidence"])
     importance = _clamp(row["importance"])
-    superseded_by = _optional_text(metadata.get("superseded_by"))
+    superseded_by = _optional_text(row["authority_superseded_by"])
     summary = _fact_summary(row)
     base_group = _profile_group(
         kind=kind,
@@ -362,7 +388,7 @@ def _fact_item(row: sqlite3.Row) -> tuple[str, MemoryProfileProjectionItem]:
         risk_tier=risk,
         sensitive=is_sensitive,
         superseded_by=superseded_by,
-        conflicts_with=row["conflicts_with"],
+        conflicts_with=row["authority_contradicted_by"],
     )
     display = _display_summary(summary, group=group, status=status, sensitive=is_sensitive)
     can_revoke = group not in {"filtered"} and status in {"active", "candidate", "quarantined", "stale"}
@@ -787,9 +813,20 @@ def _split_source_values(value: object) -> tuple[str, ...]:
     return tuple(values)
 
 
-def _evidence_stats(conn: sqlite3.Connection, column: str, target_id: str) -> sqlite3.Row | None:
+def _evidence_stats(
+    conn: sqlite3.Connection,
+    column: str,
+    target_id: str,
+    *,
+    exclude_source_prefix: str | None = None,
+) -> sqlite3.Row | None:
     if column not in {"candidate_id", "fact_id"} or not _table_exists(conn, "memory_evidence"):
         return None
+    where = f"{column} = ?"
+    params: tuple[object, ...] = (target_id,)
+    if exclude_source_prefix is not None:
+        where += " AND source_type NOT LIKE ?"
+        params += (f"{exclude_source_prefix}%",)
     return conn.execute(
         f"""
         SELECT
@@ -797,9 +834,9 @@ def _evidence_stats(conn: sqlite3.Connection, column: str, target_id: str) -> sq
             MAX(created_at) AS last_seen_at,
             GROUP_CONCAT(DISTINCT source_type) AS source_values
         FROM memory_evidence
-        WHERE {column} = ?
+        WHERE {where}
         """,
-        (target_id,),
+        params,
     ).fetchone()
 
 

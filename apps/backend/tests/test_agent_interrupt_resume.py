@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import sqlite3
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -9,10 +10,12 @@ from app.agents.checkpointer import CheckpointConflictError, SQLiteCheckpointSto
 from app.agents.contracts import ActionProposal, PolicyDecision
 from app.agents.graph_runtime import LangGraphAgentRuntime
 from app.agents.nodes.action import _action_planner_node
+from app.agents.nodes.executor import ActionLifecycleCoordinator
 from app.agents.nodes.policy_guard import evaluate_action_proposal
 from app.agents.services import AgentRuntimeServices
 from app.agents.state import ActionPlan, AgentRoute, AgentState
 from app.models.enums import AgentIntent
+from app.services.agent_actions import AgentActionService, AgentActionStore
 from app.storage.database import Database, MigrationRunner
 
 
@@ -38,7 +41,7 @@ def pending_payload() -> tuple[ActionPlan, ActionProposal, PolicyDecision]:
         },
         risk_score="high",
         decision="ask",
-        status="pending_confirm",
+        status="pending_confirmation",
         reversible=False,
         proposal_id="proposal-interrupt",
         policy_version="action-policy.v1",
@@ -180,7 +183,25 @@ def test_rejection_is_zero_effect_and_cannot_be_reversed(tmp_path, monkeypatch) 
         calls.append("unexpected")
 
     monkeypatch.setattr("app.agents.graph_runtime._execute_action_plan", fake_execute)
-    runtime = LangGraphAgentRuntime(AgentRuntimeServices(checkpoint_store=store))
+    ledger = AgentActionService(AgentActionStore(store.database.path))
+    coordinator = ActionLifecycleCoordinator(
+        ledger=ledger,
+        adapters={"wiki.ingest.apply": fake_execute},
+        readers={},
+    )
+    _, proposal, policy = pending_payload()
+    pending = asyncio.run(
+        coordinator.execute(
+            proposal,
+            policy,
+            source_run_id="run-interrupt",
+            source_conversation_id="conversation-interrupt",
+        )
+    )
+    original_action = pending.action
+    runtime = LangGraphAgentRuntime(
+        AgentRuntimeServices(checkpoint_store=store, action_lifecycle=coordinator)
+    )
 
     rejected = asyncio.run(
         runtime.resume_checkpoint(
@@ -203,6 +224,18 @@ def test_rejection_is_zero_effect_and_cannot_be_reversed(tmp_path, monkeypatch) 
     assert rejected["effect_applied"] is False
     assert replay_approval["status"] == "rejected"
     assert calls == []
+    denied_action = ledger.find_execution(policy.idempotency_key)
+    assert denied_action is not None
+    assert denied_action.action_id == original_action.action_id
+    assert original_action.status == "pending_confirmation"
+    assert denied_action.status == "denied"
+    assert denied_action.metadata["execution_receipt"]["status"] == "denied"
+    with sqlite3.connect(store.database.path) as conn:
+        rows = conn.execute(
+            "SELECT id, status FROM agent_actions WHERE idempotency_key = ?",
+            (policy.idempotency_key,),
+        ).fetchall()
+    assert rows == [(original_action.action_id, "denied")]
 
 
 def test_checkpoint_api_exposes_safe_projection_and_rejection(client_factory, tmp_path) -> None:

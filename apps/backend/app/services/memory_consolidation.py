@@ -14,6 +14,11 @@ from app.services.memory_candidates import (
     MemoryEvidenceRecord,
     MemoryLifecycleEventRecord,
 )
+from app.services.memory_entity_graph import (
+    EntityGraphError,
+    MemoryEntityGraphStore,
+    lookup_fingerprint,
+)
 from app.services.memory_policy import evaluate_memory_content
 from app.services.memory_taxonomy import (
     LifecycleStatus,
@@ -39,6 +44,8 @@ class MemoryConsolidationItem:
     lifecycle_event: MemoryLifecycleEventRecord | None
     taxonomy: MemoryTaxonomy
     reason: str
+    graph_fact_id: str | None = None
+    graph_status: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,6 +76,20 @@ class MemoryConsolidationResult:
 
 
 @dataclass(frozen=True, slots=True)
+class MemoryConsolidationPreview:
+    candidate_count: int
+    has_sensitive_signal: bool
+
+
+@dataclass(frozen=True, slots=True)
+class _GraphClaimSpec:
+    entity_type: str
+    subject: str
+    predicate: str
+    value: str
+
+
+@dataclass(frozen=True, slots=True)
 class _CandidateSpec:
     memory_kind: MemoryKind
     memory_scope: MemoryScope
@@ -86,6 +107,7 @@ class _CandidateSpec:
     conflicting: bool = False
     transition_to: LifecycleStatus | None = None
     metadata: Mapping[str, object] | None = None
+    graph_claim: _GraphClaimSpec | None = None
 
 
 class MemoryConsolidationService:
@@ -93,12 +115,16 @@ class MemoryConsolidationService:
         self,
         store: MemoryCandidateStore,
         *,
+        entity_graph: MemoryEntityGraphStore | None = None,
         now_provider: Callable[[], datetime] | None = None,
     ) -> None:
         self.store = store
+        self.entity_graph = entity_graph
         self.now_provider = now_provider or (lambda: datetime.now(timezone.utc))
 
     def close(self) -> None:
+        if self.entity_graph is not None:
+            self.entity_graph.close()
         self.store.close()
 
     def consolidate(
@@ -136,6 +162,28 @@ class MemoryConsolidationService:
                 )
             )
         return MemoryConsolidationResult(items=tuple(items))
+
+    def preview(
+        self,
+        *,
+        user_message: str,
+        assistant_answer: str = "",
+        diary_object_ids: Iterable[str] = (),
+        diary_markdown_path: str | None = None,
+    ) -> MemoryConsolidationPreview:
+        """Classify the deterministic write plan without persisting it."""
+        specs = tuple(
+            self._extract_specs(
+                user_message=user_message,
+                assistant_answer=assistant_answer,
+                diary_object_ids=tuple(diary_object_ids),
+                diary_markdown_path=diary_markdown_path,
+            )
+        )
+        return MemoryConsolidationPreview(
+            candidate_count=len(specs),
+            has_sensitive_signal=any(spec.sensitive for spec in specs),
+        )
 
     def _extract_specs(
         self,
@@ -261,6 +309,12 @@ class MemoryConsolidationService:
                     "legacy_category": existing_candidate.category,
                     "legacy_target_path": existing_candidate.target_path,
                 },
+                graph_claim=_explicit_graph_claim(
+                    memory_kind=kind,
+                    subject=existing_candidate.subject,
+                    predicate=existing_candidate.predicate,
+                    value=existing_candidate.value,
+                ),
             )
 
         assignment = _extract_assignment(user_text)
@@ -279,6 +333,12 @@ class MemoryConsolidationService:
                 importance=0.85,
                 status=LifecycleStatus.ACTIVE,
                 reason="explicit_remember",
+                graph_claim=_explicit_graph_claim(
+                    memory_kind=kind,
+                    subject=subject,
+                    predicate="is",
+                    value=value,
+                ),
             )
 
         preference = _extract_preference_value(user_text)
@@ -295,6 +355,12 @@ class MemoryConsolidationService:
                 importance=0.8,
                 status=LifecycleStatus.ACTIVE,
                 reason="explicit_remember_preference",
+                graph_claim=_explicit_graph_claim(
+                    memory_kind=MemoryKind.PREFERENCE,
+                    subject="preference",
+                    predicate="is",
+                    value=preference,
+                ),
             )
         return None
 
@@ -478,6 +544,7 @@ class MemoryConsolidationService:
                 },
             )
         )
+        candidate = self.store.get_candidate(candidate.id)
         lifecycle_event = None
         if spec.transition_to is not None and candidate.status is not spec.transition_to:
             lifecycle_event = self.store.transition(
@@ -489,13 +556,82 @@ class MemoryConsolidationService:
                 metadata={"consolidation_reason": spec.reason},
             )
             candidate = self.store.get_candidate(candidate.id)
+        graph_fact_id, graph_status = self._materialize_explicit_fact(
+            spec,
+            candidate=candidate,
+            evidence=evidence,
+            conversation_id=conversation_id,
+            user_message_id=user_message_id,
+            agent_run_id=agent_run_id,
+        )
+        candidate = self.store.get_candidate(candidate.id)
+        if evidence is not None:
+            evidence = self.store.get_evidence(evidence.id)
         return MemoryConsolidationItem(
             candidate=candidate,
             evidence=evidence,
             lifecycle_event=lifecycle_event,
             taxonomy=taxonomy,
             reason=spec.reason,
+            graph_fact_id=graph_fact_id,
+            graph_status=graph_status,
         )
+
+    def _materialize_explicit_fact(
+        self,
+        spec: _CandidateSpec,
+        *,
+        candidate: MemoryCandidateRecord,
+        evidence: MemoryEvidenceRecord | None,
+        conversation_id: str | None,
+        user_message_id: str | None,
+        agent_run_id: str | None,
+    ) -> tuple[str | None, str | None]:
+        """Promote only explicit, low-risk declarations into the typed graph."""
+        graph = self.entity_graph
+        if (
+            graph is None
+            or spec.source_track is not SourceTrack.EXPLICIT_USER
+            or candidate.status is not LifecycleStatus.ACTIVE
+            or candidate.risk_tier is not RiskTier.LOW
+            or evidence is None
+            or not spec.evidence_text.strip()
+        ):
+            return None, None
+
+        claim = spec.graph_claim
+        if claim is None:
+            return None, None
+        if candidate.fact_id:
+            fact = graph.get(candidate.fact_id)
+        else:
+            entity = _find_or_create_explicit_entity(
+                graph,
+                entity_type=claim.entity_type,
+                subject=claim.subject,
+                confidence=candidate.confidence,
+            )
+            fact = graph.create_claim(
+                subject_entity_id=entity.id,
+                predicate=claim.predicate,
+                literal_value=claim.value,
+                category=candidate.memory_kind.value,
+                source_text=spec.evidence_text,
+                source_type="explicit_user",
+                confidence=candidate.confidence,
+                evidence_id=evidence.id,
+                metadata={
+                    "candidate_id": candidate.id,
+                    "conversation_id": conversation_id,
+                    "user_message_id": user_message_id,
+                    "agent_run_id": agent_run_id,
+                    "source_track": SourceTrack.EXPLICIT_USER.value,
+                },
+            )
+            graph.bind_entity_evidence(entity_id=entity.id, evidence_id=evidence.id, role="describes")
+            self.store.attach_fact(candidate.id, fact.id)
+            candidate = self.store.get_candidate(candidate.id)
+        return fact.id, fact.status.value
 
     def _confidence_with_existing_evidence(self, spec: _CandidateSpec) -> float:
         if spec.source_track is SourceTrack.EXPLICIT_USER or spec.sensitive:
@@ -689,6 +825,68 @@ def _summary_for_subject_value(*, kind: MemoryKind, subject: str, value: str) ->
     if kind is MemoryKind.PREFERENCE:
         return f"User preference for {subject}: {value}."
     return f"User stated {subject}: {value}."
+
+
+def _explicit_graph_claim(
+    *,
+    memory_kind: MemoryKind,
+    subject: str,
+    predicate: str,
+    value: str,
+) -> _GraphClaimSpec | None:
+    normalized_subject = _trim_value(subject, limit=80)
+    normalized_value = _trim_value(value, limit=200)
+    if not normalized_subject or not normalized_value:
+        return None
+    if memory_kind is MemoryKind.PREFERENCE:
+        return _GraphClaimSpec(
+            entity_type="preference",
+            subject=normalized_subject,
+            predicate=_trim_value(predicate, limit=80) or "is",
+            value=normalized_value,
+        )
+    return _GraphClaimSpec(
+        entity_type="self",
+        subject="自己",
+        predicate=normalized_subject,
+        value=normalized_value,
+    )
+
+
+def _find_or_create_explicit_entity(
+    graph: MemoryEntityGraphStore,
+    *,
+    entity_type: str,
+    subject: str,
+    confidence: float,
+):
+    if entity_type == "self":
+        return graph.ensure_self()
+    fingerprint = lookup_fingerprint(entity_type, subject)
+    rows = graph.conn.execute(
+        """
+        SELECT id FROM memory_entities
+        WHERE entity_type = ? AND lookup_fingerprint = ?
+          AND status IN ('active', 'candidate')
+        ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END, created_at, id
+        """,
+        (entity_type, fingerprint),
+    ).fetchall()
+    if len(rows) > 1:
+        raise EntityGraphError("explicit_entity_disambiguation_required")
+    if rows:
+        entity = graph.get_entity(str(rows[0]["id"]))
+        if entity.status == "candidate":
+            return graph.activate_entity_candidate(entity.id, reason="explicit_user_memory")
+        return entity
+    return graph.create_entity(
+        entity_type=entity_type,
+        canonical_name=subject,
+        status="active",
+        risk_tier="low",
+        confidence=confidence,
+        metadata={"origin": "explicit_user_memory"},
+    )
 
 
 def _permissions_dict(taxonomy: MemoryTaxonomy) -> dict[str, bool]:
