@@ -174,8 +174,6 @@ from .wiki import (
     WikiDiagnosticQueueItem,
     WikiDiagnosticQueueRequest,
     WikiDiagnosticQueueResponse,
-    WikiFolderBatchImportRequest,
-    WikiFolderBatchImportResponse,
     WikiGraphEdge,
     WikiGraphNode,
     WikiGraphSummaryResponse,

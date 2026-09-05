@@ -9,8 +9,11 @@ export default function WorldWindowView({ children }: { children: ReactNode }) {
       title={productCopy.worldPage.title}
       description={productCopy.worldPage.description}
       activeTab={productCopy.worldPage.tabLabel}
+      surface="graphite"
+      showHeader={false}
+      contentClassName="world-route-content"
     >
-      {children}
+      <div className="world-route-scroll">{children}</div>
     </FeatureWindowShell>
   );
 }

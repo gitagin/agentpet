@@ -380,6 +380,59 @@ def build_retrieval_plan(
     return RetrievalQueryPlanner().plan(query, **kwargs)
 
 
+def retrieval_today(now: date | datetime | None = None) -> date:
+    """Date anchor for relative-date queries.
+
+    Shared by the planner and the retrieval cache key so a cached "昨天"
+    answer can never survive past midnight.
+    """
+    return _anchor_date(ApprovedRetrievalContext(), now)
+
+
+_GRAPH_INTENT_MARKERS = (
+    "关系",
+    "相关",
+    "和谁",
+    "跟谁",
+    "与谁",
+    "负责",
+    "属于",
+    "连接",
+    "联系",
+    "之间",
+    "关联",
+    "认识",
+)
+_GRAPH_INTENT_RE = re.compile(
+    r"\b(?:relat\w+|connect\w+|owned by|belongs to|associated with|linked to)\b",
+    re.IGNORECASE,
+)
+
+
+def route_retrieval_channels(
+    base_channels: Sequence[RetrievalChannel],
+    query: str,
+) -> tuple[RetrievalChannel, ...]:
+    """Deterministic routing rules that adjust channels before planning.
+
+    Relation markers add the graph channel, which resolves entity ids
+    and traverses the SQLite-authoritative graph.  Graph retrieval is
+    scoped to relational/multi-hop queries; applying it to every query
+    only adds latency and noise.
+
+    Exact-identifier queries keep their channels: production evidence
+    routes them past query expansion, not past semantic recall — this
+    codebase has no expansion layer, so there is nothing to bypass.
+    """
+    channels = _unique(tuple(base_channels)) or ("fts",)
+    has_graph_intent = any(marker in query for marker in _GRAPH_INTENT_MARKERS) or bool(
+        _GRAPH_INTENT_RE.search(query)
+    )
+    if has_graph_intent and "graph" not in channels:
+        channels = (*channels, "graph")
+    return channels
+
+
 def build_retrieval_plan_telemetry(
     plan: RetrievalPlan,
     *,

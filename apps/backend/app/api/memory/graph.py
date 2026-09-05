@@ -8,7 +8,6 @@ acceleration state and never changes authorization decisions.
 from __future__ import annotations
 
 import logging
-import json
 import re
 from pathlib import PurePosixPath
 from typing import Any
@@ -41,6 +40,7 @@ from ...services.memory_lifecycle import MemoryLifecycleService
 from ...services.wiki_reconciler import reconcile_wiki_vault
 from ...utils.hash import sha256_hex
 from ...utils.public_references import public_memory_reference, safe_relative_source_reference
+from ...utils.sqlite import json_object, table_exists
 from ..wiring import active_vault_id, active_vault_root, database, memory_entity_graph_store
 from ..idempotency import IdempotencyKeyHeader
 from .dependencies import (
@@ -115,7 +115,7 @@ async def get_memory_graph_node(
         risk=node.risk_tier,
         confidence=_confidence(node.confidence_label),
         updated_at=node.updated_at,
-        allowed_actions=[],
+        allowed_actions=node.available_actions,
         evidence_count=node.evidence_count,
     )
 
@@ -130,10 +130,13 @@ async def act_on_memory_graph_node(
 ) -> MemoryGraphActionResponse:
     _require_bound_vault(request)
     entity_id = _resolve_entity_id(node_id, store)
-    if entity_id is None:
-        raise _not_found("memory_graph_node_not_found")
-    _validate_action(action_request, target="node")
-    return await _execute_entity_action(request, node_id, entity_id, action_request, idempotency_key, store)
+    if entity_id is not None:
+        _validate_action(action_request, target="node")
+        return await _execute_entity_action(request, node_id, entity_id, action_request, idempotency_key, store)
+    profile_item_id = _resolve_profile_item_id(node_id, store.conn)
+    if profile_item_id is not None:
+        return _execute_profile_action(request, node_id, profile_item_id, action_request, idempotency_key)
+    raise _not_found("memory_graph_node_not_found")
 
 
 @router.get("/graph/edges/{edge_id}", response_model=MemoryGraphEdgeDetailResponse)
@@ -193,7 +196,9 @@ async def act_on_memory_graph_edge(
         raise _not_found("memory_graph_edge_not_found")
     _validate_action(action_request, target="edge")
     if relation.fact.status is not MemoryFactStatus.ACTIVE:
-        if not _execution_key_exists(request, idempotency_key):
+        # 候选/隔离关系允许 confirm（激活）新建操作；其余非 active 状态（遗忘/归档等）只能重放。
+        confirmable_pending = relation.fact.status in {MemoryFactStatus.CANDIDATE, MemoryFactStatus.QUARANTINED} and action_request.action == "confirm"
+        if not confirmable_pending and not _execution_key_exists(request, idempotency_key):
             raise AppError("memory_graph_edge_not_active", "该关系已不在活动图谱中，不能创建新的操作。", status.HTTP_409_CONFLICT)
     return await _execute_relation_action(request, edge_id, relation, action_request, idempotency_key, store)
 
@@ -382,7 +387,7 @@ def _validate_public_id(value: str) -> bool:
 def _resolve_entity_id(public_id: str, store: MemoryEntityGraphStore) -> str | None:
     if not _validate_public_id(public_id) or not public_id.startswith("mg_"):
         return None
-    rows = store.conn.execute("SELECT id FROM memory_entities WHERE status IN ('active','archived','forgotten','stale') ORDER BY id").fetchall()
+    rows = store.conn.execute("SELECT id FROM memory_entities WHERE status IN ('active','archived','forgotten','stale','candidate','quarantined') ORDER BY id").fetchall()
     for row in rows:
         raw = str(row[0])
         if public_id == _opaque_node_id("entity", raw):
@@ -398,6 +403,25 @@ def _resolve_fact_node_id(public_id: str, store: MemoryEntityGraphStore) -> str 
         raw = str(row[0])
         if public_id == _opaque_node_id("fact", raw):
             return raw
+    return None
+
+
+def _resolve_profile_item_id(public_id: str, conn) -> str | None:
+    """Resolve a projected profile node id back to its profile item id.
+
+    Profile nodes are opaque projections of candidate/fact/continuity items.
+    They are intentionally not entities, so the entity resolver above returns
+    None for them; this walk rebuilds each profile node id and matches.
+    """
+    if not _validate_public_id(public_id) or not public_id.startswith("mg_"):
+        return None
+    from ...services.memory_profile_projection import MemoryProfileProjectionService
+
+    projection = MemoryProfileProjectionService(conn).build(limit=300)
+    for group in ("preferences", "boundaries", "projects", "needs_confirmation", "recent_state", "conflicts", "filtered"):
+        for item in getattr(projection, group):
+            if public_id == _opaque_node_id("profile", f"{group}\x1f{item.id}\x1f{item.updated_at}"):
+                return item.id
     return None
 
 
@@ -530,7 +554,7 @@ def _entity_detail(
         edge_ids=relation_ids,
         claim_ids=claim_ids,
         evidence_count=len(evidence) + sum(len(_fact_evidence(store, row[0], vault_id=scope)) for row in rows),
-        allowed_actions=[] if entity.entity_type == "self" else ["correct", "forget", "archive"],
+        allowed_actions=_entity_actions(entity.status, entity.entity_type),
     )
 
 
@@ -597,16 +621,6 @@ def _fact_evidence(
     return result
 
 
-def _json_object(value: object) -> dict[str, object]:
-    if not value:
-        return {}
-    try:
-        parsed = json.loads(str(value))
-    except (TypeError, json.JSONDecodeError):
-        return {}
-    return parsed if isinstance(parsed, dict) else {}
-
-
 def _safe_relative_path(value: object) -> str | None:
     return safe_relative_source_reference(value)
 
@@ -619,7 +633,7 @@ def _first_safe_relative_path(*values: object) -> str | None:
 
 
 def _fact_artifact_paths(store: MemoryEntityGraphStore, fact_id: str, *, vault_id: str | None) -> list[str]:
-    if not _table_exists(store, "memory_fact_artifact_bindings"):
+    if not table_exists(store.conn, "memory_fact_artifact_bindings", include_views=True):
         return []
     clauses = [
         "fact_id = ?",
@@ -658,7 +672,7 @@ def _binding_response(row: Any, *, binding_id: object | None = None, status: obj
 
 
 def _fact_wiki_bindings(store: MemoryEntityGraphStore, fact_id: str, *, vault_id: str | None) -> list[MemoryGraphWikiBindingResponse]:
-    if not _table_exists(store, "memory_fact_artifact_bindings"):
+    if not table_exists(store.conn, "memory_fact_artifact_bindings", include_views=True):
         return []
     clauses = [
         "a.fact_id = ?",
@@ -696,7 +710,7 @@ def _fact_wiki_bindings(store: MemoryEntityGraphStore, fact_id: str, *, vault_id
 
 
 def _entity_wiki_bindings(store: MemoryEntityGraphStore, entity_id: str, *, vault_id: str | None) -> list[MemoryGraphWikiBindingResponse]:
-    if not _table_exists(store, "wiki_page_bindings") or vault_id is None:
+    if not table_exists(store.conn, "wiki_page_bindings", include_views=True) or vault_id is None:
         return []
     rows = store.conn.execute(
         """
@@ -728,11 +742,11 @@ def _entity_wiki_bindings(store: MemoryEntityGraphStore, entity_id: str, *, vaul
 
 
 def _entity_evidence(store: MemoryEntityGraphStore, entity_id: str, *, vault_id: str | None) -> list[MemoryGraphEvidenceResponse]:
-    if not _table_exists(store, "memory_entity_evidence"):
+    if not table_exists(store.conn, "memory_entity_evidence", include_views=True):
         return []
     scope_clause = ""
     scope_params: tuple[object, ...] = ()
-    if vault_id is not None and _table_exists(store, "memory_fact_artifact_bindings"):
+    if vault_id is not None and table_exists(store.conn, "memory_fact_artifact_bindings", include_views=True):
         scope_clause = """
           AND (
               e.fact_id IS NULL
@@ -768,7 +782,7 @@ def _entity_evidence(store: MemoryEntityGraphStore, entity_id: str, *, vault_id:
         excerpt = _safe_text(row["source_excerpt"] or "")[:500]
         if any(marker in excerpt.casefold() for marker in ("token", "password", "secret", "api_key")):
             excerpt = "敏感来源已隐藏"
-        metadata = _json_object(row["metadata_json"])
+        metadata = json_object(row["metadata_json"])
         result.append(
             MemoryGraphEvidenceResponse(
                 evidence_id=_public_id("evidence", row["id"]),
@@ -819,7 +833,7 @@ def _version_chain(
     target_kind: str,
     vault_id: str | None = None,
 ) -> list[MemoryGraphVersionResponse]:
-    if not _table_exists(store, "memory_graph_facts"):
+    if not table_exists(store.conn, "memory_graph_facts", include_views=True):
         return []
     pending = [fact_id]
     seen: set[str] = set()
@@ -879,34 +893,41 @@ def _version_object_id(fact: Any, *, target_kind: str) -> str:
     return _public_id("relation", fact.id)
 
 
-def _table_exists(store: MemoryEntityGraphStore, table: str) -> bool:
-    row = store.conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type IN ('table', 'view') AND name = ?",
-        (table,),
-    ).fetchone()
-    return row is not None
-
-
 def _entity_risk(value: object) -> str:
     normalized = str(value or "low").casefold()
     return normalized if normalized in {"low", "medium", "high", "hidden"} else "low"
 
 
 def _fact_risk(fact: Any) -> str:
-    metadata = _json_object(getattr(fact, "metadata_json", None))
+    metadata = json_object(getattr(fact, "metadata_json", None))
     return _entity_risk(metadata.get("risk_tier") or metadata.get("risk"))
 
 
 def _edge_actions(value: MemoryFactStatus) -> list[str]:
-    if value is MemoryFactStatus.ACTIVE:
-        return ["correct", "forget", "archive"]
-    return []
+    return _statement_actions(value)
 
 
 def _statement_actions(value: MemoryFactStatus) -> list[str]:
     if value in {MemoryFactStatus.CANDIDATE, MemoryFactStatus.QUARANTINED}:
         return ["confirm", "correct", "forget", "archive"]
     if value is MemoryFactStatus.ACTIVE:
+        return ["correct", "forget", "archive"]
+    return ["forget"]
+
+
+def _entity_actions(status: str, entity_type: str) -> list[str]:
+    """Expose ``confirm`` for candidate entities so the UI can activate them.
+
+    ``MemoryGraphAction.confirm`` is already applied by ``_apply_entity_action``;
+    this mirrors ``_statement_actions`` so a quarantined/candidate entity that
+    reaches the graph is actionable instead of read-only.
+    """
+    if entity_type == "self":
+        return []
+    normalized = str(status or "").casefold()
+    if normalized in {"candidate", "quarantined"}:
+        return ["confirm", "correct", "forget", "archive"]
+    if normalized == "active":
         return ["correct", "forget", "archive"]
     return ["forget"]
 
@@ -919,6 +940,67 @@ async def _execute_entity_action(request: Request, target_id: str, entity_id: st
         target_kind="entity",
         action_request=action_request,
         key=key,
+    )
+
+
+def _execute_profile_action(
+    request: Request,
+    target_id: str,
+    profile_item_id: str,
+    action_request: MemoryGraphActionRequest,
+    key: str | None,
+) -> MemoryGraphActionResponse:
+    """Confirm/withdraw a projected profile candidate via the profile service.
+
+    Profile candidates live in ``memory_candidates`` (or a projected fact), not
+    ``memory_entities``, so their lifecycle is applied by
+    ``MemoryProfileActionService``.  Only the two graph actions that map to a
+    profile operation are supported; anything else is rejected loudly.
+    """
+    action_map = {"confirm": "keep", "forget": "forget"}
+    profile_action = action_map.get(action_request.action)
+    if profile_action is None:
+        raise AppError(
+            "graph_action_not_supported",
+            "该画像记忆当前不支持这个操作。",
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+        )
+    if action_request.action == "forget" and not action_request.confirmed:
+        raise AppError(
+            "confirmation_required",
+            "破坏性操作需要 confirmed=true。",
+            status.HTTP_409_CONFLICT,
+        )
+
+    from ...services.memory_profile_actions import (
+        MemoryProfileActionError,
+        MemoryProfileActionService,
+    )
+
+    db = database(request)
+    lifecycle = MemoryLifecycleService(db.path)
+    service = MemoryProfileActionService(db, lifecycle)
+    try:
+        result = service.apply(
+            item_id=profile_item_id,
+            action=profile_action,
+            # ``confirm`` is itself the user's confirmation gesture, so it
+            # always satisfies the profile service's confirmation gate; the
+            # destructive ``forget`` must carry the explicit ``confirmed`` flag.
+            confirmed=True if action_request.action == "confirm" else bool(action_request.confirmed),
+            expires_at=None,
+        )
+    except MemoryProfileActionError as exc:
+        raise AppError(exc.code, exc.message, exc.status_code) from exc
+    finally:
+        lifecycle.close()
+
+    return MemoryGraphActionResponse(
+        operation_id=key or "",
+        target_id=target_id,
+        action=action_request.action,
+        status="active" if action_request.action == "confirm" else "forgotten",
+        message=result.user_message,
     )
 
 
@@ -971,7 +1053,7 @@ async def _execute_graph_action_via_lifecycle(
         action_type=action_type,
         target_ref=f"intent:memory-graph/{target_id}",
         parameters=parameters,
-        expected_effect=f"Update one local memory graph {target_kind} lifecycle state.",
+        expected_effect=f"更新本地记忆图谱 {target_kind} 的生命周期状态。",
         reversible=True,
         idempotency_key=None,
         requested_confirmation=bool(action_request.confirmed),
@@ -1026,9 +1108,17 @@ def execute_graph_action_effect(request: Request, proposal: Any, claim: Any) -> 
                 agent_action_id=str(claim.claim_id),
             )
         elif target_kind == "relation":
-            relation = next((item for item in store.list_relations(status="active", limit=1000) if item.fact.id == raw_target_id), None)
-            if relation is None:
+            fact = store.get(raw_target_id)
+            if str(getattr(fact, "statement_kind", None)) != "relation":
                 raise _not_found("memory_graph_edge_not_found")
+            relation = EntityRelation(
+                fact=fact,
+                relation_type=str(fact.relation_type or ""),
+                subject_entity_id=fact.subject_entity_id,
+                subject_fact_id=fact.subject_fact_id,
+                object_entity_id=fact.object_entity_id,
+                object_fact_id=fact.object_fact_id,
+            )
             result = _apply_relation_action(
                 lifecycle,
                 relation,
@@ -1114,7 +1204,10 @@ def _response_for(target_id: str, action: MemoryGraphActionRequest, operation_id
 def _apply_entity_action(store: MemoryEntityGraphStore, entity_id: str, request: MemoryGraphActionRequest) -> dict[str, object]:
     entity = store.get_entity(entity_id)
     if request.action == "confirm":
-        updated = store.update_entity_status(entity_id, "active", reason="user_confirmed")
+        # 确认候选实体只应激活实体本身；关联事实的激活是独立决策
+        # （需通过 evidence + 0.65 门槛）。用 activate_entity_candidate 而不是
+        # update_entity_status(active)，后者会级联激活无证据/低置信的事实。
+        updated = store.activate_entity_candidate(entity_id, reason="user_confirmed")
     elif request.action in {"forget", "archive"}:
         updated = store.update_entity_status(entity_id, "forgotten" if request.action == "forget" else "archived", reason=f"user_{request.action}")
     else:
@@ -1383,6 +1476,24 @@ def _safe_text(value: object) -> str:
 
 def _safe_source_label(value: str) -> str:
     lowered = value.casefold()
+    labels = {
+        "user_message": "用户输入",
+        "user_correction": "用户纠正",
+        "user_feedback": "用户反馈",
+        "chat_message": "聊天消息",
+        "chat": "聊天",
+        "diary": "日记整理",
+        "diary_object": "日记整理",
+        "explicit_user": "用户明确表达",
+        "model_extracted": "模型抽取",
+        "slow_consolidation": "聊天后的整理",
+        "continuity": "陪伴状态整理",
+        "immediate": "一次聊天",
+        "system": "系统整理",
+    }
+    for key, label in labels.items():
+        if key in lowered:
+            return label
     return "本地来源" if any(marker in lowered for marker in ("path", "file", "token", "secret")) else value[:80] or "本地来源"
 
 

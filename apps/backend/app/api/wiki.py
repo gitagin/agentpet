@@ -12,8 +12,6 @@ from ..models.api import (
     WikiDiagnosticQueueItem,
     WikiDiagnosticQueueRequest,
     WikiDiagnosticQueueResponse,
-    WikiFolderBatchImportRequest,
-    WikiFolderBatchImportResponse,
     WikiIndexResponse,
     WikiIngestApplyRequest,
     WikiIngestApplyResponse,
@@ -265,106 +263,6 @@ async def preview_wiki_import(
         reason=audit_reason(request, run_id=response.run_id, source_id=response.source_id),
     )
     return response
-
-
-@router.post("/import/folder-batch", response_model=WikiFolderBatchImportResponse)
-async def import_folder_batch(
-    batch_request: WikiFolderBatchImportRequest,
-    request: Request,
-    service: WikiWorkflowService = Depends(wiki_workflow_service_dependency),
-) -> WikiFolderBatchImportResponse:
-    folder = Path(batch_request.folder_path).expanduser().resolve()
-    if not folder.is_dir():
-        raise AppError(
-            code="import_folder_not_found",
-            message="导入的知识库文件夹不存在。",
-            status_code=status.HTTP_400_BAD_REQUEST,
-        )
-    files = sorted(
-        path
-        for path in folder.rglob("*.md")
-        if path.is_file() and not any(part.startswith(".") for part in path.relative_to(folder).parts)
-    )
-    if not files:
-        raise AppError(
-            code="import_folder_empty",
-            message="该文件夹下没有可导入的 Markdown 文件。",
-            status_code=status.HTTP_400_BAD_REQUEST,
-        )
-
-    pages_written = 0
-    files_scanned = 0
-    batches = 0
-    for index in range(0, len(files), batch_request.batch_size):
-        batch = files[index : index + batch_request.batch_size]
-        sections: list[str] = []
-        for path in batch:
-            relative = path.relative_to(folder).as_posix()
-            try:
-                text = path.read_text(encoding="utf-8")
-            except (OSError, UnicodeDecodeError):
-                continue
-            if not text.strip():
-                continue
-            sections.extend([f"## {relative}", "", text.strip(), ""])
-        if not sections:
-            continue
-        content = "\n".join(sections).strip()
-        try:
-            preview = service.preview_ingest(
-                WikiIngestPreviewRequest(
-                    title=folder.name,
-                    content=content,
-                    source_type="folder",
-                    source_uri=str(folder),
-                    tags=["import/folder"],
-                    links=[],
-                    max_pages=batch_request.max_pages,
-                    source_metadata={"folder_path": str(folder), "batch": batches + 1},
-                )
-            )
-            confirmed = service.confirm_ingest(
-                WikiIngestConfirmRequest(preview_token=preview.preview_token, user_confirmed=True)
-            )
-            review = await service.review_ingest(
-                WikiIngestReviewRequest(
-                    run_id=confirmed.run_id,
-                    reviewer_agent_id="action_agent",
-                    force_refresh=False,
-                )
-            )
-            result = service.apply_ingest(
-                WikiIngestApplyRequest(
-                    run_id=confirmed.run_id,
-                    approved_targets=[plan.target_path for plan in confirmed.page_plans],
-                    review_id=review.review_id,
-                    review_acknowledged=True,
-                )
-            )
-            pages_written += result.pages_written
-        except (WikiWorkflowError, RuntimeError) as exc:
-            record_audit(
-                request,
-                action="wiki.import.folder_batch",
-                result="failed",
-                reason=audit_reason(request, code=getattr(exc, "code", exc.__class__.__name__)),
-            )
-            raise _workflow_error(exc) from exc
-        files_scanned += len(batch)
-        batches += 1
-
-    record_audit(
-        request,
-        action="wiki.import.folder_batch",
-        result="success",
-        reason=audit_reason(request, files_scanned=files_scanned, pages_written=pages_written),
-    )
-    return WikiFolderBatchImportResponse(
-        status="applied",
-        files_scanned=files_scanned,
-        pages_written=pages_written,
-        batches=batches,
-    )
 
 
 @router.post("/ingest/confirm", response_model=WikiIngestPreviewResponse)

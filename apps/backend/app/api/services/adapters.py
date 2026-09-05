@@ -210,7 +210,7 @@ class RuntimeMemoryAdapter:
                 "content": create_request.content,
                 "target_path": create_request.target_path,
             },
-            expected_effect="Create one pending local memory proposal.",
+            expected_effect="创建一条待确认的本地记忆提案。",
             source_message_id=create_request.source_message_id,
             reversible=False,
         )
@@ -234,7 +234,7 @@ class RuntimeMemoryAdapter:
                 "target_path": proposal.target_path,
                 "target_content_hash": proposal.target_content_hash,
             },
-            expected_effect="Append one confirmed memory proposal to its authoritative Markdown target.",
+            expected_effect="把一条已确认的记忆提案写入其权威 Markdown 目标。",
             source_message_id=proposal.source_message_id,
             reversible=False,
             explicit_confirmation=True,
@@ -265,7 +265,7 @@ class RuntimeMemoryAdapter:
                 "target_path": proposal.target_path,
                 "target_content_hash": proposal.target_content_hash,
             },
-            expected_effect="Reject one pending memory proposal without changing Markdown.",
+            expected_effect="拒绝一条待确认的记忆提案，不改动 Markdown。",
             source_message_id=proposal.source_message_id,
             reversible=False,
         )
@@ -317,7 +317,7 @@ class RuntimeMemoryFeedbackAdapter:
             action_type="memory.feedback.apply",
             target_ref=f"intent:memory-feedback:{digest[:32]}",
             parameters=feedback_request.model_dump(mode="json"),
-            expected_effect="Apply one reviewed memory lifecycle transition and record its evidence event.",
+            expected_effect="应用一条已复核的记忆生命周期转换并记录证据事件。",
             source_message_id=feedback_request.source_message_id or f"memory-feedback:{digest[:24]}",
             source_run_id=feedback_request.source_agent_run_id,
             source_conversation_id=feedback_request.source_conversation_id,
@@ -394,7 +394,7 @@ class RuntimeMemoryHygieneAdapter:
             action_type="memory.hygiene.apply",
             target_ref=f"intent:memory-hygiene:{action_request.suggestion_id}",
             parameters=parameters,
-            expected_effect="Apply one confirmed memory hygiene lifecycle transition.",
+            expected_effect="应用一条已确认的记忆整理生命周期转换。",
             source_message_id=f"memory-hygiene:{action_request.suggestion_id}",
             reversible=False,
             explicit_confirmation=True,
@@ -435,7 +435,7 @@ class RuntimeRetrospectiveAdapter:
                 "report_kind": report_kind,
                 "cycle_key": cycle_key,
             },
-            expected_effect="Write one locally sourced retrospective Markdown report with an action-bound receipt.",
+            expected_effect="写一份本地来源的复盘 Markdown 报告并绑定回执。",
             source_message_id=f"retrospective-report:{report_kind}:{cycle_key}",
             reversible=True,
         )
@@ -479,7 +479,7 @@ class RuntimeTaskAdapter:
             action_type="task.create",
             target_ref=f"task:{create_request.title}",
             parameters=create_request.model_dump(mode="json"),
-            expected_effect="Create one local task and its optional reminder.",
+            expected_effect="创建一条本地任务及其可选提醒。",
             source_message_id=None,
             reversible=False,
         )
@@ -506,7 +506,7 @@ class RuntimeTaskAdapter:
             action_type="task.complete",
             task_id=task_id,
             parameters={},
-            expected_effect="Mark one task done and cancel every untriggered reminder bound to it.",
+            expected_effect="完成任务并取消它绑定的所有未触发提醒。",
         )
 
     async def approve(self, task_id: str) -> dict[str, object]:
@@ -514,7 +514,7 @@ class RuntimeTaskAdapter:
             action_type="task.approve",
             task_id=task_id,
             parameters={},
-            expected_effect="Approve one pending local task without creating another task.",
+            expected_effect="确认一条待处理的本地任务，不重复创建。",
         )
 
     async def reject(self, task_id: str) -> dict[str, object]:
@@ -522,7 +522,7 @@ class RuntimeTaskAdapter:
             action_type="task.reject",
             task_id=task_id,
             parameters={},
-            expected_effect="Reject one local task and cancel every untriggered reminder bound to it.",
+            expected_effect="拒绝一条本地任务并取消其绑定的所有未触发提醒。",
         )
 
     async def cancel(self, task_id: str) -> dict[str, object]:
@@ -530,7 +530,7 @@ class RuntimeTaskAdapter:
             action_type="task.cancel",
             task_id=task_id,
             parameters={},
-            expected_effect="Cancel one local task and every untriggered reminder bound to it.",
+            expected_effect="取消一条本地任务及其绑定的所有未触发提醒。",
         )
 
     async def patch(self, task_id: str, patch: dict[str, str]) -> dict[str, object]:
@@ -538,7 +538,7 @@ class RuntimeTaskAdapter:
             action_type="task.patch",
             task_id=task_id,
             parameters=patch,
-            expected_effect="Apply one supported task status patch without creating another task.",
+            expected_effect="应用一条受支持的任务状态补丁，不重复创建。",
         )
 
     async def _mutate(
@@ -596,7 +596,7 @@ class RuntimeReminderDeliveryAdapter:
                 "dispatch_kind": dispatch_kind,
                 "delivery_idempotency_key": delivery_idempotency_key,
             },
-            expected_effect="Persist one dispatch reservation before any operating-system notification call.",
+            expected_effect="在系统通知调用前持久化一条派发预留。",
             source_message_id=delivery_idempotency_key,
             reversible=False,
         )
@@ -621,7 +621,7 @@ class RuntimeReminderDeliveryAdapter:
                 "error": error,
             },
             expected_effect=(
-                "Record that the operating-system display API was invoked without claiming delivery or reading."
+                "记录系统显示 API 已被调用，但未声称送达或读取。"
             ),
             source_message_id=None,
             reversible=False,
@@ -642,7 +642,7 @@ class RuntimeReminderDeliveryAdapter:
             target_ref=f"intent:reminder-delivery-recovery:{target_digest[:32]}",
             parameters={"recovery_run_id": recovery_run_id, "reason": reason},
             expected_effect=(
-                "Mark every unfinished dispatch reservation as unknown without retrying the operating-system call."
+                "把每条未完成的派发预留标记为未知，且不重试系统调用。"
             ),
             source_message_id=None,
             reversible=False,
@@ -684,7 +684,7 @@ class RuntimeContinuityAdapter:
             action_type="continuity.proposal.confirm",
             target_ref=f"intent:continuity-proposal:{proposal.id}",
             parameters={"proposal_id": proposal.id, "kind": proposal.kind},
-            expected_effect="Confirm one continuity proposal and project it into runtime continuity state.",
+            expected_effect="确认一条连续性提案并投影到运行时连续性状态。",
             source_message_id=proposal.source_message_id,
             reversible=False,
             explicit_confirmation=True,
@@ -708,7 +708,7 @@ class RuntimeContinuityAdapter:
             action_type="continuity.proposal.reject",
             target_ref=f"intent:continuity-proposal:{proposal.id}",
             parameters={"proposal_id": proposal.id, "kind": proposal.kind, "reason": reason},
-            expected_effect="Reject one continuity proposal without changing runtime continuity state.",
+            expected_effect="拒绝一条连续性提案，不改动运行时连续性状态。",
             source_message_id=proposal.source_message_id,
             reversible=False,
         )
@@ -756,7 +756,7 @@ async def execute_continuity_activation(
         action_type="continuity.proposal.activate",
         target_ref=f"intent:continuity-activation:{digest}",
         parameters={"proposal_id": proposal_id, "kind": kind},
-        expected_effect="Activate one low-risk continuity proposal after deterministic policy checks.",
+        expected_effect="确认一条低风险的陪伴连续性提案。",
         source_message_id=source_message_id,
         reversible=False,
         source_run_id=source_run_id,
@@ -776,7 +776,7 @@ class RuntimeWikiAdapter:
             action_type="wiki.page.write",
             target_ref=resolve_wiki_path(write_request.title, write_request.target_path),
             parameters=write_request.model_dump(mode="json"),
-            expected_effect=f"Write Wiki page {write_request.title}.",
+            expected_effect=f"写入 Wiki 页面：{write_request.title}。",
             source_message_id=write_request.source_message_id,
             reversible=True,
         )
@@ -819,7 +819,7 @@ class RuntimeWikiWorkflowAdapter:
                     "user_confirmed": True,
                     "vault_id": vault_id,
                 },
-                expected_effect="Confirm one Wiki ingest preview and persist its source/run.",
+                expected_effect="确认一个 Wiki 导入预览并持久化其来源与运行记录。",
                 source_message_id=None,
                 reversible=False,
             )
@@ -834,7 +834,7 @@ class RuntimeWikiWorkflowAdapter:
             action_type="wiki.ingest.review",
             target_ref=f"intent:wiki-ingest-review:{review_request.run_id}",
             parameters=review_request.model_dump(mode="json"),
-            expected_effect="Review one confirmed Wiki ingest run and persist the review result.",
+            expected_effect="复核一个已确认的 Wiki 导入运行并持久化复核结果。",
             source_message_id=None,
             reversible=False,
         )
@@ -850,7 +850,7 @@ class RuntimeWikiWorkflowAdapter:
             action_type="wiki.query_archive.write",
             target_ref=archive_request.target_path or archive_request.title or archive_request.question,
             parameters=archive_request.model_dump(mode="json"),
-            expected_effect="Archive one cited answer as a Wiki page and query record.",
+            expected_effect="把一条带引用的回答归档为 Wiki 页面和查询记录。",
             source_message_id=archive_request.source_message_id,
             reversible=True,
         )
@@ -872,7 +872,7 @@ class RuntimeWikiWorkflowAdapter:
             action_type="wiki.synthesize.write",
             target_ref=synthesize_request.target_path or synthesize_request.title,
             parameters=synthesize_request.model_dump(mode="json"),
-            expected_effect="Synthesize cited Wiki sources into one typed page.",
+            expected_effect="把带引用的 Wiki 来源综合成一个类型化页面。",
             source_message_id=None,
             reversible=True,
         )
@@ -900,7 +900,7 @@ class RuntimeWikiWorkflowAdapter:
             action_type="wiki.lint.report",
             target_ref="Wiki/Reports/Lint-Report.md",
             parameters=lint_request.model_dump(mode="json"),
-            expected_effect="Run Wiki lint and persist a cited report page.",
+            expected_effect="运行 Wiki 检查并持久化带引用的报告页。",
             source_message_id=None,
             reversible=True,
         )
@@ -925,7 +925,7 @@ class RuntimeWikiWorkflowAdapter:
             action_type="wiki.ingest.apply",
             target_ref=f"intent:wiki-ingest-apply:{apply_request.run_id}",
             parameters=apply_request.model_dump(mode="json"),
-            expected_effect="Apply the approved Wiki ingest targets exactly once.",
+            expected_effect="精确应用一次已批准的 Wiki 导入目标。",
             source_message_id=apply_request.run_id,
             reversible=False,
             explicit_confirmation=apply_request.review_acknowledged,
@@ -1991,7 +1991,7 @@ async def execute_metrics_feedback(
         action_type="metrics.feedback",
         target_ref=f"intent:metrics-feedback:{digest}",
         parameters={**payload, "external_idempotency_key": idempotency_key},
-        expected_effect="Record one anonymous local product feedback event.",
+        expected_effect="记录一条匿名的本地产品反馈事件。",
         source_message_id=f"metrics-feedback:{digest}",
         reversible=True,
     )
@@ -3820,14 +3820,13 @@ def _post_reply_consolidation_state(
         and str(row[5]) == "explicit_user"
         and str(row[2]) in {"fact", "preference"}
     ]
-    if any(
-        not row[4]
-        or str(row[6]) != "active"
-        or str(row[7]) != "claim"
-        or int(row[8]) != 1
-        for row in explicit_active_rows
-    ):
-        return None
+    for row in explicit_active_rows:
+        if not row[4] or str(row[6]) != "active" or int(row[8]) != 1:
+            return None
+        # 偏好事实落库为 prefers 关系（relation），普通事实落库为整句 claim。
+        expected_kind = "relation" if str(row[2]) == "preference" else "claim"
+        if str(row[7]) != expected_kind:
+            return None
     candidate_ids = [str(row[0]) for row in rows]
     active_candidate_ids = [str(row[0]) for row in rows if str(row[1]) == "active"]
     active_fact_ids = [str(row[4]) for row in rows if str(row[1]) == "active" and row[4]]

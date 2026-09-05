@@ -5,6 +5,7 @@ import {
   FolderKanban,
   MessageSquareText,
   Settings,
+  Sprout,
   type LucideIcon,
 } from "lucide-react";
 import type { DesktopApi } from "../services/desktopApi";
@@ -15,7 +16,7 @@ import { HalfbodyPetPortrait } from "../features/halfbody/HalfbodyPetPortrait";
 import { productCopy } from "../productCopy";
 import { BottomNav } from "./BottomNav";
 
-type StageRoute = "agent" | "chat" | "memory" | "settings";
+type StageRoute = "agent" | "chat" | "memory" | "settings" | "growth";
 
 type StageAction = {
   label: string;
@@ -65,6 +66,12 @@ const stageActions: StageAction[] = [
     detail: "管理保存规则、模型连接和本地资料",
     route: "settings",
     icon: Settings,
+  },
+  {
+    label: "看看成长",
+    detail: "查看成长维度和最近的变化",
+    route: "growth",
+    icon: Sprout,
   },
 ];
 

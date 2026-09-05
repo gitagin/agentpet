@@ -10,14 +10,12 @@ from collections.abc import Callable
 from typing import Literal
 
 from app.models.api import AgentActionResponse, AutomationSettingsRequest, AutomationSettingsResponse
-from app.models.config import normalize_proactive_trigger_frequency
 from app.models.common import new_id
 from app.services.memory import SafeMarkdownWriter, content_hash_text
+from app.services.settings_preferences import SettingsPreferencesMixin
 from app.storage.database import open_database_connection
+from app.utils.sqlite import json_load, optional_str
 from app.utils.time import utc_now_iso
-
-LOCAL_PRIVACY_MODE_STATE_KEY = "local_privacy_mode"
-PROACTIVE_TRIGGER_FREQUENCY_STATE_KEY = "proactive_trigger_frequency"
 
 
 RiskTier = Literal["low", "medium", "high"]
@@ -154,7 +152,7 @@ def _target_path_risk(action_type: str, target_paths: list[str] | tuple[str, ...
     return None
 
 
-class AgentActionStore:
+class AgentActionStore(SettingsPreferencesMixin):
     def __init__(self, db: str | Path | sqlite3.Connection):
         self._owns_connection = not isinstance(db, sqlite3.Connection)
         self.conn = open_database_connection(db)
@@ -260,7 +258,7 @@ class AgentActionStore:
         ).fetchone()
         if current is None:
             return None
-        merged_metadata = _json_load(current["metadata_json"], {})
+        merged_metadata = json_load(current["metadata_json"], {})
         if not isinstance(merged_metadata, dict):
             merged_metadata = {}
         merged_metadata.pop("execution_receipt", None)
@@ -303,7 +301,7 @@ class AgentActionStore:
             ).fetchone()
             if row is None:
                 raise AgentActionNotFoundError(action_id)
-            metadata = _json_load(row["metadata_json"], {})
+            metadata = json_load(row["metadata_json"], {})
             if not isinstance(metadata, dict):
                 metadata = {}
             current_owner = str(metadata.get("lifecycle_owner") or "")
@@ -358,7 +356,7 @@ class AgentActionStore:
             ).fetchone()
             if row is None:
                 raise AgentActionNotFoundError(action_id)
-            metadata = _json_load(row["metadata_json"], {})
+            metadata = json_load(row["metadata_json"], {})
             if not isinstance(metadata, dict):
                 metadata = {}
             current_owner = str(metadata.get("lifecycle_owner") or "")
@@ -407,7 +405,7 @@ class AgentActionStore:
         ).fetchone()
         if current is None:
             raise AgentActionNotFoundError(action_id)
-        merged_metadata = _json_load(current["metadata_json"], {})
+        merged_metadata = json_load(current["metadata_json"], {})
         if not isinstance(merged_metadata, dict):
             merged_metadata = {}
         merged_metadata.update(metadata or {})
@@ -450,129 +448,16 @@ class AgentActionStore:
             )
         return self.get(action_id)
 
-    def get_automation_settings(self) -> AutomationSettingsResponse:
-        row = self.conn.execute("SELECT * FROM automation_settings WHERE id = 1").fetchone()
-        local_privacy_mode = self._get_bool_state(LOCAL_PRIVACY_MODE_STATE_KEY)
-        proactive_trigger_frequency = self._get_proactive_trigger_frequency()
-        if row is None:
-            return AutomationSettingsResponse(
-                local_privacy_mode=local_privacy_mode,
-                proactive_trigger_frequency=proactive_trigger_frequency,
-            )
-        return AutomationSettingsResponse(
-            auto_chat_diary=bool(row["auto_chat_diary"]),
-            auto_structured_memory=bool(row["auto_structured_memory"]),
-            auto_long_term_memory=bool(row["auto_long_term_memory"]),
-            auto_wiki_organize=bool(row["auto_wiki_organize"]),
-            local_privacy_mode=local_privacy_mode,
-            proactive_trigger_frequency=proactive_trigger_frequency,
-            use_negotiation=bool(row["use_negotiation"]),
-            max_rounds=int(row["max_rounds"]),
-            high_risk_confirmation_required=bool(row["high_risk_confirmation_required"]),
-            updated_at=str(row["updated_at"]),
-        )
-
-    def set_automation_settings(self, settings: AutomationSettingsRequest) -> AutomationSettingsResponse:
-        now = utc_now_iso()
-        with self.conn:
-            self.conn.execute(
-                """
-                INSERT INTO automation_settings (
-                    id, auto_chat_diary, auto_structured_memory, auto_long_term_memory,
-                    auto_wiki_organize, use_negotiation, max_rounds,
-                    high_risk_confirmation_required, created_at, updated_at
-                )
-                VALUES (1, ?, ?, ?, ?, ?, ?, 1, ?, ?)
-                ON CONFLICT(id) DO UPDATE SET
-                    auto_chat_diary = excluded.auto_chat_diary,
-                    auto_structured_memory = excluded.auto_structured_memory,
-                    auto_long_term_memory = excluded.auto_long_term_memory,
-                    auto_wiki_organize = excluded.auto_wiki_organize,
-                    use_negotiation = excluded.use_negotiation,
-                    max_rounds = excluded.max_rounds,
-                    high_risk_confirmation_required = 1,
-                    updated_at = excluded.updated_at
-                """,
-                (
-                    1 if settings.auto_chat_diary else 0,
-                    1 if settings.auto_structured_memory else 0,
-                    1 if settings.auto_long_term_memory else 0,
-                    1 if settings.auto_wiki_organize else 0,
-                    1 if settings.use_negotiation else 0,
-                    settings.max_rounds,
-                    now,
-                    now,
-                ),
-            )
-            self.conn.execute(
-                """
-                INSERT INTO app_state(key, value, updated_at)
-                VALUES (?, ?, ?)
-                ON CONFLICT(key) DO UPDATE SET
-                    value = excluded.value,
-                    updated_at = excluded.updated_at
-                """,
-                (
-                    LOCAL_PRIVACY_MODE_STATE_KEY,
-                    json.dumps(bool(settings.local_privacy_mode)),
-                    now,
-                ),
-            )
-            self.conn.execute(
-                """
-                INSERT INTO app_state(key, value, updated_at)
-                VALUES (?, ?, ?)
-                ON CONFLICT(key) DO UPDATE SET
-                    value = excluded.value,
-                    updated_at = excluded.updated_at
-                """,
-                (
-                    PROACTIVE_TRIGGER_FREQUENCY_STATE_KEY,
-                    json.dumps(normalize_proactive_trigger_frequency(settings.proactive_trigger_frequency)),
-                    now,
-                ),
-            )
-        return self.get_automation_settings()
-
-    def _get_proactive_trigger_frequency(self):
-        row = self.conn.execute(
-            "SELECT value FROM app_state WHERE key = ?",
-            (PROACTIVE_TRIGGER_FREQUENCY_STATE_KEY,),
-        ).fetchone()
-        if row is None:
-            return normalize_proactive_trigger_frequency(None)
-        try:
-            value = json.loads(str(row["value"]))
-        except (TypeError, ValueError):
-            value = str(row["value"])
-        return normalize_proactive_trigger_frequency(value)
-
-    def _get_bool_state(self, key: str, default: bool = False) -> bool:
-        row = self.conn.execute("SELECT value FROM app_state WHERE key = ?", (key,)).fetchone()
-        if row is None:
-            return default
-        try:
-            value = json.loads(str(row["value"]))
-        except (TypeError, ValueError):
-            value = str(row["value"]).strip().lower()
-        if isinstance(value, bool):
-            return value
-        if isinstance(value, (int, float)):
-            return bool(value)
-        if isinstance(value, str):
-            return value in {"1", "true", "yes", "on", "enabled"}
-        return default
-
     def _map(self, row: sqlite3.Row) -> AgentActionResponse:
-        metadata = _json_load(row["metadata_json"], {})
-        before_snapshot = _json_load(row["before_snapshot_json"], {})
-        after_snapshot = _json_load(row["after_snapshot_json"], {})
-        target_paths = [str(item) for item in _json_load(row["target_paths_json"], [])]
+        metadata = json_load(row["metadata_json"], {})
+        before_snapshot = json_load(row["before_snapshot_json"], {})
+        after_snapshot = json_load(row["after_snapshot_json"], {})
+        target_paths = [str(item) for item in json_load(row["target_paths_json"], [])]
         return AgentActionResponse(
             action_id=str(row["id"]),
-            source_agent_run_id=_optional_str(row["source_agent_run_id"]),
-            source_conversation_id=_optional_str(row["source_conversation_id"]),
-            source_message_id=_optional_str(row["source_message_id"]),
+            source_agent_run_id=optional_str(row["source_agent_run_id"]),
+            source_conversation_id=optional_str(row["source_conversation_id"]),
+            source_message_id=optional_str(row["source_message_id"]),
             action_type=str(row["action_type"]),
             risk_tier=str(row["risk_tier"]),  # type: ignore[arg-type]
             decision=str(row["decision"]),  # type: ignore[arg-type]
@@ -581,9 +466,9 @@ class AgentActionStore:
             summary=str(row["summary"] or ""),
             target_paths=target_paths,
             reversible=bool(row["reversible"]),
-            reverted_by=_optional_str(row["reverted_by"]),
-            reverts_action_id=_optional_str(row["reverts_action_id"]),
-            error=_optional_str(row["error"]),
+            reverted_by=optional_str(row["reverted_by"]),
+            reverts_action_id=optional_str(row["reverts_action_id"]),
+            error=optional_str(row["error"]),
             source=_action_source(row, metadata),
             diff_summary=_diff_summary(target_paths, before_snapshot, after_snapshot),
             metadata=metadata if isinstance(metadata, dict) else {},
@@ -592,7 +477,7 @@ class AgentActionStore:
             total_latency_ms=int(row["total_latency_ms"] or 0),
             created_at=str(row["created_at"]),
             updated_at=str(row["updated_at"]),
-            completed_at=_optional_str(row["completed_at"]),
+            completed_at=optional_str(row["completed_at"]),
         )
 
 
@@ -823,7 +708,7 @@ class AgentActionService:
         ).fetchone()
         if row is None:
             raise AgentActionNotFoundError(action_id)
-        payload = _json_load(row["before_snapshot_json"], {})
+        payload = json_load(row["before_snapshot_json"], {})
         return payload if isinstance(payload, dict) else {}
 
 
@@ -915,7 +800,7 @@ def _action_source(row: sqlite3.Row, metadata: object) -> dict[str, str]:
                 if isinstance(key, str) and isinstance(value, str) and value.strip():
                     source[key] = value.strip()
     for key in ("source_agent_run_id", "source_conversation_id", "source_message_id"):
-        value = _optional_str(row[key])
+        value = optional_str(row[key])
         if value:
             source[key] = value
     return source
@@ -959,15 +844,6 @@ def _json(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
 
 
-def _json_load(value: object, default):
-    if value is None:
-        return default
-    try:
-        return json.loads(str(value))
-    except (TypeError, json.JSONDecodeError):
-        return default
-
-
 def _owner_process_is_alive(owner: str) -> bool:
     """Return whether a recorded lifecycle owner still has a live process."""
     raw_pid, separator, _ = owner.partition(":")
@@ -985,10 +861,3 @@ def _owner_process_is_alive(owner: str) -> bool:
     except OSError as exc:
         return exc.errno == errno.EPERM
     return True
-
-
-def _optional_str(value: object) -> str | None:
-    if value is None:
-        return None
-    text = str(value)
-    return text if text else None

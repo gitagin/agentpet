@@ -1,6 +1,8 @@
 import type {
   AgentModelId,
   AutomationSettings,
+  EmbeddingConfigResponse,
+  EmbeddingTestResponse,
   ModelConfigResponse,
   ModelTestResponse,
   SettingsStatusResponse,
@@ -16,6 +18,7 @@ import {
 import type {
   AsyncStatus,
   AutomationSettingsDraft,
+  EmbeddingDraft,
   GlobalModelDraft,
   LastIndexRun,
   NegotiationSettingsDraft,
@@ -32,6 +35,16 @@ const defaultGlobalModelDraft: GlobalModelDraft = {
   saved_base_url: "",
   saved_model: "",
   configured: false,
+};
+
+const defaultEmbeddingDraft: EmbeddingDraft = {
+  base_url: "",
+  model: "",
+  api_key: "",
+  saved_base_url: "",
+  saved_model: "",
+  configured: false,
+  masked: null,
 };
 
 const defaultNegotiationSettingsDraft: NegotiationSettingsDraft = {
@@ -129,6 +142,20 @@ function globalModelDraftFromStatus(response: SettingsStatusResponse): GlobalMod
   };
 }
 
+function embeddingDraftFromStatus(response: SettingsStatusResponse): EmbeddingDraft {
+  const baseUrl = response.embedding_base_url || "";
+  const model = response.embedding_model || "";
+  return {
+    base_url: baseUrl,
+    model,
+    api_key: "",
+    saved_base_url: baseUrl,
+    saved_model: model,
+    configured: response.embedding_configured ?? false,
+    masked: null,
+  };
+}
+
 export type SettingsState = {
   agentModelDrafts: AgentModelDraft[];
   agentModelTestResults: Record<string, ModelTestResponse | undefined>;
@@ -136,6 +163,10 @@ export type SettingsState = {
   globalModelSaveStatus: AsyncStatus;
   globalModelTestStatus: AsyncStatus;
   globalModelTestResult?: ModelTestResponse;
+  embeddingDraft: EmbeddingDraft;
+  embeddingSaveStatus: AsyncStatus;
+  embeddingTestStatus: AsyncStatus;
+  embeddingTestResult?: EmbeddingTestResponse;
   automationSettingsDraft: AutomationSettingsDraft;
   automationSettingsSaveStatus: AsyncStatus;
   ttsSettingsDraft: TtsSettingsDraft;
@@ -160,6 +191,10 @@ export type SettingsAction =
   | { type: "setGlobalModelSaveStatus"; status: AsyncStatus }
   | { type: "setGlobalModelTestStatus"; status: AsyncStatus; result?: ModelTestResponse }
   | { type: "saveGlobalModelSuccess"; config: ModelConfigResponse }
+  | { type: "updateEmbeddingDraft"; patch: Partial<EmbeddingDraft> }
+  | { type: "setEmbeddingSaveStatus"; status: AsyncStatus }
+  | { type: "setEmbeddingTestStatus"; status: AsyncStatus; result?: EmbeddingTestResponse }
+  | { type: "saveEmbeddingSuccess"; config: EmbeddingConfigResponse }
   | { type: "updateAutomationSettingsDraft"; patch: Partial<AutomationSettingsDraft> }
   | { type: "setAutomationSettingsSaveStatus"; status: AsyncStatus }
   | { type: "saveAutomationSettingsSuccess"; settings: AutomationSettings }
@@ -199,6 +234,10 @@ export function createInitialSettingsState(): SettingsState {
     globalModelSaveStatus: "idle",
     globalModelTestStatus: "idle",
     globalModelTestResult: undefined,
+    embeddingDraft: defaultEmbeddingDraft,
+    embeddingSaveStatus: "idle",
+    embeddingTestStatus: "idle",
+    embeddingTestResult: undefined,
     automationSettingsDraft: defaultAutomationSettingsDraft(),
     automationSettingsSaveStatus: "idle",
     ttsSettingsDraft: defaultTtsSettingsDraft,
@@ -228,6 +267,10 @@ export function settingsReducer(state: SettingsState, action: SettingsAction): S
         globalModelSaveStatus: "idle",
         globalModelTestStatus: "idle",
         globalModelTestResult: undefined,
+        embeddingDraft: embeddingDraftFromStatus(action.response),
+        embeddingSaveStatus: "idle",
+        embeddingTestStatus: "idle",
+        embeddingTestResult: undefined,
         automationSettingsDraft: automationSettingsDraftFromStatus(action.response),
         automationSettingsSaveStatus: "idle",
         ttsSettingsDraft: ttsSettingsDraftFromStatus(action.response),
@@ -285,6 +328,45 @@ export function settingsReducer(state: SettingsState, action: SettingsAction): S
               model_base_url: action.config.base_url,
               chat_model: action.config.model,
               model_configured: true,
+            }
+          : state.settingsStatus,
+      };
+    case "updateEmbeddingDraft":
+      return {
+        ...state,
+        embeddingDraft: { ...state.embeddingDraft, ...action.patch },
+        embeddingSaveStatus: "idle",
+        embeddingTestStatus: "idle",
+        embeddingTestResult: undefined,
+      };
+    case "setEmbeddingSaveStatus":
+      return { ...state, embeddingSaveStatus: action.status };
+    case "setEmbeddingTestStatus":
+      return { ...state, embeddingTestStatus: action.status, embeddingTestResult: action.result };
+    case "saveEmbeddingSuccess":
+      return {
+        ...state,
+        embeddingDraft: {
+          ...state.embeddingDraft,
+          base_url: action.config.base_url,
+          model: action.config.model,
+          api_key: "",
+          saved_base_url: action.config.base_url,
+          saved_model: action.config.model,
+          configured: action.config.configured,
+          masked: action.config.masked ?? null,
+        },
+        embeddingSaveStatus: "success",
+        embeddingTestStatus: "idle",
+        embeddingTestResult: undefined,
+        settingsStatus: state.settingsStatus
+          ? {
+              ...state.settingsStatus,
+              embedding_provider: action.config.provider,
+              embedding_base_url: action.config.base_url,
+              embedding_model: action.config.model,
+              embedding_dimensions: action.config.dimensions ?? null,
+              embedding_configured: action.config.configured,
             }
           : state.settingsStatus,
       };

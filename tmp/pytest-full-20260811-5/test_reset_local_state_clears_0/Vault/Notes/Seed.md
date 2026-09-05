@@ -1,3 +1,0 @@
-# Seed
-
-Development memory.

@@ -645,3 +645,32 @@ def test_vault_lifecycle_directories_are_filtered_before_fts_fusion(tmp_path) ->
     assert [result.relative_path for result in active.results] == ["Memories/LongTerm/Profile.md"]
     assert superseded.results == []
     assert superseded.metadata["fusion"]["filtered_count"] == 1
+
+def test_weighted_rrf_components_scale_by_channel_weight() -> None:
+    from app.services.retrieval_fusion import reciprocal_rank_fusion
+
+    def cand(cid: str, scope: str = "knowledge_base") -> FusionCandidate:
+        return FusionCandidate(
+            stable_id=cid,
+            content_hash=f"hash-{cid}",
+            source_scope=scope,
+            payload=object(),
+        )
+
+    channels = {
+        "fts": [cand("a"), cand("b")],
+        "vector": [cand("b"), cand("a")],
+    }
+    result = reciprocal_rank_fusion(
+        channels,
+        approved_scopes=["knowledge_base"],
+        top_k=5,
+        channel_weights={"fts": 3.0},
+    )
+
+    by_id = {candidate.stable_id: candidate for candidate in result.candidates}
+    fts_component = by_id["a"].score_components["fts"]
+    vector_component = by_id["a"].score_components["vector"]
+    assert abs(fts_component - 3.0 / (60 + 1)) < 1e-9
+    assert abs(vector_component - 1.0 / (60 + 2)) < 1e-9
+

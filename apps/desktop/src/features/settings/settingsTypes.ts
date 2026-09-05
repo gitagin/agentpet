@@ -23,6 +23,16 @@ export type GlobalModelDraft = {
   configured: boolean;
 };
 
+export type EmbeddingDraft = {
+  base_url: string;
+  model: string;
+  api_key: string;
+  saved_base_url: string;
+  saved_model: string;
+  configured: boolean;
+  masked?: string | null;
+};
+
 export type NegotiationSettingsDraft = {
   use_negotiation: boolean | null;
   max_rounds: number | null;

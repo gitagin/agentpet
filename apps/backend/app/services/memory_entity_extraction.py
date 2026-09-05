@@ -22,9 +22,11 @@ from app.services.memory_entity_graph import (
     EntityGraphError,
     MemoryEntity,
     MemoryEntityGraphStore,
+    normalize_entity_name,
 )
 from app.services.memory_graph import MemoryGraphFact
 from app.services.memory_policy import evaluate_memory_content
+from app.services.memory_taxonomy import LOW_CONFIDENCE_THRESHOLD
 from app.utils.hash import sha256_hex
 
 
@@ -230,6 +232,15 @@ def extract_with_policy(source_text: str, invoke_model: Callable[[str], object])
     return parse_extraction_output(invoke_model(source_text), source_text)
 
 
+# 自指实体名：这些名字在任何语境下都指"用户本人"，必须映射到唯一的 self 实体，
+# 而不是按模型可能误标的 entity_type（person/concept 等）新建同名重复点。
+_SELF_REFERENCE_NAMES = frozenset({"self", "myself", "user", "me", "我", "自己", "本人"})
+
+
+def _is_self_reference(name: str) -> bool:
+    return normalize_entity_name(name) in _SELF_REFERENCE_NAMES
+
+
 def resolve_entity_candidates(
     store: MemoryEntityGraphStore,
     batch: ExtractionBatch,
@@ -242,6 +253,11 @@ def resolve_entity_candidates(
     resolved: dict[str, MemoryEntity] = {}
     unresolved: list[str] = []
     for item in batch.entities:
+        # 自指（"我/自己/self"）永远指向用户本人：直接复用唯一的 self 实体。
+        # 否则模型常把"我"标成 person/concept，会新建一个与中心"我"重复的节点。
+        if _is_self_reference(item.name):
+            resolved[item.entity_ref] = store.ensure_self()
+            continue
         candidates = store.find_candidates(entity_type=item.entity_type, name=item.name)
         if len(candidates) > 1:
             raise EntityAmbiguityError("entity_disambiguation_required")
@@ -257,6 +273,29 @@ def resolve_entity_candidates(
             continue
         unresolved.append(item.entity_ref)
     return resolved, tuple(unresolved)
+
+
+_EVIDENCE_STOP_CHARS = "，。！？；：、,.;:!? \t\n\"'「」『』（）()[]【】<>《》"
+
+
+def _align_evidence_span(text: str, start: int, end: int) -> str:
+    """把模型返回的证据片段对齐到标点/空白边界，避免中文词被截断。
+
+    模型给出的 start/end 常偏窄（如把「今天的日期」截成「今天的日」），
+    这里向两侧扩展到最近的标点，最多各扩展 16 个字符。
+    """
+    if not text:
+        return ""
+    length = len(text)
+    start = max(0, min(start, length))
+    end = max(start, min(end, length))
+    left_limit = max(0, start - 16)
+    while start > left_limit and start > 0 and text[start - 1] not in _EVIDENCE_STOP_CHARS:
+        start -= 1
+    right_limit = min(length, end + 16)
+    while end < right_limit and end < length and text[end] not in _EVIDENCE_STOP_CHARS:
+        end += 1
+    return text[start:end]
 
 
 def persist_extraction_candidates(
@@ -334,7 +373,7 @@ def persist_extraction_candidates(
                 predicate=claim.predicate,
                 literal_value=claim.value,
                 category=claim.fact_type,
-                source_text=source_text[claim.evidence.start : claim.evidence.end],
+                source_text=_align_evidence_span(source_text, claim.evidence.start, claim.evidence.end),
                 source_type=source_type,
                 confidence=claim.confidence,
                 evidence_id=f"extract-evidence-{sha256_hex(f'{provenance}:{claim.claim_ref}')[:32]}",
@@ -347,7 +386,9 @@ def persist_extraction_candidates(
                     "uncertainties": list(batch.uncertainties),
                 },
             )
-            if fact.status.value == "active":
+            # 只降级本次新建的 fact（support_count 尚未因命中而累加）。
+            # 命中的既有 fact 可能已被用户确认，模型重复抽取不应把它降级。
+            if fact.status.value == "active" and fact.support_count <= 1:
                 fact = store.update_status(fact.id, "candidate", reason="model_extraction_candidate")
             # The same immutable evidence can explain both the claim and its
             # subject entity.  This keeps entity provenance queryable without
@@ -367,12 +408,12 @@ def persist_extraction_candidates(
                 subject_fact_id=subject_fact_id,
                 object_entity_id=object_entity_id,
                 object_fact_id=object_fact_id,
-                source_text=source_text[relation.evidence.start : relation.evidence.end],
+                source_text=_align_evidence_span(source_text, relation.evidence.start, relation.evidence.end),
                 source_type=source_type,
                 confidence=relation.confidence,
                 evidence_id=f"extract-relation-evidence-{sha256_hex(f'{provenance}:{relation.subject.ref}:{relation.object.ref}:{relation.relation}')[:32]}",
             )
-            if fact.status.value == "active":
+            if fact.status.value == "active" and fact.support_count <= 1:
                 fact = store.update_status(fact.id, "candidate", reason="model_extraction_candidate")
             for endpoint_entity_id in (subject_entity_id, object_entity_id):
                 if endpoint_entity_id:
@@ -437,7 +478,7 @@ def activate_extraction_candidates(
     skipped_facts: list[str] = []
     fact_ids_to_activate: list[str] = []
     for fact in facts:
-        if not _fact_has_evidence(store, fact.id) or fact.confidence < 0.65:
+        if not _fact_has_evidence(store, fact.id) or fact.confidence < LOW_CONFIDENCE_THRESHOLD:
             skipped_facts.append(fact.id)
             continue
         if fact.status.value == "active":

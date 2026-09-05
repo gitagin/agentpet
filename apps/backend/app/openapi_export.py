@@ -7,17 +7,9 @@ consumers derive from instead of hand-maintaining parallel route lists:
   route artifact (``npm run generate:api-contracts`` in ``apps/desktop``),
   with renderer-only exclusions in the explicit proxy exemption document.
 
-``tests/test_openapi_snapshot.py`` fails whenever the committed file lags
-behind the code, so route/model changes force a regeneration commit and the
-drift becomes visible in review diffs.
-
 Usage (from ``apps/backend``, inside the project environment)::
 
     python -m app.openapi_export
-
-or from the repo root::
-
-    ./scripts/generate-openapi.ps1
 """
 
 from __future__ import annotations

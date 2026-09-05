@@ -11,10 +11,11 @@ from app.services.memory_candidates import (
     MemoryCandidateRecord,
     MemoryCandidateStore,
     MemoryFeedbackEventCreate,
+    _candidate_hash,
 )
 from app.services.memory_graph import MemoryGraphFact
 from app.services.memory_entity_graph import MemoryEntityGraphStore
-from app.services.memory_taxonomy import LifecycleStatus, MemoryKind, MemoryScope, SourceTrack
+from app.services.memory_taxonomy import LifecycleStatus, MemoryKind, MemoryScope, SourceTrack, fact_lifecycle_status
 from app.storage.database import open_database_connection
 from app.utils.time import utc_now_iso
 
@@ -192,9 +193,9 @@ class MemoryLifecycleService:
         _sync_candidates: bool = True,
     ) -> MemoryLifecycleTransitionResult:
         fact_target = _coerce_fact_status(to_status)
-        target = _fact_lifecycle_status(fact_target)
+        target = fact_lifecycle_status(fact_target)
         fact = self._graph.get(fact_id)
-        current = _fact_lifecycle_status(fact.status)
+        current = fact_lifecycle_status(fact.status)
         _validate_fact_transition(current, target, superseded_by=superseded_by)
         previous_event_rowid = int(
             self.conn.execute(
@@ -213,6 +214,10 @@ class MemoryLifecycleService:
                     else None
                 ),
             )
+            if fact_target is MemoryFactStatus.ACTIVE:
+                # 事实激活后，其 subject/object 实体若仍是候选态，会卡住召回门
+                # （claim 继承 subject 实体的生命周期），导致确认后节点从投影消失。
+                self.entity_graph.activate_fact_endpoints(fact.id, reason=reason)
         if agent_action_id is not None:
             events = self.conn.execute(
                 """
@@ -267,6 +272,12 @@ class MemoryLifecycleService:
         for row in rows:
             current = LifecycleStatus(str(row["status"]))
             if current is target:
+                continue
+            # 事实恢复（如 ARCHIVED→ACTIVE）不能把终态候选（rejected/forgotten/
+            # archived/superseded）强行复活——那会绕过"候选不可恢复"策略。
+            try:
+                _validate_transition(current, target, superseded_by=None)
+            except MemoryLifecycleTransitionError:
                 continue
             self.candidates.transition(
                 candidate_id=str(row["id"]),
@@ -358,12 +369,12 @@ class MemoryLifecycleService:
             replacement_kind=_fact_memory_kind(replacement),
             allow=allow_boundary_override,
         )
-        if _fact_lifecycle_status(old.status) is LifecycleStatus.SUPERSEDED:
+        if fact_lifecycle_status(old.status) is LifecycleStatus.SUPERSEDED:
             if old.superseded_by != replacement.id:
                 raise MemoryLifecycleTransitionError("fact_supersession_conflict")
             return old, replacement
         with self.entity_graph.atomic():
-            if _fact_lifecycle_status(replacement.status) is LifecycleStatus.CANDIDATE:
+            if fact_lifecycle_status(replacement.status) is LifecycleStatus.CANDIDATE:
                 self.transition_fact(replacement.id, LifecycleStatus.ACTIVE, reason="replacement_promoted")
             self.entity_graph.create_relation(
                 relation_type="supersedes",
@@ -598,7 +609,7 @@ class MemoryLifecycleService:
             return result.to_status, None
         if operation == "mark_completed":
             completed = self.mark_fact_completed(fact.id)
-            return _fact_lifecycle_status(completed.status), None
+            return fact_lifecycle_status(completed.status), None
         if operation == "edit":
             replacement = self._create_replacement_fact(
                 fact,
@@ -638,10 +649,10 @@ class MemoryLifecycleService:
                     reason="user_edited_memory",
                     allow_boundary_override=True,
                 )
-            return _fact_lifecycle_status(old.status), replacement.id
+            return fact_lifecycle_status(old.status), replacement.id
         if operation == "make_temporary":
             updated = self._make_fact_temporary(fact, expires_at)
-            return _fact_lifecycle_status(updated.status), None
+            return fact_lifecycle_status(updated.status), None
         raise MemoryLifecycleTransitionError("invalid_memory_feedback_operation")
 
     def _linked_candidates(self, fact_id: str) -> tuple[MemoryCandidateRecord, ...]:
@@ -722,6 +733,16 @@ class MemoryLifecycleService:
         expiry = _required_text(expires_at, "make_temporary_requires_expires_at")
         if candidate.status is not LifecycleStatus.ACTIVE:
             self.transition_candidate(candidate.id, LifecycleStatus.ACTIVE, reason="temporary_memory_promoted")
+        new_kind = MemoryKind.RECENT_STATE
+        new_scope = MemoryScope.TEMPORARY
+        new_hash = _candidate_hash(
+            kind=new_kind,
+            scope=new_scope,
+            summary=candidate.summary,
+            normalized_value=candidate.normalized_value,
+            source_track=candidate.source_track,
+            source_text_hash=candidate.source_text_hash,
+        )
         with self.conn:
             self.conn.execute(
                 """
@@ -729,16 +750,17 @@ class MemoryLifecycleService:
                 SET memory_kind = ?,
                     memory_scope = ?,
                     expires_at = ?,
+                    candidate_hash = ?,
                     updated_at = ?
                 WHERE id = ?
                 """,
-                (MemoryKind.RECENT_STATE.value, MemoryScope.TEMPORARY.value, expiry, utc_now_iso(), candidate.id),
+                (new_kind.value, new_scope.value, expiry, new_hash, utc_now_iso(), candidate.id),
             )
         return self.candidates.get_candidate(candidate.id)
 
     def _make_fact_temporary(self, fact: MemoryGraphFact, expires_at: str | None) -> MemoryGraphFact:
         expiry = _required_text(expires_at, "make_temporary_requires_expires_at")
-        if _fact_lifecycle_status(fact.status) is not LifecycleStatus.ACTIVE:
+        if fact_lifecycle_status(fact.status) is not LifecycleStatus.ACTIVE:
             self.transition_fact(fact.id, LifecycleStatus.ACTIVE, reason="temporary_memory_promoted")
         with self.conn:
             self.conn.execute(
@@ -796,7 +818,7 @@ def _coerce_lifecycle_status(status: LifecycleStatus | MemoryFactStatus | str) -
     if isinstance(status, LifecycleStatus):
         return status
     if isinstance(status, MemoryFactStatus):
-        return _fact_lifecycle_status(status)
+        return fact_lifecycle_status(status)
     if str(status) == MemoryFactStatus.QUARANTINED.value:
         return LifecycleStatus.CANDIDATE
     return LifecycleStatus(str(status))
@@ -832,12 +854,6 @@ def _validate_fact_transition(
     _validate_transition(from_status, to_status, superseded_by=superseded_by)
 
 
-def _fact_lifecycle_status(status: MemoryFactStatus) -> LifecycleStatus:
-    if status is MemoryFactStatus.QUARANTINED:
-        return LifecycleStatus.CANDIDATE
-    if status in {MemoryFactStatus.WRONG, MemoryFactStatus.SENSITIVE_BLOCKED}:
-        return LifecycleStatus.REJECTED
-    return LifecycleStatus(status.value)
 
 
 def _ensure_boundary_can_be_superseded(*, old_kind: MemoryKind, replacement_kind: MemoryKind, allow: bool) -> None:

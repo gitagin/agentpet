@@ -106,8 +106,8 @@ def _disabled_automation_skip_event(*, context: AppContext, state: AgentState) -
         context=context,
         state=state,
         action_type="chat.auto_memory.skip",
-        title="Skipped automatic memory organization",
-        summary="Automatic memory organization is disabled; no local assets were written.",
+        title="已跳过自动整理",
+        summary="记忆整理设置当前关闭，所以这次对话只保留聊天结果，没有写入本机文件。",
         reason="automation_disabled",
     )
 

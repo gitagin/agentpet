@@ -342,7 +342,7 @@ def _task_plan(state: AgentState, *, source_text: str | None = None) -> ActionPl
         "timezone": _optional_text(params.get("timezone")),
         "source_text": task_source,
     }
-    decision = AutomationPolicy().decide("task.create", reversible=False)
+    decision = AutomationPolicy().decide("task.create", confidence=state.route.confidence if state.route else None, reversible=False)
     return ActionPlan(
         action_type="task",
         payload=payload,
@@ -421,7 +421,7 @@ def _wiki_plan(state: AgentState, services: AgentRuntimeServices) -> ActionPlan:
         kind,
     )
     action_type = f"wiki.{kind}.{'write' if auto_organize else 'plan'}"
-    decision = AutomationPolicy().decide(action_type, reversible=auto_organize)
+    decision = AutomationPolicy().decide(action_type, confidence=state.route.confidence if state.route else None, reversible=auto_organize)
     if not auto_organize:
         decision = decision.__class__(
             action_type=decision.action_type,
@@ -445,7 +445,7 @@ def _wiki_plan(state: AgentState, services: AgentRuntimeServices) -> ActionPlan:
         confirm_text=(
             f"好，我会把这段整理到 Wiki：{title}"
             if auto_organize
-            else f"我会先准备一份需要你确认的 Wiki 整理计划：{title}"
+            else f"我会先生成一份 Wiki 整理计划，你确认后才会真正写入：{title}"
         ),
         reversible=decision.reversible,
     )
@@ -565,9 +565,9 @@ def _project_lifecycle_outcome(
 
 def _wiki_write_available(services: AgentRuntimeServices, kind: str) -> bool:
     # Production adapters resolve request-bound services at execution time,
-    # so their registry is the capability boundary. The ephemeral lifecycle
-    # captures the services injected into the test/runtime instance; there an
-    # adapter name alone does not prove that its dependency exists.
+    # so their registry is the capability boundary. An ephemeral lifecycle
+    # captures injected services directly; there an adapter name alone does
+    # not prove that its dependency exists.
     lifecycle = services.action_lifecycle
     adapters = getattr(lifecycle, "adapters", {}) if lifecycle is not None else {}
     adapter_names = (

@@ -1,4 +1,5 @@
 import { FolderKanban, MoveRight } from "lucide-react";
+import { formatDate } from "../../services/dateFormatting";
 import type { VisibleContinuityProjectCard } from "./visibleContinuityTypes";
 
 type ProjectCardListProps = {
@@ -40,7 +41,9 @@ export function ProjectCardList({ projects }: ProjectCardListProps) {
             <footer className="visible-continuity-meta">
               <span>{project.sources.length} 条来源</span>
               {project.last_touched_at ? (
-                <time dateTime={project.last_touched_at}>{formatDate(project.last_touched_at)}</time>
+                <time dateTime={project.last_touched_at}>
+                  {formatDate(project.last_touched_at, { style: "monthDay", fallback: project.last_touched_at })}
+                </time>
               ) : null}
             </footer>
           </article>
@@ -60,15 +63,4 @@ function SectionTitle() {
       </div>
     </div>
   );
-}
-
-function formatDate(value: string): string {
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return value;
-  }
-  return parsed.toLocaleDateString("zh-CN", {
-    month: "short",
-    day: "numeric",
-  });
 }

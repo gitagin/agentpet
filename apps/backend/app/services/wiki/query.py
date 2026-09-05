@@ -1,6 +1,6 @@
 from .common import *
 from .mapping import _map_query_archive_detail, _map_query_archive_item
-from .utility import _answer_preview, _history_limit, _json_citations, _json_list, _unique
+from .utility import _answer_preview, _history_limit, _json_citations, _dumps_list, _unique
 
 from .lint import _lint_query_archive
 from .markdown import _citation_links, _default_query_title, _query_archive_section
@@ -173,7 +173,7 @@ class WikiQueryWorkflowMixin:
                     title,
                     target_path,
                     section,
-                    _json_list(tags),
+                    _dumps_list(tags),
                     _json_citations(lint.normalized_citations),
                     len(lint.normalized_citations),
                     request.agent_run_id,

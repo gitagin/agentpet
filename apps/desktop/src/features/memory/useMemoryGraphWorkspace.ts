@@ -127,7 +127,9 @@ export function useMemoryGraphWorkspace(api: DesktopApi, onRefresh?: () => void)
   useEffect(() => {
     const controller = new AbortController();
     void loadGraph(controller.signal);
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+    };
   }, [loadGraph]);
 
   const clearDetails = useCallback(() => {
@@ -152,7 +154,9 @@ export function useMemoryGraphWorkspace(api: DesktopApi, onRefresh?: () => void)
             return;
           }
           setNodeDetail(detail);
-          const claimId = detail.kind === "claim" ? detail.node_id : null;
+          // claim 详情接口需要 claim_ 前缀的公开 id；node_id 是 mg_ 不透明 id，
+          // 直接传会 404。用 detail.claim_ids[0]（claim_ 前缀）。
+          const claimId = detail.kind === "claim" ? (detail.claim_ids?.[0] ?? null) : null;
           if (claimId) {
             try {
               setClaimDetail(await api.getMemoryGraphClaim(claimId));
@@ -259,7 +263,8 @@ export function useMemoryGraphWorkspace(api: DesktopApi, onRefresh?: () => void)
         if (selection.edgeId) {
           response = await api.applyMemoryGraphEdgeAction(selection.edgeId, request, idempotencyKey);
         } else if (nodeDetail?.kind === "claim") {
-          const claimId = claimDetail?.claim_id ?? nodeDetail.node_id;
+          // claim 动作接口同样需要 claim_ 前缀 id，不能用 node_id（mg_）。
+          const claimId = claimDetail?.claim_id ?? nodeDetail.claim_ids?.[0] ?? null;
           if (!claimId) {
             throw new Error("记忆声明详情缺失，无法执行操作。");
           }

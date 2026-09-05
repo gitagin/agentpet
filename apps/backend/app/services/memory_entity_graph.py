@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterator, Mapping
+from typing import Iterator, Mapping, Sequence
 
 from app.models.common import new_id
 from app.models.enums import MemoryFactStatus
@@ -23,6 +23,7 @@ from app.services.memory_graph import (
     _sqlite_write_transaction,
 )
 from app.services.memory_policy import evaluate_memory_content
+from app.services.memory_taxonomy import LOW_CONFIDENCE_THRESHOLD
 from app.storage.database import open_database_connection
 from app.utils.hash import sha256_hex
 from app.utils.public_references import safe_relative_source_reference
@@ -406,6 +407,14 @@ class MemoryEntityGraphStore:
                     ),
                 )
         except sqlite3.IntegrityError as exc:
+            if normalized_type == "self":
+                # self 实体的 entity_key 恒定且唯一；并发/重放时若已存在，
+                # 幂等返回既有 self，而不是让整批抽取失败。
+                row = self.conn.execute(
+                    "SELECT id FROM memory_entities WHERE entity_key = 'entity:self' LIMIT 1"
+                ).fetchone()
+                if row is not None:
+                    return self.get_entity(str(row["id"]))
             raise EntityGraphError("entity_identity_conflict") from exc
         return self.get_entity(row_id)
 
@@ -414,7 +423,14 @@ class MemoryEntityGraphStore:
             "SELECT id FROM memory_entities WHERE entity_type = 'self' LIMIT 1"
         ).fetchone()
         if row is not None:
-            return self.get_entity(str(row["id"]))
+            entity = self.get_entity(str(row["id"]))
+            # 历史遗留的 candidate self 会阻塞显式记忆的可召回性
+            # （_fact_row_recallable 要求实体 active），这里补齐激活。
+            # 注意用 activate_entity_candidate 而不是 update_entity_status(active)：
+            # 后者会级联激活 self 的全部关联事实，绕过 evidence+0.65 门槛。
+            if entity.status != "active":
+                return self.activate_entity_candidate(entity.id, reason="self_entity_activation")
+            return entity
         return self.create_entity(entity_type="self", canonical_name=canonical_name, entity_key="entity:self")
 
     def get_entity(self, entity_id: str) -> MemoryEntity:
@@ -553,6 +569,30 @@ class MemoryEntityGraphStore:
                 # add_alias performs deterministic collision validation.
                 self.add_alias(entity_id, str(row["alias"]), status="active")
         return self.get_entity(entity_id)
+
+    def activate_fact_endpoints(self, fact_id: str, *, reason: str = "fact_activated_endpoint") -> None:
+        """Promote candidate subject/object entities when a fact becomes active.
+
+        ``_fact_row_recallable`` requires a claim's subject entity to be active;
+        a candidate entity extracted alongside the fact would otherwise leave a
+        freshly confirmed fact permanently unanswerable (the confirmation makes
+        the fact active but the entity gate still rejects it, so the node
+        disappears from the projection).  Only ``candidate`` entities are
+        promoted; forgotten/rejected/archived entities are never resurrected.
+        """
+        fact = self.get(fact_id)
+        entity_ids = (fact.subject_entity_id, fact.object_entity_id)
+        for entity_id in entity_ids:
+            if not entity_id:
+                continue
+            # 用 SQL 查询代替 get_entity，避免 dangling 引用（遗留数据/并发删除）
+            # 让一条坏端点实体阻断整个事实确认。
+            row = self.conn.execute(
+                "SELECT status FROM memory_entities WHERE id = ?",
+                (str(entity_id),),
+            ).fetchone()
+            if row is not None and str(row["status"]) == "candidate":
+                self.activate_entity_candidate(str(entity_id), reason=reason)
 
     def correct_claim(
         self,
@@ -923,6 +963,38 @@ class MemoryEntityGraphStore:
             metadata={"source_type": candidate.source_type},
         )
 
+    def find_active_entity_ids(self, names: Sequence[str]) -> list[str]:
+        """Resolve canonical-name/alias matches across entity types.
+
+        Retrieval routing resolves plan entities into entity ids without
+        knowing the entity type in advance; a single indexed lookup over
+        normalized names and active aliases is cheaper than per-type scans.
+        """
+        normalized = []
+        for name in names:
+            value = normalize_entity_name(str(name))
+            if value:
+                normalized.append(value)
+        if not normalized:
+            return []
+        placeholders = ", ".join("?" for _ in normalized)
+        rows = self.conn.execute(
+            f"""
+            SELECT DISTINCT e.id
+            FROM memory_entities e
+            WHERE e.status = 'active'
+              AND (e.normalized_name IN ({placeholders})
+                   OR EXISTS (
+                       SELECT 1 FROM memory_entity_aliases a
+                       WHERE a.entity_id = e.id AND a.status != 'rejected'
+                         AND a.normalized_alias IN ({placeholders})
+                   ))
+            ORDER BY e.created_at, e.id
+            """,
+            (*normalized, *normalized),
+        ).fetchall()
+        return [str(row["id"]) for row in rows]
+
     def find_candidates(self, *, entity_type: str, name: str, include_aliases: bool = True) -> list[MemoryEntity]:
         normalized_type = _validated_entity_type(entity_type)
         fingerprint = lookup_fingerprint(normalized_type, name)
@@ -1193,7 +1265,7 @@ class MemoryEntityGraphStore:
         if evidence_id is None:
             status = "quarantined"
         else:
-            status = "active" if confidence >= 0.65 else "candidate"
+            status = "active" if confidence >= LOW_CONFIDENCE_THRESHOLD else "candidate"
         subject_label = _endpoint_label(subject_entity_id, subject_fact_id)
         object_label = _endpoint_label(object_entity_id, object_fact_id)
         existing_id = self._find_typed_relation(
@@ -1469,7 +1541,7 @@ class MemoryEntityGraphStore:
         clauses = [
             "f.statement_kind IN ('claim', 'relation')",
             "f.status = 'active'",
-            "f.confidence >= 0.65",
+            f"f.confidence >= {LOW_CONFIDENCE_THRESHOLD}",
             "(f.statement_kind != 'relation' OR f.relation_type NOT IN ('contradicts', 'supersedes'))",
             "EXISTS (SELECT 1 FROM memory_evidence e WHERE e.fact_id = f.id)",
             "NOT EXISTS (SELECT 1 FROM memory_graph_facts c "
@@ -2221,7 +2293,7 @@ def _relation_row_recallable(
     if str(row["statement_kind"] or "") != "relation" or str(row["status"] or "") != "active":
         return False
     relation_type = str(row["relation_type"] or "").casefold()
-    if relation_type not in RELATION_TYPES or float(row["confidence"] or 0.0) < 0.65:
+    if relation_type not in RELATION_TYPES or float(row["confidence"] or 0.0) < LOW_CONFIDENCE_THRESHOLD:
         return False
     subject_entity = row["subject_entity_id"]
     subject_fact = row["subject_fact_id"]
@@ -2290,7 +2362,7 @@ def _fact_row_recallable(
         return False
     if str(row["statement_kind"] or "") not in {"claim", "relation"}:
         return False
-    if float(row["confidence"] or 0.0) < 0.65:
+    if float(row["confidence"] or 0.0) < LOW_CONFIDENCE_THRESHOLD:
         return False
     # A claim inherits the lifecycle and risk gate of its subject entity.
     # This closes the otherwise possible path where forgetting an entity (or

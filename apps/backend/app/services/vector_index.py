@@ -43,6 +43,7 @@ _SAFE_REASONS = {
     "embedding_initialization_failed",
     "embedding_not_configured",
     "embedding_provider_unavailable",
+    "local_embedding_unavailable",
     "embedding_provider_unsupported",
     "index_corrupt",
     "index_drift",

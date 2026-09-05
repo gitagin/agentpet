@@ -67,7 +67,7 @@ async def apply_feedback_and_record(
             )
             raise AppError(
                 code=error_code or "memory_feedback_invalid",
-                message="Memory feedback could not be applied.",
+                message="记忆反馈操作无法应用。",
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 details={"operation": feedback_request.operation, "target_type": feedback_request.target_type},
             ) from exc
@@ -84,7 +84,7 @@ async def apply_feedback_and_record(
         )
         raise AppError(
             code="memory_feedback_target_not_found",
-            message="Memory feedback target was not found.",
+            message="未找到要反馈的记忆目标。",
             status_code=status.HTTP_404_NOT_FOUND,
             details={"target_type": feedback_request.target_type, "target_id": feedback_request.target_id},
         ) from exc

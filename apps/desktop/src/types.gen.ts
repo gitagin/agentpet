@@ -3130,8 +3130,6 @@ export interface components {
             evidence_count: number;
             /** Label */
             label: string;
-            /** Title */
-            title?: string;
             /** Node Id */
             node_id: string;
             /**
@@ -3150,6 +3148,11 @@ export interface components {
             status: "active" | "pending" | "archived" | "hidden";
             /** Subtitle */
             subtitle: string;
+            /**
+             * Title
+             * @default
+             */
+            title: string;
             /**
              * Type
              * @enum {string}
@@ -3394,6 +3397,8 @@ export interface components {
         };
         /** MemoryProposalResponse */
         MemoryProposalResponse: {
+            /** Content */
+            content?: string | null;
             /** Diff */
             diff?: string | null;
             /** Preview Markdown */
@@ -3402,8 +3407,11 @@ export interface components {
             proposal_id: string;
             /** Status */
             status: string;
+            /** Target Content Hash */
+            target_content_hash?: string | null;
             /** Target Path */
             target_path?: string | null;
+            type?: components["schemas"]["MemoryProposalType"] | null;
         };
         /**
          * MemoryProposalType
@@ -5482,7 +5490,7 @@ export interface components {
             links?: string[];
             /**
              * Max Files
-             * @default 20
+             * @default 100
              */
             max_files: number;
             /**

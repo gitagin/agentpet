@@ -18,8 +18,10 @@ from .scheduler import APSchedulerReminderScheduler, ReminderSchedulerProtocol
 from .services.health import component_health_from_vector_index
 from .services.retrieval import RetrievalService
 from .services.retrieval_factory import build_vector_index
+from .services.reranking_local import build_local_reranker
 from .services.reminder_delivery import ReminderDeliveryService
 from .services.settings import initialize_settings_store
+from .services.fts_bigram_backfill import ensure_bigram_fts
 from .agents.reflection_graph import ReflectionJobManager
 from .services.tasks import TaskService, TaskStore
 from .services.wiki_reconciler import reconcile_all_vaults
@@ -162,6 +164,7 @@ def ensure_app_services(app: FastAPI) -> None:
         else:
             ensure_schema(database)
         initialize_settings_store(database)
+        ensure_bigram_fts(database)
         try:
             app.state.wiki_reconcile_reports = reconcile_all_vaults(database.path)
         except Exception:
@@ -169,7 +172,10 @@ def ensure_app_services(app: FastAPI) -> None:
             app.state.wiki_reconcile_reports = ()
         recover_interrupted_chat_runs(database)
         vector_index = build_vector_index(database.path, settings)
-        retrieval_service = RetrievalService(database, vector_index=vector_index)
+        reranker = build_local_reranker(
+            model_dir=settings.data_dir / "models" / "reranker",
+        )
+        retrieval_service = RetrievalService(database, vector_index=vector_index, reranker=reranker)
         app.state.retrieval_service = retrieval_service
         app.state.component_health["vector_index"] = component_health_from_vector_index(vector_index)
         app.state.services_initialized = True

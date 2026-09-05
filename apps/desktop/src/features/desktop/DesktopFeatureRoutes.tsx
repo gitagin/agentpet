@@ -73,7 +73,7 @@ export function DesktopFeatureRoutes({
           {stageView}
         </div>
         {windowMode !== "stage" ? (
-          <div className="stage-host-route is-active" aria-label="当前活动路由">
+          <div className={`stage-host-route is-active stage-host-route-${windowMode}`} aria-label="当前活动路由">
             {activeRoute}
           </div>
         ) : null}

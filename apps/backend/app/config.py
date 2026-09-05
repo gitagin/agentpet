@@ -1,4 +1,5 @@
 import os
+import sys
 from functools import lru_cache
 from pathlib import Path
 
@@ -37,6 +38,10 @@ class Settings(BaseSettings):
     )
     embedding_model: str = Field(default=DEFAULT_EMBEDDING_MODEL, alias="AGENT_PET_EMBEDDING_MODEL")
     embedding_dimensions: int | None = Field(default=None, alias="AGENT_PET_EMBEDDING_DIMENSIONS")
+    embedding_local_model_dir: Path | None = Field(
+        default=None,
+        alias="AGENT_PET_EMBEDDING_LOCAL_DIR",
+    )
     model_timeout_seconds: float = Field(
         default=30.0,
         alias="AGENT_PET_MODEL_TIMEOUT_SECONDS",
@@ -51,6 +56,16 @@ class Settings(BaseSettings):
     @property
     def sqlite_path(self) -> Path:
         return self.database_path or self.data_dir / "agent_pet.sqlite3"
+
+    @property
+    def local_embedding_dir(self) -> Path:
+        # 源树：apps/backend/models/embedding；打包：sidecar exe 同级的 models/embedding。
+        # 用 __file__/sys.executable 锚定而非 cwd，避免 pytest 从仓库根运行时解析错位。
+        if self.embedding_local_model_dir is not None:
+            return self.embedding_local_model_dir
+        if getattr(sys, "frozen", False):
+            return Path(sys.executable).resolve().parent / "models" / "embedding"
+        return Path(__file__).resolve().parents[1] / "models" / "embedding"
 
 
 @lru_cache

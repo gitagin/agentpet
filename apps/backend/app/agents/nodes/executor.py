@@ -33,6 +33,77 @@ from ..roles.verifier_agent import verify_execution_receipt
 _PROCESS_LIFECYCLE_OWNER = f"{os.getpid()}:{uuid.uuid4().hex}"
 
 
+# 用户可见的活动账本标题：面向中文用户，不能把内部 action_type 或英文
+# "Action: ..." 直接展示。前端还有一份同义映射用于降级兜底，这里负责
+# 权威写入时的 title。
+_ACTION_TYPE_TITLES: dict[str, str] = {
+    "agent.negotiation": "已完成证据复核",
+    "agent_action.revert": "撤回自动整理",
+    "chat.daily_archive": "已归档聊天日记",
+    "chat.auto_memory.skip": "已跳过自动整理",
+    "continuity.identity": "身份线索整理",
+    "continuity.relationship": "关系理解整理",
+    "continuity.mood": "情绪状态整理",
+    "continuity.energy": "能量状态整理",
+    "continuity.open_thread": "下次接着聊",
+    "continuity.proposal.activate": "已确认陪伴状态",
+    "diary.structured_memory": "已提取结构化日记",
+    "markdown.bulk_rewrite": "批量改写本机文本",
+    "markdown.delete": "删除本机文本",
+    "markdown.move": "移动本机文本",
+    "memory.consolidation.candidate": "已整理长期记忆候选",
+    "memory.consolidation.safety_event": "已记录记忆安全事件",
+    "memory.consolidation.skip": "已跳过长期记忆整理",
+    "memory.entity_relation": "提取实体关系",
+    "memory.long_term.write": "已更新长期记忆",
+    "memory.long_term.skip": "已跳过长期记忆",
+    "memory.profile.action": "画像记忆管理",
+    "memory.promote_conflict": "记忆冲突整理",
+    "memory.proposal": "记忆提案",
+    "memory.proposal.confirm": "已确认记忆提案",
+    "memory.proposal.reject": "已拒绝记忆提案",
+    "memory.proposal.defer": "已暂缓记忆提案",
+    "memory.feedback.apply": "已应用记忆反馈",
+    "memory.hygiene.apply": "已应用记忆整理",
+    "memory.graph.entity": "记忆实体管理",
+    "memory.graph.statement": "记忆事实管理",
+    "memory.graph.relation": "记忆关系管理",
+    "memory.graph.rebuild": "已重建记忆图谱",
+    "continuity.proposal.confirm": "已确认陪伴提案",
+    "continuity.proposal.reject": "已拒绝陪伴提案",
+    "reminder.delivery.reserve": "已预留提醒派发",
+    "reminder.delivery.display": "已调用系统通知",
+    "reminder.delivery.recover": "已恢复提醒派发",
+    "metrics.feedback": "已记录产品反馈",
+    "sqlite.schema_change": "本机数据结构变更",
+    "task.create": "创建任务",
+    "task.complete": "完成任务",
+    "task.approve": "确认任务",
+    "task.reject": "拒绝任务",
+    "task.cancel": "取消任务",
+    "task.patch": "更新任务",
+    "vault.bind": "绑定本机文件夹",
+    "vault.switch": "切换本机文件夹",
+    "wiki.ingest.apply": "资料页应用",
+    "wiki.lint.repair": "资料页检查修复",
+    "wiki.lint.report": "已生成资料页检查报告",
+    "wiki.answer_summary.write": "已自动总结到资料页",
+    "wiki.answer_summary.skip": "已跳过资料页摘要",
+    "wiki.page.write": "已整理资料页",
+    "wiki.page.replace_section": "资料页章节替换",
+    "wiki.query_archive.write": "已整理资料页查询",
+    "wiki.synthesize.write": "已综合整理资料页",
+    "wiki.retrospective_report.write": "已生成复盘报告",
+    "wiki.weekly_report.write": "已生成周报",
+    "wiki.monthly_report.write": "已生成月报",
+}
+
+
+def _action_type_title(action_type: str) -> str:
+    """Return a user-facing Chinese title for an action type."""
+    return _ACTION_TYPE_TITLES.get(action_type, action_type)
+
+
 @dataclass(frozen=True, slots=True)
 class AdapterExecutionResult:
     result: dict[str, Any]
@@ -418,9 +489,8 @@ class ActionLifecycleCoordinator:
     ) -> tuple[AgentActionResponse, bool]:
         begin = getattr(self.ledger, "begin_execution", None)
         if begin is None:
-            # Older test-only ledgers do not expose the persistent CAS.  A
-            # newly-created claim is still safe to start; duplicate claims
-            # fail closed rather than dispatching an uncoordinated adapter.
+            # Legacy ledgers do not expose the persistent CAS. A newly-created
+            # claim is still safe to start; duplicate claims fail closed.
             return action, action.status == "claimed" and not takeover
         return begin(action.action_id, owner_id=owner_id, takeover=takeover)
 
@@ -892,13 +962,13 @@ class ActionLifecycleCoordinator:
             target_paths = (str(policy.canonical_parameters["target_path"]),)
         raw_title = policy.canonical_parameters.get("title")
         if policy.action_type == "task.create" and raw_title:
-            display_title = str(raw_title).strip() or "Local task"
+            display_title = str(raw_title).strip() or "任务"
         elif policy.action_type.startswith("wiki.") and raw_title:
-            display_title = f"Wiki: {str(raw_title).strip()}"
+            display_title = f"资料页：{str(raw_title).strip()}"
         elif policy.action_type == "memory.proposal":
-            display_title = "Memory proposal"
+            display_title = "记忆提案"
         else:
-            display_title = f"Action: {policy.action_type}"
+            display_title = _action_type_title(policy.action_type)
         return AgentActionCreate(
             action_type=policy.action_type,
             title=display_title,

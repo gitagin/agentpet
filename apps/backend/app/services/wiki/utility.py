@@ -116,11 +116,11 @@ def _answer_preview(answer: str, limit: int = 320) -> str:
     return compact[:limit].rstrip()
 
 
-def _json_list(values: list[str]) -> str:
+def _dumps_list(values: list[str]) -> str:
     return json.dumps(_unique(values), ensure_ascii=True)
 
 
-def _json_object(value: dict[str, object]) -> str:
+def _dumps_object(value: dict[str, object]) -> str:
     return json.dumps(value, ensure_ascii=True, sort_keys=True)
 
 

@@ -1,7 +1,7 @@
 from .common import *
 from .common import _CachedIngestPreview, _INGEST_PREVIEW_CACHE, _PREVIEW_TOKEN_TTL_SECONDS, _StoredIngestRun
 from .mapping import _map_ingest_review, _map_plan
-from .utility import _json_list
+from .utility import _dumps_list
 
 
 class WikiIngestStorageMixin:
@@ -177,7 +177,7 @@ class WikiIngestStorageMixin:
                     response.status,
                     response.summary,
                     json.dumps([finding.model_dump() for finding in response.findings], ensure_ascii=True),
-                    _json_list(response.recommended_targets),
+                    _dumps_list(response.recommended_targets),
                     response.model_error,
                     now,
                     now,

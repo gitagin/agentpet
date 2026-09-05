@@ -13,6 +13,9 @@ from app.utils.hash import sha256_hex
 from app.utils.time import utc_now_iso
 from app.services.memory_policy import evaluate_memory_content
 
+from app.utils.coerce import compact_text
+from app.utils.sqlite import json_list, json_object
+
 
 @dataclass(frozen=True, slots=True)
 class CompanionConsolidationRunResult:
@@ -218,7 +221,7 @@ class CompanionConsolidationService:
             source_count=int(row["source_count"]),
             output_count=int(row["output_count"]),
             skipped_count=int(row["skipped_count"]),
-            budget={key: int(value) for key, value in _json_object(row["budget_json"]).items()},
+            budget={key: int(value) for key, value in json_object(row["budget_json"]).items()},
             reason=row["reason"],
             fact_ids=tuple(str(item["fact_id"]) for item in fact_rows),
             started_at=row["started_at"],
@@ -227,15 +230,15 @@ class CompanionConsolidationService:
 
 
 def _candidate_from_diary_row(row: sqlite3.Row) -> MemoryFactCandidate | None:
-    people = _json_list(row["people_json"])
-    keywords = _json_list(row["keywords_json"])
+    people = json_list(row["people_json"])
+    keywords = json_list(row["keywords_json"])
     topic = str(row["topic"] or "").strip()
     emotion = str(row["emotion"] or "").strip()
     summary = str(row["summary"] or "")
     if not evaluate_memory_content(" ".join([summary, topic, emotion, *people, *keywords])).allowed:
         return None
     source_hash = _hash_parts(row["id"], row["object_hash"], row["updated_at"])
-    object_value = _compact(
+    object_value = compact_text(
         "; ".join(
             part
             for part in (
@@ -280,26 +283,8 @@ def _candidate_from_diary_row(row: sqlite3.Row) -> MemoryFactCandidate | None:
     )
 
 
-def _json_list(value: str | None) -> list[str]:
-    if not value:
-        return []
-    try:
-        parsed = json.loads(value)
-    except json.JSONDecodeError:
-        return []
-    if not isinstance(parsed, list):
-        return []
-    return [str(item) for item in parsed if str(item).strip()]
 
 
-def _json_object(value: str | None) -> dict[str, object]:
-    if not value:
-        return {}
-    try:
-        parsed = json.loads(value)
-    except json.JSONDecodeError:
-        return {}
-    return parsed if isinstance(parsed, dict) else {}
 
 
 def _hash_parts(*values: object) -> str:
@@ -307,8 +292,3 @@ def _hash_parts(*values: object) -> str:
     return sha256_hex(joined)
 
 
-def _compact(value: str, limit: int) -> str:
-    compacted = " ".join(value.strip().split())
-    if len(compacted) <= limit:
-        return compacted
-    return compacted[: max(0, limit - 3)].rstrip() + "..."

@@ -196,8 +196,8 @@
 
 .wiki-daily-flow {
   display: grid;
-  grid-template-columns: minmax(0, 1.25fr) minmax(280px, 0.75fr);
-  gap: 16px;
+  grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.65fr);
+  gap: 14px;
   align-items: stretch;
   margin-bottom: 16px;
 }
@@ -207,10 +207,42 @@
   display: grid;
   gap: 12px;
   align-content: start;
-  border: 1px solid rgba(255, 255, 255, 0.62);
+  border: 1px solid var(--feature-line);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.64);
-  padding: 14px;
+  background: rgba(255, 255, 255, 0.035);
+  padding: 16px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+}
+
+.feature-shell .wiki-daily-primary {
+  border-color: rgba(213, 111, 138, 0.22);
+  background:
+    linear-gradient(180deg, rgba(213, 111, 138, 0.055), rgba(255, 255, 255, 0.018) 38%),
+    rgba(10, 11, 16, 0.72);
+}
+
+.feature-shell .wiki-daily-preview {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.feature-shell .wiki-daily-primary > .section-heading,
+.feature-shell .wiki-daily-preview > .section-heading {
+  padding-bottom: 2px;
+}
+
+.feature-shell .wiki-daily-primary > label,
+.feature-shell .wiki-daily-primary .wiki-daily-grid > label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.feature-shell .wiki-daily-primary > label > span,
+.feature-shell .wiki-daily-primary .wiki-daily-grid > label > span {
+  color: var(--feature-soft);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
 }
 
 .wiki-daily-grid {
@@ -230,11 +262,11 @@
 }
 
 .wiki-flow-steps span {
-  border: 1px solid rgba(67, 121, 96, 0.16);
+  border: 1px solid rgba(98, 184, 148, 0.2);
   border-radius: 8px;
-  background: rgba(247, 252, 249, 0.76);
-  color: #406658;
-  padding: 7px 8px;
+  background: rgba(98, 184, 148, 0.06);
+  color: #9ad8b7;
+  padding: 8px;
   font-size: 12px;
   font-weight: 800;
   line-height: 1.25;
@@ -244,17 +276,17 @@
 
 .wiki-target-type-picker {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(126px, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 8px;
 }
 
 .wiki-target-type-button {
-  min-height: 70px;
+  min-height: 78px;
   display: grid;
   align-content: start;
   justify-items: start;
   gap: 5px;
-  border-color: var(--color-border);
+  border-color: rgba(255, 255, 255, 0.1);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.038);
   box-shadow: none;
@@ -271,9 +303,10 @@
 }
 
 .wiki-target-type-button.active {
-  border-color: rgba(213, 111, 138, 0.3);
-  background: rgba(213, 111, 138, 0.095);
+  border-color: rgba(240, 138, 164, 0.58);
+  background: rgba(213, 111, 138, 0.14);
   color: var(--color-primary-strong);
+  box-shadow: inset 0 0 0 1px rgba(240, 138, 164, 0.12);
 }
 
 .wiki-target-type-button strong,
@@ -294,7 +327,7 @@
 }
 
 .wiki-daily-primary textarea {
-  min-height: 150px;
+  min-height: 174px;
   resize: vertical;
 }
 
@@ -308,7 +341,7 @@
   gap: 5px;
   border: 1px solid rgba(35, 72, 84, 0.12);
   border-radius: 8px;
-  background: rgba(249, 252, 252, 0.86);
+  background: rgba(255, 255, 255, 0.045);
   padding: 10px 11px;
 }
 
@@ -347,6 +380,77 @@
   font-size: 12px;
   line-height: 1.4;
   overflow-wrap: anywhere;
+}
+
+.feature-shell .wiki-preview-plan-card strong,
+.feature-shell .wiki-apply-summary strong {
+  color: var(--feature-ink);
+}
+
+.feature-shell .wiki-preview-plan-card span,
+.feature-shell .wiki-preview-plan-card small,
+.feature-shell .wiki-apply-summary span {
+  color: var(--feature-soft);
+}
+
+.feature-shell .advanced-vault-maintenance {
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.018);
+  padding: 0;
+}
+
+.feature-shell .advanced-vault-maintenance > summary {
+  display: grid;
+  gap: 4px;
+  padding: 13px 15px;
+  color: var(--feature-soft);
+  cursor: pointer;
+  list-style-position: inside;
+}
+
+.feature-shell .advanced-vault-maintenance > summary strong {
+  color: var(--feature-ink);
+  font-size: 13px;
+}
+
+.feature-shell .advanced-vault-maintenance > summary span {
+  color: var(--feature-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.feature-shell .advanced-vault-maintenance[open] > summary {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.feature-shell .advanced-vault-maintenance > form {
+  padding: 14px 15px 16px;
+}
+
+@media (max-width: 860px) {
+  .wiki-daily-flow {
+    grid-template-columns: 1fr;
+  }
+
+  .wiki-target-type-picker {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .wiki-daily-primary,
+  .wiki-daily-preview {
+    padding: 13px;
+  }
+
+  .wiki-target-type-picker {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .wiki-flow-steps {
+    grid-template-columns: 1fr;
+  }
 }
 
 .wiki-browser-shell {

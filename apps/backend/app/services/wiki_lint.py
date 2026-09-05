@@ -842,7 +842,7 @@ def _repair_proposal(
     if issue.code in {"wiki_index_stale", "wiki_file_not_indexed", "wiki_vector_missing"}:
         return WikiLintRepairProposal(
             issue_code=issue.code,
-            title="Refresh Wiki index",
+            title="刷新 Wiki 索引",
             target_path=issue.path,
             operation="reindex",
             reason=issue.message,
@@ -852,7 +852,7 @@ def _repair_proposal(
     if issue.code == "wiki_index_missing_file":
         return WikiLintRepairProposal(
             issue_code=issue.code,
-            title="Review missing indexed Wiki file",
+            title="检查缺失索引的 Wiki 文件",
             target_path=issue.path,
             operation="delete_index_record",
             reason=issue.message,
@@ -863,7 +863,7 @@ def _repair_proposal(
         target_path = f"{WIKI_ROOT}/Concepts/{_slugify(issue.target)}.md"
         return WikiLintRepairProposal(
             issue_code=issue.code,
-            title=f"Create concept page for {issue.target}",
+            title=f"为 {issue.target} 创建概念页",
             target_path=target_path,
             operation="create",
             reason=issue.message,
@@ -875,7 +875,7 @@ def _repair_proposal(
         link_text = page.title if page else Path(issue.path).stem
         return WikiLintRepairProposal(
             issue_code=issue.code,
-            title=f"Link orphan page {link_text}",
+            title=f"为孤立页面 {link_text} 添加链接",
             target_path=f"{WIKI_ROOT}/index.md",
             operation="append",
             reason=issue.message,
@@ -886,7 +886,7 @@ def _repair_proposal(
         paths = [path.strip() for path in (issue.target or "").split(",") if path.strip()]
         return WikiLintRepairProposal(
             issue_code=issue.code,
-            title="Merge or disambiguate duplicate Wiki pages",
+            title="合并或消歧重复的 Wiki 页面",
             target_path=issue.path,
             operation="review",
             reason=issue.message,
@@ -896,7 +896,7 @@ def _repair_proposal(
     if issue.code in {"wiki_contradiction_marker", "graph_conflict_candidate"}:
         return WikiLintRepairProposal(
             issue_code=issue.code,
-            title="Resolve contradiction candidate",
+            title="处理冲突候选",
             target_path=issue.path,
             operation="review",
             reason=issue.message,
@@ -906,7 +906,7 @@ def _repair_proposal(
     if issue.code == "wiki_stale_marker":
         return WikiLintRepairProposal(
             issue_code=issue.code,
-            title="Refresh stale Wiki claim",
+            title="刷新过期的 Wiki 声明",
             target_path=issue.path,
             operation="replace_section",
             reason=issue.message,
@@ -919,7 +919,7 @@ def _repair_proposal(
         title = page.title if page else Path(issue.path).stem
         return WikiLintRepairProposal(
             issue_code=issue.code,
-            title="Review Wiki page contract",
+            title="检查 Wiki 页面契约",
             target_path=issue.path,
             operation="review",
             reason=issue.message,
@@ -943,7 +943,7 @@ def _repair_proposal(
     }:
         return WikiLintRepairProposal(
             issue_code=issue.code,
-            title="Complete Wiki page contract",
+            title="补全 Wiki 页面契约",
             target_path=issue.path,
             operation="review",
             reason=issue.message,
@@ -953,7 +953,7 @@ def _repair_proposal(
     if issue.code in {"wiki_index_entry_missing", "wiki_core_file_missing", "wiki_log_entry_missing"}:
         return WikiLintRepairProposal(
             issue_code=issue.code,
-            title="Repair Wiki core metadata",
+            title="修复 Wiki 核心元数据",
             target_path=issue.path,
             operation="append" if issue.code != "wiki_core_file_missing" else "create",
             reason=issue.message,

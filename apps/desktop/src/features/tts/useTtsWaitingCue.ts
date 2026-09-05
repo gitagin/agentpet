@@ -1,8 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 
-import type { TtsProviderId, TtsSynthesisRequest, TtsSynthesisResult, TtsVoice } from "./ttsTypes";
-import { clampTtsVolume, TtsProviderError, type TtsProvider } from "./ttsProvider";
-import type { TtsProviderRegistry } from "./useTtsPlaybackQueue";
+import type { TtsProviderId, TtsSynthesisResult, TtsVoice } from "./ttsTypes";
+import { clampTtsVolume, type TtsProvider } from "./ttsProvider";
+import {
+  buildSynthesisRequest,
+  synthesisCacheKey,
+  useTtsProviderFallback,
+  type TtsProviderRegistry,
+} from "./ttsFallback";
 
 const defaultWaitingCuePrompts = [
   "\u6211\u60f3\u4e00\u4e0b\u3002",
@@ -66,7 +71,6 @@ export function useTtsWaitingCue({
   const cacheRef = useRef<Map<string, CachedWaitingCue>>(new Map());
   const activeRef = useRef<ActiveWaitingCue | null>(null);
   const runIdRef = useRef(0);
-  const unavailableProvidersRef = useRef<Set<TtsProviderId>>(new Set());
   const optionsRef = useRef({
     enabled,
     providers,
@@ -93,9 +97,12 @@ export function useTtsWaitingCue({
     };
   }, [cueSpeed, enabled, fallbackProvider, providers, provider, promptList, speed, voice, volume]);
 
-  useEffect(() => {
-    unavailableProvidersRef.current.clear();
-  }, [fallbackProvider, provider, voice]);
+  const providerResetKey = useMemo(() => [provider, voice] as const, [provider, voice]);
+  const { resolveProviderId, synthesizeWithFallback } = useTtsProviderFallback({
+    providers,
+    fallbackProvider,
+    resetKey: providerResetKey,
+  });
 
   const disposeCue = useCallback((cue: CachedWaitingCue) => {
     cue.controller.abort();
@@ -122,55 +129,21 @@ export function useTtsWaitingCue({
     active.provider.stop?.(reason);
   }, []);
 
-  const fallbackProviderFor = useCallback((providerId: TtsProviderId) => {
-    const { fallbackProvider: fallbackProviderId, providers: registry } = optionsRef.current;
-    if (!fallbackProviderId || fallbackProviderId === providerId || !registry[fallbackProviderId]) {
-      return null;
-    }
-    return fallbackProviderId;
-  }, []);
-
-  const providerIdForPrompt = useCallback(() => {
-    const { provider: providerId, providers: registry } = optionsRef.current;
-    const fallbackProviderId = fallbackProviderFor(providerId);
-    if ((!registry[providerId] || unavailableProvidersRef.current.has(providerId)) && fallbackProviderId) {
-      return fallbackProviderId;
-    }
-    return providerId;
-  }, [fallbackProviderFor]);
+  const providerIdForPrompt = useCallback(
+    () => resolveProviderId(optionsRef.current.provider),
+    [resolveProviderId],
+  );
 
   const cacheKeyForPrompt = useCallback((prompt: string, providerId: TtsProviderId) => {
-    const {
-      voice: selectedVoice,
-      cueSpeed: selectedCueSpeed,
-      volume: selectedVolume,
-    } = optionsRef.current;
-    const voice = selectedVoice?.provider === providerId ? selectedVoice : null;
-    return JSON.stringify({
+    const { voice: selectedVoice, cueSpeed: selectedCueSpeed, volume: selectedVolume } = optionsRef.current;
+    return synthesisCacheKey({
       text: prompt,
       provider: providerId,
-      voice: voice?.id ?? null,
+      voice: selectedVoice,
       speed: selectedCueSpeed,
       volume: selectedVolume,
       cacheEnabled: true,
     });
-  }, []);
-
-  const requestForPrompt = useCallback((prompt: string, providerId: TtsProviderId): TtsSynthesisRequest => {
-    const {
-      voice: selectedVoice,
-      cueSpeed: selectedCueSpeed,
-      volume: selectedVolume,
-    } = optionsRef.current;
-    return {
-      requestId: `waiting-cue:${providerId}:${prompt}`,
-      text: prompt,
-      provider: providerId,
-      voice: selectedVoice?.provider === providerId ? selectedVoice : null,
-      speed: selectedCueSpeed,
-      volume: selectedVolume,
-      cacheEnabled: true,
-    };
   }, []);
 
   const synthesizePrompt = useCallback(
@@ -180,27 +153,27 @@ export function useTtsWaitingCue({
       signal: AbortSignal,
       onResolvedProvider?: (provider: TtsProvider<TtsSynthesisResult>) => void,
     ) => {
-      const provider = optionsRef.current.providers[providerId];
-      if (!provider) {
-        throw new Error(`TTS provider ${providerId} is not configured.`);
-      }
-      try {
-        return await provider.synthesize(requestForPrompt(prompt, providerId), signal);
-      } catch (error) {
-        const fallbackProviderId = fallbackProviderFor(providerId);
-        if (!isProviderConfigurationError(error) || !fallbackProviderId || signal.aborted) {
-          throw error;
-        }
-        const fallback = optionsRef.current.providers[fallbackProviderId];
-        if (!fallback) {
-          throw error;
-        }
-        unavailableProvidersRef.current.add(providerId);
-        onResolvedProvider?.(fallback);
-        return fallback.synthesize(requestForPrompt(prompt, fallbackProviderId), signal);
-      }
+      return synthesizeWithFallback({
+        providerId,
+        signal,
+        buildRequest: (requestProviderId) => {
+          const { voice: selectedVoice, cueSpeed: selectedCueSpeed, volume: selectedVolume } = optionsRef.current;
+          return buildSynthesisRequest(
+            {
+              requestId: `waiting-cue:${requestProviderId}:${prompt}`,
+              speed: selectedCueSpeed,
+              volume: selectedVolume,
+              cacheEnabled: true,
+            },
+            prompt,
+            requestProviderId,
+            selectedVoice,
+          );
+        },
+        onResolvedProvider,
+      });
     },
-    [fallbackProviderFor, requestForPrompt],
+    [synthesizeWithFallback],
   );
 
   const ensureCachedPrompt = useCallback(
@@ -361,12 +334,4 @@ export function useTtsWaitingCue({
     stop,
     prefetch,
   };
-}
-
-function isProviderConfigurationError(error: unknown): boolean {
-  return error instanceof TtsProviderError && (
-    error.playbackError.code === "authentication_failed" ||
-    error.playbackError.code === "credential_missing" ||
-    error.playbackError.code === "provider_not_configured"
-  );
 }

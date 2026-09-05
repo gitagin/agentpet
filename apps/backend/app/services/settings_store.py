@@ -14,6 +14,7 @@ from pathlib import Path
 
 from app.storage.database import Database, configure_connection
 from app.utils.hash import sha256_hex
+from app.utils.sqlite import table_exists
 
 from .settings_models import SettingsModelsMixin
 from .settings_preferences import SettingsPreferencesMixin
@@ -248,11 +249,7 @@ class SettingsStore(SettingsPreferencesMixin, SettingsModelsMixin):
             )
 
     def _table_exists(self, table_name: str) -> bool:
-        row = self.conn.execute(
-            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
-            (table_name,),
-        ).fetchone()
-        return row is not None
+        return table_exists(self.conn, table_name)
 
 
 def initialize_settings_store(database: Database) -> None:

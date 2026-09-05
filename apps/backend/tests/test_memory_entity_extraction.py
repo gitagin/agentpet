@@ -108,7 +108,77 @@ def test_model_batch_persists_candidates_only(tmp_path) -> None:
         assert result.claim_ids
         claim = store.get(next(iter(result.claim_ids.values())))
         assert claim.status.value == "candidate"
-        assert all(entity.status == "candidate" for entity in result.entities.values())
+        # 自指实体「我」映射到唯一的 self 实体（active，用户本人锚点），
+        # 其余实体（Atlas 项目）保持候选态等待确认。
+        self_entity = next(entity for entity in result.entities.values() if entity.entity_type == "self")
+        assert self_entity.status == "active"
+        assert all(
+            entity.status == "candidate"
+            for entity in result.entities.values()
+            if entity.entity_type != "self"
+        )
+    finally:
+        store.close()
+
+
+def test_self_reference_maps_to_singleton_self_entity_regardless_of_model_type(tmp_path) -> None:
+    """模型把「我」误标成 person/concept 时，仍应映射到唯一 self 实体，不产生重复点。"""
+    text = "我喜欢喝牛奶"
+    payload = {
+        "schema_version": EXTRACTION_SCHEMA_VERSION,
+        "entities": [
+            {
+                "entity_ref": "me",
+                "entity_type": "person",
+                "name": "我",
+                "aliases": [],
+                "confidence": 0.9,
+                "evidence": {"start": 0, "end": 1},
+            },
+            {
+                "entity_ref": "milk",
+                "entity_type": "preference",
+                "name": "牛奶",
+                "aliases": [],
+                "confidence": 0.9,
+                "evidence": {"start": 4, "end": 6},
+            },
+        ],
+        "claims": [],
+        "relations": [
+            {
+                "subject": {"kind": "entity", "ref": "me"},
+                "relation": "prefers",
+                "object": {"kind": "entity", "ref": "milk"},
+                "confidence": 0.9,
+                "evidence": {"start": 0, "end": 6},
+            }
+        ],
+        "sensitive": [],
+        "conflicts": [],
+        "uncertainties": [],
+    }
+    batch = parse_extraction_output(payload, text)
+    store = MemoryEntityGraphStore(migrate_db(tmp_path / "state.sqlite3"))
+    try:
+        result = persist_extraction_candidates(
+            store,
+            batch,
+            source_text=text,
+            source_type="user_message",
+            source_id="message-self",
+        )
+        me = result.entities["me"]
+        assert me.entity_type == "self"
+        assert me.status == "active"
+        assert me.entity_key == "entity:self"
+        # 只有唯一一个 self 实体，没有新建 person「我」重复点
+        assert store.conn.execute(
+            "SELECT COUNT(*) FROM memory_entities WHERE entity_type = 'self'"
+        ).fetchone()[0] == 1
+        assert store.conn.execute(
+            "SELECT COUNT(*) FROM memory_entities WHERE entity_type = 'person'"
+        ).fetchone()[0] == 0
     finally:
         store.close()
 
@@ -183,8 +253,9 @@ def test_high_risk_and_flagged_batches_cannot_be_activated(tmp_path) -> None:
     store = MemoryEntityGraphStore(migrate_db(tmp_path / "state.sqlite3"))
     try:
         high_payload = _payload()
-        high_payload["entities"][0] = {
-            **high_payload["entities"][0],
+        # 用非自指的 Atlas 项目实体验证高风险拦截：自指「我」会映射到低风险 self 实体。
+        high_payload["entities"][1] = {
+            **high_payload["entities"][1],
             "risk_tier": "high",
         }
         high_batch = parse_extraction_output(high_payload, text)
@@ -234,9 +305,12 @@ def test_sensitive_fact_source_fails_before_entity_activation(tmp_path) -> None:
         with pytest.raises(ExtractionValidationError, match="sensitive_fact"):
             activate_extraction_candidates(store, resolved, explicit_user=True)
 
+        self_entity = next(entity for entity in resolved.entities.values() if entity.entity_type == "self")
+        assert self_entity.status == "active"
         assert all(
-            store.get_entity(entity.id).status == "candidate"
+            entity.status == "candidate"
             for entity in resolved.entities.values()
+            if entity.entity_type != "self"
         )
         assert all(
             store.get(fact_id).status.value == "candidate"

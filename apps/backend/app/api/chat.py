@@ -26,6 +26,7 @@ from ..agents.events import (
 from ..errors import AppError
 from ..agents.events import sse_stream
 from ..agents.state import AgentState
+from ..agents.intent import route_intent
 from ..models.api import ChatAcceptedResponse, ChatDailyHistoryMessage, ChatDailyHistoryResponse, ChatRequest
 from ..services.agent_actions import AutomationPolicy
 from ..services.chat_pipeline import agent_action_event, archive_chat_memory, automation_settings
@@ -34,7 +35,7 @@ from ..services.post_reply_memory_jobs import PostReplyMemoryJobRecord, PostRepl
 from ..services.product_metrics import ProductMetricsService
 from ..services.prompt_context_types import PromptRecentTurn
 from ..models.common import new_id
-from ..models.enums import AgentId, AgentRunStatus, ConversationStatus, MessageRole, MessageStatus
+from ..models.enums import AgentId, AgentIntent, AgentRunStatus, ConversationStatus, MessageRole, MessageStatus
 from ..storage.database import Database
 from ..utils.time import utc_now_iso
 from ..agents.retrieval.compression import gate_evidence
@@ -946,7 +947,7 @@ async def _run_persisted_post_reply_job(
         await worker(context, state, assistant_message_id, final_text, job_id=job_id)
         return
 
-    # Older tests/extensions replace the worker with a four-argument function.
+    # Older extensions replace the worker with a four-argument function.
     # Claim and finalize around that function so even the compatibility path
     # preserves the same at-most-one active executor guarantee.
     database_instance = _post_reply_database(context)
@@ -1202,10 +1203,39 @@ async def _create_continuity_proposals(
         )
         return
 
+    # 用户明确在查询记忆/近期对话时，不要生成"下次接着聊"提案——
+    # 那会让"我刚刚说了什么"这类查询得到"我不知道"+ 建议保存话题的割裂体验。
+    if route_intent(state.user_message).intent == AgentIntent.SEARCH_MEMORY:
+        proposals = [proposal for proposal in proposals if proposal.kind != "open_thread"]
+
     try:
         automation = automation_settings(request)
         policy = AutomationPolicy()
         for proposal in proposals:
+            # 「下次接着聊」是纯陪伴增强：只记住一个未完话题供下次自然接上，
+            # 没有任何写入风险。要求用户打开记忆页手动决定既不现实也无必要，
+            # 因此直接自动确认；确认失败才降级为待确认兜底。
+            if proposal.kind == "open_thread":
+                try:
+                    from .services.adapters import execute_continuity_activation
+
+                    outcome = await execute_continuity_activation(
+                        request,
+                        proposal_id=proposal.id,
+                        kind=proposal.kind,
+                        source_message_id=proposal.source_message_id,
+                        source_run_id=state.agent_run_id,
+                        source_conversation_id=state.conversation_id,
+                    )
+                    if outcome.receipt.status == "verified":
+                        yield agent_action_event(state.agent_run_id, outcome.action)
+                        continue
+                except Exception:
+                    logger.warning(
+                        "Open-thread continuity auto-confirm failed for proposal_id=%s; leaving it pending.",
+                        proposal.id,
+                        exc_info=True,
+                    )
             decision = policy.decide(
                 f"continuity.{proposal.kind}",
                 confidence=proposal.confidence,

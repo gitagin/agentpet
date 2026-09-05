@@ -2,7 +2,9 @@ import { Check, Clock3, ExternalLink, History, RefreshCw, ShieldAlert, X } from 
 import { useMemo } from "react";
 import type { ReactNode } from "react";
 import type { AgentActivityLogEntry } from "../../services/agentActivity";
+import { formatDate } from "../../services/dateFormatting";
 import type { MemoryProposal, MemoryGraphResponse } from "../../types";
+import { relationLabelOf } from "./relationTypeLabels";
 import type { MemoryGraphEdgeItem, MemoryGraphNodeItem } from "./useMemoryGraphWorkspace";
 
 type MemoryTimelineWorkspaceProps = {
@@ -53,18 +55,6 @@ function safe(value: string | null | undefined, fallback: string): string {
   return text && !unsafeText.test(text) ? text : fallback;
 }
 
-function formatDate(value: string): string {
-  const timestamp = Date.parse(value);
-  if (Number.isNaN(timestamp)) {
-    return "时间未记录";
-  }
-  return new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(timestamp));
-}
-
-function relationName(type: string): string {
-  return ({ prefers: "偏好", avoids: "避免", works_on: "正在做", knows: "了解", related_to: "关联", occurred_in: "发生于", supports: "支持", contradicts: "冲突", supersedes: "替代", derived_from: "派生自", documented_in: "记录于" } as Record<string, string>)[type] || "关系";
-}
-
 function proposalTitle(proposal: MemoryProposal): string {
   return proposal.type === "preference" ? "一条偏好等待确认" : proposal.type === "goal" ? "一个目标等待确认" : "一条记忆等待确认";
 }
@@ -103,7 +93,7 @@ export function MemoryTimelineWorkspace({
     const edgeItems: TimelineItem[] = (graph?.edges || []).map((edge) => ({
       id: `edge:${edge.edge_id}`,
       at: edge.updated_at || new Date(0).toISOString(),
-      title: `${safe(nodeById.get(edge.source_node_id)?.label, "实体")} ${relationName(edge.relation_type)} ${safe(nodeById.get(edge.target_node_id)?.label, "实体")}`,
+      title: `${safe(nodeById.get(edge.source_node_id)?.label, "实体")} ${relationLabelOf(edge.relation_type)} ${safe(nodeById.get(edge.target_node_id)?.label, "实体")}`,
       detail: `${edge.evidence_count ?? 0} 个来源 · 置信度 ${Math.round((edge.confidence || 0) * 100)}%`,
       status: edge.relation_type === "contradicts" || edge.status === "conflict" ? "冲突" : statusLabels[edge.status] || "使用中",
       tone: edge.relation_type === "contradicts" || edge.status === "conflict" ? "conflict" : "active",
@@ -139,7 +129,7 @@ export function MemoryTimelineWorkspace({
       <div className="llmwiki-timeline-heading"><span><History size={16} aria-hidden="true" /><strong>最近变化</strong></span><span>{timeline.length} 条</span></div>
       {loading ? <div className="llmwiki-state" role="status">正在读取生命周期…</div> : timeline.length ? (
         <div className="llmwiki-timeline-list">
-          {timeline.map((item) => <article key={item.id} className={`llmwiki-timeline-row is-${item.tone}`}><time dateTime={item.at}>{formatDate(item.at)}</time><span className="llmwiki-timeline-marker" aria-hidden="true" /><div className="llmwiki-timeline-copy"><div><strong>{item.title}</strong><span className="llmwiki-status-label">{item.status}</span></div><p>{item.detail}</p>{item.node ? <button type="button" className="text-button" onClick={() => onSelectNode(item.node!.node_id)}>打开证据链 <ExternalLink size={13} /></button> : item.edge ? <button type="button" className="text-button" onClick={() => onSelectEdge(item.edge!.edge_id)}>打开证据链 <ExternalLink size={13} /></button> : null}</div></article>)}
+          {timeline.map((item) => <article key={item.id} className={`llmwiki-timeline-row is-${item.tone}`}><time dateTime={item.at}>{formatDate(item.at)}</time><span className="llmwiki-timeline-marker" aria-hidden="true" /><div className="llmwiki-timeline-copy"><div><strong>{item.title}</strong><span className={`llmwiki-status-label is-${item.tone}`}>{item.status}</span></div><p>{item.detail}</p>{item.node ? <button type="button" className="text-button" onClick={() => onSelectNode(item.node!.node_id)}>打开证据链 <ExternalLink size={13} /></button> : item.edge ? <button type="button" className="text-button" onClick={() => onSelectEdge(item.edge!.edge_id)}>打开证据链 <ExternalLink size={13} /></button> : null}</div></article>)}
         </div>
       ) : (
         <div className="llmwiki-empty-state"><Clock3 size={19} /><strong>还没有生命周期记录</strong><p>添加一条明确记忆或导入来源后，确认和纠正会出现在这里。</p><div className="llmwiki-empty-actions"><button type="button" className="primary" onClick={onOpenChat}>添加记忆</button><button type="button" className="secondary" onClick={onOpenSources}>导入来源</button></div></div>

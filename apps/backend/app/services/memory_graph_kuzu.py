@@ -26,6 +26,7 @@ from app.services.memory_entity_graph import (
     _fact_row_recallable,
     _relation_row_recallable,
 )
+from app.services.memory_taxonomy import LOW_CONFIDENCE_THRESHOLD
 from app.services.wiki_reconciler import reconcile_wiki_vault
 from app.storage.database import open_database_connection
 
@@ -325,12 +326,12 @@ class KuzuGraphService:
                 """
             ).fetchall()
             candidate_facts = self.conn.execute(
-                """
+                f"""
                 SELECT f.*
                 FROM memory_graph_facts f
                 WHERE f.statement_kind IN ('claim', 'relation')
                   AND f.status = 'active'
-                  AND f.confidence >= 0.65
+                  AND f.confidence >= {LOW_CONFIDENCE_THRESHOLD}
                 ORDER BY f.id
                 """
             ).fetchall()

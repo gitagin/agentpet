@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Callable, Iterable, Mapping
 
+from app.models.enums import MemoryFactStatus
 from app.services.long_term_memory import extract_long_term_memory_candidate
 from app.services.memory_candidates import (
     MemoryCandidateCreate,
@@ -229,7 +230,7 @@ class MemoryConsolidationService:
             return _CandidateSpec(
                 memory_kind=MemoryKind.INFERENCE,
                 memory_scope=MemoryScope.SENSITIVE,
-                summary="Sensitive content was rejected during slow memory consolidation.",
+                summary="慢整合阶段拒绝了敏感内容，未写入记忆。",
                 normalized_value=f"safety_event:{reason}",
                 evidence_text="",
                 evidence_source_type=source_name,
@@ -361,6 +362,28 @@ class MemoryConsolidationService:
                     predicate="is",
                     value=preference,
                 ),
+            )
+
+        # 兜底：显式"记住/记得"但偏好/资料/assignment 提取器都不命中时，
+        # 剥离命令前缀后把剩余内容作为显式事实候选沉淀，避免
+        # "记住:我下周要去北京出差"这类内容在慢记忆整合里静默丢失。
+        # 这里不生成 graph_claim（无法从自由文本确定三元组），只落候选。
+        from app.agents.runtime_helpers import _strip_memory_command
+
+        content = _strip_memory_command(user_text)
+        if content and content != user_text:
+            return _CandidateSpec(
+                memory_kind=MemoryKind.FACT,
+                memory_scope=MemoryScope.GLOBAL,
+                summary=_trim_value(content, limit=220),
+                normalized_value=f"fact:{content.casefold()}",
+                evidence_text=user_text,
+                evidence_source_type="chat_message",
+                source_track=SourceTrack.EXPLICIT_USER,
+                confidence=0.85,
+                importance=0.7,
+                status=LifecycleStatus.ACTIVE,
+                reason="explicit_remember_fallback",
             )
         return None
 
@@ -556,14 +579,29 @@ class MemoryConsolidationService:
                 metadata={"consolidation_reason": spec.reason},
             )
             candidate = self.store.get_candidate(candidate.id)
-        graph_fact_id, graph_status = self._materialize_explicit_fact(
-            spec,
-            candidate=candidate,
-            evidence=evidence,
-            conversation_id=conversation_id,
-            user_message_id=user_message_id,
-            agent_run_id=agent_run_id,
-        )
+        try:
+            graph_fact_id, graph_status = self._materialize_explicit_fact(
+                spec,
+                candidate=candidate,
+                evidence=evidence,
+                conversation_id=conversation_id,
+                user_message_id=user_message_id,
+                agent_run_id=agent_run_id,
+            )
+        except EntityGraphError:
+            # graph claim 因歧义/身份冲突无法安全写入时，降级为待确认候选，
+            # 而不是让整个 consolidate 报错并留下"active 候选但无 graph fact"
+            # 的半激活状态 + 孤儿数据。
+            graph_fact_id, graph_status = None, None
+            if candidate.status is LifecycleStatus.ACTIVE:
+                self.store.transition(
+                    candidate_id=candidate.id,
+                    to_status=LifecycleStatus.CANDIDATE,
+                    reason="explicit_graph_materialization_failed",
+                    source_agent_run_id=agent_run_id,
+                    source_message_id=user_message_id,
+                    metadata={"consolidation_reason": spec.reason},
+                )
         candidate = self.store.get_candidate(candidate.id)
         if evidence is not None:
             evidence = self.store.get_evidence(evidence.id)
@@ -604,6 +642,32 @@ class MemoryConsolidationService:
             return None, None
         if candidate.fact_id:
             fact = graph.get(candidate.fact_id)
+            # 显式记忆命中既有候选/隔离事实时，用户明确要求记住，
+            # 应把它激活；否则显式事实永不激活、永远不可召回。
+            if fact.status in {MemoryFactStatus.CANDIDATE, MemoryFactStatus.QUARANTINED}:
+                fact = graph.update_status(fact.id, MemoryFactStatus.ACTIVE, reason="explicit_user_memory")
+        elif spec.memory_kind is MemoryKind.PREFERENCE:
+            # 偏好声明：创建偏好实体（如「苹果」）+「自己 prefers 实体」关系边，
+            # 而不是落一条 subject 为关系类型名的整句 claim（那是「偏好 is 吃苹果」错误的来源）。
+            self_entity = graph.ensure_self()
+            preference_entity = _find_or_create_explicit_entity(
+                graph,
+                entity_type="preference",
+                subject=claim.value,
+                confidence=candidate.confidence,
+            )
+            fact = graph.create_relation(
+                relation_type="prefers",
+                subject_entity_id=self_entity.id,
+                object_entity_id=preference_entity.id,
+                source_text=spec.evidence_text,
+                source_type="explicit_user",
+                confidence=candidate.confidence,
+                evidence_id=evidence.id,
+            )
+            graph.bind_entity_evidence(entity_id=preference_entity.id, evidence_id=evidence.id, role="describes")
+            self.store.attach_fact(candidate.id, fact.id)
+            candidate = self.store.get_candidate(candidate.id)
         else:
             entity = _find_or_create_explicit_entity(
                 graph,
@@ -823,8 +887,8 @@ def _looks_like_preference_subject(subject: str) -> bool:
 
 def _summary_for_subject_value(*, kind: MemoryKind, subject: str, value: str) -> str:
     if kind is MemoryKind.PREFERENCE:
-        return f"User preference for {subject}: {value}."
-    return f"User stated {subject}: {value}."
+        return f"偏好：{value}"
+    return f"用户陈述：{subject} = {value}"
 
 
 def _explicit_graph_claim(
@@ -836,15 +900,19 @@ def _explicit_graph_claim(
 ) -> _GraphClaimSpec | None:
     normalized_subject = _trim_value(subject, limit=80)
     normalized_value = _trim_value(value, limit=200)
-    if not normalized_subject or not normalized_value:
+    if not normalized_value:
         return None
     if memory_kind is MemoryKind.PREFERENCE:
+        # 偏好事实的主语是「自己」（self），关系类型是「偏好」；
+        # 不要生成 entity_type="preference"、name="偏好" 的错误实体。
         return _GraphClaimSpec(
-            entity_type="preference",
-            subject=normalized_subject,
-            predicate=_trim_value(predicate, limit=80) or "is",
+            entity_type="self",
+            subject="自己",
+            predicate="偏好",
             value=normalized_value,
         )
+    if not normalized_subject:
+        return None
     return _GraphClaimSpec(
         entity_type="self",
         subject="自己",

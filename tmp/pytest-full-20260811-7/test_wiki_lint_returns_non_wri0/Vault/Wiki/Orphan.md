@@ -1,3 +1,0 @@
-# Orphan
-
-Unlinked page.

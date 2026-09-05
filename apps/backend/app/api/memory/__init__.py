@@ -1,10 +1,9 @@
-"""记忆 API：按域拆分的路由包（backlog #12，替代原 1600+ 行的 memory.py）。
+"""记忆 API：按领域组织的路由包。
 
 拆分约束：
-- 所有 URL 与端点函数名保持不变——openapi operationId、代理白名单契约测试
-  （tests/test_renderer_allowlist_contract.py）与前端类型生成都锚定它们。
+- 所有 URL 与端点函数名保持稳定，OpenAPI operationId、代理白名单与前端类型生成都锚定它们。
 - 每个子模块自带 ``APIRouter(prefix="/memory", tags=["memory"])``，
-  契约测试按文件独立解析 prefix，聚合路由本身不再加前缀。
+  聚合路由本身不再重复添加前缀。
 """
 
 from __future__ import annotations

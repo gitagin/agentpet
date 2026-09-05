@@ -14,7 +14,7 @@ from ..services.local_state_reset import (
     LocalStateResetService,
     MemoryStateResetService,
 )
-from .wiring import cached_active_vault_id, clear_cached_active_vault_id, database, production_action_lifecycle
+from .wiring import active_vault_root, cached_active_vault_id, clear_cached_active_vault_id, database, production_action_lifecycle
 from .wiring import refresh_retrieval_vector_index, reminder_scheduler, reset_chat_runs
 
 router = APIRouter(prefix="/diagnostics", tags=["diagnostics"])
@@ -185,7 +185,11 @@ async def reset_memory_state(request: Request, reset_request: LocalStateResetReq
             message=f"请输入确认词 {MEMORY_RESET_CONFIRMATION_TEXT} 后再重置记忆状态。",
             status_code=status.HTTP_400_BAD_REQUEST,
         )
-    service = MemoryStateResetService(database(request), get_settings().data_dir)
+    try:
+        vault_root = active_vault_root(request)
+    except AppError:
+        vault_root = None
+    service = MemoryStateResetService(database(request), get_settings().data_dir, vault_root=vault_root)
     result = service.reset()
     reset_chat_runs(request)
     return LocalStateResetResponse(

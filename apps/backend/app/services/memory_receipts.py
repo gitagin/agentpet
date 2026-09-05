@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import re
 import sqlite3
 from dataclasses import dataclass, field
@@ -11,6 +10,9 @@ from app.services.memory_policy import evaluate_memory_content
 from app.services.memory_taxonomy import LOW_CONFIDENCE_THRESHOLD, MemoryKind, MemoryScope, RiskTier
 from app.storage.database import open_database_connection
 from app.utils.time import utc_now_iso
+
+from app.utils.coerce import clamp_unit_interval
+from app.utils.sqlite import json_object, table_exists
 
 
 REDACTED_DETAIL = "这条内容包含敏感或不适合展示的细节，我没有展示原文。"
@@ -63,7 +65,7 @@ class MemoryReceiptService:
         return MemoryReceipt(generated_at=utc_now_iso(), items=deduped[:capped])
 
     def _candidate_receipts(self, agent_run_id: str, limit: int) -> list[MemoryReceiptItem]:
-        if not _table_exists(self.conn, "memory_candidates") or not _table_exists(self.conn, "memory_evidence"):
+        if not table_exists(self.conn, "memory_candidates") or not table_exists(self.conn, "memory_evidence"):
             return []
         rows = self.conn.execute(
             """
@@ -82,7 +84,7 @@ class MemoryReceiptService:
         return [_candidate_receipt(row) for row in rows]
 
     def _lifecycle_receipts(self, agent_run_id: str, limit: int) -> list[MemoryReceiptItem]:
-        if not _table_exists(self.conn, "memory_lifecycle_events"):
+        if not table_exists(self.conn, "memory_lifecycle_events"):
             return []
         rows = self.conn.execute(
             """
@@ -104,7 +106,7 @@ class MemoryReceiptService:
         return [_lifecycle_receipt(row) for row in rows]
 
     def _action_receipts(self, agent_run_id: str, limit: int) -> list[MemoryReceiptItem]:
-        if not _table_exists(self.conn, "agent_actions"):
+        if not table_exists(self.conn, "agent_actions"):
             return []
         rows = self.conn.execute(
             """
@@ -119,7 +121,7 @@ class MemoryReceiptService:
         return [item for row in rows if (item := _action_receipt(row)) is not None]
 
     def _recent_action_receipts(self, limit: int) -> list[MemoryReceiptItem]:
-        if not _table_exists(self.conn, "agent_actions"):
+        if not table_exists(self.conn, "agent_actions"):
             return []
         rows = self.conn.execute(
             """
@@ -133,7 +135,7 @@ class MemoryReceiptService:
         return [item for row in rows if (item := _action_receipt(row)) is not None]
 
     def _activation_receipts(self, agent_run_id: str) -> list[MemoryReceiptItem]:
-        if not _table_exists(self.conn, "memory_activation_events"):
+        if not table_exists(self.conn, "memory_activation_events"):
             return []
         row = self.conn.execute(
             """
@@ -192,7 +194,7 @@ class MemoryReceiptService:
         return items
 
     def _retrieval_report_receipts(self, agent_run_id: str) -> list[MemoryReceiptItem]:
-        if not _table_exists(self.conn, "companion_retrieval_reports"):
+        if not table_exists(self.conn, "companion_retrieval_reports"):
             return []
         row = self.conn.execute(
             """
@@ -222,7 +224,7 @@ def _candidate_receipt(row: sqlite3.Row) -> MemoryReceiptItem:
     kind = str(row["memory_kind"])
     risk = str(row["risk_tier"])
     scope = str(row["memory_scope"])
-    confidence = _clamp(row["confidence"])
+    confidence = clamp_unit_interval(row["confidence"])
     sensitive = _is_sensitive(str(row["summary"]), risk_tier=risk, scope=scope)
     receipt_kind = _receipt_kind(status=status, confidence=confidence, risk_tier=risk, sensitive=sensitive)
     label = _kind_label(kind)
@@ -288,7 +290,7 @@ def _action_receipt(row: sqlite3.Row) -> MemoryReceiptItem | None:
     if "memory" not in action_type and "continuity" not in action_type:
         return None
     status = str(row["status"])
-    metadata = _json_object(row["metadata_json"])
+    metadata = json_object(row["metadata_json"])
     risk = str(row["risk_tier"])
     if risk == RiskTier.HIGH.value:
         return MemoryReceiptItem(
@@ -441,14 +443,6 @@ def _opaque_id(prefix: str, *parts: object) -> str:
     return f"{prefix}_{digest}"
 
 
-def _json_object(value: object) -> dict[str, object]:
-    if not value:
-        return {}
-    try:
-        parsed = json.loads(str(value))
-    except (TypeError, json.JSONDecodeError):
-        return {}
-    return parsed if isinstance(parsed, dict) else {}
 
 
 def _metadata_int(metadata: dict[str, object], *keys: str) -> int | None:
@@ -463,14 +457,5 @@ def _metadata_int(metadata: dict[str, object], *keys: str) -> int | None:
     return None
 
 
-def _clamp(value: object) -> float:
-    try:
-        number = float(value)
-    except (TypeError, ValueError):
-        number = 0.0
-    return max(0.0, min(1.0, number))
 
 
-def _table_exists(conn: sqlite3.Connection, name: str) -> bool:
-    row = conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (name,)).fetchone()
-    return row is not None

@@ -23,6 +23,8 @@ from app.services.memory import MarkdownWriteError, SafeMarkdownWriter, content_
 from app.utils.hash import sha256_hex
 from app.utils.time import utc_now_iso
 
+from app.utils.sqlite import json_list
+
 
 RETROSPECTIVE_WINDOWS = (1, 7, 30, 90)
 REPORT_ROOT = "Wiki/Companion/Reports"
@@ -521,14 +523,6 @@ def _iso(value: datetime) -> str:
     return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-def _json_list(value: object) -> list[str]:
-    try:
-        parsed = json.loads(str(value or "[]"))
-    except json.JSONDecodeError:
-        return []
-    if not isinstance(parsed, list):
-        return []
-    return [str(item).strip() for item in parsed if str(item).strip()]
 
 
 def _source(kind: str, id_value: str, label: str, *, path: str | None = None, created_at: str | None = None):
@@ -542,7 +536,7 @@ def _topics_from_diary(rows: list[sqlite3.Row]) -> list[RetrospectiveTopic]:
         terms = []
         if row["topic"]:
             terms.append(str(row["topic"]))
-        terms.extend(_json_list(row["keywords_json"])[:4])
+        terms.extend(_stripped_terms(row["keywords_json"])[:4])
         for raw in terms:
             term = _clean_term(raw)
             if not term:
@@ -579,7 +573,7 @@ def _preferences_from_rows(diary_rows: list[sqlite3.Row], memory_rows: list[sqli
                     _source("long_term_memory", str(row["id"]), str(row["object"])[:80], created_at=row["created_at"])
                 )
     for row in diary_rows:
-        for term in _json_list(row["keywords_json"]):
+        for term in _stripped_terms(row["keywords_json"]):
             name = _clean_term(term)
             if not name:
                 continue
@@ -649,7 +643,7 @@ def _memory_item(row: sqlite3.Row) -> RetrospectiveMemoryItem:
 
 
 def _wiki_item(row: sqlite3.Row) -> dict:
-    target_paths = _json_list(row["target_paths_json"])
+    target_paths = _stripped_terms(row["target_paths_json"])
     path = target_paths[0] if target_paths else ""
     return {
         "path": path,
@@ -666,6 +660,11 @@ def _json_dict(value: object) -> dict[str, object]:
     except json.JSONDecodeError:
         return {}
     return parsed if isinstance(parsed, dict) else {}
+
+
+def _stripped_terms(value: object) -> list[str]:
+    """Parse a JSON array column and strip each entry (retrospectives output style)."""
+    return [term.strip() for term in json_list(value)]
 
 
 def _clean_term(value: str) -> str:

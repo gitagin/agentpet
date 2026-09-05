@@ -154,14 +154,18 @@ def test_explicit_remember_materializes_typed_graph_fact_and_replays(tmp_path: P
         assert second.items[0].graph_fact_id == first.items[0].graph_fact_id
         fact = service.entity_graph.get(str(first.items[0].graph_fact_id))
         assert fact.status.value == "active"
-        assert service.entity_graph.answerable_facts(query="editor")[0].object == "VS Code"
+        assert fact.statement_kind == "relation"
+        assert fact.relation_type == "prefers"
+        preference_entity = service.entity_graph.get_entity(str(fact.object_entity_id))
+        assert preference_entity.entity_type == "preference"
+        assert preference_entity.canonical_name == "VS Code"
         row = candidates.conn.execute(
             "SELECT fact_id FROM memory_candidates WHERE id = ?",
             (first.items[0].candidate.id,),
         ).fetchone()
         assert row[0] == first.items[0].graph_fact_id
         assert candidates.conn.execute(
-            "SELECT COUNT(*) FROM memory_graph_facts WHERE statement_kind = 'claim'"
+            "SELECT COUNT(*) FROM memory_graph_facts WHERE statement_kind = 'relation'"
         ).fetchone()[0] == 1
     finally:
         service.close()
@@ -176,13 +180,6 @@ def test_explicit_remember_materializes_typed_graph_fact_and_replays(tmp_path: P
             "自己",
             "timezone",
             "Asia/Shanghai",
-        ),
-        (
-            "Please remember that I prefer keyboard navigation.",
-            MemoryKind.PREFERENCE,
-            "preference",
-            "is",
-            "keyboard navigation",
         ),
     ),
 )
@@ -214,6 +211,65 @@ def test_explicit_fallback_parser_materializes_the_same_typed_claim(
             expected_value,
         )
         assert [row.id for row in service.entity_graph.answerable_facts(query=expected_value)] == [fact.id]
+    finally:
+        service.close()
+
+
+def test_explicit_preference_materializes_relation_not_claim(tmp_path: Path) -> None:
+    db_path = migrate_db(tmp_path / "state.sqlite3")
+    candidates = MemoryCandidateStore(db_path)
+    service = MemoryConsolidationService(
+        candidates,
+        entity_graph=MemoryEntityGraphStore(candidates.conn),
+    )
+    try:
+        result = service.consolidate(user_message="Please remember that I prefer keyboard navigation.")
+
+        item = result.items[0]
+        assert item.candidate.memory_kind is MemoryKind.PREFERENCE
+        assert item.candidate.status is LifecycleStatus.ACTIVE
+        fact = service.entity_graph.get(str(item.graph_fact_id))
+        assert fact.statement_kind == "relation"
+        assert fact.relation_type == "prefers"
+        preference_entity = service.entity_graph.get_entity(str(fact.object_entity_id))
+        assert preference_entity.entity_type == "preference"
+        assert preference_entity.canonical_name == "keyboard navigation"
+        assert (
+            candidates.conn.execute(
+                "SELECT COUNT(*) FROM memory_graph_facts WHERE statement_kind = 'claim'"
+            ).fetchone()[0]
+            == 0
+        )
+    finally:
+        service.close()
+
+
+def test_chinese_preference_strips_verb_and_creates_preference_relation(tmp_path: Path) -> None:
+    db_path = migrate_db(tmp_path / "state.sqlite3")
+    candidates = MemoryCandidateStore(db_path)
+    service = MemoryConsolidationService(
+        candidates,
+        entity_graph=MemoryEntityGraphStore(candidates.conn),
+    )
+    try:
+        result = service.consolidate(user_message="记住我喜欢吃苹果")
+
+        item = result.items[0]
+        assert item.candidate.memory_kind is MemoryKind.PREFERENCE
+        assert "苹果" in item.candidate.summary
+        fact = service.entity_graph.get(str(item.graph_fact_id))
+        assert fact.statement_kind == "relation"
+        assert fact.relation_type == "prefers"
+        preference_entity = service.entity_graph.get_entity(str(fact.object_entity_id))
+        assert preference_entity.entity_type == "preference"
+        assert preference_entity.canonical_name == "苹果"  # 动词「吃」被剥离
+        # 不再生成把关系类型名当实体的「偏好」节点
+        assert (
+            candidates.conn.execute(
+                "SELECT COUNT(*) FROM memory_entities WHERE canonical_name = '偏好'"
+            ).fetchone()[0]
+            == 0
+        )
     finally:
         service.close()
 

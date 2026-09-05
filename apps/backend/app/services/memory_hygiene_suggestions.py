@@ -10,8 +10,11 @@ from typing import Callable, Literal
 from app.services.memory_hygiene import TERMINAL_CANDIDATE_STATUSES, TERMINAL_FACT_STATUSES
 from app.services.memory_lifecycle import MemoryLifecycleService
 from app.services.memory_policy import evaluate_memory_content
-from app.services.memory_taxonomy import LifecycleStatus, MemoryKind, MemoryScope, RiskTier
+from app.services.memory_taxonomy import LOW_CONFIDENCE_THRESHOLD, LifecycleStatus, MemoryKind, MemoryScope, RiskTier
 from app.storage.database import open_database_connection
+
+from app.utils.sqlite import optional_str
+from app.utils.time import coerce_datetime
 
 
 MemoryHygieneSuggestionType = Literal[
@@ -89,12 +92,12 @@ class MemoryHygieneSuggestionService:
         *,
         now: datetime | str | None = None,
         stale_candidate_before: datetime | str | None = None,
-        low_confidence_threshold: float = 0.65,
+        low_confidence_threshold: float = LOW_CONFIDENCE_THRESHOLD,
         limit: int = 100,
     ) -> tuple[MemoryHygieneSuggestion, ...]:
-        current_time = _coerce_datetime(now) if now is not None else self.now_provider()
+        current_time = coerce_datetime(now) if now is not None else self.now_provider()
         stale_before = (
-            _coerce_datetime(stale_candidate_before)
+            coerce_datetime(stale_candidate_before)
             if stale_candidate_before is not None
             else current_time - timedelta(days=30)
         )
@@ -277,7 +280,7 @@ class MemoryHygieneSuggestionService:
                     from_status=str(row["status"]),
                     to_status=LifecycleStatus.ARCHIVED.value,
                     updated_at=str(row["updated_at"]),
-                    expires_at=_optional_str(row["expires_at"]),
+                    expires_at=optional_str(row["expires_at"]),
                 )
             )
 
@@ -309,7 +312,7 @@ class MemoryHygieneSuggestionService:
                     from_status=str(row["status"]),
                     to_status=LifecycleStatus.ARCHIVED.value,
                     updated_at=str(row["updated_at"]),
-                    expires_at=_optional_str(row["expires_at"]),
+                    expires_at=optional_str(row["expires_at"]),
                 )
             )
         return suggestions
@@ -334,7 +337,7 @@ class MemoryHygieneSuggestionService:
         ).fetchall()
         suggestions: list[MemoryHygieneSuggestion] = []
         for row in rows:
-            if _coerce_datetime(str(row["updated_at"])) >= stale_before:
+            if coerce_datetime(str(row["updated_at"])) >= stale_before:
                 continue
             suggestions.append(
                 self._build_suggestion(
@@ -470,21 +473,8 @@ def _opaque_suggestion_id(*parts: str) -> str:
 def _is_due(value: str | None, now: datetime) -> bool:
     if not value:
         return False
-    return _coerce_datetime(value) <= now
+    return coerce_datetime(value) <= now
 
 
-def _coerce_datetime(value: datetime | str) -> datetime:
-    if isinstance(value, datetime):
-        parsed = value
-    else:
-        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
 
 
-def _optional_str(value: object) -> str | None:
-    if value is None:
-        return None
-    text = str(value)
-    return text if text else None

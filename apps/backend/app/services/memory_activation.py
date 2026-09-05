@@ -8,7 +8,9 @@ from typing import Iterable, Mapping
 from app.models.enums import MemoryFactStatus
 from app.services.memory_candidates import MemoryCandidateRecord
 from app.services.memory_graph import MemoryGraphFact
-from app.services.memory_taxonomy import LifecycleStatus, MemoryKind, MemoryScope, RiskTier
+from app.services.memory_taxonomy import LOW_CONFIDENCE_THRESHOLD, LifecycleStatus, MemoryKind, MemoryScope, RiskTier, fact_lifecycle_status
+
+from app.utils.coerce import clamp_unit_interval
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,7 +63,7 @@ class MemoryActivationService:
         now = _normalized_now(context.now)
         hard_gate = _hard_gate(item, context, now=now)
         breakdown = _score_breakdown(item, context, now=now)
-        score = _clamp(sum(breakdown.values()))
+        score = clamp_unit_interval(sum(breakdown.values()))
         if hard_gate is not None:
             return MemoryActivationDecision(
                 item=item,
@@ -95,7 +97,7 @@ class MemoryActivationService:
         )
         can_suggest = (
             can_answer
-            and item.confidence >= 0.65
+            and item.confidence >= LOW_CONFIDENCE_THRESHOLD
             and item.memory_kind in {MemoryKind.PREFERENCE, MemoryKind.BOUNDARY, MemoryKind.PROJECT_CONTEXT, MemoryKind.RECENT_STATE}
         )
         return MemoryActivationDecision(
@@ -118,7 +120,7 @@ def activation_item_from_graph_fact(fact: MemoryGraphFact) -> MemoryActivationIt
         target_type="fact",
         memory_kind=kind,
         memory_scope=scope,
-        lifecycle_status=_fact_lifecycle_status(fact.status),
+        lifecycle_status=fact_lifecycle_status(fact.status),
         source_scope="graph_facts",
         text=f"{fact.subject} {fact.predicate} {fact.object}",
         confidence=fact.confidence,
@@ -209,8 +211,8 @@ def _score_breakdown(item: MemoryActivationItem, context: MemoryActivationContex
         "query_relevance": 0.28 * relevance,
         "scope_match": 0.16 * scope_match,
         "lifecycle_status": 0.18 * lifecycle,
-        "confidence": 0.13 * _clamp(item.confidence),
-        "importance": 0.1 * _clamp(item.importance),
+        "confidence": 0.13 * clamp_unit_interval(item.confidence),
+        "importance": 0.1 * clamp_unit_interval(item.importance),
         "evidence_count": 0.05 * evidence,
         "recency": 0.05 * recency,
         "boundary_boost": boundary_boost,
@@ -319,16 +321,8 @@ def _scope_for_kind(kind: MemoryKind) -> MemoryScope:
     return MemoryScope.GLOBAL
 
 
-def _fact_lifecycle_status(status: MemoryFactStatus) -> LifecycleStatus:
-    if status is MemoryFactStatus.QUARANTINED:
-        return LifecycleStatus.CANDIDATE
-    if status in {MemoryFactStatus.WRONG, MemoryFactStatus.SENSITIVE_BLOCKED}:
-        return LifecycleStatus.REJECTED
-    return LifecycleStatus(status.value)
 
 
-def _clamp(value: float) -> float:
-    return min(max(float(value), 0.0), 1.0)
 
 
 _STOP_WORDS = {

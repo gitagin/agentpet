@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { EmptyState, Panel } from "../components/layout";
 import type { DesktopApi } from "../services/desktopApi";
 import { describeError } from "../services/apiErrorMessages";
+import { formatDate } from "../services/dateFormatting";
 import type { GrowthDimension, GrowthEvent, GrowthSnapshotResponse } from "../types";
 import { FeatureWindowShell } from "./FeatureWindowShell";
 
@@ -16,23 +17,6 @@ const dimensionIcons: Record<string, typeof Brain> = {
   trust_boundary: ShieldCheck,
   knowledge_links: BookOpenCheck,
 };
-
-function formatDate(value?: string | null): string {
-  if (!value) {
-    return "暂无记录";
-  }
-  const time = Date.parse(value);
-  if (Number.isNaN(time)) {
-    return value;
-  }
-  return new Intl.DateTimeFormat("zh-CN", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(new Date(time));
-}
 
 function dimensionSourceText(dimension: GrowthDimension): string {
   return dimension.data_sources.join(" / ");
@@ -149,7 +133,7 @@ export default function GrowthWindowView({ api }: GrowthWindowViewProps) {
                         <dd>{dimensionSourceText(dimension)}</dd>
                       </div>
                     </dl>
-                    <small>最近变化：{formatDate(dimension.last_changed_at)}</small>
+                    <small>最近变化：{formatDate(dimension.last_changed_at, { fallback: "暂无记录", invalidFallback: dimension.last_changed_at ?? "暂无记录" })}</small>
                   </article>
                 );
               })}
@@ -163,7 +147,7 @@ export default function GrowthWindowView({ api }: GrowthWindowViewProps) {
               <ol className="growth-history-list">
                 {snapshot.events.map((event) => (
                   <li key={event.event_id} className="growth-history-item">
-                    <time>{formatDate(event.occurred_at)}</time>
+                    <time>{formatDate(event.occurred_at, { fallback: "暂无记录", invalidFallback: event.occurred_at ?? "暂无记录" })}</time>
                     <div>
                       <strong>{event.title}</strong>
                       <span>{event.summary || event.source_action_type}</span>

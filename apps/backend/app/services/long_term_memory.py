@@ -166,10 +166,13 @@ class LongTermMemoryService:
     ) -> MemoryGraphWriteResult | None:
         if self.graph_store is None:
             return None
+        # 偏好类事实的主语是「自己」，而不是把关系类型名「偏好」当成实体。
+        # 否则「我喜欢吃苹果」会落库成「偏好 is 吃苹果」这种错误三元组。
+        is_preference = candidate.category.casefold() == "preference"
         graph_candidate = MemoryFactCandidate(
             category=candidate.category,
-            subject=candidate.subject,
-            predicate=candidate.predicate,
+            subject="自己" if is_preference else candidate.subject,
+            predicate="偏好" if is_preference else candidate.predicate,
             object=candidate.value,
             source_text=candidate.source_text,
             source_type="user_message",
@@ -178,7 +181,7 @@ class LongTermMemoryService:
             user_message_id=user_message_id,
             agent_run_id=agent_run_id,
             memory_type=candidate.memory_type,
-            entity_type=candidate.entity_type,
+            entity_type="self" if is_preference else candidate.entity_type,
             importance=candidate.importance,
             metadata_json=candidate.metadata_json,
         )
@@ -312,11 +315,30 @@ def extract_long_term_memory_candidate(user_message: str) -> LongTermMemoryCandi
     return None
 
 
+# 只剥离「吃/喝」这类明确的饮食消费动词：「吃苹果」→「苹果」、「喝咖啡」→「咖啡」。
+# 刻意不放「看/听/读/写/玩」等活动类动词，否则会把「看书」误剥成「书」、
+# 「听歌」误剥成「歌」，破坏偏好实体语义。
+_PREFERENCE_ACTION_VERBS = ("吃", "喝")
+
+
+def _strip_preference_verb(value: str) -> str:
+    """剥离偏好值前的饮食动作动词（「吃苹果」→「苹果」，「喝咖啡」→「咖啡」）。
+
+    只剥离「吃/喝」两个确定的单字动作前缀，且要求剥离后仍有内容，
+    避免把「打」「看」这类多义字误伤（如「打卡」→「卡」、「看书」→「书」）。
+    """
+    stripped = value.strip(" ，。")
+    for verb in _PREFERENCE_ACTION_VERBS:
+        if stripped.startswith(verb) and len(stripped) > len(verb):
+            return stripped[len(verb) :].strip(" ，。")
+    return stripped
+
+
 def _extract_preference(text: str) -> tuple[str, str] | None:
     patterns = (
         r"我喜欢的(?P<subject>[\u4e00-\u9fffA-Za-z0-9_ -]{1,20})[是叫为:：](?P<value>[\u4e00-\u9fffA-Za-z0-9_ -]{1,40})",
         r"我的(?P<subject>[\u4e00-\u9fffA-Za-z0-9_ -]{1,20})(?:偏好|喜好)[是叫为:：](?P<value>[\u4e00-\u9fffA-Za-z0-9_ -]{1,40})",
-        r"我(?:更|最)?喜欢(?P<value>[\u4e00-\u9fffA-Za-z0-9_ -]{1,40})",
+        r"我(?:更|最|比较)?(?:偏好|偏爱|喜欢)(?P<value>[\u4e00-\u9fffA-Za-z0-9_ -]{1,40})",
         r"i like (?P<value>[A-Za-z0-9_ -]{1,40})",
         r"my favorite (?P<subject>[A-Za-z0-9_ -]{1,20}) is (?P<value>[A-Za-z0-9_ -]{1,40})",
     )
@@ -325,7 +347,7 @@ def _extract_preference(text: str) -> tuple[str, str] | None:
         if match is None:
             continue
         subject = (match.groupdict().get("subject") or "偏好").strip(" ，。,.")
-        value = match.group("value").strip(" ，。,.")
+        value = _strip_preference_verb(match.group("value"))
         if value and not _looks_like_question(text):
             return subject, value
     return None

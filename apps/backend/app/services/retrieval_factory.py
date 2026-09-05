@@ -4,7 +4,12 @@ import logging
 from pathlib import Path
 
 from app.config import Settings
-from app.services.embeddings import LangChainEmbeddingClient
+from app.services.embeddings import (
+    LOCAL_EMBEDDING_DIMENSIONS,
+    LOCAL_EMBEDDING_MODEL_NAME,
+    LangChainEmbeddingClient,
+    build_local_onnx_embeddings,
+)
 from app.services.settings import CredentialStoreError, SettingsStore
 from app.services.vector_index import LangChainQdrantVectorIndex, VectorIndexConfig
 
@@ -16,10 +21,21 @@ _NORMALIZATION = "l2"
 _CHUNKER_VERSION = "markdown-chunker.v1"
 _INDEX_VERSION = "vector-index.v1"
 _PRIVACY_POLICY_VERSION = "embedding-privacy.v1"
-_TRANSPORT_CLASS = "remote-approved"
+_TRANSPORT_REMOTE = "remote-approved"
+_TRANSPORT_LOCAL = "local"
 
 
 def build_vector_index(db_path: str | Path, settings: Settings) -> LangChainQdrantVectorIndex:
+    """Resolve the embedding backend once: local by default, remote on explicit key.
+
+    Precedence (single source of truth for the embedding decision):
+
+    - Local privacy mode: always the bundled ONNX model; a configured remote
+      key is ignored because remote transport would leak private text.
+    - Explicitly configured remote key: remote provider (user opt-in).
+    - Otherwise: bundled ONNX model; if it is missing, vector search stays
+      disabled with a stable reason and FTS remains the fallback.
+    """
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
     store: SettingsStore | None = None
     try:
@@ -32,58 +48,71 @@ def build_vector_index(db_path: str | Path, settings: Settings) -> LangChainQdra
             default_model=settings.embedding_model,
             default_dimensions=settings.embedding_dimensions,
         )
-        provider = _normalize_provider(config.provider)
-        supported_provider = provider in _SUPPORTED_REMOTE_PROVIDERS
-        configured_provider = _normalize_provider(key_status.provider or "")
-        embedding_configured = bool(key_status.configured and configured_provider == provider)
-        api_key: str | None = None
-        unavailable_reason: str | None = None
-        if supported_provider:
+        external_provider = _normalize_provider(config.provider)
+        external_supported = external_provider in _SUPPORTED_REMOTE_PROVIDERS
+        stored_key = None
+        if external_supported:
             stored_key = store.get_embedding_key(config.provider)
-            embedding_configured = bool(stored_key)
-            if not automation.local_privacy_mode:
-                api_key = stored_key
-        if automation.local_privacy_mode:
-            unavailable_reason = "local_privacy_mode"
-        elif not supported_provider:
-            unavailable_reason = "embedding_provider_unsupported"
-        elif not embedding_configured:
-            unavailable_reason = "embedding_api_key_missing"
+        external_configured = bool(stored_key)
 
-        enabled = bool(
-            not automation.local_privacy_mode
-            and supported_provider
-            and embedding_configured
-            and api_key
-        )
+        local_embeddings = None
+        if automation.local_privacy_mode or not external_configured:
+            local_embeddings = build_local_onnx_embeddings(settings.local_embedding_dir)
+
         embeddings = None
+        unavailable_reason: str | None = None
+        embedding_configured = False
+        provider = "openai-compatible"
+        transport = _TRANSPORT_REMOTE
+        dimensions = None
         legacy_initialization_error_type: str | None = None
-        if enabled:
+        if automation.local_privacy_mode:
+            provider = "local-onnx"
+            transport = _TRANSPORT_LOCAL
+            dimensions = LOCAL_EMBEDDING_DIMENSIONS
+            if local_embeddings is not None:
+                embeddings = local_embeddings
+                embedding_configured = True
+            else:
+                unavailable_reason = "local_embedding_unavailable"
+        elif external_configured and stored_key:
+            provider = external_provider
+            dimensions = config.dimensions
             try:
                 embeddings = LangChainEmbeddingClient(
-                    api_key=api_key or "",
+                    api_key=stored_key,
                     base_url=config.base_url,
                     model=config.model,
                     dimensions=config.dimensions,
                     timeout_seconds=settings.model_timeout_seconds,
                 ).create_embeddings()
+                embedding_configured = True
             except Exception as exc:
-                enabled = False
                 unavailable_reason = "embedding_initialization_failed"
-                embeddings = None
                 legacy_initialization_error_type = exc.__class__.__name__
                 logger.warning(
-                    "Embedding client initialization failed; optional vector search is disabled"
+                    "Remote embedding client initialization failed; falling back to disabled vector search"
                 )
+        else:
+            provider = "local-onnx"
+            transport = _TRANSPORT_LOCAL
+            dimensions = LOCAL_EMBEDDING_DIMENSIONS
+            if local_embeddings is not None:
+                embeddings = local_embeddings
+                embedding_configured = True
+            else:
+                unavailable_reason = "local_embedding_unavailable"
+
         vector_index = _vector_index(
             settings=settings,
-            enabled=enabled,
+            enabled=embedding_configured,
             provider=provider,
-            model=config.model,
-            dimensions=config.dimensions,
+            model=LOCAL_EMBEDDING_MODEL_NAME if transport == _TRANSPORT_LOCAL else config.model,
+            dimensions=dimensions,
             embeddings=embeddings,
             unavailable_reason=unavailable_reason,
             embedding_configured=embedding_configured,
+            transport_class=transport,
         )
         if legacy_initialization_error_type is not None:
             vector_index._legacy_initialization_error_type = legacy_initialization_error_type
@@ -99,6 +128,7 @@ def build_vector_index(db_path: str | Path, settings: Settings) -> LangChainQdra
             embeddings=None,
             unavailable_reason="credential_store_unavailable",
             embedding_configured=False,
+            transport_class=_TRANSPORT_REMOTE,
         )
     except Exception:
         logger.warning("Embedding configuration is unavailable; optional vector search is disabled")
@@ -111,6 +141,7 @@ def build_vector_index(db_path: str | Path, settings: Settings) -> LangChainQdra
             embeddings=None,
             unavailable_reason="embedding_configuration_unavailable",
             embedding_configured=False,
+            transport_class=_TRANSPORT_REMOTE,
         )
     finally:
         if store is not None:
@@ -130,6 +161,7 @@ def _vector_index(
     embeddings,
     unavailable_reason: str | None,
     embedding_configured: bool,
+    transport_class: str,
 ) -> LangChainQdrantVectorIndex:
     return LangChainQdrantVectorIndex(
         VectorIndexConfig(
@@ -145,7 +177,7 @@ def _vector_index(
             chunker_version=_CHUNKER_VERSION,
             index_version=_INDEX_VERSION,
             privacy_policy_version=_PRIVACY_POLICY_VERSION,
-            transport_class=_TRANSPORT_CLASS,
+            transport_class=transport_class,
             embedding_configured=embedding_configured,
             qdrant_client=None,
         )

@@ -10,6 +10,9 @@ from app.services.memory_policy import evaluate_memory_content
 from app.services.memory_taxonomy import MemoryKind, MemoryScope, RiskTier, SourceTrack
 from app.storage.database import open_database_connection
 
+from app.utils.coerce import clamp_unit_interval
+from app.utils.sqlite import json_object, table_exists
+
 
 PromptProfilePermissionGroup = Literal["style_profile", "boundary_profile"]
 
@@ -157,9 +160,9 @@ class PromptProfileProvider:
 
     def _iter_candidates(self) -> list[_PromptProfileCandidate | None]:
         items: list[_PromptProfileCandidate | None] = []
-        if _table_exists(self.conn, "memory_candidates"):
+        if table_exists(self.conn, "memory_candidates"):
             items.extend(self._candidate_rows())
-        if _table_exists(self.conn, "memory_graph_facts"):
+        if table_exists(self.conn, "memory_graph_facts"):
             items.extend(self._fact_rows())
         return items
 
@@ -235,7 +238,7 @@ def _candidate_from_memory_candidate(row: sqlite3.Row) -> _PromptProfileCandidat
         scope=scope,
         status=status,
         risk_tier=risk,
-        confidence=_clamp(row["confidence"]),
+        confidence=clamp_unit_interval(row["confidence"]),
         expires_at=row["expires_at"],
         superseded_by=row["superseded_by"],
         conflicts_with=None,
@@ -249,8 +252,8 @@ def _candidate_from_memory_candidate(row: sqlite3.Row) -> _PromptProfileCandidat
         summary=summary,
         category="preferences" if kind == MemoryKind.PREFERENCE.value else "boundaries",
         permission_group=permission_group,
-        confidence=_clamp(row["confidence"]),
-        importance=_clamp(row["importance"]),
+        confidence=clamp_unit_interval(row["confidence"]),
+        importance=clamp_unit_interval(row["importance"]),
         source_label=_safe_source_label(source_track),
         risk_tier="low",
         explicit_source=_is_explicit_source(source_track),
@@ -259,7 +262,7 @@ def _candidate_from_memory_candidate(row: sqlite3.Row) -> _PromptProfileCandidat
 
 
 def _candidate_from_graph_fact(row: sqlite3.Row) -> _PromptProfileCandidate | None:
-    metadata = _json_object(row["metadata_json"])
+    metadata = json_object(row["metadata_json"])
     kind = str(row["memory_type"] or row["category"] or "")
     scope = str(metadata.get("memory_scope") or "")
     risk = str(metadata.get("risk_tier") or RiskTier.LOW.value)
@@ -273,7 +276,7 @@ def _candidate_from_graph_fact(row: sqlite3.Row) -> _PromptProfileCandidate | No
         scope=scope,
         status=status,
         risk_tier=risk,
-        confidence=_clamp(row["confidence"]),
+        confidence=clamp_unit_interval(row["confidence"]),
         expires_at=row["expires_at"],
         superseded_by=row["authority_superseded_by"],
         conflicts_with=row["authority_contradicted_by"],
@@ -287,8 +290,8 @@ def _candidate_from_graph_fact(row: sqlite3.Row) -> _PromptProfileCandidate | No
         summary=summary,
         category="preferences" if kind == MemoryKind.PREFERENCE.value else "boundaries",
         permission_group=permission_group,
-        confidence=_clamp(row["confidence"]),
-        importance=_clamp(row["importance"]),
+        confidence=clamp_unit_interval(row["confidence"]),
+        importance=clamp_unit_interval(row["importance"]),
         source_label=_safe_source_label(source_type),
         risk_tier="low",
         explicit_source=_is_explicit_source(source_type),
@@ -422,27 +425,7 @@ def _render_item_for_budget(item: _PromptProfileCandidate) -> str:
     return f"- {prefix}: {item.summary}"
 
 
-def _json_object(value: object) -> dict[str, object]:
-    import json
-
-    try:
-        parsed = json.loads(str(value or "{}"))
-    except json.JSONDecodeError:
-        return {}
-    return parsed if isinstance(parsed, dict) else {}
 
 
-def _clamp(value: object) -> float:
-    try:
-        numeric = float(value)
-    except (TypeError, ValueError):
-        return 0.0
-    return max(0.0, min(1.0, numeric))
 
 
-def _table_exists(conn: sqlite3.Connection, name: str) -> bool:
-    row = conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
-        (name,),
-    ).fetchone()
-    return row is not None

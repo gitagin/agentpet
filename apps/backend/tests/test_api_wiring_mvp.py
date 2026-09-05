@@ -1391,8 +1391,29 @@ def test_continuity_routes_are_protected_and_update_runtime_state(client: TestCl
     assert signal_payload["source_state_keys"]
 
 
+def test_open_thread_continuity_proposal_is_auto_confirmed(client: TestClient) -> None:
+    events = stream_chat(client, "can we continue this tomorrow?")
+    assert_successful_chat_events(events)
+    # 「下次接着聊」是纯陪伴增强，应自动确认并写入未完话题状态，
+    # 而不是留在待确认队列里要求用户手动决定。
+    deadline = time.time() + 3.0
+    unresolved = None
+    while time.time() < deadline:
+        state = client.get("/api/continuity/state", headers=auth())
+        assert state.status_code == 200
+        unresolved = state.json().get("unresolved_threads")
+        if unresolved:
+            break
+        time.sleep(0.05)
+    assert unresolved
+    pending = wait_for_continuity_proposals(client, timeout_seconds=0.5)
+    assert all(item["kind"] != "open_thread" for item in pending)
+
+
 def test_rejected_continuity_proposal_remains_out_of_runtime_state(client: TestClient) -> None:
-    events = stream_chat(client, "I feel lonely tonight and want to continue this later.")
+    # 「下次接着聊」已改为自动确认，不再进入待确认队列；这里改用情绪提案
+    # 验证 reject 流程：被拒绝的连续性提案不会进入运行时状态。
+    events = stream_chat(client, "I feel lonely tonight.")
     assert_successful_chat_events(events)
     assert "continuity_proposal" not in event_names(events)
     pending = wait_for_continuity_proposals(client)
@@ -2063,19 +2084,22 @@ def test_chat_done_auto_long_term_records_candidate_without_vault_profile(
         candidate = conn.execute("SELECT * FROM memory_candidates").fetchone()
         evidence_count = conn.execute("SELECT COUNT(*) FROM memory_evidence").fetchone()[0]
         graph_count = conn.execute(
-            "SELECT COUNT(*) FROM memory_graph_facts WHERE statement_kind = 'claim'"
+            "SELECT COUNT(*) FROM memory_graph_facts WHERE statement_kind = 'relation'"
         ).fetchone()[0]
         graph_fact = conn.execute(
             """
-            SELECT f.id, f.status, f.subject, f.predicate, f.object,
-                   f.subject_entity_id, c.fact_id AS candidate_fact_id,
-                   e.fact_id AS evidence_fact_id
+            SELECT f.id, f.status, f.relation_type, f.object_entity_id,
+                   c.fact_id AS candidate_fact_id, e.fact_id AS evidence_fact_id
             FROM memory_graph_facts AS f
             JOIN memory_candidates AS c ON c.fact_id = f.id
             JOIN memory_evidence AS e ON e.candidate_id = c.id
-            WHERE f.statement_kind = 'claim'
+            WHERE f.statement_kind = 'relation'
             """
         ).fetchone()
+        preference_name = conn.execute(
+            "SELECT canonical_name FROM memory_entities WHERE id = ?",
+            (graph_fact["object_entity_id"],),
+        ).fetchone()[0]
     assert candidate["memory_kind"] == "preference"
     assert candidate["source_track"] == "explicit_user"
     assert candidate["status"] == "active"
@@ -2083,9 +2107,8 @@ def test_chat_done_auto_long_term_records_candidate_without_vault_profile(
     assert graph_count == 1
     assert graph_fact is not None
     assert graph_fact["status"] == "active"
-    assert graph_fact["subject"] == "editor"
-    assert graph_fact["object"] == "VS Code"
-    assert graph_fact["subject_entity_id"]
+    assert graph_fact["relation_type"] == "prefers"
+    assert preference_name == "VS Code"
     assert graph_fact["candidate_fact_id"] == graph_fact["id"]
     assert graph_fact["evidence_fact_id"] == graph_fact["id"]
     assert not (vault / "Memories" / "LongTerm").exists()
@@ -2123,7 +2146,7 @@ def test_explicit_chat_memory_cross_session_correction_and_forget_closure(
             SELECT f.id, f.status, c.id AS candidate_id
             FROM memory_graph_facts AS f
             JOIN memory_candidates AS c ON c.fact_id = f.id
-            WHERE f.statement_kind = 'claim' AND f.status = 'active'
+            WHERE f.statement_kind = 'relation' AND f.status = 'active'
             """
         ).fetchone()
     assert graph_fact is not None

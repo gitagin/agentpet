@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import Callable
-import json
 
 from app.models.memory import MemoryFeedbackRequest
 from app.services.memory_lifecycle import MemoryFeedbackApplyResult, MemoryLifecycleService
+
+from app.utils.sqlite import json_object
 
 
 class MemoryFeedbackService:
@@ -109,7 +110,7 @@ class MemoryFeedbackService:
         actual_target_type = "candidate" if row["candidate_id"] is not None else "fact"
         if actual_target_type != target_type or actual_target_id != target_id:
             return None
-        metadata = _json_object(row["metadata_json"])
+        metadata = json_object(row["metadata_json"])
         replacement_target_id = row["replacement_candidate_id"]
         if replacement_target_id is None:
             replacement_target_id = metadata.get("replacement_target_id")
@@ -183,9 +184,3 @@ def _feedback_types_for_operation(operation: str) -> frozenset[str]:
     }.get(operation, frozenset())
 
 
-def _json_object(value: object) -> dict[str, object]:
-    try:
-        parsed = json.loads(str(value or "{}"))
-    except (TypeError, ValueError, json.JSONDecodeError):
-        return {}
-    return parsed if isinstance(parsed, dict) else {}

@@ -19,6 +19,10 @@ import type {
   CompanionConsolidationRunResponse,
   CompanionRetrievalReportListResponse,
   DiagnosticsExportResponse,
+  EmbeddingConfigRequest,
+  EmbeddingConfigResponse,
+  EmbeddingKeyRequest,
+  EmbeddingTestResponse,
   GrowthSnapshotResponse,
   HabitLoopTriggerRequest,
   HabitLoopTriggerResponse,
@@ -77,9 +81,6 @@ import type {
   WikiIngestReviewRequest,
   WikiIngestReviewResponse,
   WikiIndexResponse,
-  WikiFolderBatchImportRequest,
-  WikiFolderBatchImportResponse,
-  WikiSourceImportPreviewRequest,
   WikiDiagnosticQueueRequest,
   WikiDiagnosticQueueResponse,
   WikiLintRunRequest,
@@ -164,7 +165,7 @@ export class DesktopApi {
   searchMemory(query: string, signal?: AbortSignal): Promise<MemorySearchResponse> {
     return this.client.post<MemorySearchResponse>(
       "/api/memory/search",
-      { query, top_k: 8, mode: "fts" },
+      { query, top_k: 8, mode: "hybrid" },
       signal,
     );
   }
@@ -341,10 +342,6 @@ export class DesktopApi {
     return this.client.get<VisibleContinuitySnapshotResponse>("/api/today/snapshot", signal);
   }
 
-  writeRetrospectiveReport(days: number, signal?: AbortSignal): Promise<RetrospectiveReportResponse> {
-    return this.client.post<RetrospectiveReportResponse>("/api/memory/retrospectives/report", { days }, signal);
-  }
-
   writeRetrospectivePeriodReport(
     period: RetrospectiveReportPeriod,
     signal?: AbortSignal,
@@ -475,19 +472,11 @@ export class DesktopApi {
     return this.client.get<SettingsStatusResponse>("/api/settings", signal);
   }
 
-  getAutomationSettings(signal?: AbortSignal): Promise<AutomationSettings> {
-    return this.client.get<AutomationSettings>("/api/settings/automation", signal);
-  }
-
   saveAutomationSettings(
     request: AutomationSettingsUpdateRequest,
     signal?: AbortSignal,
   ): Promise<AutomationSettings> {
     return this.client.put<AutomationSettings>("/api/settings/automation", request, signal);
-  }
-
-  getTtsSettings(signal?: AbortSignal): Promise<TtsSettingsResponse> {
-    return this.client.get<TtsSettingsResponse>("/api/settings/tts", signal);
   }
 
   saveTtsSettings(
@@ -555,6 +544,18 @@ export class DesktopApi {
     return this.client.post<ModelTestResponse>("/api/settings/model-test", { agent_id: agentId }, signal);
   }
 
+  setEmbeddingConfig(request: EmbeddingConfigRequest, signal?: AbortSignal): Promise<EmbeddingConfigResponse> {
+    return this.client.put<EmbeddingConfigResponse>("/api/settings/embedding-config", request, signal);
+  }
+
+  setEmbeddingKey(request: EmbeddingKeyRequest, signal?: AbortSignal): Promise<EmbeddingConfigResponse> {
+    return this.client.put<EmbeddingConfigResponse>("/api/settings/embedding-key", request, signal);
+  }
+
+  testEmbeddingConnection(signal?: AbortSignal): Promise<EmbeddingTestResponse> {
+    return this.client.post<EmbeddingTestResponse>("/api/settings/embedding-test", {}, signal);
+  }
+
   getVaultStatus(signal?: AbortSignal): Promise<VaultStatusResponse> {
     return this.client.get<VaultStatusResponse>("/api/vaults/status", signal);
   }
@@ -576,20 +577,6 @@ export class DesktopApi {
     signal?: AbortSignal,
   ): Promise<WikiIngestPreviewResponse> {
     return this.client.post<WikiIngestPreviewResponse>("/api/wiki/ingest/preview", request, signal);
-  }
-
-  previewWikiImport(
-    request: WikiSourceImportPreviewRequest,
-    signal?: AbortSignal,
-  ): Promise<WikiIngestPreviewResponse> {
-    return this.client.post<WikiIngestPreviewResponse>("/api/wiki/import/preview", request, signal);
-  }
-
-  importFolderBatch(
-    request: WikiFolderBatchImportRequest,
-    signal?: AbortSignal,
-  ): Promise<WikiFolderBatchImportResponse> {
-    return this.client.post<WikiFolderBatchImportResponse>("/api/wiki/import/folder-batch", request, signal);
   }
 
   applyWikiIngest(

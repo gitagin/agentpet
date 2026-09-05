@@ -14,6 +14,27 @@ from app.storage.markdown import ParsedMarkdown
 
 FTS_TOKEN_RE = re.compile(r"[\w-]+", re.UNICODE)
 CJK_RE = re.compile(r"[\u3400-\u9fff]")
+CJK_RUN_RE = re.compile(r"[\u3400-\u9fff\u2e80-\u9fff\uf900-\ufaff]+")
+
+
+def _bigram_cjk(text: str) -> str:
+    """Split CJK runs into overlapping bigrams for FTS5 unicode61.
+
+    unicode61 treats a contiguous CJK run as one token, so 2+ character
+    Chinese words never match substring queries.  Bigramming both the
+    indexed text and the query turns the run into space-separated tokens
+    (dev.to 2026 production fix; ~2x index size, keyword-quality recall).
+    Runs shorter than 3 characters stay whole, so 2-char words match
+    exactly and single characters are left to the LIKE fallback.
+    """
+
+    def split(match: re.Match[str]) -> str:
+        run = match.group(0)
+        if len(run) < 3:
+            return run
+        return " " + " ".join(run[index : index + 2] for index in range(len(run) - 1)) + " "
+
+    return CJK_RUN_RE.sub(split, text)
 
 # Wiki 核心文件是给 LLM 做规划/整理用的规范，不是可检索回答的资料。
 # 全文搜索必须排除它们，避免用户一问就被拿来引用。
@@ -218,7 +239,15 @@ class NoteRepository:
                     INSERT INTO note_fts(chunk_id, note_id, vault_id, relative_path, title, heading, content)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (chunk_id, note_id, vault_id, relative_path, markdown.title, chunk.heading or "", chunk.content),
+                    (
+                        chunk_id,
+                        note_id,
+                        vault_id,
+                        relative_path,
+                        _bigram_cjk(markdown.title),
+                        _bigram_cjk(chunk.heading or ""),
+                        _bigram_cjk(chunk.content),
+                    ),
                 )
         return note_id
 
@@ -253,16 +282,17 @@ class NoteRepository:
             rows = self.conn.execute(
                 """
                 SELECT
-                    chunk_id,
-                    note_id,
-                    relative_path,
-                    title,
-                    NULLIF(heading, '') AS heading,
-                    snippet(note_fts, 6, '[', ']', '...', 24) AS snippet,
+                    note_fts.chunk_id,
+                    note_fts.note_id,
+                    note_fts.relative_path,
+                    note_chunks.title,
+                    NULLIF(note_chunks.heading, '') AS heading,
+                    note_chunks.content,
                     bm25(note_fts) AS rank
                 FROM note_fts
-                WHERE vault_id = ? AND note_fts MATCH ?
-                  AND relative_path NOT IN ('Wiki/AGENTS.md', 'Wiki/index.md', 'Wiki/log.md')
+                JOIN note_chunks ON note_chunks.id = note_fts.chunk_id
+                WHERE note_fts.vault_id = ? AND note_fts MATCH ?
+                  AND note_fts.relative_path NOT IN ('Wiki/AGENTS.md', 'Wiki/index.md', 'Wiki/log.md')
                 ORDER BY rank
                 LIMIT ?
                 """,
@@ -276,7 +306,12 @@ class NoteRepository:
                         relative_path=str(row["relative_path"]),
                         title=str(row["title"]),
                         heading=row["heading"],
-                        snippet=str(row["snippet"]),
+                        snippet=_make_like_snippet(
+                            content=str(row["content"]),
+                            query=query,
+                            title=str(row["title"]),
+                            heading=row["heading"],
+                        ),
                         score=float(-row["rank"]),
                     )
                     for row in rows
@@ -407,7 +442,8 @@ class IndexJobRepository:
 
 
 def _to_fts_query(query: str) -> str:
-    tokens = [token.strip("-_") for token in FTS_TOKEN_RE.findall(query)]
+    bigrammed = _bigram_cjk(query)
+    tokens = [token.strip("-_") for token in FTS_TOKEN_RE.findall(bigrammed)]
     return " ".join(_quote_fts_token(token) for token in tokens if token)
 
 

@@ -78,7 +78,7 @@ async def archive_structured_diary_memory(
                 "markdown_path": markdown_path,
                 "expected_object_count": expected_object_count,
             },
-            expected_effect="Persist evidence-backed structured diary objects for one completed chat exchange.",
+            expected_effect="从这次对话提取结构化日记记忆。",
             source_message_id=state.message_id,
             source_run_id=state.agent_run_id,
             source_conversation_id=state.conversation_id,

@@ -106,7 +106,6 @@ contextBridge.exposeInMainWorld("agentDesktop", {
     };
   },
   selectKnowledgeBaseFolder: () => ipcRenderer.invoke("agent-pet:select-knowledge-base-folder"),
-  selectWikiImportFolder: () => ipcRenderer.invoke("agent-pet:select-wiki-import-folder"),
   onSidecarStatusChanged: (callback) => {
     const listener = (_event, status) => callback(status);
     ipcRenderer.on("agent-pet:sidecar-status-changed", listener);

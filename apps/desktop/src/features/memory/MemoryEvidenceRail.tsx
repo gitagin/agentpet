@@ -7,6 +7,8 @@ import type {
   MemoryGraphEdgeDetail,
   MemoryGraphNodeDetail,
 } from "../../types";
+import { formatDate } from "../../services/dateFormatting";
+import { relationLabels } from "./relationTypeLabels";
 import type { MemoryGraphEdgeItem, MemoryGraphNodeItem } from "./useMemoryGraphWorkspace";
 
 type MemoryEvidenceRailProps = {
@@ -26,18 +28,25 @@ type MemoryEvidenceRailProps = {
   onOpenSource: (relativePath: string) => void;
 };
 
-const relationLabels: Record<string, string> = {
-  prefers: "偏好",
-  avoids: "避免",
-  works_on: "正在做",
-  knows: "了解",
-  related_to: "关联",
-  occurred_in: "发生于",
-  supports: "支持",
-  contradicts: "冲突",
-  supersedes: "替代",
-  derived_from: "派生自",
-  documented_in: "记录于",
+const typeLabels: Record<string, string> = {
+  self: "自己",
+  person: "人物",
+  preference: "偏好",
+  boundary: "边界",
+  project: "项目",
+  goal: "目标",
+  event: "事件",
+  concept: "概念",
+  source: "来源",
+  wiki_page: "Wiki 页面",
+  decision: "决策",
+  user: "你",
+  episode: "情景",
+  mood: "心情",
+  qa: "问答",
+  pending: "待确认",
+  archived: "已归档",
+  cleanup: "待整理",
 };
 
 const entityTypes = ["self", "person", "project", "preference", "boundary", "goal", "event", "concept", "source", "wiki_page", "decision"];
@@ -47,17 +56,6 @@ const unsafeText = /candidate|fact|evidence|source_text|source_excerpt|agent_run
 function safe(value: string | null | undefined, fallback: string): string {
   const text = value?.trim();
   return text && !unsafeText.test(text) ? text : fallback;
-}
-
-function formatDate(value: string | null | undefined): string {
-  if (!value) {
-    return "时间未记录";
-  }
-  const parsed = Date.parse(value);
-  if (Number.isNaN(parsed)) {
-    return "时间未记录";
-  }
-  return new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(parsed));
 }
 
 function lifecycleText(status: string | undefined, active: boolean | undefined): string {
@@ -254,7 +252,7 @@ export function MemoryEvidenceRail({
       <ol className="llmwiki-evidence-steps">
         <li className="llmwiki-evidence-step is-entity">
           <span className="llmwiki-step-index">01</span>
-          <div><strong>实体</strong><p>{edge ? `${safe(endpointDetails[edge.source_node_id]?.label, "来源实体")} · ${safe(endpointDetails[edge.target_node_id]?.label, "目标实体")}` : safe(nodeDetail?.label || node?.label, "实体详情未返回")}</p><small>{safe(nodeDetail?.type || node?.type, "类型未返回")}</small></div>
+          <div><strong>实体</strong><p>{edge ? `${safe(endpointDetails[edge.source_node_id]?.label, "来源实体")} · ${safe(endpointDetails[edge.target_node_id]?.label, "目标实体")}` : safe(nodeDetail?.label || node?.label, "实体详情未返回")}</p><small>{safe(typeLabels[nodeDetail?.type || node?.type || ""] || "类型未返回", "类型未返回")}</small></div>
         </li>
         <li className={`llmwiki-evidence-step ${edge?.relation_type === "contradicts" || edgeDetail?.status === "conflict" ? "is-conflict" : ""}`}>
           <span className="llmwiki-step-index">02</span>
@@ -270,11 +268,11 @@ export function MemoryEvidenceRail({
         </li>
         <li className="llmwiki-evidence-step">
           <span className="llmwiki-step-index">05</span>
-          <div><strong>生命周期</strong><p>{lifecycleText(activeLifecycle?.status || selectedStatus, activeLifecycle?.active_for_recall)}</p><small>{activeLifecycle ? `${safe(activeLifecycle.status, "状态未返回")} · ${formatDate(activeLifecycle.updated_at)}` : "暂无生命周期记录"}</small>{activeLifecycle?.expires_at ? <small>到期：{formatDate(activeLifecycle.expires_at)}</small> : null}</div>
+          <div><strong>生命周期</strong><p>{lifecycleText(activeLifecycle?.status || selectedStatus, activeLifecycle?.active_for_recall)}</p><small>{activeLifecycle ? `${safe(activeLifecycle.status, "状态未返回")} · ${formatDate(activeLifecycle.updated_at, { style: "mediumDateTime" })}` : "暂无生命周期记录"}</small>{activeLifecycle?.expires_at ? <small>到期：{formatDate(activeLifecycle.expires_at, { style: "mediumDateTime" })}</small> : null}</div>
         </li>
         <li className="llmwiki-evidence-step">
           <span className="llmwiki-step-index">06</span>
-          <div><strong>纠正记录</strong>{correctionRecord ? <div className="llmwiki-correction-record"><span>旧值：{correctionRecord.oldValue}</span><ChevronRight size={14} /><span>新值：{correctionRecord.newValue}</span><small>{formatDate(correctionRecord.at)} · {correctionRecord.replayed ? "已读取既有 supersedes 回执" : "supersedes 已创建"}</small></div> : claimDetail?.superseded_by_claim_id ? <p>已沿 supersedes 链替代，后继标识：<code>{claimDetail.superseded_by_claim_id}</code><br />更新时间：{formatDate(claimDetail.lifecycle.updated_at)}</p> : <p className="llmwiki-muted">暂无纠正记录。</p>}</div>
+          <div><strong>纠正记录</strong>{correctionRecord ? <div className="llmwiki-correction-record"><span>旧值：{correctionRecord.oldValue}</span><ChevronRight size={14} /><span>新值：{correctionRecord.newValue}</span><small>{formatDate(correctionRecord.at, { style: "mediumDateTime" })} · {correctionRecord.replayed ? "已读取既有 supersedes 回执" : "supersedes 已创建"}</small></div> : claimDetail?.superseded_by_claim_id ? <p>已沿 supersedes 链替代，后继标识：<code>{claimDetail.superseded_by_claim_id}</code><br />更新时间：{formatDate(claimDetail.lifecycle.updated_at, { style: "mediumDateTime" })}</p> : <p className="llmwiki-muted">暂无纠正记录。</p>}</div>
         </li>
       </ol>
 

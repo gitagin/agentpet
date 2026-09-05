@@ -1,7 +1,0 @@
-{
-  "artifacts": {
-    "graph-report.json": "e9461e51d6f15b08bbfa442d0b4d21593f1710852b9175e0c590262c32db4f0a",
-    "graph-report.md": "a748f9c763c75e0bf059557c92cf39bb8cc0ed09ea7d5a4caa3c4895d433125b"
-  },
-  "schema_version": "llmwiki-graph-eval-artifact-hashes.v1"
-}

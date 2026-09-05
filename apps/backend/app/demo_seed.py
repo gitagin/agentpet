@@ -36,7 +36,7 @@ class DemoSeedManifest:
 _DEMO_FACTS = (
     ("preference", "用户", "偏好开会时间", "下午", "用户更喜欢下午开会。", "preference", 0.95),
     ("preference", "用户", "偏好回答风格", "简洁且带来源", "用户希望回答简洁，并能看到本地来源。", "preference", 0.94),
-    ("project", "用户", "正在准备", "Agent Pet 作品集 Demo", "用户正在准备 Agent Pet 求职作品集 Demo。", "project", 0.93),
+    ("project", "用户", "正在整理", "Agent Pet 演示资料", "用户正在整理 Agent Pet 演示资料。", "project", 0.93),
     ("boundary", "用户", "数据边界", "敏感内容不发送到远程模型", "用户要求敏感内容只走本地隐私路径。", "boundary", 0.98),
     ("preference", "用户", "开发环境", "Windows PowerShell", "用户主要在 Windows PowerShell 中开发。", "preference", 0.9),
 )
@@ -95,16 +95,16 @@ def seed_demo_environment(demo_root: str | Path) -> DemoSeedManifest:
         first_reminder = (local_now + timedelta(days=1)).replace(hour=10, minute=0, second=0, microsecond=0)
         second_reminder = (local_now + timedelta(days=2)).replace(hour=16, minute=0, second=0, microsecond=0)
         task_service.create(
-            title="整理面试演示提纲",
+            title="整理演示提纲",
             remind_at=first_reminder.isoformat(),
             timezone="Asia/Shanghai",
-            source_text="明天上午十点整理面试演示提纲",
+            source_text="明天上午十点整理演示提纲",
         )
         task_service.create(
-            title="检查 Demo 录屏素材",
+            title="检查演示录屏素材",
             remind_at=second_reminder.isoformat(),
             timezone="Asia/Shanghai",
-            source_text="后天下午四点检查 Demo 录屏素材",
+            source_text="后天下午四点检查演示录屏素材",
         )
     finally:
         task_store.close()
@@ -237,7 +237,7 @@ def _write_demo_diaries(vault_root: Path, sqlite_path: Path) -> int:
             "你更喜欢下午开会，上午适合独立专注。",
         ),
         (
-            "这次 Demo 的演示顺序是什么？",
+            "这次演示的顺序是什么？",
             "先展示带来源回答，再创建任务和记忆，最后展示确认、活动账本与撤回。",
         ),
     )

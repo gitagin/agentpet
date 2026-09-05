@@ -46,7 +46,7 @@ const automationToggles: AutomationToggle[] = [
   {
     key: "local_privacy_mode",
     title: "本地隐私模式",
-    description: "敏感输入只做本机关键词检索，不发送到外部模型服务；回复会更保守，智能程度会下降。",
+    description: "敏感输入只在本机处理，不发送到外部模型服务；语义检索使用随应用分发的本地模型。",
   },
   {
     key: "use_negotiation",

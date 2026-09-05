@@ -57,8 +57,8 @@ def consolidate_slow_memory(
                     context=context,
                     state=state,
                     action_type="memory.consolidation.skip",
-                    title="Skipped slow memory consolidation",
-                    summary="This exchange did not contain a safe durable memory signal.",
+                    title="已跳过长期记忆整理",
+                    summary="这次对话没有提炼出可长期保存的稳定记忆。",
                     reason="no_signal",
                     risk_tier="low",
                 )
@@ -130,9 +130,9 @@ async def _consolidate_slow_memory_async(
             target_ref=f"intent:post-reply/consolidation/{state.agent_run_id}",
             parameters=parameters,
             expected_effect=(
-                "Record one redacted non-recallable memory safety event."
+                "记录一条已脱敏、不可召回的记忆安全事件。"
                 if safety_event
-                else "Persist evidence-backed slow memory candidates for one completed chat exchange."
+                else "为这次对话整理有证据的长期记忆候选。"
             ),
             source_message_id=state.message_id,
             source_run_id=state.agent_run_id,

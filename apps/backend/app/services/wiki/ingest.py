@@ -2,7 +2,7 @@ from .common import *
 from .common import _CachedIngestPreview
 from .contracts import page_type_for_path
 from .mapping import _map_plan
-from .utility import _json_list, _json_object, _preview_text, _source_hash, _unique
+from .utility import _dumps_list, _dumps_object, _preview_text, _source_hash, _unique
 
 from .import_handler import _import_preview_request
 from .ingest_identity import wiki_ingest_intent_key
@@ -108,9 +108,9 @@ class WikiIngestWorkflowMixin(WikiIngestReviewMixin, WikiIngestStorageMixin):
                         ingest_request.source_uri,
                         _preview_text(ingest_request.content),
                         ingest_request.content,
-                        _json_list(ingest_request.tags),
-                        _json_list(ingest_request.links),
-                        _json_object(ingest_request.source_metadata),
+                        _dumps_list(ingest_request.tags),
+                        _dumps_list(ingest_request.links),
+                        _dumps_object(ingest_request.source_metadata),
                         now,
                         source_id,
                     ),
@@ -132,9 +132,9 @@ class WikiIngestWorkflowMixin(WikiIngestReviewMixin, WikiIngestStorageMixin):
                         ingest_request.source_uri,
                         _preview_text(ingest_request.content),
                         ingest_request.content,
-                        _json_list(ingest_request.tags),
-                        _json_list(ingest_request.links),
-                        _json_object(ingest_request.source_metadata),
+                        _dumps_list(ingest_request.tags),
+                        _dumps_list(ingest_request.links),
+                        _dumps_object(ingest_request.source_metadata),
                         now,
                         now,
                     ),
@@ -201,8 +201,8 @@ class WikiIngestWorkflowMixin(WikiIngestReviewMixin, WikiIngestStorageMixin):
                         plan.operation,
                         plan.section,
                         plan.content,
-                        _json_list(plan.tags),
-                        _json_list(plan.links),
+                        _dumps_list(plan.tags),
+                        _dumps_list(plan.links),
                         "planned",
                         now,
                         now,

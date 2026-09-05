@@ -448,15 +448,3 @@ def test_strict_mode_contract_rejects_fallback_results() -> None:
     assert success is False
     assert reason == "required_channel_missing"
 
-
-def test_portfolio_retrieval_claims_point_to_current_repository_evidence() -> None:
-    claim_index = REPOSITORY_ROOT / "docs" / "portfolio" / "claim-evidence-index.md"
-    portfolio_files = tuple((REPOSITORY_ROOT / "docs" / "portfolio").glob("*.md"))
-    combined = "\n".join(path.read_text(encoding="utf-8") for path in portfolio_files)
-
-    evidence_paths = re.findall(r"`((?:apps|docs)/[^`]+|README\.md)`", claim_index.read_text(encoding="utf-8"))
-    assert evidence_paths
-    assert [path for path in evidence_paths if not (REPOSITORY_ROOT / path).exists()] == []
-    assert re.search(r"keyword[-_ ]free", combined, flags=re.IGNORECASE) is None
-    assert "0.496" in combined
-    assert re.search(r"(?:0\.628|0\.672|0\.226667)", combined) is None

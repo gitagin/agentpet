@@ -41,6 +41,15 @@ if (-not (Test-Path -LiteralPath $executablePath -PathType Leaf)) {
     throw "Frozen sidecar executable was not created at $executablePath."
 }
 
+$modelSource = Join-Path $backendRoot "models\embedding"
+$modelDest = Join-Path $distPath "agent-pet-sidecar\models\embedding"
+if (Test-Path -LiteralPath $modelSource) {
+    Copy-Item $modelSource $modelDest -Recurse -Force
+    Write-Host "Bundled local embedding model into the sidecar distribution."
+} else {
+    Write-Warning "models/embedding missing; run scripts/download-embedding-model.ps1 first. Local embedding will be unavailable until bundled."
+}
+
 $forbiddenOptionalPackages = @(
     "bitsandbytes",
     "kuzu",

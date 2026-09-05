@@ -319,11 +319,11 @@ class CompanionRetrievalService:
             (
                 telemetry.event_id,
                 telemetry.query_hash,
-                _json_list(telemetry.route_scopes),
-                _json_list(telemetry.result_ids),
-                _json_list(telemetry.result_hashes),
-                _json_object(telemetry.budget),
-                _json_object(telemetry.counts),
+                _dumps_list(telemetry.route_scopes),
+                _dumps_list(telemetry.result_ids),
+                _dumps_list(telemetry.result_hashes),
+                _dumps_object(telemetry.budget),
+                _dumps_object(telemetry.counts),
                 telemetry.created_at,
             ),
         )
@@ -516,11 +516,11 @@ def _hash_text(value: str) -> str:
     return sha256_hex(value)
 
 
-def _json_list(values: Iterable[str]) -> str:
+def _dumps_list(values: Iterable[str]) -> str:
     return json.dumps(list(values), sort_keys=True, separators=(",", ":"))
 
 
-def _json_object(value: dict[str, object]) -> str:
+def _dumps_object(value: dict[str, object]) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"))
 
 
@@ -693,8 +693,8 @@ class CompanionRetrievalReportStore:
                 telemetry.per_scope_limit,
                 telemetry.char_budget,
                 telemetry.used_chars,
-                _json_object(telemetry.source_counts),
-                _json_list(telemetry.selected_scopes),
+                _dumps_object(telemetry.source_counts),
+                _dumps_list(telemetry.selected_scopes),
                 created_at,
             ),
         )

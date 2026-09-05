@@ -91,7 +91,7 @@ async def _archive_daily_diary_async(
                 "user_question": state.user_message,
                 "assistant_answer": assistant_answer,
             },
-            expected_effect="Archive one completed chat exchange to the local daily memory log.",
+            expected_effect="把这次聊天归档到本机日记。",
             source_message_id=state.message_id,
             source_run_id=state.agent_run_id,
             source_conversation_id=state.conversation_id,

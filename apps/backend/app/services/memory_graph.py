@@ -9,7 +9,7 @@ from typing import Iterable, Iterator, Mapping
 
 from app.models.common import new_id
 from app.models.enums import MemoryFactStatus
-from app.services.memory_taxonomy import LifecycleStatus
+from app.services.memory_taxonomy import LOW_CONFIDENCE_THRESHOLD, LifecycleStatus
 from app.storage.database import open_database_connection
 from app.utils.hash import sha256_hex
 from app.utils.time import utc_now_iso
@@ -123,12 +123,12 @@ class MemoryGraphStore:
             return MemoryGraphWriteResult(fact=updated, inserted=False, reason="already_recorded")
 
         conflict = self._find_active_conflict(conflict_key, candidate.object) if detect_conflict else None
-        status = MemoryFactStatus.ACTIVE if conflict is None and candidate.confidence >= 0.65 else MemoryFactStatus.QUARANTINED
+        status = MemoryFactStatus.ACTIVE if conflict is None and candidate.confidence >= LOW_CONFIDENCE_THRESHOLD else MemoryFactStatus.QUARANTINED
         reason = None
         if conflict is not None:
             status = MemoryFactStatus.QUARANTINED
             reason = "conflict_detected"
-        elif candidate.confidence < 0.65:
+        elif candidate.confidence < LOW_CONFIDENCE_THRESHOLD:
             reason = "low_confidence"
 
         now = utc_now_iso()

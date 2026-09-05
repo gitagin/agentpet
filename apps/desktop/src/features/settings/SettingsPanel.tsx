@@ -1,19 +1,22 @@
 import { Bot, FolderOpen, RefreshCw, ShieldCheck, SlidersHorizontal } from "lucide-react";
 import type { FormEvent } from "react";
-import type { ModelTestResponse, VaultStatusResponse } from "../../types";
+import type { EmbeddingTestResponse, ModelTestResponse, TtsSettingsResponse, VaultStatusResponse } from "../../types";
 import type { DesktopApi } from "../../services/desktopApi";
 import { AutomationSettingsCard } from "./AutomationSettingsCard";
+import { EmbeddingSettingsCard } from "./EmbeddingSettingsCard";
 import { GlobalModelCard } from "./GlobalModelCard";
 import { ModelHealthBanner } from "./ModelHealthBanner";
 import { MemoryResetCard } from "./MemoryResetCard";
 import { ResidentRuntimeCard } from "./ResidentRuntimeCard";
-import { WikiImportCard } from "./WikiImportCard";
+import { TtsSettingsCard } from "./TtsSettingsCard";
 import type {
   AsyncStatus,
   AutomationSettingsDraft,
+  EmbeddingDraft,
   GlobalModelDraft,
   LastIndexRun,
   SettingsStatusLoadState,
+  TtsSettingsDraft,
 } from "./settingsTypes";
 import { VaultBindingSection } from "./VaultBindingSection";
 import { productCopy } from "../../productCopy";
@@ -24,8 +27,24 @@ export type SettingsPanelModel = {
   globalModelSaveStatus: AsyncStatus;
   globalModelTestResult?: ModelTestResponse;
   globalModelTestStatus: AsyncStatus;
+  embeddingDraft: EmbeddingDraft;
+  embeddingSaveStatus: AsyncStatus;
+  embeddingTestStatus: AsyncStatus;
+  embeddingTestResult?: EmbeddingTestResponse;
+  onUpdateEmbeddingDraft: (patch: Partial<EmbeddingDraft>) => void;
+  onSaveEmbedding: () => void;
+  onTestEmbedding: () => void;
   automationSettingsDraft: AutomationSettingsDraft;
   automationSettingsSaveStatus: AsyncStatus;
+  ttsDraft: TtsSettingsDraft;
+  ttsSaveStatus: AsyncStatus;
+  ttsStatus: TtsSettingsResponse | null;
+  ttsKeyMasked: string | null;
+  ttsKeyConfigured: boolean;
+  onUpdateTtsDraft: (patch: Partial<TtsSettingsDraft>) => void;
+  onSaveTts: (apiKey?: string) => void;
+  onRefreshTts: () => void;
+  onClearTtsCache: () => void;
   loadingSettingsStatus: boolean;
   settingsStatusLoadState: SettingsStatusLoadState;
   vaultId: string | null;
@@ -60,8 +79,24 @@ export function SettingsPanel({ model }: SettingsPanelProps) {
   globalModelSaveStatus,
   globalModelTestResult,
   globalModelTestStatus,
+  embeddingDraft,
+  embeddingSaveStatus,
+  embeddingTestStatus,
+  embeddingTestResult,
+  onUpdateEmbeddingDraft,
+  onSaveEmbedding,
+  onTestEmbedding,
   automationSettingsDraft,
   automationSettingsSaveStatus,
+  ttsDraft,
+  ttsSaveStatus,
+  ttsStatus,
+  ttsKeyMasked,
+  ttsKeyConfigured,
+  onUpdateTtsDraft,
+  onSaveTts,
+  onRefreshTts,
+  onClearTtsCache,
   loadingSettingsStatus,
   settingsStatusLoadState,
   vaultId,
@@ -165,6 +200,15 @@ export function SettingsPanel({ model }: SettingsPanelProps) {
         onSave={onSaveGlobalModel}
         onTest={onTestGlobalModel}
       />
+      <EmbeddingSettingsCard
+        draft={embeddingDraft}
+        saveStatus={embeddingSaveStatus}
+        testStatus={embeddingTestStatus}
+        testResult={embeddingTestResult}
+        onUpdateDraft={onUpdateEmbeddingDraft}
+        onSave={onSaveEmbedding}
+        onTest={onTestEmbedding}
+      />
       <AutomationSettingsCard
         draft={automationSettingsDraft}
         saveStatus={automationSettingsSaveStatus}
@@ -172,6 +216,18 @@ export function SettingsPanel({ model }: SettingsPanelProps) {
         onUpdateDraft={onUpdateAutomationSettingsDraft}
         onSave={onSaveAutomationSettings}
         onRefresh={onRefreshSettings}
+      />
+      <TtsSettingsCard
+        draft={ttsDraft}
+        saveStatus={ttsSaveStatus}
+        loadingSettingsStatus={loadingSettingsStatus}
+        status={ttsStatus}
+        keyMasked={ttsKeyMasked}
+        keyConfigured={ttsKeyConfigured}
+        onUpdateDraft={onUpdateTtsDraft}
+        onSave={onSaveTts}
+        onRefresh={onRefreshTts}
+        onClearCache={onClearTtsCache}
       />
       <ResidentRuntimeCard />
       <VaultBindingSection
@@ -187,7 +243,6 @@ export function SettingsPanel({ model }: SettingsPanelProps) {
         onLoadVaultStatus={onLoadVaultStatus}
         onRebuildIndex={onRebuildIndex}
       />
-      <WikiImportCard api={api} />
       <MemoryResetCard resetting={resettingMemoryState} onReset={onResetMemoryState} />
     </section>
   );

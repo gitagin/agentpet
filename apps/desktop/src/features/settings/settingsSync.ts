@@ -18,7 +18,7 @@ export function broadcastTtsSettingsSaved(): void {
     channel.postMessage(message);
     channel.close();
   } catch (error) {
-    console.warn("Failed to broadcast TTS settings update.", error);
+    console.warn("语音设置同步广播失败。", error);
   }
 }
 

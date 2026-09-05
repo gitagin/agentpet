@@ -6,6 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from app.agents.nodes.common import extract_text, parse_json_response
 from app.models.enums import AgentId
 
 
@@ -28,7 +29,7 @@ class MemoryReviewerNode:
             return raw_result
         if isinstance(raw_result, dict):
             return MemoryReviewResult(**raw_result)
-        return MemoryReviewResult(**self._parse_json_response(self._extract_text(raw_result)))
+        return MemoryReviewResult(**parse_json_response(extract_text(raw_result)))
 
     def _build_prompt(self, draft: dict[str, Any], existing_memories: list[Any]) -> str:
         return "\n".join(
@@ -76,22 +77,3 @@ class MemoryReviewerNode:
             return model.complete(user_message=prompt, system_prompt="你是 memory_reviewer，只返回 JSON。")
         except TypeError:
             return model.complete(prompt)
-
-    def _parse_json_response(self, text: str) -> dict[str, Any]:
-        stripped = text.strip()
-        if stripped.startswith("```"):
-            lines = stripped.splitlines()
-            if len(lines) >= 3:
-                stripped = "\n".join(lines[1:-1]).strip()
-                if stripped.startswith("json"):
-                    stripped = stripped[4:].strip()
-        return json.loads(stripped)
-
-    def _extract_text(self, raw_result: Any) -> str:
-        if isinstance(raw_result, str):
-            return raw_result
-        if hasattr(raw_result, "text"):
-            return str(raw_result.text)
-        if hasattr(raw_result, "content"):
-            return str(raw_result.content)
-        return str(raw_result)

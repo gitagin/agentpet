@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from math import fsum
+from math import fsum, isfinite
 
 
 RRF_K = 60
@@ -88,11 +88,24 @@ def reciprocal_rank_fusion(
     top_k: int,
     required_vault_id: str | None = None,
     rrf_k: int = RRF_K,
+    channel_weights: Mapping[str, float] | None = None,
 ) -> FusionResult:
+    """Fuse ranked channels; optional per-channel weights scale contributions.
+
+    Weighted RRF (Qdrant v1.17+): contribution = weight / (rrf_k + rank).
+    Weights must be finite and positive; channels without a weight keep 1.0.
+    Per-channel rank is unaffected, so primary_channel stays weight-free.
+    """
     if not 1 <= top_k <= MAX_CANDIDATES_PER_CHANNEL:
         raise ValueError("top_k must be between 1 and 40")
     if rrf_k <= 0:
         raise ValueError("rrf_k must be positive")
+    weights: dict[str, float] = {}
+    if channel_weights is not None:
+        for channel, weight in channel_weights.items():
+            if not isfinite(weight) or weight <= 0:
+                raise ValueError("channel weights must be finite and positive")
+            weights[str(channel)] = float(weight)
 
     ordered_scopes = _ordered_scopes(approved_scopes)
     allowed_scopes = set(ordered_scopes)
@@ -164,7 +177,7 @@ def reciprocal_rank_fusion(
             FusionContribution(
                 channel=channel,
                 rank=rank,
-                component=1.0 / (rrf_k + rank),
+                component=weights.get(channel, 1.0) / (rrf_k + rank),
             )
             for channel, rank, _ in sorted(ranked_candidates, key=lambda item: item[0])
         )

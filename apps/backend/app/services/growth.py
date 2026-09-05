@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
@@ -13,6 +12,8 @@ from app.models.api import (
 )
 from app.services.local_assets import LocalAssetStatsService
 from app.utils.time import utc_now_iso
+
+from app.utils.sqlite import json_list
 
 
 @dataclass(frozen=True, slots=True)
@@ -271,7 +272,7 @@ class GrowthSnapshotService:
             summary=str(row["summary"] or ""),
             source_action_id=str(row["id"]),
             source_action_type=action_type,
-            target_paths=_json_string_list(row["target_paths_json"]),
+            target_paths=json_list(row["target_paths_json"]),
         )
 
     def _dimension_for_action(self, action_type: str, status: str, reversible: bool) -> str:
@@ -285,14 +286,4 @@ class GrowthSnapshotService:
         return "memory_depth"
 
 
-def _json_string_list(value: object) -> list[str]:
-    if not isinstance(value, str):
-        return []
-    try:
-        parsed = json.loads(value)
-    except json.JSONDecodeError:
-        return []
-    if not isinstance(parsed, list):
-        return []
-    return [str(item) for item in parsed if str(item).strip()]
 

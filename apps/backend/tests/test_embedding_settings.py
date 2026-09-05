@@ -224,7 +224,7 @@ def test_enabling_embeddings_backfills_existing_fts_snapshot(
     assert component.reason is None
 
 
-def test_vector_factory_local_privacy_never_constructs_remote_embeddings(
+def test_vector_factory_local_privacy_uses_local_embeddings_and_never_constructs_remote(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -237,14 +237,38 @@ def test_vector_factory_local_privacy_never_constructs_remote_embeddings(
             raise AssertionError("remote embedding construction is forbidden")
 
     monkeypatch.setattr("app.services.retrieval_factory.LangChainEmbeddingClient", ForbiddenEmbeddingClient)
+    local_embeddings = object()
+    monkeypatch.setattr(
+        "app.services.retrieval_factory.build_local_onnx_embeddings",
+        lambda model_dir: local_embeddings,
+    )
 
     vector_index = build_vector_index(db_path, _vector_factory_settings(tmp_path))
 
     assert constructed == []
+    assert vector_index.available is True
+    assert vector_index.config.embedding_provider == "local-onnx"
+    assert vector_index.config.transport_class == "local"
+    assert vector_index.config.embedding_model == "bge-small-zh-v1.5"
+    assert vector_index.config.embedding_dimensions == 512
+    assert vector_index.config.embeddings is local_embeddings
+
+
+def test_vector_factory_local_privacy_without_local_model_stays_disabled_and_benign(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = _prepare_vector_factory_store(tmp_path, monkeypatch, local_privacy=True)
+    monkeypatch.setattr(
+        "app.services.retrieval_factory.build_local_onnx_embeddings",
+        lambda model_dir: None,
+    )
+
+    vector_index = build_vector_index(db_path, _vector_factory_settings(tmp_path))
+
     assert vector_index.available is False
-    assert vector_index.config.unavailable_reason == "local_privacy_mode"
-    assert vector_index.config.embedding_configured is True
-    assert vector_index.config.embeddings is None
+    assert vector_index.config.unavailable_reason == "local_embedding_unavailable"
+    assert vector_index.config.embedding_configured is False
     assert component_health_from_vector_index(vector_index).status == "ok"
 
 
@@ -287,19 +311,17 @@ def test_vector_factory_propagates_locked_generation_identity(
 
 
 @pytest.mark.parametrize(
-    ("provider", "with_key", "expected_reason", "expected_status"),
+    ("provider", "with_key"),
     [
-        ("openai-compatible", False, "embedding_api_key_missing", "ok"),
-        ("unsupported-provider", True, "embedding_provider_unsupported", "unavailable"),
+        ("openai-compatible", False),
+        ("unsupported-provider", True),
     ],
 )
-def test_vector_factory_configuration_failures_are_bounded(
+def test_vector_factory_configuration_failures_fall_back_to_local(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     provider: str,
     with_key: bool,
-    expected_reason: str,
-    expected_status: str,
 ) -> None:
     db_path = _prepare_vector_factory_store(
         tmp_path,
@@ -307,14 +329,18 @@ def test_vector_factory_configuration_failures_are_bounded(
         provider=provider,
         with_key=with_key,
     )
+    monkeypatch.setattr(
+        "app.services.retrieval_factory.build_local_onnx_embeddings",
+        lambda model_dir: None,
+    )
 
     vector_index = build_vector_index(db_path, _vector_factory_settings(tmp_path))
     health = component_health_from_vector_index(vector_index)
 
     assert vector_index.available is False
-    assert vector_index.config.unavailable_reason == expected_reason
-    assert health.status == expected_status
-    assert health.reason == expected_reason
+    assert vector_index.config.unavailable_reason == "local_embedding_unavailable"
+    assert health.status == "ok"
+    assert health.reason == "local_embedding_unavailable"
 
 
 def test_vector_factory_credential_read_failure_preserves_fts_startup(

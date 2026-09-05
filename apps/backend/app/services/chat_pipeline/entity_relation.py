@@ -26,6 +26,60 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _deterministic_preference_batch(source_text: str) -> dict[str, Any] | None:
+    """模型未抽取到实体关系时的确定性兜底：中文「我喜欢X」这类简单偏好。
+
+    模型对「我喜欢吃香蕉」「我喜欢喝咖啡」的抽取不稳定，若模型返回空或失败，
+    这里用确定性提取器兜底，把「X」作为 preference 实体 +「自己 prefers X」关系
+    落库为候选，避免简单偏好因模型不稳定而彻底丢失。
+    """
+    from app.services.long_term_memory import extract_long_term_memory_candidate
+
+    candidate = extract_long_term_memory_candidate(source_text)
+    if candidate is None or candidate.category.casefold() != "preference":
+        return None
+    value = candidate.value.strip()
+    if not value:
+        return None
+    end = max(1, len(source_text))
+    return {
+        "schema_version": "llmwiki.entity-extraction.v1",
+        "entities": [
+            {
+                "entity_ref": "e_self",
+                "entity_type": "self",
+                "name": "自己",
+                "aliases": [],
+                "confidence": 0.9,
+                "risk_tier": "low",
+                "evidence": {"start": 0, "end": end},
+            },
+            {
+                "entity_ref": "e_pref",
+                "entity_type": "preference",
+                "name": value,
+                "aliases": [],
+                "confidence": 0.9,
+                "risk_tier": "low",
+                "evidence": {"start": 0, "end": end},
+            },
+        ],
+        "claims": [],
+        "relations": [
+            {
+                "subject": {"kind": "entity", "ref": "e_self"},
+                "relation": "prefers",
+                "object": {"kind": "entity", "ref": "e_pref"},
+                "confidence": 0.9,
+                "evidence": {"start": 0, "end": end},
+            }
+        ],
+        "sensitive": [],
+        "conflicts": [],
+        "uncertainties": [],
+    }
+
+
 def _extract_json_object(text: str) -> dict[str, Any]:
     """把模型返回的文本（可能带 markdown 代码块）解析成 JSON 对象。"""
     candidates = [text.strip()]
@@ -110,10 +164,21 @@ async def archive_entity_relations(
         if raise_errors:
             raise
         logger.warning("Entity relation extraction failed for agent_run_id=%s: %s", state.agent_run_id, exc)
-        return skip("跳过实体关系抽取", "本轮对话未提取出可落库的实体关系。", "extraction_failed")
+        fallback = _deterministic_preference_batch(source_text)
+        if fallback is None:
+            return skip("跳过实体关系抽取", "本轮对话未提取出可落库的实体关系。", "extraction_failed")
+        batch = parse_extraction_output(fallback, source_text)
 
-    if not batch.entities and not batch.relations:
-        return skip("跳过实体关系抽取", "本轮对话没有新的实体或关系。", "no_signal")
+    # 确定性兜底：中文「我喜欢X」即使模型只抽到孤立实体、没抽到 prefers 关系，
+    # 也要补全成「自己 prefers X」，否则实体不参与任何关系，投影时不会显示。
+    fallback = _deterministic_preference_batch(source_text)
+    if fallback is not None and not any(
+        relation.relation == "prefers"
+        and relation.subject.kind == "entity"
+        and relation.object.kind == "entity"
+        for relation in batch.relations
+    ):
+        batch = parse_extraction_output(fallback, source_text)
 
     store = memory_entity_graph_store(context)
     try:

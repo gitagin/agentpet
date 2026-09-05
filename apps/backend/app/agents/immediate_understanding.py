@@ -7,6 +7,8 @@ from pydantic import BaseModel, Field
 
 from app.utils.hash import sha256_hex
 
+from app.utils.coerce import compact_text
+
 
 InteractionStyle = Literal["direct", "detailed", "gentle", "sharp", "concise"]
 
@@ -187,7 +189,7 @@ def _current_task(text: str, lowered: str) -> str | None:
     if not _has_any(lowered, _TASK_MARKERS) and _current_topic(text, lowered) is None:
         return None
     cleaned = re.sub(r"\s+", " ", text).strip()
-    return _compact(cleaned, 140)
+    return compact_text(cleaned, 140)
 
 
 def _current_topic(text: str, lowered: str) -> str | None:
@@ -205,8 +207,3 @@ def _dedupe(values: tuple[str, ...]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(value for value in values if value))
 
 
-def _compact(value: str, limit: int) -> str:
-    compacted = " ".join(value.strip().split())
-    if len(compacted) <= limit:
-        return compacted
-    return compacted[: max(0, limit - 3)].rstrip() + "..."

@@ -157,6 +157,22 @@ def test_extracts_compound_demo_preference_clause() -> None:
     assert candidate.value == "下午开会"
 
 
+def test_extracts_chinese_prefer_statement_as_preference():
+    candidate = extract_long_term_memory_candidate("记住:我偏好安静的环境,避免嘈杂的场所")
+
+    assert candidate is not None
+    assert candidate.target_path == "Memories/LongTerm/Preferences.md"
+    assert candidate.category == "preference"
+    assert candidate.subject == "偏好"
+    assert candidate.value == "安静的环境"
+
+
+def test_chinese_avoids_clause_is_not_misread_as_preference():
+    candidate = extract_long_term_memory_candidate("记住:我避免嘈杂的场所")
+
+    assert candidate is None
+
+
 def test_model_extraction_failure_logs_warning_and_skips_candidates(tmp_path, caplog):
     class FailingModel:
         def complete(self, *, user_message: str, system_prompt: str | None = None) -> str:

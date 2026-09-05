@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Callable
+import threading
+from collections import OrderedDict
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import date, datetime
 from time import perf_counter_ns
@@ -17,6 +19,8 @@ from app.services.retrieval_query import (
     build_retrieval_plan,
     build_retrieval_plan_telemetry,
     contains_exact_retrieval_atom,
+    retrieval_today,
+    route_retrieval_channels,
 )
 from app.services.reranking import DisabledReranker, Reranker, apply_reranker
 from app.services.retrieval_fusion import (
@@ -30,7 +34,11 @@ from app.services.vector_index import (
     LangChainQdrantVectorIndex,
     VectorIndexUnavailableError,
 )
+from app.services.memory_entity_graph import MemoryEntityGraphStore
 from app.services.write_policy import detect_sensitive_reason
+
+from app.utils.hash import sha256_hex
+from app.utils.time import elapsed_ms_ns
 
 
 logger = logging.getLogger(__name__)
@@ -41,6 +49,61 @@ logger = logging.getLogger(__name__)
 _CANDIDATE_POOL_MULTIPLIER = 4
 _CANDIDATE_POOL_MIN = 8
 _CANDIDATE_POOL_MAX = 40
+_CACHE_MAX_ENTRIES = 256
+_CACHE_KEY_VERSION = "retrieval-cache.v1"
+
+
+def _retrieval_cache_key(
+    conn,
+    *,
+    vault_id: str,
+    query: str,
+    mode: str,
+    source_scope: str,
+    top_k: int,
+    now: date | datetime | None,
+    local_privacy: bool,
+    vector_generation: object,
+) -> str:
+    """Key whose inputs change exactly when the answer could change.
+
+    Corpus stamp (max indexed_at/updated_at across notes, facts, diary,
+    and index jobs) invalidates on any write; the date anchor invalidates
+    relative-date queries at midnight; vector generation invalidates on
+    reindex.  Deliberate per-query aggregate cost is bounded by the
+    single-user corpus (see _corpus_stamp).
+    """
+    stamp = _corpus_stamp(conn, vault_id=vault_id)
+    anchor = retrieval_today(now).isoformat()
+    payload = "\x1f".join(
+        (
+            _CACHE_KEY_VERSION,
+            vault_id,
+            " ".join(query.split()),
+            mode,
+            source_scope,
+            str(top_k),
+            anchor,
+            "1" if local_privacy else "0",
+            str(vector_generation or ""),
+            stamp,
+        )
+    )
+    return sha256_hex(payload)
+
+
+def _corpus_stamp(conn, *, vault_id: str) -> str:
+    row = conn.execute(
+        """
+        SELECT
+            (SELECT COALESCE(MAX(indexed_at), '') FROM notes WHERE vault_id = ?),
+            (SELECT COALESCE(MAX(updated_at), '') FROM memory_graph_facts),
+            (SELECT COALESCE(MAX(updated_at), '') FROM diary_memory_objects),
+            (SELECT COALESCE(MAX(rowid), 0) FROM index_jobs WHERE vault_id = ?)
+        """,
+        (vault_id, vault_id),
+    ).fetchone()
+    return f"{row[0]}\x1f{row[1]}\x1f{row[2]}\x1f{row[3]}"
 
 
 def candidate_pool_size(top_k: int) -> int:
@@ -91,6 +154,8 @@ class RetrievalService:
         self.vector_index = vector_index
         self.reranker = reranker or DisabledReranker()
         self.candidate_filter = candidate_filter
+        self._cache: OrderedDict[str, MemorySearchResponse] = OrderedDict()
+        self._cache_lock = threading.Lock()
 
     def initialize(self) -> list[str]:
         return MigrationRunner(self.database).apply()
@@ -151,9 +216,8 @@ class RetrievalService:
         query: str,
         top_k: int = 8,
         source_scope: str = "all",
-        # Documented production default. hybrid/vector remain explicit opt-in:
-        # they never passed the retrieval quality gate (see docs/portfolio/
-        # claim-evidence-index.md, TASK-1215 Defer).
+        # FTS is the production default; hybrid and vector modes remain
+        # explicit opt-ins because their availability depends on local services.
         mode: str = "fts",
         now: date | datetime | None = None,
     ) -> MemorySearchResponse:
@@ -166,7 +230,7 @@ class RetrievalService:
         with self.database.session() as conn:
             local_privacy = _local_privacy_enabled(conn)
             sensitive_reason = detect_sensitive_reason(query)
-            requested_channels = _channels_for_mode(mode)
+            requested_channels = route_retrieval_channels(_channels_for_mode(mode), query)
             plan = build_retrieval_plan(
                 query,
                 approved_source_scopes=_plan_source_scopes(source_scope),
@@ -178,6 +242,23 @@ class RetrievalService:
             plan_telemetry = build_retrieval_plan_telemetry(plan, original_query=query)
             required_atoms = (*plan.exact_terms, *plan.identifiers)
             vector_health = self._vector_health(vault_id)
+            cache_key = _retrieval_cache_key(
+                conn,
+                vault_id=vault_id,
+                query=plan.lexical_query,
+                mode=mode,
+                source_scope=source_scope,
+                top_k=top_k,
+                now=now,
+                local_privacy=local_privacy,
+                vector_generation=vector_health.get("active_generation"),
+            )
+            cached = self._cache_peek(cache_key)
+            if cached is not None:
+                metadata = cached.metadata
+                metadata = dict(metadata)
+                metadata["cache_status"] = "hit"
+                return cached.model_copy(update={"metadata": metadata}, deep=True)
             fallback_reason: str | None = None
             if "vector" in requested_channels and local_privacy:
                 fallback_reason = "local_privacy_mode"
@@ -225,7 +306,7 @@ class RetrievalService:
                     vault_id=vault_id,
                     required_atoms=required_atoms,
                 )
-                daily_date_search_ms = _elapsed_ms(daily_date_started)
+                daily_date_search_ms = elapsed_ms_ns(daily_date_started)
                 daily_chunk_ids = tuple(result.chunk_id for result in daily_date_results)
 
             vector_allowed = "vector" in plan.requested_channels
@@ -283,7 +364,7 @@ class RetrievalService:
                             unavailability_reason="qdrant_unavailable",
                         )
                     finally:
-                        vector_adapter_ms = _elapsed_ms(vector_started)
+                        vector_adapter_ms = elapsed_ms_ns(vector_started)
 
             valid_empty_vector_scope = (
                 daily_chunk_ids == ()
@@ -311,8 +392,22 @@ class RetrievalService:
                         vault_id=vault_id,
                         required_atoms=required_atoms,
                     )
-                    fts_search_ms = _elapsed_ms(fts_started)
+                    fts_search_ms = elapsed_ms_ns(fts_started)
                 completed_channels.append("fts")
+
+            graph_results = []
+            graph_ms = 0.0
+            if "graph" in plan.requested_channels and (plan.entities or plan.identifiers):
+                graph_started = perf_counter_ns()
+                graph_results = _graph_fusion_candidates(
+                    conn,
+                    names=(*plan.entities, *plan.identifiers),
+                    vault_id=vault_id,
+                    limit=candidate_limit,
+                )
+                graph_ms = elapsed_ms_ns(graph_started)
+                if graph_results:
+                    completed_channels.append("graph")
 
             fusion_channels = {}
             if fts_results:
@@ -325,6 +420,8 @@ class RetrievalService:
                     _fusion_candidate(result, candidate_filter=self.candidate_filter)
                     for result in vector_results
                 ]
+            if graph_results:
+                fusion_channels["graph"] = graph_results
             fusion_started = perf_counter_ns()
             reranker_enabled = bool(getattr(self.reranker, "enabled", False))
             fusion_limit = min(
@@ -336,9 +433,10 @@ class RetrievalService:
                 approved_scopes=plan.source_scopes,
                 top_k=fusion_limit,
                 required_vault_id=vault_id,
+                channel_weights=_retrieval_channel_weights(plan, fusion_channels),
             )
             fusion_ms = round(
-                _elapsed_ms(fusion_started)
+                elapsed_ms_ns(fusion_started)
                 + (daily_date_search_ms if daily_date_results is not None and not fts_required else 0.0),
                 6,
             )
@@ -369,7 +467,7 @@ class RetrievalService:
                     "policy_version": FUSION_POLICY_VERSION,
                     "algorithm": "reciprocal_rank_fusion",
                     "rrf_k": RRF_K,
-                    "channel_weights": {channel: 1.0 for channel in sorted(fusion_channels)},
+                    "channel_weights": dict(_retrieval_channel_weights(plan, fusion_channels)),
                     "input_counts": fusion.diagnostics.input_counts,
                     "eligible_counts": fusion.diagnostics.eligible_counts,
                     "filtered_count": fusion.diagnostics.filtered_count,
@@ -392,14 +490,15 @@ class RetrievalService:
                     "vector_adapter_total": vector_adapter_ms,
                     "fts_search": fts_search_ms,
                     "filter_fusion_dedupe": fusion_ms,
+                    "graph_traversal": graph_ms,
                     "reranker": rerank_outcome.latency_ms,
-                    "total": _elapsed_ms(total_started),
+                    "total": elapsed_ms_ns(total_started),
                 },
             }
             unavailable_reason = vector_health.get("unavailability_reason")
             if unavailable_reason:
                 metadata["vector_unavailable_reason"] = unavailable_reason
-        return MemorySearchResponse(
+        response = MemorySearchResponse(
             results=[
                 MemorySearchResult(
                     note_id=fused.payload.note_id,
@@ -410,7 +509,11 @@ class RetrievalService:
                     snippet=_sanitize_snippet(fused.payload.snippet),
                     score=fused.score,
                     content_hash=fused.content_hash,
-                    source_scope=_classify_source_scope(fused.payload.relative_path),
+                    source_scope=(
+                        fused.source_scope
+                        if fused.source_scope == "graph"
+                        else _classify_source_scope(fused.payload.relative_path)
+                    ),
                     retrieval_mode=primary_channel(fused),
                     retrieval_channels=list(fused.channels),
                     channel_ranks=fused.channel_ranks,
@@ -434,6 +537,19 @@ class RetrievalService:
             ],
             metadata=metadata,
         )
+        self._cache_store(cache_key, response)
+        return response
+
+    def _cache_peek(self, cache_key: str) -> MemorySearchResponse | None:
+        with self._cache_lock:
+            return self._cache.get(cache_key)
+
+    def _cache_store(self, cache_key: str, response: MemorySearchResponse) -> None:
+        with self._cache_lock:
+            self._cache[cache_key] = response
+            self._cache.move_to_end(cache_key)
+            while len(self._cache) > _CACHE_MAX_ENTRIES:
+                self._cache.popitem(last=False)
 
     def reconcile_vector_index(self, vault_id: str):
         with self.database.session() as conn:
@@ -708,6 +824,80 @@ def _contains_required_atoms(
     )
 
 
+def _retrieval_channel_weights(
+    plan,
+    channels: Mapping[str, Sequence[FusionCandidate]],
+) -> dict[str, float]:
+    """Per-channel RRF weights: lexical wins exact-identifier queries.
+
+    Evidence (dev.to 2026 production notes): exact-token hits are relevant
+    almost always while embedding-similar hits are relevant roughly 60% of
+    the time, so identifier/exact-term queries weight FTS at 3.0.  Every
+    other case keeps the equal-weight default (1.0).
+    """
+    weights = {channel: 1.0 for channel in channels}
+    has_exact_atoms = bool(plan.exact_terms or plan.identifiers)
+    if has_exact_atoms and "fts" in weights:
+        weights["fts"] = 3.0
+    return weights
+
+
+def _graph_fusion_candidates(
+    conn,
+    *,
+    names: Sequence[str],
+    vault_id: str,
+    limit: int,
+) -> list[FusionCandidate]:
+    """Resolve query entities and traverse the SQLite-authoritative graph.
+
+    Kuzu stays an acceleration-only projection; this channel reads the
+    authority directly so graph recall never depends on an optional
+    dependency.  Graph facts ride the note-centric SearchResult envelope
+    until a dedicated graph result type exists in the response model.
+    """
+    store = MemoryEntityGraphStore(conn)
+    entity_ids = store.find_active_entity_ids(names)[:8]
+    candidates: list[FusionCandidate] = []
+    seen: set[str] = set()
+    for entity_id in entity_ids:
+        for relation in store.traverse(entity_id, max_hops=2, limit=limit, vault_id=vault_id):
+            fact = relation.fact
+            stable_id = f"graph:{fact.id}"
+            if stable_id in seen:
+                continue
+            seen.add(stable_id)
+            text = f"{fact.subject} {fact.predicate} {fact.object}"
+            content_hash = sha256_hex(f"graph-fact.v1\n{fact.fact_key}")
+            candidates.append(
+                FusionCandidate(
+                    stable_id=stable_id,
+                    content_hash=content_hash,
+                    source_scope="graph",
+                    payload=SearchResult(
+                        note_id="",
+                        chunk_id=stable_id,
+                        relative_path=f"graph/{entity_id}",
+                        title=fact.predicate,
+                        heading=None,
+                        snippet=text,
+                        score=0.0,
+                        content_hash=content_hash,
+                        vault_id=vault_id,
+                    ),
+                    stable_order_key=f"graph:{fact.fact_key}",
+                    permission_allowed=True,
+                    lifecycle_status="active",
+                    metadata_filter_passed=True,
+                    vault_id=vault_id,
+                    generation_valid=True,
+                )
+            )
+            if len(candidates) >= limit:
+                return candidates
+    return candidates
+
+
 def _fusion_candidate(
     result: SearchResult,
     *,
@@ -868,7 +1058,3 @@ def _sanitize_snippet(snippet: str) -> str:
             continue
         lines.append(stripped)
     return " ".join(lines)
-
-
-def _elapsed_ms(started_ns: int) -> float:
-    return round((perf_counter_ns() - started_ns) / 1_000_000, 6)

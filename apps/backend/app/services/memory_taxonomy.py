@@ -3,7 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 
+from app.models.enums import MemoryFactStatus
 from app.services.memory_policy import evaluate_memory_content
+from app.utils.coerce import clamp_unit_interval
 
 
 class _StrEnum(str, Enum):
@@ -105,8 +107,8 @@ def classify_memory(
     kind = MemoryKind(memory_kind)
     scope = MemoryScope(memory_scope)
     track = SourceTrack(source_track)
-    normalized_confidence = _clamp(confidence)
-    normalized_importance = _clamp(importance)
+    normalized_confidence = clamp_unit_interval(confidence)
+    normalized_importance = clamp_unit_interval(importance)
     normalized_evidence = max(0, int(evidence_count))
     reasons: list[str] = []
 
@@ -326,6 +328,11 @@ def _sensitive_reason(value: str) -> str | None:
     return None if decision.allowed else decision.reason or "sensitive_content"
 
 
-def _clamp(value: float) -> float:
-    return min(max(float(value), 0.0), 1.0)
+def fact_lifecycle_status(status: MemoryFactStatus) -> LifecycleStatus:
+    """Map a persisted fact status onto the lifecycle taxonomy."""
+    if status is MemoryFactStatus.QUARANTINED:
+        return LifecycleStatus.CANDIDATE
+    if status in {MemoryFactStatus.WRONG, MemoryFactStatus.SENSITIVE_BLOCKED}:
+        return LifecycleStatus.REJECTED
+    return LifecycleStatus(status.value)
 

@@ -11,8 +11,10 @@ from app.models.enums import MemoryFactStatus
 from app.services.memory_candidates import MemoryCandidateRecord
 from app.services.memory_lifecycle import MemoryLifecycleService, MemoryLifecycleTransitionError
 from app.services.memory_policy import evaluate_memory_content
-from app.services.memory_taxonomy import LifecycleStatus, MemoryKind, MemoryScope
+from app.services.memory_taxonomy import LOW_CONFIDENCE_THRESHOLD, LifecycleStatus, MemoryKind, MemoryScope
 from app.utils.time import utc_now_iso
+
+from app.utils.time import coerce_datetime
 
 
 TERMINAL_CANDIDATE_STATUSES = {
@@ -73,12 +75,12 @@ class MemoryHygieneService:
         *,
         now: datetime | str | None = None,
         stale_candidate_before: datetime | str | None = None,
-        low_confidence_threshold: float = 0.65,
+        low_confidence_threshold: float = LOW_CONFIDENCE_THRESHOLD,
         limit: int = 500,
     ) -> MemoryHygieneRunResult:
-        current_time = _coerce_datetime(now) if now is not None else self.now_provider()
+        current_time = coerce_datetime(now) if now is not None else self.now_provider()
         stale_before = (
-            _coerce_datetime(stale_candidate_before)
+            coerce_datetime(stale_candidate_before)
             if stale_candidate_before is not None
             else current_time - timedelta(days=30)
         )
@@ -288,7 +290,7 @@ class MemoryHygieneService:
         ).fetchall()
         actions: list[MemoryHygieneAction] = []
         for row in rows:
-            updated_at = _coerce_datetime(row["updated_at"])
+            updated_at = coerce_datetime(row["updated_at"])
             if updated_at >= stale_before:
                 continue
             reason = "hygiene_stale_low_confidence_candidate"
@@ -325,11 +327,11 @@ class MemoryHygieneService:
             if len(group) < 2:
                 continue
             strongest = sorted(group, key=_fact_strength_key)[0]
-            strongest_updated_at = _coerce_datetime(strongest["updated_at"])
+            strongest_updated_at = coerce_datetime(strongest["updated_at"])
             for fact in group:
                 if fact["id"] == strongest["id"] or str(fact["object"]).casefold() == str(strongest["object"]).casefold():
                     continue
-                fact_updated_at = _coerce_datetime(fact["updated_at"])
+                fact_updated_at = coerce_datetime(fact["updated_at"])
                 if float(strongest["confidence"]) <= float(fact["confidence"]) or strongest_updated_at <= fact_updated_at:
                     continue
                 reason = "hygiene_conflict_superseded_by_stronger_fact"
@@ -382,14 +384,6 @@ def _fact_strength_key(row: sqlite3.Row) -> tuple[float, int, str, str]:
 def _is_due(value: str | None, now: datetime) -> bool:
     if not value:
         return False
-    return _coerce_datetime(value) <= now
+    return coerce_datetime(value) <= now
 
 
-def _coerce_datetime(value: datetime | str) -> datetime:
-    if isinstance(value, datetime):
-        parsed = value
-    else:
-        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)

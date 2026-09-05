@@ -1,14 +1,21 @@
-import { Database, ExternalLink, RefreshCw, Search, TriangleAlert } from "lucide-react";
+import { Database, ExternalLink, RefreshCw, RotateCcw, Search, TriangleAlert } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { formatDate } from "../../services/dateFormatting";
 import {
   Background,
+  BaseEdge,
+  ControlButton,
   Controls,
+  EdgeLabelRenderer,
+  getStraightPath,
   Handle,
   Position,
   ReactFlow,
   useEdgesState,
+  useInternalNode,
   useNodesState,
   type Edge,
+  type EdgeProps,
   type Node,
   type NodeProps,
   type NodeTypes,
@@ -16,6 +23,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import type { MemoryGraphResponse } from "../../types";
+import { relationLabels } from "./relationTypeLabels";
 import type { MemoryGraphEdgeItem, MemoryGraphNodeItem } from "./useMemoryGraphWorkspace";
 import { useForceLayout } from "./useForceLayout";
 
@@ -73,20 +81,6 @@ const typeLabels: Record<string, string> = {
   cleanup: "待整理",
 };
 
-const relationLabels: Record<string, string> = {
-  prefers: "偏好",
-  avoids: "避免",
-  works_on: "正在做",
-  knows: "了解",
-  related_to: "关联",
-  occurred_in: "发生于",
-  supports: "支持",
-  contradicts: "冲突",
-  supersedes: "替代",
-  derived_from: "派生自",
-  documented_in: "记录于",
-};
-
 const typeColors: Record<string, string> = {
   user: palette.rose,
   preference: palette.rose,
@@ -119,23 +113,6 @@ function nodeKind(node: MemoryGraphNodeItem): string {
 
 function relationLabel(edge: MemoryGraphEdgeItem): string {
   return relationLabels[edge.relation_type] || "关系";
-}
-
-function formatDate(value: string | null | undefined): string {
-  if (!value) {
-    return "时间未记录";
-  }
-  const timestamp = Date.parse(value);
-  if (Number.isNaN(timestamp)) {
-    return "时间未记录";
-  }
-  return new Intl.DateTimeFormat("zh-CN", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(new Date(timestamp));
 }
 
 /* ============================================================
@@ -211,7 +188,7 @@ function flowNodeData(
       },
       draggable: true,
       selectable: true,
-      focusable: false,
+      focusable: true,
       selected: node.node_id === selectedNodeId,
     };
   });
@@ -226,8 +203,6 @@ function flowEdgeData(
   return edges.map((edge) => {
     const conflict = edge.relation_type === "contradicts" || edge.status === "conflict";
     const selected = edge.edge_id === selectedEdgeId;
-    const confidence = Math.max(0, Math.min(1, edge.confidence ?? 0.6));
-    const evidence = Math.min(edge.evidence_count ?? 0, 5);
     const dimmed =
       activeId !== null &&
       neighborIds !== null &&
@@ -236,6 +211,7 @@ function flowEdgeData(
       id: edge.edge_id,
       source: edge.source_node_id,
       target: edge.target_node_id,
+      type: "memoryGraphEdge",
       label: relationLabel(edge),
       className: ["llmwiki-graph-edge", conflict ? "is-conflict" : "", selected ? "is-selected" : ""]
         .filter(Boolean)
@@ -244,10 +220,11 @@ function flowEdgeData(
       focusable: true,
       animated: false,
       style: {
-        stroke: conflict ? palette.red : selected ? palette.teal : "rgba(243, 241, 236, 0.35)",
-        strokeWidth: selected ? 2.6 : 1 + confidence * 2.2 + evidence * 0.25,
+        // 3px 实线，清晰可见（1px 太细看不清）
+        stroke: conflict ? palette.red : selected ? palette.teal : "rgba(137, 145, 155, 0.55)",
+        strokeWidth: 3,
         strokeDasharray: conflict ? "5 4" : undefined,
-        opacity: dimmed ? 0.04 : undefined,
+        opacity: dimmed ? 0.06 : undefined,
       },
       labelStyle: { fill: palette.muted, fontSize: 11, fontWeight: 600 },
       labelBgStyle: { fill: "#1b1d21", fillOpacity: 0.92, color: "#1b1d21" },
@@ -288,15 +265,56 @@ function MemoryNode({ data, selected }: NodeProps<FlowNode>) {
         }
       }}
     >
-      <Handle type="target" position={Position.Top} className="llmwiki-graph-handle" />
+      <Handle type="target" position={Position.Top} id="t" style={{ opacity: 0, pointerEvents: "none" }} />
       <span className="llmwiki-graph-node-copy"><strong>{label}</strong></span>
-      <Handle type="source" position={Position.Bottom} className="llmwiki-graph-handle" />
+      <Handle type="source" position={Position.Bottom} id="s" style={{ opacity: 0, pointerEvents: "none" }} />
       <span className="sr-only">更新于 {formatDate(item.updated_at)}</span>
     </div>
   );
 }
 
+/** 直线边：从节点中心连到中心，节点覆盖中间，视觉上贴合边缘、360° 随位置自然变化。 */
+function MemoryGraphEdge(props: EdgeProps) {
+  const { source, target, sourceX, sourceY, targetX, targetY, label, labelStyle } = props;
+  const sourceNode = useInternalNode<FlowNode>(source);
+  const targetNode = useInternalNode<FlowNode>(target);
+  // 节点 CSS 是 translate(-50%,-50%)，视觉中心就是 positionAbsolute 点本身。
+  const scx = sourceNode ? sourceNode.internals.positionAbsolute.x : sourceX;
+  const scy = sourceNode ? sourceNode.internals.positionAbsolute.y : sourceY;
+  const tcx = targetNode ? targetNode.internals.positionAbsolute.x : targetX;
+  const tcy = targetNode ? targetNode.internals.positionAbsolute.y : targetY;
+  const [path, labelX, labelY] = getStraightPath({
+    sourceX: scx,
+    sourceY: scy,
+    targetX: tcx,
+    targetY: tcy,
+  });
+  return (
+    <>
+      <BaseEdge path={path} {...props} />
+      {label ? (
+        <EdgeLabelRenderer>
+          <div
+            className="llmwiki-graph-edge-label"
+            style={{
+              position: "absolute",
+              transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+              color: labelStyle?.fill ?? "#a9a5a0",
+              fontSize: 11,
+              fontWeight: 600,
+              pointerEvents: "all",
+            }}
+          >
+            {label}
+          </div>
+        </EdgeLabelRenderer>
+      ) : null}
+    </>
+  );
+}
+
 const nodeTypes: NodeTypes = { memoryGraphNode: MemoryNode };
+const edgeTypes = { memoryGraphEdge: MemoryGraphEdge };
 
 export function MemoryGraphWorkspace({
   graph,
@@ -344,7 +362,19 @@ export function MemoryGraphWorkspace({
 
   // ---- 悬停高亮：activeId = 悬停 ?? 选中 ----
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
-  const activeId = hoveredNodeId ?? selectedNodeId;
+  // 离开图谱（切换标签/窗口）时清除选中：否则 selectedNodeId 残留在父级 hook，
+  // 返回后 activeId 非空，flowEdgeData 把非邻居边淡化成 opacity 0.06，表现为"连线消失"。
+  useEffect(() => {
+    return () => {
+      onClearSelection();
+    };
+  }, [onClearSelection]);
+  // 搜索筛选后，若悬停/选中的节点已被过滤出可见集合，activeId 应视为 null，
+  // 否则 flowEdgeData 会把所有边判成 dimmed（透明度 0.06），表现为"连接线消失"。
+  const activeId = useMemo(() => {
+    const candidate = hoveredNodeId ?? selectedNodeId;
+    return candidate !== null && visibleNodeIds.has(candidate) ? candidate : null;
+  }, [hoveredNodeId, selectedNodeId, visibleNodeIds]);
   const neighborIds = useMemo(() => {
     if (!activeId) {
       return null;
@@ -358,12 +388,11 @@ export function MemoryGraphWorkspace({
   }, [activeId, visibleEdges]);
 
   // ---- 力导向布局（d3-force 只算坐标，React Flow 只负责渲染） ----
-  const { positions, pinNode, unpinNode, onSettled } = useForceLayout<MemoryGraphNodeItem, MemoryGraphEdgeItem>(
+  const { positions, pinNode, unpinNode, reset, onSettled } = useForceLayout<MemoryGraphNodeItem, MemoryGraphEdgeItem>(
     visibleNodes,
     visibleEdges,
     {
       center: [0, 0],
-      pinnedIds: new Set(["user"]),
       radiusOf: (node, degree) => nodeRadius(node, degree) + 10, // +10 给下方标签留空间
       seedPosition,
     },
@@ -372,10 +401,13 @@ export function MemoryGraphWorkspace({
   // 布局收敛后 fit 一次（时序：先让物理摊开，再缩放窗口）
   const rfInstanceRef = useRef<ReactFlowInstance<FlowNode, FlowEdge> | null>(null);
   const fitOnceRef = useRef(false);
-  const generationKey = graph?.generation?.generation_id ?? graph?.generated_at ?? "";
+  // 只在节点集合真正变化（新增/删除节点）时重新 fitView。
+  // 不能用 generation_id：4s/9s 延迟刷新即使数据没变也可能换新 id，会把 fitOnceRef 置回 false，
+  // 导致用户拖动松手后布局重新收敛时被误触发的 fitView 打断（表现为"地图刷新一下、拖不动"）。
+  const nodeIdKey = useMemo(() => visibleNodes.map((node) => node.node_id).sort().join("|"), [visibleNodes]);
   useEffect(() => {
     fitOnceRef.current = false;
-  }, [generationKey]);
+  }, [nodeIdKey]);
   useEffect(() => {
     return onSettled(() => {
       if (!fitOnceRef.current && rfInstanceRef.current) {
@@ -388,6 +420,12 @@ export function MemoryGraphWorkspace({
       }
     });
   }, [onSettled]);
+
+  /** 重置布局：回到种子位置重新摊开，收敛后自动 fitView */
+  const handleResetLayout = () => {
+    fitOnceRef.current = false;
+    reset();
+  };
 
   // ---- React Flow 状态：data 变化时整体同步（保留 position），布局 tick 只更新 position ----
   const baseNodes = useMemo(
@@ -489,6 +527,7 @@ export function MemoryGraphWorkspace({
               nodes={reactFlowNodes}
               edges={reactFlowEdges}
               nodeTypes={nodeTypes}
+              edgeTypes={edgeTypes}
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
               onInit={(instance) => {
@@ -499,6 +538,7 @@ export function MemoryGraphWorkspace({
               onPaneClick={onClearSelection}
               onNodeMouseEnter={(_, node) => setHoveredNodeId(node.id)}
               onNodeMouseLeave={() => setHoveredNodeId(null)}
+              onNodeDragStart={(_, node) => pinNode(node.id, node.position.x, node.position.y)}
               onNodeDrag={(_, node) => pinNode(node.id, node.position.x, node.position.y)}
               onNodeDragStop={(_, node) => unpinNode(node.id)}
               fitView
@@ -516,7 +556,11 @@ export function MemoryGraphWorkspace({
               className="llmwiki-react-flow"
             >
               <Background color="rgba(243,241,236,.12)" gap={24} size={1} />
-              <Controls showInteractive={false} />
+              <Controls showInteractive={false} showFitView={false}>
+                <ControlButton onClick={handleResetLayout} title="重置布局" aria-label="重置布局">
+                  <RotateCcw size={15} aria-hidden="true" />
+                </ControlButton>
+              </Controls>
             </ReactFlow>
             <div className="llmwiki-graph-canvas-search">
               <Search size={15} aria-hidden="true" />
@@ -532,7 +576,7 @@ export function MemoryGraphWorkspace({
               return (
                 <button key={edge.edge_id} type="button" className={`llmwiki-relation-row ${selectedEdgeId === edge.edge_id ? "is-selected" : ""} ${conflict ? "is-conflict" : ""}`} onClick={() => onSelectEdge(edge.edge_id)}>
                   <span className="llmwiki-relation-dot" aria-hidden="true" />
-                  <span><strong>{visibleText(from?.label, "来源节点")}</strong><small>{relationLabel(edge)} → {visibleText(to?.label, "目标节点")}</small></span>
+                  <span className="llmwiki-relation-copy"><strong>{visibleText(from?.label, "来源节点")}</strong><small>{relationLabel(edge)} → {visibleText(to?.label, "目标节点")}</small></span>
                   <span className="llmwiki-relation-evidence">{edge.evidence_count ?? 0} 源</span>
                 </button>
               );

@@ -16,6 +16,7 @@ import { createInitialSettingsState, settingsReducer } from "./settingsReducer";
 import { broadcastTtsSettingsSaved } from "./settingsSync";
 import type {
   AutomationSettingsDraft,
+  EmbeddingDraft,
   GlobalModelDraft,
   LastIndexRun,
   NegotiationSettingsDraft,
@@ -160,6 +161,61 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
     }
   }, [api, onNotice, state.globalModelDraft]);
 
+  const updateEmbeddingDraft = useCallback((patch: Partial<EmbeddingDraft>) => {
+    dispatch({ type: "updateEmbeddingDraft", patch });
+  }, []);
+
+  const saveEmbedding = useCallback(async () => {
+    const draft = state.embeddingDraft;
+    if (!draft.base_url.trim() || !draft.model.trim()) {
+      onNotice({ tone: "error", message: "请填写 Embedding 接口地址和模型。" });
+      return;
+    }
+    dispatch({ type: "setEmbeddingSaveStatus", status: "loading" });
+    onNotice(null);
+    try {
+      const config = await api.setEmbeddingConfig({
+        provider: "openai-compatible",
+        base_url: draft.base_url.trim(),
+        model: draft.model.trim(),
+      });
+      const trimmedKey = draft.api_key.trim();
+      if (trimmedKey) {
+        await api.setEmbeddingKey({ provider: config.provider, api_key: trimmedKey });
+      }
+      dispatch({ type: "saveEmbeddingSuccess", config });
+      onNotice({ tone: "success", message: "Embedding 配置已保存，向量索引会在后台重建。" });
+    } catch (error) {
+      dispatch({ type: "setEmbeddingSaveStatus", status: "error" });
+      onNotice({ tone: "error", message: describeError(error, "Embedding 配置保存失败") });
+    }
+  }, [api, onNotice, state.embeddingDraft]);
+
+  const testEmbeddingConnection = useCallback(async () => {
+    const draft = state.embeddingDraft;
+    if (
+      draft.base_url.trim() !== draft.saved_base_url ||
+      draft.model.trim() !== draft.saved_model ||
+      draft.api_key.trim()
+    ) {
+      onNotice({ tone: "error", message: "Embedding 有未保存的配置，请先保存后再测试连接。" });
+      return;
+    }
+    dispatch({ type: "setEmbeddingTestStatus", status: "loading" });
+    onNotice(null);
+    try {
+      const response = await api.testEmbeddingConnection();
+      dispatch({ type: "setEmbeddingTestStatus", status: response.status === "ok" ? "success" : "error", result: response });
+      onNotice({
+        tone: response.status === "ok" ? "success" : "error",
+        message: response.message || `Embedding 测试连接${response.status === "ok" ? "成功" : "失败"}。`,
+      });
+    } catch (error) {
+      dispatch({ type: "setEmbeddingTestStatus", status: "error" });
+      onNotice({ tone: "error", message: describeError(error, "Embedding 测试连接失败") });
+    }
+  }, [api, onNotice, state.embeddingDraft]);
+
   const updateAutomationSettingsDraft = useCallback((patch: Partial<AutomationSettingsDraft>) => {
     dispatch({ type: "updateAutomationSettingsDraft", patch });
   }, []);
@@ -226,10 +282,10 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
       const response = await api.clearTtsCache();
       onNotice({
         tone: "success",
-        message: `TTS cache cleared: ${response.cleared_entries} files, ${response.cleared_bytes} bytes.`,
+        message: `已清理语音缓存：${response.cleared_entries} 个文件，${response.cleared_bytes} 字节。`,
       });
     } catch (error) {
-      onNotice({ tone: "error", message: describeError(error, "TTS cache clear failed") });
+      onNotice({ tone: "error", message: describeError(error, "语音缓存清理失败") });
     }
   }, [api, onNotice]);
 
@@ -513,6 +569,10 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
     automationSettingsSaveStatus: state.automationSettingsSaveStatus,
     bindVault,
     clearTtsCache,
+    embeddingDraft: state.embeddingDraft,
+    embeddingSaveStatus: state.embeddingSaveStatus,
+    embeddingTestStatus: state.embeddingTestStatus,
+    embeddingTestResult: state.embeddingTestResult,
     globalModelDraft: state.globalModelDraft,
     globalModelSaveStatus: state.globalModelSaveStatus,
     globalModelTestResult: state.globalModelTestResult,
@@ -529,6 +589,7 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
     resetSettingsState,
     saveAgentModel,
     saveAutomationSettings,
+    saveEmbedding,
     saveGlobalModel,
     saveNegotiationSettings,
     saveTtsSettings,
@@ -538,12 +599,14 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
     setVaultPath,
     settingsStatus: state.settingsStatus,
     testAgentModelConnection,
+    testEmbeddingConnection,
     testGlobalModelConnection,
     testingAgentModelIds: state.testingAgentModelIds,
     ttsSettingsDraft: state.ttsSettingsDraft,
     ttsSettingsSaveStatus: state.ttsSettingsSaveStatus,
     updateAgentModelDraft,
     updateAutomationSettingsDraft,
+    updateEmbeddingDraft,
     updateGlobalModelDraft,
     updateNegotiationSettingsDraft,
     updateTtsSettingsDraft,

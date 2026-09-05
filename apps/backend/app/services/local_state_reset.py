@@ -49,6 +49,21 @@ MEMORY_RESET_TABLES = (
     "agent_runs",
     "messages",
     "conversations",
+    # 检索/索引产物：聊天日记等软件生成的 Markdown 会被索引进 note_fts。
+    # 只清记忆表不清索引，会导致"重置记忆"后全文搜索仍命中残留记忆。
+    # 顺序很重要：wiki_ingest_reviews / wiki_workflow_runs 通过无 ON DELETE CASCADE
+    # 的外键引用 wiki_sources，必须先把子表清掉再清父表，否则触发 FOREIGN KEY 约束失败。
+    "note_fts",
+    "wiki_workflow_page_updates",
+    "wiki_ingest_reviews",
+    "wiki_workflow_runs",
+    "wiki_sources",
+    "wiki_query_archives",
+    "wiki_log_events",
+    "vector_chunks",
+    "note_chunks",
+    "notes",
+    "index_jobs",
 )
 
 
@@ -185,16 +200,51 @@ class LocalStateResetService:
 
 
 class MemoryStateResetService(LocalStateResetService):
-    """Clear personal memory state without touching model credentials or Vault files."""
+    """Clear personal memory state without touching model credentials or the user's own Vault files.
+
+    Software-generated memory artifacts (Vault 的 ``Memories/`` 聊天日记与 ``Wiki/``
+    资料页) are deleted too, otherwise the daily-chat diary "leaks" back through
+    full-text search after a reset.
+    """
+
+    def __init__(
+        self,
+        database: Database,
+        data_dir: str | Path,
+        *,
+        vault_root: str | Path | None = None,
+    ) -> None:
+        super().__init__(database, data_dir)
+        self.vault_root = Path(vault_root).resolve() if vault_root else None
 
     def reset(self) -> LocalStateResetResult:
         cleared_tables = self._clear_sqlite_tables(MEMORY_RESET_TABLES)
         removed_paths = self._remove_memory_runtime_paths()
+        removed_paths.extend(self._remove_vault_memory_dirs())
         return LocalStateResetResult(
             status="memory_reset",
             cleared_tables=cleared_tables,
             removed_paths=removed_paths,
         )
+
+    def _remove_vault_memory_dirs(self) -> list[str]:
+        removed: list[str] = []
+        if self.vault_root is None or not self.vault_root.exists():
+            return removed
+        # 安全护栏：绝不删除文件系统根或用户主目录本身
+        root = self.vault_root.resolve()
+        if root.parent == root:
+            return removed
+        for name in ("Wiki", "Memories"):
+            path = root / name
+            if not path.exists():
+                continue
+            if path.is_dir():
+                shutil.rmtree(path)
+            else:
+                path.unlink()
+            removed.append(f"{name}/")
+        return removed
 
     def _remove_memory_runtime_paths(self) -> list[str]:
         removed: list[str] = []
@@ -216,48 +266,12 @@ class MemoryStateResetService(LocalStateResetService):
 
 
 class FullMemoryResetService(MemoryStateResetService):
-    """彻底重置：清空 SQLite 记忆，并删除 Vault 里软件生成的记忆目录。
-
-    Vault 的 Wiki/ 和 Memories/ 是软件自动生成的记忆产物（资料页 + 聊天日记），
-    可安全删除。用户的原始资料在 import_root（Vault 之外），Vault 根目录下
-    用户自己的其他文件与目录会被保留。
-    """
-
-    def __init__(
-        self,
-        database: Database,
-        data_dir: str | Path,
-        *,
-        vault_root: str | Path | None = None,
-    ) -> None:
-        super().__init__(database, data_dir)
-        self.vault_root = Path(vault_root).resolve() if vault_root else None
+    """彻底重置：与「重置记忆」同源，仅用独立状态码区分语义（供调用方/测试识别）。"""
 
     def reset(self) -> LocalStateResetResult:
         result = super().reset()
-        removed = list(result.removed_paths)
-        removed.extend(self._remove_vault_memory_dirs())
         return LocalStateResetResult(
             status="full_memory_reset",
             cleared_tables=result.cleared_tables,
-            removed_paths=removed,
+            removed_paths=result.removed_paths,
         )
-
-    def _remove_vault_memory_dirs(self) -> list[str]:
-        removed: list[str] = []
-        if self.vault_root is None or not self.vault_root.exists():
-            return removed
-        # 安全护栏：绝不删除文件系统根或用户主目录本身
-        root = self.vault_root.resolve()
-        if root.parent == root:
-            return removed
-        for name in ("Wiki", "Memories"):
-            path = root / name
-            if not path.exists():
-                continue
-            if path.is_dir():
-                shutil.rmtree(path)
-            else:
-                path.unlink()
-            removed.append(f"{name}/")
-        return removed

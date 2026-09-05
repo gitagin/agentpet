@@ -60,26 +60,26 @@ async def apply_memory_hygiene_action(
     except MemoryHygieneSuggestionConfirmationRequired as exc:
         raise AppError(
             code="hygiene_confirmation_required",
-            message="Applying a memory hygiene suggestion requires confirmation.",
+            message="执行记忆卫生建议需要先确认。",
             status_code=status.HTTP_400_BAD_REQUEST,
         ) from exc
     except MemoryHygieneSuggestionExpired as exc:
         raise AppError(
             code="hygiene_suggestion_expired",
-            message="This memory hygiene suggestion is no longer available.",
+            message="这条记忆卫生建议已失效，请刷新后重试。",
             status_code=status.HTTP_409_CONFLICT,
         ) from exc
     except (KeyError, MemoryLifecycleTransitionError, ValueError) as exc:
         raise AppError(
             code="hygiene_suggestion_apply_failed",
-            message="The memory hygiene suggestion could not be applied.",
+            message="记忆卫生建议执行失败。",
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         ) from exc
     except RuntimeError as exc:
         error_code = str(exc).removeprefix("action_lifecycle_")
         raise AppError(
             code=error_code or "hygiene_suggestion_recovery_required",
-            message="The memory hygiene effect could not be confirmed; no retry was issued automatically.",
+            message="记忆卫生操作未能确认执行结果，未自动重试，请查看恢复记录。",
             status_code=status.HTTP_409_CONFLICT,
         ) from exc
     record_audit(

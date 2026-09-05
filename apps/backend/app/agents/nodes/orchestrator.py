@@ -8,6 +8,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from app.agents.contracts import MAX_PLANNING_ROUNDS
+from app.agents.nodes.common import extract_text, parse_json_response
 from app.agents.registry import AgentRegistry
 from app.agents.state import AgentInvocationResult, NegotiationState
 from app.models.enums import AgentId
@@ -133,7 +134,7 @@ class OrchestratorNode:
             return raw_result
         if isinstance(raw_result, dict):
             return OrchestratorDecision(**raw_result)
-        return OrchestratorDecision(**self._parse_json_response(self._extract_text(raw_result)))
+        return OrchestratorDecision(**parse_json_response(extract_text(raw_result)))
 
     async def _invoke_model(self, prompt: str) -> Any:
         if hasattr(self.model, "complete"):
@@ -150,25 +151,6 @@ class OrchestratorNode:
         if inspect.isawaitable(result):
             return await asyncio.wait_for(result, timeout=self.timeout_seconds)
         return result
-
-    def _parse_json_response(self, text: str) -> dict[str, Any]:
-        stripped = text.strip()
-        if stripped.startswith("```"):
-            lines = stripped.splitlines()
-            if len(lines) >= 3:
-                stripped = "\n".join(lines[1:-1]).strip()
-                if stripped.startswith("json"):
-                    stripped = stripped[4:].strip()
-        return json.loads(stripped)
-
-    def _extract_text(self, raw_result: Any) -> str:
-        if isinstance(raw_result, str):
-            return raw_result
-        if hasattr(raw_result, "text"):
-            return str(raw_result.text)
-        if hasattr(raw_result, "content"):
-            return str(raw_result.content)
-        return str(raw_result)
 
     def _format_invocation(self, result: AgentInvocationResult) -> str:
         return (

@@ -11,6 +11,8 @@ from app.models.api import HabitLoopCandidateResponse, HabitLoopTriggerResponse
 from app.models.common import new_id
 from app.models.config import ProactiveTriggerFrequency, normalize_proactive_trigger_frequency
 
+from app.utils.sqlite import json_list
+
 
 @dataclass(frozen=True, slots=True)
 class _FrequencyPolicy:
@@ -287,7 +289,7 @@ class HabitLoopTriggerService:
         if row is None:
             return None
         title = _safe_text(row["title"], fallback="最近整理的知识页", limit=80)
-        target_paths = _json_string_list(row["target_paths_json"])
+        target_paths = json_list(row["target_paths_json"])
         source = f"agent_actions:{row['id']}"
         if target_paths:
             source = f"vault:{target_paths[0]}"
@@ -398,13 +400,3 @@ def _safe_text(value: object, *, fallback: str, limit: int) -> str:
     return text[:limit].rstrip() or fallback
 
 
-def _json_string_list(value: object) -> list[str]:
-    if not isinstance(value, str):
-        return []
-    try:
-        parsed = json.loads(value)
-    except json.JSONDecodeError:
-        return []
-    if not isinstance(parsed, list):
-        return []
-    return [str(item) for item in parsed if str(item).strip()]

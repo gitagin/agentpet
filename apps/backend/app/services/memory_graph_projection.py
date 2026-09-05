@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import re
 import sqlite3
 from dataclasses import dataclass, field
@@ -10,14 +9,19 @@ from pathlib import Path
 from app.models.enums import MemoryFactStatus
 from app.services.memory_entity_graph import (
     RELATION_TYPES,
+    _artifact_scope_allowed,
     _fact_row_recallable as _authority_fact_recallable,
+    _lifecycle_metadata_allowed,
     _relation_row_recallable as _authority_relation_recallable,
 )
 from app.services.memory_hygiene_suggestions import MemoryHygieneSuggestionService
 from app.services.memory_policy import evaluate_memory_content
 from app.services.memory_profile_projection import MemoryProfileProjectionItem, MemoryProfileProjectionService
+from app.services.memory_taxonomy import LOW_CONFIDENCE_THRESHOLD
 from app.storage.database import open_database_connection
 from app.utils.time import utc_now_iso
+
+from app.utils.sqlite import json_list, json_object, table_exists
 
 
 GraphNodeType = str
@@ -271,7 +275,7 @@ class MemoryGraphProjectionService:
         )
         if not _table_has_columns(self.conn, "memory_graph_facts", *required):
             return []
-        if not _table_exists(self.conn, "memory_evidence"):
+        if not table_exists(self.conn, "memory_evidence", include_views=True):
             return []
         placeholders = ", ".join("?" for _ in RELATION_TYPES)
         rows = self.conn.execute(
@@ -280,9 +284,9 @@ class MemoryGraphProjectionService:
                    ,(SELECT COUNT(*) FROM memory_evidence e WHERE e.fact_id = f.id) AS evidence_count
             FROM memory_graph_facts f
             WHERE f.statement_kind = 'relation'
-              AND f.status = 'active'
+              AND f.status IN ('active', 'candidate', 'quarantined')
               AND f.relation_type IN ({placeholders})
-              AND f.confidence >= 0.65
+              AND f.confidence >= {LOW_CONFIDENCE_THRESHOLD}
               AND (
                     (f.subject_entity_id IS NOT NULL AND f.subject_fact_id IS NULL)
                     OR (f.subject_entity_id IS NULL AND f.subject_fact_id IS NOT NULL)
@@ -300,11 +304,16 @@ class MemoryGraphProjectionService:
             """,
             tuple(sorted(RELATION_TYPES)),
         ).fetchall()
-        return [
-            row
-            for row in rows
-            if _authority_relation_recallable(self.conn, row, vault_id=self.vault_id)
-        ]
+        controlled: list[sqlite3.Row] = []
+        for row in rows:
+            if str(row["status"]) == "active":
+                if _authority_relation_recallable(self.conn, row, vault_id=self.vault_id):
+                    controlled.append(row)
+            elif _pending_relation_row_allowed(self.conn, row, vault_id=self.vault_id):
+                # 待确认（candidate/quarantined）关系也进入投影，作为待确认边；
+                # 只做宽松检查（端点实体存在且非高风险 + 内容安全），不要求实体已激活。
+                controlled.append(row)
+        return controlled
 
     def _relation_endpoint_drafts(
         self,
@@ -332,14 +341,15 @@ class MemoryGraphProjectionService:
                 continue
             seen.add((kind, endpoint_id))
             if kind == "entity":
-                if not _table_exists(self.conn, "memory_entities"):
+                if not table_exists(self.conn, "memory_entities", include_views=True):
                     continue
                 row = self.conn.execute(
-                    "SELECT * FROM memory_entities WHERE id = ? AND status = 'active'",
+                    "SELECT * FROM memory_entities WHERE id = ? AND status IN ('active', 'candidate', 'quarantined')",
                     (endpoint_id,),
                 ).fetchone()
                 if row is None or str(row["risk_tier"] or "low") == "high":
                     continue
+                node_status = _status_from_raw(str(row["status"]))
                 label = _safe_text(str(row["canonical_name"]), fallback="一个实体")
                 node = MemoryGraphProjectionNode(
                     id=_opaque_id("mg", "node", "entity", endpoint_id),
@@ -347,7 +357,7 @@ class MemoryGraphProjectionService:
                     label=label,
                     title=label,
                     subtitle=_entity_subtitle(str(row["entity_type"])),
-                    status="active",
+                    status=node_status,
                     risk_tier="low",
                     size=0.95,
                     confidence_label=_confidence_label(float(row["confidence"] or 0.0)),
@@ -359,26 +369,29 @@ class MemoryGraphProjectionService:
                 known_entities.add(endpoint_id)
             else:
                 row = self.conn.execute(
-                    "SELECT * FROM memory_graph_facts WHERE id = ? AND status = 'active'",
+                    "SELECT * FROM memory_graph_facts WHERE id = ? AND status IN ('active','candidate','quarantined')",
                     (endpoint_id,),
                 ).fetchone()
-                if (
-                    row is None
-                    or not _authority_fact_recallable(self.conn, endpoint_id, vault_id=self.vault_id)
-                    or _unsafe_text(f"{row['subject']} {row['predicate']} {row['object']}")
-                ):
+                if row is None or _unsafe_text(f"{row['subject']} {row['predicate']} {row['object']}"):
                     continue
+                raw_status = str(row["status"])
+                if raw_status == "active":
+                    if not _authority_fact_recallable(self.conn, endpoint_id, vault_id=self.vault_id):
+                        continue
+                elif not _pending_claim_allowed(self.conn, row, vault_id=self.vault_id):
+                    continue
+                node_status = "active" if raw_status == "active" else "pending"
                 label = _safe_text(
                     f"{row['subject']} {row['predicate']} {row['object']}",
                     fallback="一条已确认事实",
                 )
                 node = MemoryGraphProjectionNode(
                     id=_opaque_id("mg", "node", "fact", endpoint_id),
-                    type="source",
+                    type=_claim_node_type(row),
                     label=label,
                     title=_short_title(label),
-                    subtitle="受控事实",
-                    status="active",
+                    subtitle="受控事实" if raw_status == "active" else "待确认的事实",
+                    status=node_status,
                     risk_tier="low",
                     size=0.9,
                     confidence_label=_confidence_label(float(row["confidence"] or 0.0)),
@@ -391,15 +404,15 @@ class MemoryGraphProjectionService:
         return drafts
 
     def _claim_node_drafts(self, *, remaining: int) -> list[_NodeDraft]:
-        if remaining <= 0 or not _table_exists(self.conn, "memory_graph_facts"):
+        if remaining <= 0 or not table_exists(self.conn, "memory_graph_facts", include_views=True):
             return []
         rows = self.conn.execute(
-            """
+            f"""
             SELECT f.*
             FROM memory_graph_facts f
             WHERE f.statement_kind = 'claim'
-              AND f.status = 'active'
-              AND f.confidence >= 0.65
+              AND f.status IN ('active', 'candidate', 'quarantined')
+              AND f.confidence >= {LOW_CONFIDENCE_THRESHOLD}
               AND NOT EXISTS (
                     SELECT 1
                     FROM memory_graph_facts conflict
@@ -419,34 +432,49 @@ class MemoryGraphProjectionService:
         for row in rows:
             if len(drafts) >= remaining:
                 break
-            if not _authority_fact_recallable(self.conn, str(row["id"]), vault_id=self.vault_id):
+            raw_status = str(row["status"])
+            if raw_status == "active":
+                if not _authority_fact_recallable(self.conn, str(row["id"]), vault_id=self.vault_id):
+                    continue
+            elif not _pending_claim_allowed(self.conn, row, vault_id=self.vault_id):
+                # 候选/隔离 claim 用宽松门（不要求 subject 实体已激活），
+                # 否则待确认的事实永远无法出现在图里让用户确认。
                 continue
             fact_id = str(row["id"])
             if any(draft.fact_id == fact_id for draft in drafts):
+                continue
+            # 方案 A：当 claim 的主语实体已是某条关系的主语端点时，那条关系边
+            # 已经表达了这个语义（例如「我 喜欢喝 咖啡」vs「我 prefers 咖啡」），
+            # claim 不再单独成节点，避免同一语义既出现整句点又出现关系边。
+            if _claim_subject_covered_by_relation(self.conn, row):
                 continue
             label = _safe_text(
                 f"{row['subject']} {row['predicate']} {row['object']}",
                 fallback="一条已验证事实",
             )
+            node_status = "active" if raw_status == "active" else "pending"
             node = MemoryGraphProjectionNode(
                 id=_opaque_id("mg", "node", "fact", fact_id),
-                type=_entity_node_type(str(row["entity_type"] or "source")),
+                type=_claim_node_type(row),
                 label=label,
                 title=_short_title(label),
-                subtitle="有证据的事实",
-                status="active",
+                subtitle="有证据的事实" if raw_status == "active" else "待确认的事实",
+                status=node_status,
                 risk_tier="low",
                 size=_node_size(float(row["importance"] or 0.0), float(row["confidence"] or 0.0)),
                 confidence_label=_confidence_label(float(row["confidence"] or 0.0)),
                 source_label="来自受控事实",
                 updated_at=str(row["updated_at"]),
-                available_actions=["correct", "forget", "archive"],
+                available_actions=_statement_actions(raw_status),
             )
-            drafts.append(_NodeDraft(node, "facts", fact_id=fact_id, entity_id=row["subject_entity_id"] or None))
+            # claim 是「事实」节点，不携带 entity_id：否则会在 _edges_for 的
+            # by_entity 里覆盖掉中心/实体端点节点的映射，导致 self 关系边错锚到
+            # claim 整句节点上。
+            drafts.append(_NodeDraft(node, "facts", fact_id=fact_id, entity_id=None))
         return drafts
 
     def _diary_node_drafts(self, *, remaining: int) -> list[_NodeDraft]:
-        if remaining <= 0 or not _table_exists(self.conn, "diary_memory_objects"):
+        if remaining <= 0 or not table_exists(self.conn, "diary_memory_objects", include_views=True):
             return []
         rows = self.conn.execute(
             """
@@ -501,7 +529,7 @@ class MemoryGraphProjectionService:
         return len(self._cleanup_suggestions(limit=200))
 
     def _cleanup_suggestions(self, *, limit: int):
-        if not _table_exists(self.conn, "memory_candidates") or not _table_exists(self.conn, "memory_graph_facts"):
+        if not table_exists(self.conn, "memory_candidates", include_views=True) or not table_exists(self.conn, "memory_graph_facts", include_views=True):
             return ()
         service = MemoryHygieneSuggestionService(self.conn)
         try:
@@ -546,7 +574,7 @@ def _profile_item_draft(
         confidence_label=_confidence_label(item.confidence, hidden=hidden),
         source_label="细节已隐藏" if hidden else _safe_text(item.source_label, fallback="来自本机整理"),
         updated_at=item.updated_at,
-        available_actions=[],
+        available_actions=_profile_node_actions(status),
     )
     return _NodeDraft(
         node,
@@ -566,8 +594,8 @@ def _diary_row_draft(row: sqlite3.Row) -> _NodeDraft:
                 str(row["summary"] or ""),
                 str(row["topic"] or ""),
                 str(row["emotion"] or ""),
-                " ".join(_json_list(row["people_json"])),
-                " ".join(_json_list(row["keywords_json"])),
+                " ".join(json_list(row["people_json"], strict=True)),
+                " ".join(json_list(row["keywords_json"], strict=True)),
             )
         )
     )
@@ -590,6 +618,19 @@ def _diary_row_draft(row: sqlite3.Row) -> _NodeDraft:
         available_actions=[],
     )
     return _NodeDraft(node, cluster_key)
+
+
+def _profile_node_actions(status: str) -> list[str]:
+    """Map a projected profile node status to graph-level allowed actions.
+
+    Pending (needs-confirmation) candidates are the ones a user must actively
+    keep or withdraw, so they expose ``confirm``/``forget``.  Already-active or
+    archived profile items stay read-only here; their lifecycle is managed via
+    the profile detail path.
+    """
+    if status == "pending":
+        return ["confirm", "forget"]
+    return []
 
 
 def _profile_item_hidden(item: MemoryProfileProjectionItem) -> bool:
@@ -690,7 +731,6 @@ def _edges_for(
         for draft in drafts
         if draft.entity_id
         and draft.node.id in existing_node_ids
-        and draft.node.status == "active"
         and draft.node.risk_tier != "hidden"
     }
     by_fact = {
@@ -698,7 +738,6 @@ def _edges_for(
         for draft in drafts
         if draft.fact_id
         and draft.node.id in existing_node_ids
-        and draft.node.status == "active"
         and draft.node.risk_tier != "hidden"
     }
     for row in relation_rows or ():
@@ -755,6 +794,116 @@ def _edge(
     )
 
 
+def _pending_relation_row_allowed(conn: sqlite3.Connection, row: sqlite3.Row, *, vault_id: str | None = None) -> bool:
+    """待确认（candidate/quarantined）关系的宽松门。
+
+    端点实体必须存在且非高风险，内容必须安全；evidence 存在性由调用方的
+    SQL 查询保证。不同于 ``_authority_relation_recallable``，这里不要求端点
+    实体已激活——否则用户确认一个事实前，待确认的关系端点永远不会出现在图里。
+    但仍套用过期/元数据风险/vault 隔离检查，与 active 门策略一致。
+    """
+    for entity_id in (row["subject_entity_id"], row["object_entity_id"]):
+        if not entity_id:
+            continue
+        entity = conn.execute(
+            "SELECT risk_tier FROM memory_entities WHERE id = ?",
+            (str(entity_id),),
+        ).fetchone()
+        if entity is None or str(entity["risk_tier"] or "low") == "high":
+            return False
+    if not _lifecycle_metadata_allowed(row):
+        return False
+    if not _artifact_scope_allowed(conn, str(row["id"]), vault_id):
+        return False
+    return evaluate_memory_content(str(row["source_text"] or "")).allowed
+
+
+def _claim_subject_covered_by_relation(conn: sqlite3.Connection, row: sqlite3.Row) -> bool:
+    """claim 是否被一条「真的会投影成边」的 relation 覆盖。
+
+    实体关系抽取会把同一语义既输出成 claim（整句属性）又输出成 relation
+    （实体-关系-实体）。仅当存在一条与 ``_controlled_relation_rows`` 同门槛、
+    且对象实体名与 claim 对象文字精确匹配的关系时，claim 才视为冗余并隐藏。
+
+    过滤条件与投影门保持一致，否则会「压掉本应显示的 claim」：
+    - relation_type 白名单、端点 XOR、evidence 存在性、confidence 门槛
+    - active 关系过 ``_authority_relation_recallable``，候选/隔离过
+      ``_pending_relation_row_allowed``
+    - 对象名只做精确匹配（不用子串包含），避免「咖啡」被「咖啡机」误压
+    """
+    subject_entity_id = row["subject_entity_id"]
+    if not subject_entity_id:
+        return False
+    claim_object = str(row["object"] or "").strip()
+    if not claim_object:
+        return False
+    placeholders = ", ".join("?" for _ in RELATION_TYPES)
+    rows = conn.execute(
+        f"""
+        SELECT r.*
+        FROM memory_graph_facts r
+        WHERE r.statement_kind = 'relation'
+          AND r.subject_entity_id = ?
+          AND r.id != ?
+          AND r.status IN ('active', 'candidate', 'quarantined')
+          AND r.confidence >= {LOW_CONFIDENCE_THRESHOLD}
+          AND r.relation_type IN ({placeholders})
+          AND (
+                (r.subject_entity_id IS NOT NULL AND r.subject_fact_id IS NULL)
+                OR (r.subject_entity_id IS NULL AND r.subject_fact_id IS NOT NULL)
+              )
+          AND (
+                (r.object_entity_id IS NOT NULL AND r.object_fact_id IS NULL)
+                OR (r.object_entity_id IS NULL AND r.object_fact_id IS NOT NULL)
+              )
+          AND EXISTS (SELECT 1 FROM memory_evidence e WHERE e.fact_id = r.id)
+        """,
+        (str(subject_entity_id), str(row["id"]), *tuple(sorted(RELATION_TYPES))),
+    ).fetchall()
+    for rel in rows:
+        if str(rel["status"]) == "active":
+            if not _authority_relation_recallable(conn, rel):
+                continue
+        elif not _pending_relation_row_allowed(conn, rel):
+            continue
+        object_entity_id = rel["object_entity_id"]
+        if not object_entity_id:
+            continue
+        entity = conn.execute(
+            "SELECT canonical_name FROM memory_entities WHERE id = ?",
+            (str(object_entity_id),),
+        ).fetchone()
+        if entity is None:
+            continue
+        name = str(entity["canonical_name"] or "").strip()
+        if name and name == claim_object:
+            return True
+    return False
+
+
+def _pending_claim_allowed(conn: sqlite3.Connection, row: sqlite3.Row, *, vault_id: str | None = None) -> bool:
+    """候选/隔离 claim 的宽松门。
+
+    不同于 ``_authority_fact_recallable``，这里不要求 subject 实体已激活——
+    否则一条刚抽取、等待确认的 claim 会因 subject 实体还是候选态而永远无法
+    出现在图里。但仍套用 active 门同款的过期/元数据风险/vault 隔离检查，避免
+    候选 claim 绕过策略浮出。
+    """
+    subject_entity_id = row["subject_entity_id"]
+    if subject_entity_id:
+        entity = conn.execute(
+            "SELECT risk_tier FROM memory_entities WHERE id = ?",
+            (str(subject_entity_id),),
+        ).fetchone()
+        if entity is None or str(entity["risk_tier"] or "low") == "high":
+            return False
+    if not _lifecycle_metadata_allowed(row):
+        return False
+    if not _artifact_scope_allowed(conn, str(row["id"]), vault_id):
+        return False
+    return evaluate_memory_content(str(row["source_text"] or "")).allowed
+
+
 def _statement_actions(status: str) -> list[str]:
     if status in {"candidate", "quarantined"}:
         return ["confirm", "correct", "forget", "archive"]
@@ -764,7 +913,7 @@ def _statement_actions(status: str) -> list[str]:
 
 
 def _row_risk(row: sqlite3.Row) -> GraphRiskTier:
-    metadata = _json_object(row["metadata_json"] if "metadata_json" in row.keys() else None)
+    metadata = json_object(row["metadata_json"] if "metadata_json" in row.keys() else None)
     value = str(metadata.get("risk_tier") or metadata.get("risk") or "low").casefold()
     return value if value in {"low", "medium", "high", "hidden"} else "low"
 
@@ -802,7 +951,7 @@ def _confidence_label(value: float, *, hidden: bool = False) -> str:
         return "细节已隐藏"
     if value >= 0.8:
         return "较确定"
-    if value >= 0.65:
+    if value >= LOW_CONFIDENCE_THRESHOLD:
         return "基本确定"
     return "需要确认"
 
@@ -853,38 +1002,14 @@ def _compact(value: str, limit: int) -> str:
     return f"{text[: max(1, limit - 1)].rstrip()}…"
 
 
-def _json_list(value: object) -> tuple[str, ...]:
-    if value is None:
-        return ()
-    try:
-        parsed = json.loads(str(value))
-    except json.JSONDecodeError:
-        return ()
-    if not isinstance(parsed, list):
-        return ()
-    return tuple(str(item) for item in parsed if isinstance(item, str) and item.strip())
 
 
-def _json_object(value: object) -> dict[str, object]:
-    if not value:
-        return {}
-    try:
-        parsed = json.loads(str(value))
-    except (TypeError, json.JSONDecodeError):
-        return {}
-    return parsed if isinstance(parsed, dict) else {}
 
 
-def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
-    row = conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type IN ('table', 'view') AND name = ?",
-        (table,),
-    ).fetchone()
-    return row is not None
 
 
 def _table_has_columns(conn: sqlite3.Connection, table: str, *columns: str) -> bool:
-    if not _table_exists(conn, table):
+    if not table_exists(conn, table, include_views=True):
         return False
     rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
     available = {str(row[1]) for row in rows}
@@ -921,6 +1046,26 @@ def _entity_node_type(entity_type: str) -> GraphNodeType:
         "wiki_page": "source",
         "decision": "project",
     }.get(entity_type, "source")
+
+
+def _claim_node_type(row: sqlite3.Row) -> GraphNodeType:
+    """按 claim 的语义类别决定节点类型，而不是按 subject 实体类型。
+
+    claim（如「回答风格 偏好 简洁回答」）的 entity_type 常为空或 self，
+    若直接映射会得到 source/user，丢失了 preference/boundary 等语义。
+    """
+    category = str(row["category"] or "").casefold()
+    memory_type = str(row["memory_type"] or "").casefold()
+    combined = f"{category} {memory_type}"
+    if "preference" in combined:
+        return "preference"
+    if "boundary" in combined:
+        return "boundary"
+    if any(token in combined for token in ("project", "goal", "decision")):
+        return "project"
+    if any(token in combined for token in ("recent_state", "event")):
+        return "episode"
+    return _entity_node_type(str(row["entity_type"] or "source"))
 
 
 def _entity_subtitle(entity_type: str) -> str:

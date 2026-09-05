@@ -1,3 +1,0 @@
-# Profile
-
-active-lifecycle-token

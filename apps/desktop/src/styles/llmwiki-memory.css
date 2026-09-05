@@ -3,9 +3,10 @@
   --wiki-graphite: #111214;
   --wiki-graphite-soft: #1B1D21;
   --wiki-warm: #F3F1EC;
-  --wiki-muted: #A9A5A0;
-  --wiki-line: rgba(243, 238, 232, 0.14);
-  --wiki-line-strong: rgba(243, 238, 232, 0.24);
+  --wiki-muted: #C1BCB5;
+  --wiki-subtle: #97918A;
+  --wiki-line: rgba(243, 238, 232, 0.16);
+  --wiki-line-strong: rgba(243, 238, 232, 0.28);
   --wiki-rose: #D56F8A;
   --wiki-teal: #68B8AD;
   --wiki-amber: #D1A44B;
@@ -31,6 +32,7 @@
 }
 
 .feature-shell[data-active-tab="记忆"] > .feature-window-content {
+  width: min(100%, 1360px);
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
@@ -45,6 +47,14 @@
   left: auto;
   right: auto;
   bottom: auto;
+  width: 100%;
+  min-height: 60px;
+  transform: none;
+}
+
+body[data-window-mode="memory"] .feature-shell > .bottom-nav {
+  position: relative;
+  inset: auto;
   width: 100%;
   min-height: 60px;
   transform: none;
@@ -327,7 +337,7 @@
 }
 
 .llmwiki-workspace-panel {
-  min-height: 560px;
+  min-height: 0;
   padding: 18px;
 }
 
@@ -457,9 +467,8 @@
 .llmwiki-graph-canvas {
   position: relative;
   min-width: 0;
-  /* 画布高度随窗口自适应，优先给足图谱空间 */
-  height: min(680px, calc(100dvh - 330px));
-  min-height: 440px;
+  height: clamp(360px, calc(100dvh - 360px), 560px);
+  min-height: 360px;
   overflow: hidden;
   border: 1px solid var(--wiki-line);
   background: #111216;
@@ -481,7 +490,12 @@
   height: 30px;
   border-bottom: 1px solid var(--wiki-line);
   background: var(--wiki-graphite-soft);
+  color: var(--wiki-warm);
   fill: var(--wiki-warm);
+}
+
+.llmwiki-react-flow .react-flow__controls-button:hover {
+  background: var(--wiki-graphite);
 }
 
 /* ============ 圆形节点（Obsidian 风格：发光圆点 + 下方标签） ============ */
@@ -497,14 +511,14 @@
   transform: translate(-50%, -50%) scale(var(--node-scale, 1));
   background: radial-gradient(circle at 34% 30%, color-mix(in srgb, var(--node-color) 94%, white 6%), var(--node-color) 70%);
   border: 1px solid color-mix(in srgb, var(--node-color) 65%, white 30%);
-  box-shadow: 0 0 10px var(--node-color), 0 0 22px color-mix(in srgb, var(--node-color) 40%, transparent);
+  box-shadow: 0 0 7px color-mix(in srgb, var(--node-color) 72%, transparent);
   cursor: pointer;
   transition: opacity 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
 }
 
 .llmwiki-graph-node.is-selected {
   border-color: var(--wiki-teal);
-  box-shadow: 0 0 0 3px rgba(104, 184, 173, 0.4), 0 0 14px var(--node-color), 0 0 30px color-mix(in srgb, var(--node-color) 45%, transparent);
+  box-shadow: 0 0 0 3px rgba(104, 184, 173, 0.28), 0 0 12px color-mix(in srgb, var(--node-color) 78%, transparent);
 }
 
 .llmwiki-graph-node:focus-visible {
@@ -541,7 +555,7 @@
 
 /* 悬停被点亮时外圈亮环放大 */
 .llmwiki-graph-node:hover:not(.is-dimmed) {
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--node-color) 26%, transparent), 0 0 16px var(--node-color), 0 0 34px color-mix(in srgb, var(--node-color) 55%, transparent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--node-color) 20%, transparent), 0 0 12px color-mix(in srgb, var(--node-color) 76%, transparent);
 }
 
 /* 标签：圆点下方居中。默认隐藏（Obsidian 风格），悬停/选中/中心节点才显示 */
@@ -587,7 +601,7 @@
 .llmwiki-relation-list {
   min-width: 0;
   /* 移到底部后压扁为横向横条，不再占用图谱宽度 */
-  max-height: 220px;
+  max-height: 180px;
   overflow: auto;
   border: 1px solid var(--wiki-line);
   background: rgba(17, 18, 22, 0.72);
@@ -674,6 +688,54 @@
 
 .llmwiki-relation-evidence {
   white-space: nowrap;
+}
+
+.llmwiki-relation-dot {
+  width: 8px;
+  height: 8px;
+  margin-top: 4px;
+  border: 2px solid var(--wiki-teal);
+  border-radius: 50%;
+}
+
+.llmwiki-graph-edge-label {
+  border: 1px solid rgba(243, 238, 232, 0.12);
+  border-radius: 4px;
+  background: rgba(17, 18, 20, 0.88);
+  padding: 2px 5px;
+  line-height: 1.2;
+}
+
+.llmwiki-graph-canvas-search {
+  position: absolute;
+  z-index: 5;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: min(220px, calc(100% - 92px));
+  min-height: 34px;
+  border: 1px solid var(--wiki-line-strong);
+  border-radius: 6px;
+  background: rgba(17, 18, 20, 0.92);
+  color: var(--wiki-subtle);
+  padding: 0 10px;
+}
+
+.llmwiki-graph-canvas-search label {
+  min-width: 0;
+  flex: 1;
+}
+
+.llmwiki-graph-canvas-search input {
+  width: 100%;
+  min-height: 32px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+  font-size: 12px;
 }
 
 .llmwiki-evidence-rail {
@@ -871,7 +933,7 @@
 .llmwiki-review-row,
 .llmwiki-source-search-results article {
   display: grid;
-  grid-template-columns: 88px minmax(0, 1fr) auto;
+  grid-template-columns: 94px 12px minmax(0, 1fr);
   gap: 12px;
   align-items: start;
   padding: 13px 0;
@@ -930,8 +992,30 @@
 }
 
 .llmwiki-status-label {
-  color: var(--wiki-teal);
+  border: 1px solid rgba(104, 184, 173, 0.32);
+  border-radius: 999px;
+  background: rgba(104, 184, 173, 0.08);
+  color: #8ED6CC;
+  padding: 2px 7px;
   font-size: 11px;
+}
+
+.llmwiki-status-label.is-pending {
+  border-color: rgba(209, 164, 75, 0.38);
+  background: rgba(209, 164, 75, 0.08);
+  color: #E1BB70;
+}
+
+.llmwiki-status-label.is-conflict {
+  border-color: rgba(215, 91, 91, 0.42);
+  background: rgba(215, 91, 91, 0.09);
+  color: #F08B8B;
+}
+
+.llmwiki-status-label.is-archived {
+  border-color: var(--wiki-line);
+  background: rgba(243, 238, 232, 0.05);
+  color: var(--wiki-muted);
 }
 
 .llmwiki-review-queue {
@@ -1009,12 +1093,29 @@
 }
 
 .llmwiki-source-search-results article {
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+
+.llmwiki-source-search-results article > button {
+  width: fit-content;
 }
 
 .llmwiki-source-list {
   max-height: 420px;
   overflow: auto;
+}
+
+.llmwiki-sources-workspace .llmwiki-source-actions {
+  justify-content: flex-start;
+}
+
+.llmwiki-source-empty-state {
+  min-height: 150px;
+  margin-top: 10px;
+  border: 1px dashed var(--wiki-line-strong);
+  background: rgba(243, 238, 232, 0.025);
+  padding: 18px;
 }
 
 .llmwiki-source-row {
@@ -1241,3 +1342,177 @@
 .settings-wiki-import-notice.is-success { color: var(--wiki-teal, #68B8AD); }
 .settings-wiki-import-notice.is-error { color: var(--wiki-rose, #D56F8A); }
 .settings-wiki-import-notice.is-info { color: var(--wiki-muted, #A9A5A0); }
+
+/* Memory maintenance workspace: local assets, hygiene, weekly review, consolidation. */
+.llmwiki-maintenance-workspace {
+  --maintenance-card-bg: rgba(255, 255, 255, 0.03);
+  --maintenance-card-line: var(--wiki-line, rgba(243, 238, 232, 0.14));
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.llmwiki-maintenance-layout {
+  display: block;
+  width: 100%;
+}
+
+.llmwiki-maintenance-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 16px;
+}
+
+.maintenance-card {
+  margin: 0;
+  padding: 16px 18px;
+  border: 1px solid var(--maintenance-card-line);
+  border-radius: 8px;
+  background: var(--maintenance-card-bg);
+  min-width: 0;
+}
+
+.maintenance-card .section-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.maintenance-card .section-heading strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 14px;
+}
+
+.maintenance-card .section-heading span {
+  color: var(--wiki-muted, #A9A5A0);
+  font-size: 12px;
+}
+
+.maintenance-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px 14px;
+  margin: 0;
+}
+
+.maintenance-stat-grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.maintenance-stat-grid dt {
+  color: var(--wiki-muted, #A9A5A0);
+  font-size: 12px;
+}
+
+.maintenance-stat-grid dd {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.maintenance-item-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.maintenance-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--maintenance-card-line);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.maintenance-item-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.maintenance-item-copy strong {
+  font-size: 13px;
+}
+
+.maintenance-item-copy p {
+  margin: 0;
+  color: var(--wiki-muted, #A9A5A0);
+  font-size: 12px;
+}
+
+.maintenance-item-copy small {
+  color: var(--wiki-muted, #A9A5A0);
+  font-size: 11px;
+}
+
+.maintenance-item-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.maintenance-item-actions button {
+  min-height: 34px;
+  font-size: 12px;
+}
+
+.maintenance-item-actions .is-positive {
+  border-color: rgba(104, 184, 173, 0.38);
+  background: rgba(104, 184, 173, 0.09);
+  color: #9DE0D6;
+}
+
+.llmwiki-maintenance-workspace button.danger {
+  border: 1px solid rgba(215, 91, 91, 0.46);
+  background: rgba(215, 91, 91, 0.1);
+  color: #F19A9A;
+  box-shadow: none;
+}
+
+.llmwiki-maintenance-workspace button.danger:hover:not(:disabled) {
+  border-color: rgba(215, 91, 91, 0.72);
+  background: rgba(215, 91, 91, 0.18);
+}
+
+.maintenance-review-summary {
+  margin: 0 0 10px;
+  color: var(--wiki-muted, #A9A5A0);
+  font-size: 12px;
+}
+
+.maintenance-edit-input {
+  width: 100%;
+  margin-top: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--maintenance-card-line);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.2);
+  color: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.maintenance-consolidation-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.maintenance-consolidation-result {
+  color: var(--wiki-teal, #68B8AD);
+  font-size: 12px;
+}

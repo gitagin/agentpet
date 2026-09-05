@@ -13,6 +13,7 @@ export function FeatureWindowShell({
   activeTab,
   showHeader = true,
   surface = "illustrated",
+  contentClassName = "",
   children,
 }: {
   eyebrow: string;
@@ -21,6 +22,7 @@ export function FeatureWindowShell({
   activeTab?: PrimaryNavigationTab | null;
   showHeader?: boolean;
   surface?: FeatureWindowSurface;
+  contentClassName?: string;
   children: ReactNode;
 }) {
   const homeImageSrc = useVersionedPublicAsset("/images/home.png");
@@ -53,7 +55,7 @@ export function FeatureWindowShell({
           </div>
         </header>
       ) : null}
-      <section className="feature-window-content">{children}</section>
+      <section className={`feature-window-content${contentClassName ? ` ${contentClassName}` : ""}`}>{children}</section>
       <BottomNav activeTab={activeTab} />
     </main>
   );

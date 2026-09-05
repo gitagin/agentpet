@@ -1,3 +1,0 @@
-# Old
-
-superseded-lifecycle-token

@@ -99,6 +99,25 @@ def test_agent_state_can_carry_memory_route_without_requiring_runtime_wiring() -
     assert state.memory_route.primary_scopes == ("graph_facts", "personal_memory")
 
 
+def test_preference_statement_routes_to_casual_chat_not_retrieval() -> None:
+    """「我喜欢牛奶」是告知偏好（陈述句），不是检索请求，不应触发记忆检索。"""
+    route = route_memory("我喜欢牛奶")
+
+    assert route.primary_scopes == ("none",)
+    assert route.all_scopes == ("none",)
+    assert route.answer_style == "casual"
+    assert route.reason == "no_memory_context_needed"
+
+
+def test_preference_question_still_routes_to_retrieval() -> None:
+    """「我喜欢什么」带疑问词，仍是询问偏好，应触发检索。"""
+    route = route_memory("我喜欢什么")
+
+    assert route.reason == "long_term_preference"
+    assert route.primary_scopes == ("graph_facts", "personal_memory")
+    assert route.answer_style == "grounded"
+
+
 def test_graph_fact_only_route_bridges_to_legacy_personal_memory_scope() -> None:
     route = MemoryRoute(primary_scopes=("graph_facts",), query="coding style")
 

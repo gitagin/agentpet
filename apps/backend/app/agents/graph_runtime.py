@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import asyncio
 import logging
@@ -183,7 +183,13 @@ class LangGraphAgentRuntime:
 
 
         rechecked = evaluate_action_proposal(proposal)
-        if rechecked.decision == "denied" or rechecked.idempotency_key != stored_policy.idempotency_key:
+        if (
+            rechecked.decision == "denied"
+            or rechecked.idempotency_key != stored_policy.idempotency_key
+            # 检查点保存后若该动作的风险等级被调高（medium→high），
+            # 不能再借 confirmed_by_user 绕过 high-risk 校验，应要求重新确认。
+            or (rechecked.risk_tier == "high" and stored_policy.risk_tier != "high")
+        ):
             store.mark_status(checkpoint_id, "failed_recovery")
             raise CheckpointConflictError("policy_revalidation_failed")
         approved_policy = rechecked.model_copy(
@@ -1214,6 +1220,22 @@ def _latest_negotiation_confidence(state: NegotiationState) -> float:
     return 0.0
 
 
+# 模型分类兜底：规则判定为普通闲聊时，只要消息带"弱查询信号"
+# （疑问词、时间/指代词、问号），仍调用一次语义分类器。
+# 规则词表永远追不上口语变化（如"我刚刚说了什么""昨天那个事你还有印象吗"），
+# 漏检时由模型分类器纠正为检索/动作，而不是直接走单模型快路径瞎答。
+_WEAK_QUERY_SIGNAL_RE = re.compile(
+    r"什么|啥|哪|哪里|怎么|为什么|是不是|有没有|什么时候|几点|多少|吗|呢|"
+    r"刚刚|刚才|之前|上次|昨天|前天|说来着|"
+    r"\b(what|where|when|why|how|which|who|did i|did we|do you|are you|is it|remember|recall|say|said|talk|chat|mention)\b|"
+    r"[?？]"
+)
+
+
+def _has_weak_query_signal(message: str) -> bool:
+    return bool(_WEAK_QUERY_SIGNAL_RE.search(message))
+
+
 def _should_call_semantic_agent(state: AgentState) -> bool:
     if is_high_risk_mutation_request(state.user_message):
         return True
@@ -1226,6 +1248,18 @@ def _should_call_semantic_agent(state: AgentState) -> bool:
     if state.memory_route and state.memory_route.semantic_fallback:
         return True
     if state.route and state.route.intent == AgentIntent.SEARCH_MEMORY:
+        return True
+    if state.route and state.route.intent == AgentIntent.CHAT and _has_weak_query_signal(state.user_message):
+        return True
+    # 规则把普通聊天误判为"需要检索"时（如「我喜欢牛奶」被当成偏好检索，
+    # 「我超喜欢咖啡」这类新说法不在规则词表里），让 LLM 分类器做最终裁决，
+    # 而不是让脆弱的关键词表直接决定回复形态（"没找到记录"）。
+    if (
+        state.route
+        and state.route.intent == AgentIntent.CHAT
+        and state.memory_route
+        and any(scope != "none" for scope in state.memory_route.all_scopes)
+    ):
         return True
     return False
 

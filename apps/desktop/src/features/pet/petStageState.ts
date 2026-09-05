@@ -41,100 +41,100 @@ export function getPetStageView({
   if (!connected) {
     return {
       state: "disconnected",
-      label: "Offline",
-      mood: "Waiting",
-      message: "Local service is not connected.",
-      hint: "Check the connection status.",
+      label: "离线",
+      mood: "待命中",
+      message: "本机服务未连接。",
+      hint: "请检查连接状态。",
     };
   }
   if (streaming) {
     return {
       state: "thinking",
-      label: "Thinking",
-      mood: "Working",
-      message: "Preparing the reply.",
-      hint: "You can stop the reply at any time.",
+      label: "思考中",
+      mood: "整理中",
+      message: "正在准备回复。",
+      hint: "随时可以停止回复。",
     };
   }
   if (pendingProposalCount > 0) {
     return {
       state: "confirming",
-      label: "Needs review",
-      mood: "Waiting",
-      message: `${pendingProposalCount} memory item(s) need confirmation.`,
-      hint: "Open memories to review.",
+      label: "待确认",
+      mood: "待命中",
+      message: `${pendingProposalCount} 条记忆待确认。`,
+      hint: "打开记忆页复核。",
     };
   }
   if (diagnosticsReady) {
     return {
       state: "diagnosed",
-      label: "Diagnosed",
-      mood: "Updated",
-      message: "Diagnostics are ready.",
-      hint: "Open diagnostics for details.",
+      label: "已诊断",
+      mood: "已更新",
+      message: "诊断信息已就绪。",
+      hint: "打开诊断查看详情。",
     };
   }
   if (searchResultCount > 0) {
     return {
       state: "memory",
-      label: "Memory",
-      mood: "Found clues",
-      message: `${searchResultCount} memory result(s) are available.`,
-      hint: "Continue or cite the result.",
+      label: "记忆",
+      mood: "找到线索",
+      message: `${searchResultCount} 条记忆线索可用。`,
+      hint: "继续追问或引用这条结果。",
     };
   }
   if (taskCount > 0) {
     return {
       state: "tasking",
-      label: "Task noted",
-      mood: "Scheduled",
-      message: `${taskCount} task item(s) are active.`,
-      hint: "Open reminders and tasks.",
+      label: "已记任务",
+      mood: "已安排",
+      message: `${taskCount} 个任务进行中。`,
+      hint: "打开提醒和任务。",
     };
   }
   if (continuitySignal?.kind === "open_thread") {
     return {
       state: "presence",
-      label: "Continue next time",
-      mood: "Thread saved",
+      label: "下次继续",
+      mood: "话题已保存",
       message: continuitySignal.summary,
-      hint: continuitySignal.display_hint || "Saved locally for the next conversation.",
+      hint: continuitySignal.display_hint || "已保存在本机，供下次继续。",
     };
   }
   if (continuitySignal) {
     return {
       state: "presence",
-      label: "Presence updated",
-      mood: continuitySignal.title || "Companion state updated",
+      label: "陪伴状态已更新",
+      mood: continuitySignal.title || "陪伴状态已更新",
       message: continuitySignal.summary,
-      hint: continuitySignal.display_hint || "Confirmed context can shape later replies.",
+      hint: continuitySignal.display_hint || "已确认的上下文会影响后续回复。",
     };
   }
   if (continuityState?.unresolved_threads) {
     return {
       state: "presence",
-      label: "Continue next time",
-      mood: "Thread saved",
-      message: `Next time: ${continuityState.unresolved_threads}`,
-      hint: "Shown at runtime only.",
+      label: "下次继续",
+      mood: "话题已保存",
+      message: `下次继续：${continuityState.unresolved_threads}`,
+      hint: "仅在运行时展示。",
     };
   }
   if (continuityState?.current_mood || continuityState?.energy_level) {
-    const mood = continuityState.current_mood || "Confirmed mood";
-    const energy = continuityState.energy_level ? `, ${continuityState.energy_level}` : "";
+    const mood = continuityState.current_mood || "已确认心情";
+    const energy = continuityState.energy_level ? `，${continuityState.energy_level}` : "";
     return {
       state: "reflective",
-      label: "Present",
+      label: "当前",
       mood,
-      message: `Companion state: ${mood}${energy}.`,
-      hint: continuityState.mood_momentum || "Confirmed companion state.",
+      message: `陪伴状态：${mood}${energy}。`,
+      hint: continuityState.mood_momentum || "已确认的陪伴状态。",
     };
   }
   return {
     state: "idle",
-    label: "Idle",
-    mood: "Online",
-    message: "Ready.",
-    hint: "Chat, write a note, or create a reminder.",
+    label: "待命",
+    mood: "在线",
+    message: "随时可以聊。",
+    hint: "聊天、记一条，或者创建一个提醒。",
   };
 }

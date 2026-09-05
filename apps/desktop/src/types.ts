@@ -149,7 +149,6 @@ declare global {
       onStageRouteRequested?: (callback: (mode: "stage" | "agent" | DesktopFeatureWindowMode) => void) => () => void;
       onFeatureRouteRequested?: (callback: (mode: DesktopFeatureWindowMode) => void) => () => void;
       selectKnowledgeBaseFolder?: () => Promise<string | null>;
-      selectWikiImportFolder?: () => Promise<string | null>;
       onSidecarStatusChanged?: (
         callback: (status: DesktopSidecarStatus) => void,
       ) => () => void;
@@ -576,19 +575,6 @@ export type WikiSourceImportPreviewRequest = {
   links?: string[];
   max_pages?: number;
   max_files?: number;
-};
-
-export type WikiFolderBatchImportRequest = {
-  folder_path: string;
-  max_pages?: number;
-  batch_size?: number;
-};
-
-export type WikiFolderBatchImportResponse = {
-  status: string;
-  files_scanned: number;
-  pages_written: number;
-  batches: number;
 };
 
 export type WikiIngestPagePlan = {

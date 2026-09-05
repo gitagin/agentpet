@@ -438,3 +438,69 @@ def _assert_verified_graph_action(database_path: Path, idempotency_key: str) -> 
     assert status_value == "completed"
     assert metadata["execution_receipt"]["status"] == "verified"
     assert metadata["verification_result"]["status"] == "verified"
+
+
+def test_pending_profile_candidate_is_confirmable_via_graph_node_action(client_factory, tmp_path: Path) -> None:
+    from app.services.memory_candidates import MemoryCandidateCreate, MemoryCandidateStore
+    from app.services.memory_taxonomy import LifecycleStatus, MemoryKind, MemoryScope, RiskTier, SourceTrack
+
+    with client_factory(data_dir=tmp_path / "data") as client:
+        bound = client.post(
+            "/api/vaults/init",
+            headers=auth_headers(),
+            json={"path": str(tmp_path / "Vault"), "create_if_missing": True, "confirmed": True},
+        )
+        assert bound.status_code == 200
+
+        store = MemoryCandidateStore(client.app.state.database.path)
+        try:
+            record = store.create_candidate(
+                MemoryCandidateCreate(
+                    memory_kind=MemoryKind.PREFERENCE,
+                    memory_scope=MemoryScope.GLOBAL,
+                    summary="User prefers 安静的环境.",
+                    normalized_value="preference:安静的环境",
+                    source_text="记住:我偏好安静的环境",
+                    source_track=SourceTrack.EXPLICIT_USER,
+                    risk_tier=RiskTier.LOW,
+                    confidence=0.6,
+                    importance=0.6,
+                    status=LifecycleStatus.CANDIDATE,
+                )
+            )
+        finally:
+            store.close()
+
+        graph_response = client.get("/api/memory/graph", headers=auth_headers())
+        assert graph_response.status_code == 200
+        payload = graph_response.json()
+        pending_nodes = [node for node in payload["nodes"] if node["status"] == "pending"]
+        assert pending_nodes, "expected a pending profile candidate node in the graph"
+        assert "confirm" in pending_nodes[0]["allowed_actions"]
+        node_id = pending_nodes[0]["node_id"]
+
+        detail_response = client.get(f"/api/memory/graph/nodes/{node_id}", headers=auth_headers())
+        assert detail_response.status_code == 200
+        assert "confirm" in detail_response.json()["allowed_actions"]
+
+        key = "b" * 64
+        confirm_response = client.post(
+            f"/api/memory/graph/nodes/{node_id}/actions",
+            headers={**auth_headers(), "Idempotency-Key": key},
+            json={"action": "confirm", "confirmed": True},
+        )
+        assert confirm_response.status_code == 200, confirm_response.text
+        assert confirm_response.json()["status"] == "active"
+
+        with sqlite3.connect(client.app.state.database.path) as conn:
+            status_value = conn.execute(
+                "SELECT status FROM memory_candidates WHERE id = ?", (record.id,)
+            ).fetchone()[0]
+        assert status_value == "active"
+
+
+def test_candidate_entity_actions_include_confirm() -> None:
+    assert "confirm" in graph_api._entity_actions("candidate", "concept")
+    assert "confirm" in graph_api._entity_actions("quarantined", "person")
+    assert "confirm" not in graph_api._entity_actions("active", "concept")
+    assert graph_api._entity_actions("candidate", "self") == []

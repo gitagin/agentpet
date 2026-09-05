@@ -85,11 +85,22 @@ async def create_memory_proposal(
         target_path=proposal_request.target_path,
         reason=audit_reason(request, proposal_id=action.proposal_id),
     )
+    target_content_hash: str | None = None
+    service = memory_service(request)
+    try:
+        target_content_hash = service.store.get(action.proposal_id).target_content_hash
+    except Exception:
+        target_content_hash = None
+    finally:
+        service.close()
     return MemoryProposalResponse(
         proposal_id=action.proposal_id,
         status=action.status,
         preview_markdown=proposal_request.content,
         target_path=proposal_request.target_path,
+        type=proposal_request.type,
+        content=proposal_request.content,
+        target_content_hash=target_content_hash,
     )
 
 
@@ -105,6 +116,8 @@ async def list_memory_proposals(
                 status=proposal.status.value,
                 preview_markdown=proposal.content,
                 target_path=proposal.target_path,
+                type=proposal.type,
+                content=proposal.content,
             )
             for proposal in proposals
         ]

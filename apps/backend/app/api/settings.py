@@ -44,6 +44,8 @@ from ..services.settings import (
 from .wiring import database, settings_store_dependency
 from .wiring import refresh_retrieval_vector_index
 
+from app.utils.time import elapsed_ms
+
 router = APIRouter(prefix="/settings", tags=["settings"])
 
 
@@ -365,7 +367,7 @@ async def test_embedding_connection(
             base_url=config.base_url,
             model=config.model,
             dimensions=config.dimensions,
-            latency_ms=_elapsed_ms(started),
+            latency_ms=elapsed_ms(started),
             message=str(exc),
             error_code=exc.code,
             error_detail=exc.detail,
@@ -376,7 +378,7 @@ async def test_embedding_connection(
         base_url=config.base_url,
         model=config.model,
         dimensions=len(vector),
-        latency_ms=_elapsed_ms(started),
+        latency_ms=elapsed_ms(started),
         message=f"Embedding 试连成功，向量维度：{len(vector)}",
     )
 
@@ -560,7 +562,7 @@ async def test_model_connection(
             provider=provider,
             base_url=base_url,
             model=model,
-            latency_ms=_elapsed_ms(started),
+            latency_ms=elapsed_ms(started),
             message=str(exc),
             error_code=exc.code,
             error_detail=exc.detail,
@@ -572,13 +574,11 @@ async def test_model_connection(
         provider=provider,
         base_url=base_url,
         model=model,
-        latency_ms=_elapsed_ms(started),
+        latency_ms=elapsed_ms(started),
         message=f"模型试连成功，已收到回复：{reply[:80]}",
     )
 
 
-def _elapsed_ms(started: float) -> int:
-    return max(0, round((perf_counter() - started) * 1000))
 
 
 def _ensure_supported_provider(provider: str) -> None:

@@ -12,6 +12,8 @@ from app.models.common import new_id
 from app.services.agent_actions import AutomationPolicy
 from app.utils.time import utc_now_iso
 
+from app.utils.time import elapsed_ms
+
 logger = logging.getLogger(__name__)
 
 
@@ -322,7 +324,7 @@ class PostReplyMemoryJobRunner:
             stages=tuple(stages),
             started_at=started_at,
             completed_at=completed_at,
-            duration_ms=_elapsed_ms(started),
+            duration_ms=elapsed_ms(started),
         )
         return PostReplyMemoryJobRun(result=result, action_events=tuple(actions))
 
@@ -387,8 +389,8 @@ class PostReplyMemoryJobRunner:
                 key=key,
                 status="failed",
                 action_ids=tuple(action.action_id for action in actions),
-                safe_summary="Stage failed safely.",
-                duration_ms=_elapsed_ms(started),
+                safe_summary="该阶段已安全失败。",
+                duration_ms=elapsed_ms(started),
                 error_code=f"{key}_failed",
             )
         if actions and any(action.status != "skipped" for action in actions):
@@ -405,7 +407,7 @@ class PostReplyMemoryJobRunner:
             status=status,
             action_ids=tuple(action.action_id for action in actions),
             safe_summary=summary,
-            duration_ms=_elapsed_ms(started),
+            duration_ms=elapsed_ms(started),
         )
 
     def _skipped_stage(self, key: PostReplyStageKey, *, started: float, reason: str) -> PostReplyStageResult:
@@ -413,21 +415,19 @@ class PostReplyMemoryJobRunner:
             key=key,
             status="skipped",
             safe_summary=f"Stage skipped: {reason}.",
-            duration_ms=_elapsed_ms(started),
+            duration_ms=elapsed_ms(started),
         )
 
     def _failed_stage(self, key: PostReplyStageKey, *, started: float, error_code: str) -> PostReplyStageResult:
         return PostReplyStageResult(
             key=key,
             status="failed",
-            safe_summary="Stage failed safely.",
-            duration_ms=_elapsed_ms(started),
+            safe_summary="该阶段已安全失败。",
+            duration_ms=elapsed_ms(started),
             error_code=error_code,
         )
 
 
-def _elapsed_ms(started: float) -> int:
-    return max(0, int((time.perf_counter() - started) * 1000))
 
 
 def _compatible_kwargs(func: _StageCallable, kwargs: dict[str, Any]) -> dict[str, Any]:

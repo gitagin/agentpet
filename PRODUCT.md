@@ -93,16 +93,9 @@ model calls:
 
 The local metrics contract stores only event types, hashes, safe dimensions and
 counts. It exposes numerators, denominators, sample size and evidence status;
-it does not store raw chat text or secrets. The current runner uses the
-production `app.evals.retrieval_eval` path and records Recall@5 `24.8/50 = 0.496`
-(`Failed`), no-evidence accuracy `10/10 = 1.00` (`Passed`), and false activation
-`0/10 = 0` (`Passed`). This evaluator retrieves candidates only, so citation
-coverage is `0/0` (`insufficient_sample`). Kuzu acceleration, SQLite graph
-fallback and the SQLite authority path each pass `21/21` cases on a versioned
-synthetic graph fixture; the deterministic graph baseline passes `37/37` with
-zero model calls. Correction propagation is only `3/3`, below the minimum
-sample of `20`, and LLM extraction/synthesis remains `not_run`. These graph
-results are engineering evidence, not business evidence.
+it does not store raw chat text or secrets. Internal evaluation runners and
+their generated reports are not part of the production source tree. Product
+claims must be derived from a separately reviewed measurement run.
 No business uplift is claimed until a preregistered 7-day single-user trial is
 complete; broader claims require a separate multi-user study.
 

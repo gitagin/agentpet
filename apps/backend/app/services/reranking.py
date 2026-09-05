@@ -9,6 +9,8 @@ from typing import Protocol, runtime_checkable
 
 from app.services.retrieval_fusion import FusedCandidate
 
+from app.utils.time import elapsed_ms_ns
+
 
 RERANKER_POLICY_VERSION = "reranker-policy.v1"
 MAX_RERANK_CANDIDATES = 20
@@ -122,7 +124,7 @@ def apply_reranker(
             original,
             selected.name,
             status="failed",
-            latency_ms=_elapsed_ms(started),
+            latency_ms=elapsed_ms_ns(started),
             fallback_reason="reranker_timeout",
             provider_error_count=1 if selected.is_remote else 0,
         )
@@ -131,7 +133,7 @@ def apply_reranker(
             original,
             selected.name,
             status="failed",
-            latency_ms=_elapsed_ms(started),
+            latency_ms=elapsed_ms_ns(started),
             fallback_reason="reranker_failed",
             provider_error_count=1 if selected.is_remote else 0,
         )
@@ -142,7 +144,7 @@ def apply_reranker(
         candidates=(*reranked_head, *original[MAX_RERANK_CANDIDATES:]),
         status="applied",
         reranker_name=selected.name,
-        latency_ms=_elapsed_ms(started),
+        latency_ms=elapsed_ms_ns(started),
         external_request_count=response.external_request_count,
         transmitted_bytes=response.transmitted_bytes,
         external_cost_usd=response.external_cost_usd,
@@ -287,8 +289,6 @@ def _fallback_outcome(
     )
 
 
-def _elapsed_ms(started_ns: int) -> float:
-    return round((perf_counter_ns() - started_ns) / 1_000_000, 6)
 
 
 def _paired_bootstrap_mean_interval(

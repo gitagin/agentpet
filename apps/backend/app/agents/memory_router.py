@@ -73,6 +73,17 @@ class MemoryRouter:
                 retrieval_top_k=20,
             )
 
+        if _is_recent_chat_recall_query(query, normalized):
+            return MemoryRoute(
+                primary_scopes=("daily_chat",),
+                fallback_scopes=("diary_objects", "personal_memory"),
+                query=query,
+                answer_style="grounded",
+                confidence=0.85,
+                reason="recent_chat_recall",
+                retrieval_top_k=12,
+            )
+
         if _is_long_term_preference_query(query, normalized):
             return MemoryRoute(
                 primary_scopes=("graph_facts", "personal_memory"),
@@ -249,8 +260,73 @@ def _has_date_reference(query: str, normalized: str) -> bool:
     return False
 
 
+_RECENT_CHAT_TIME_MARKERS = (
+    "刚刚",
+    "刚才",
+    "刚",
+    "之前",
+    "上次",
+    "昨晚",
+    "刚才那会儿",
+)
+_RECENT_CHAT_VERB_MARKERS = (
+    "说",
+    "聊",
+    "讲",
+    "问",
+    "提",
+    "讨论",
+    "talk",
+    "say",
+    "mention",
+    "chat",
+    "ask",
+    "discuss",
+)
+_RECENT_CHAT_INTERROGATIVES = (
+    "什么",
+    "啥",
+    "哪些",
+    "怎么",
+    "吗",
+    "what",
+    "said",
+    "say",
+    "talk",
+    "chat",
+)
+
+
+def _is_recent_chat_recall_query(query: str, normalized: str) -> bool:
+    """Catch colloquial "what did I just say" queries without dates or
+    explicit memory markers: 我刚刚说了什么 / 我刚才聊了什么 / 我之前说过什么."""
+    has_time = any(marker in query or marker in normalized for marker in _RECENT_CHAT_TIME_MARKERS)
+    if not has_time:
+        return False
+    has_verb = any(marker in normalized or marker in query for marker in _RECENT_CHAT_VERB_MARKERS)
+    if not has_verb:
+        return False
+    return any(marker in query or marker in normalized for marker in _RECENT_CHAT_INTERROGATIVES)
+
+
+_PREFERENCE_QUESTION_SIGNALS = (
+    "\u5417",
+    "\u4ec0\u4e48",
+    "\u54ea\u4e9b",
+    "\u662f\u4e0d\u662f",
+    "\u6709\u6ca1\u6709",
+    "\u5462",
+    "\uff1f",
+    "?",
+)
+
+
+def _has_preference_question_signal(query: str, normalized: str) -> bool:
+    return any(signal in query or signal in normalized for signal in _PREFERENCE_QUESTION_SIGNALS)
+
+
 def _is_long_term_preference_query(query: str, normalized: str) -> bool:
-    preference_markers = (
+    english_markers = (
         "my preference",
         "my preferences",
         "my preferred",
@@ -267,6 +343,22 @@ def _is_long_term_preference_query(query: str, normalized: str) -> bool:
         "long term preference",
         "long-term preference",
         "profile",
+    )
+    remember_my = (
+        "remember my",
+        "know about my",
+        "what do you know about my",
+        "\u8bb0\u5f97\u6211",
+        "\u4f60\u8bb0\u5f97\u6211",
+    )
+    if any(marker in normalized or marker in query for marker in english_markers):
+        return True
+    if any(marker in normalized or marker in query for marker in remember_my):
+        return True
+    # 中文「我喜欢X / 我偏好X」默认是"告知偏好"的陈述句，应走普通聊天，让回复后的
+    # 抽取流水线把偏好记录下来；只有带疑问信号（吗/什么/是不是/问号…）时，才视为
+    # "询问我的偏好"而触发检索——否则"我喜欢牛奶"会被回答成"没找到能引用的记录"。
+    chinese_markers = (
         "\u6211\u559c\u6b22",
         "\u6211\u504f\u597d",
         "\u6211\u7684\u504f\u597d",
@@ -276,16 +368,9 @@ def _is_long_term_preference_query(query: str, normalized: str) -> bool:
         "\u957f\u671f\u504f\u597d",
         "\u957f\u671f\u8bb0\u5fc6",
     )
-    remember_my = (
-        "remember my",
-        "know about my",
-        "what do you know about my",
-        "\u8bb0\u5f97\u6211",
-        "\u4f60\u8bb0\u5f97\u6211",
-    )
-    return any(marker in normalized or marker in query for marker in preference_markers) or any(
-        marker in normalized or marker in query for marker in remember_my
-    )
+    if any(marker in query for marker in chinese_markers):
+        return _has_preference_question_signal(query, normalized)
+    return False
 
 
 def _is_personal_experience_or_emotional_continuity(query: str, normalized: str) -> bool:

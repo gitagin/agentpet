@@ -3763,6 +3763,11 @@
             "title": "Subtitle",
             "type": "string"
           },
+          "title": {
+            "default": "",
+            "title": "Title",
+            "type": "string"
+          },
           "type": {
             "enum": [
               "user",
@@ -4298,6 +4303,17 @@
       },
       "MemoryProposalResponse": {
         "properties": {
+          "content": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content"
+          },
           "diff": {
             "anyOf": [
               {
@@ -4321,6 +4337,17 @@
             "title": "Status",
             "type": "string"
           },
+          "target_content_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Content Hash"
+          },
           "target_path": {
             "anyOf": [
               {
@@ -4331,6 +4358,16 @@
               }
             ],
             "title": "Target Path"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MemoryProposalType"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -9668,8 +9705,8 @@
             "type": "array"
           },
           "max_files": {
-            "default": 20,
-            "maximum": 50.0,
+            "default": 100,
+            "maximum": 1000.0,
             "minimum": 1.0,
             "title": "Max Files",
             "type": "integer"
@@ -11047,8 +11084,8 @@
             "name": "limit",
             "required": false,
             "schema": {
-              "default": 60,
-              "maximum": 80,
+              "default": 200,
+              "maximum": 1000,
               "minimum": 5,
               "title": "Limit",
               "type": "integer"

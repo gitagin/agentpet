@@ -120,8 +120,8 @@ class DiaryMemoryStore:
 
         now = utc_now_iso()
         object_id = new_id()
-        people_json = _json_list(extracted.people)
-        keywords_json = _json_list(extracted.keywords)
+        people_json = _dumps_list(extracted.people)
+        keywords_json = _dumps_list(extracted.keywords)
         with self.conn:
             self.conn.execute(
                 """
@@ -152,6 +152,8 @@ class DiaryMemoryStore:
                     now,
                 ),
             )
+            from app.repositories.storage import _bigram_cjk
+
             self.conn.execute(
                 """
                 INSERT INTO diary_memory_object_fts(
@@ -162,11 +164,11 @@ class DiaryMemoryStore:
                 (
                     object_id,
                     memory_type,
-                    extracted.summary,
-                    extracted.topic,
-                    extracted.emotion,
-                    " ".join(extracted.people),
-                    " ".join(extracted.keywords),
+                    _bigram_cjk(extracted.summary),
+                    _bigram_cjk(extracted.topic or ""),
+                    _bigram_cjk(extracted.emotion or ""),
+                    _bigram_cjk(" ".join(extracted.people)),
+                    _bigram_cjk(" ".join(extracted.keywords)),
                 ),
             )
             self._insert_source(object_id, source)
@@ -448,7 +450,7 @@ def _object_hash(
     return sha256_hex(normalized)
 
 
-def _json_list(values: tuple[str, ...]) -> str:
+def _dumps_list(values: tuple[str, ...]) -> str:
     return json.dumps(list(values), ensure_ascii=False, separators=(",", ":"))
 
 
@@ -463,7 +465,10 @@ def _json_list_value(value: str) -> list[str]:
 
 
 def _to_fts_query(query: str) -> str:
-    terms = [term.strip('"') for term in query.split() if term.strip()]
+    from app.repositories.storage import _bigram_cjk
+
+    bigrammed = _bigram_cjk(query)
+    terms = [term.strip('"') for term in bigrammed.split() if term.strip()]
     return " OR ".join(f'"{term.replace(chr(34), chr(34) + chr(34))}"' for term in terms) or '""'
 
 

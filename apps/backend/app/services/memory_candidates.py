@@ -19,6 +19,8 @@ from app.storage.database import open_database_connection
 from app.utils.hash import sha256_hex
 from app.utils.time import utc_now_iso
 
+from app.utils.coerce import clamp_unit_interval, compact_text
+
 
 CANDIDATE_SOURCE_TYPE_PREFIX = "candidate_source:"
 
@@ -174,7 +176,7 @@ class MemoryCandidateStore:
         )
         now = utc_now_iso()
         candidate_id = new_id()
-        metadata_json = _json_object(request.metadata)
+        metadata_json = _dumps_object(request.metadata)
         with self.conn:
             self.conn.execute(
                 """
@@ -189,6 +191,12 @@ class MemoryCandidateStore:
                 ON CONFLICT(candidate_hash) DO UPDATE SET
                     confidence = MAX(confidence, excluded.confidence),
                     importance = MAX(importance, excluded.importance),
+                    status = CASE
+                        WHEN memory_candidates.status IN ('rejected', 'forgotten', 'archived', 'superseded')
+                             AND excluded.status IN ('candidate', 'active')
+                        THEN excluded.status
+                        ELSE memory_candidates.status
+                    END,
                     updated_at = excluded.updated_at
                 """,
                 (
@@ -196,14 +204,14 @@ class MemoryCandidateStore:
                     candidate_hash,
                     kind.value,
                     scope.value,
-                    _compact(request.summary, 1000),
-                    _compact(request.normalized_value, 1000),
-                    _compact(request.source_text, 2000),
+                    compact_text(request.summary, 1000),
+                    compact_text(request.normalized_value, 1000),
+                    compact_text(request.source_text, 2000),
                     source_text_hash,
                     track.value,
                     risk.value,
-                    _clamp(request.confidence),
-                    _clamp(request.importance),
+                    clamp_unit_interval(request.confidence),
+                    clamp_unit_interval(request.importance),
                     status.value,
                     request.expires_at,
                     request.last_confirmed_at,
@@ -332,15 +340,15 @@ class MemoryCandidateStore:
                 evidence_key,
                 request.candidate_id,
                 request.fact_id,
-                _compact(request.source_type, 80),
+                compact_text(request.source_type, 80),
                 source_text_hash,
-                _compact(request.source_excerpt or request.source_text, 500),
+                compact_text(request.source_excerpt or request.source_text, 500),
                 request.conversation_id,
                 request.message_id,
                 request.agent_run_id,
                 request.diary_object_id,
-                _clamp(request.confidence),
-                _json_object(request.metadata),
+                clamp_unit_interval(request.confidence),
+                _dumps_object(request.metadata),
                 created_at,
             ),
         )
@@ -428,11 +436,11 @@ class MemoryCandidateStore:
                     fact_id,
                     from_status,
                     target_status.value,
-                    _compact(reason, 500),
+                    compact_text(reason, 500),
                     source_agent_run_id,
                     source_message_id,
                     agent_action_id,
-                    _json_object(metadata),
+                    _dumps_object(metadata),
                     now,
                 ),
             )
@@ -468,9 +476,9 @@ class MemoryCandidateStore:
                     request.conversation_id,
                     request.message_id,
                     request.agent_run_id,
-                    _clamp(request.activation_score),
+                    clamp_unit_interval(request.activation_score),
                     _permissions_json(request.permissions),
-                    _json_object(request.score_breakdown),
+                    _dumps_object(request.score_breakdown),
                     int(request.used_for_style),
                     int(request.used_for_answer_context),
                     int(request.used_for_proactive_mention),
@@ -502,14 +510,14 @@ class MemoryCandidateStore:
                     request.candidate_id,
                     request.fact_id,
                     request.feedback_type,
-                    _compact(request.feedback_text, 1000),
+                    compact_text(request.feedback_text, 1000),
                     requested_status,
                     request.replacement_candidate_id,
                     request.source_conversation_id,
                     request.source_message_id,
                     request.source_agent_run_id,
                     request.agent_action_id,
-                    _json_object(request.metadata),
+                    _dumps_object(request.metadata),
                     utc_now_iso(),
                 ),
             )
@@ -590,8 +598,8 @@ def _candidate_hash(
             [
                 kind.value,
                 scope.value,
-                _compact(summary.casefold(), 1000),
-                _compact(normalized_value.casefold(), 1000),
+                compact_text(summary.casefold(), 1000),
+                compact_text(normalized_value.casefold(), 1000),
                 source_track.value,
                 source_text_hash,
             ]
@@ -605,7 +613,7 @@ def _evidence_key(request: MemoryEvidenceCreate, *, source_text_hash: str) -> st
             {
                 "candidate_id": request.candidate_id,
                 "fact_id": request.fact_id,
-                "source_type": _compact(request.source_type, 80),
+                "source_type": compact_text(request.source_type, 80),
                 "source_text_hash": source_text_hash,
                 "conversation_id": request.conversation_id,
                 "message_id": request.message_id,
@@ -619,9 +627,13 @@ def _evidence_key(request: MemoryEvidenceCreate, *, source_text_hash: str) -> st
     )
 
 
+def _dumps_object(value: Mapping[str, object] | None) -> str:
+    return json.dumps(dict(value or {}), ensure_ascii=True, sort_keys=True, separators=(",", ":"))
+
+
 def _permissions_json(value: RecallPermissions | Mapping[str, object] | None) -> str:
     if isinstance(value, RecallPermissions):
-        return _json_object(
+        return _dumps_object(
             {
                 "can_style_response": value.can_style_response,
                 "can_answer_context": value.can_answer_context,
@@ -630,11 +642,9 @@ def _permissions_json(value: RecallPermissions | Mapping[str, object] | None) ->
                 "can_persist": value.can_persist,
             }
         )
-    return _json_object(value)
+    return _dumps_object(value)
 
 
-def _json_object(value: Mapping[str, object] | None) -> str:
-    return json.dumps(dict(value or {}), ensure_ascii=True, sort_keys=True, separators=(",", ":"))
 
 
 def _json_load(value: object) -> dict[str, object]:
@@ -647,12 +657,5 @@ def _json_load(value: object) -> dict[str, object]:
     return parsed if isinstance(parsed, dict) else {}
 
 
-def _clamp(value: float) -> float:
-    return min(max(float(value), 0.0), 1.0)
 
 
-def _compact(value: str, limit: int) -> str:
-    compacted = " ".join(str(value).split())
-    if len(compacted) <= limit:
-        return compacted
-    return compacted[: max(0, limit - 3)].rstrip() + "..."

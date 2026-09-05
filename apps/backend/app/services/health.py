@@ -13,6 +13,7 @@ _BENIGN_VECTOR_REASONS = {
     "embedding_api_key_missing",
     "embedding_not_configured",
     "index_not_built",
+    "local_embedding_unavailable",
     "local_privacy_mode",
     "local_privacy_remote_blocked",
     "vector_disabled",

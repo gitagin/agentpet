@@ -9,11 +9,13 @@ from app.models.enums import AgentIntent
 from .runtime_helpers import _strip_search_command
 from .state import AgentState, ClassifierResult, SemanticAnalysisResult
 
+from app.utils.sqlite import extract_json_object
+
 # 从 graph_runtime.py 迁移，原函数名：_parse_semantic_analysis, _extract_json_object, _fallback_semantic_analysis, _fallback_source_scope, _forced_source_scope, _is_daily_chat_date_recall, _parse_text_search_tool_call
 
 
 def _parse_semantic_analysis(text: str, user_message: str) -> SemanticAnalysisResult:
-    data = json.loads(_extract_json_object(text))
+    data = json.loads(extract_json_object(text, error_code="semantic_analysis_json_missing"))
     result = SemanticAnalysisResult.model_validate(data)
     forced_scope = _forced_source_scope(user_message)
     if forced_scope is not None:
@@ -32,7 +34,7 @@ def _parse_semantic_analysis(text: str, user_message: str) -> SemanticAnalysisRe
 
 
 def _parse_classifier_analysis(text: str, user_message: str) -> tuple[ClassifierResult, SemanticAnalysisResult]:
-    data = json.loads(_extract_json_object(text))
+    data = json.loads(extract_json_object(text, error_code="semantic_analysis_json_missing"))
     if "intent" not in data:
         semantic = _semantic_from_legacy_payload(data, user_message)
         return _classifier_from_semantic(semantic), semantic
@@ -42,12 +44,6 @@ def _parse_classifier_analysis(text: str, user_message: str) -> tuple[Classifier
     return classifier, semantic
 
 
-def _extract_json_object(text: str) -> str:
-    start = text.find("{")
-    end = text.rfind("}")
-    if start < 0 or end < start:
-        raise ValueError("semantic_analysis_json_missing")
-    return text[start : end + 1]
 
 
 def _semantic_from_legacy_payload(data: dict[str, object], user_message: str) -> SemanticAnalysisResult:
@@ -201,8 +197,13 @@ def _fallback_source_scope(message: str) -> str:
         return "daily_chat"
     if "知识库" in message or "文档" in message or "笔记" in message or "docs" in normalized:
         return "knowledge_base"
-    if any(marker in message for marker in ("我喜欢", "我偏好", "我的喜好", "我的偏好", "你记得我", "记得我")):
+    if any(marker in message for marker in ("你记得我", "记得我")):
         return "personal_memory"
+    # 「我喜欢X / 我偏好X」是"告知偏好"的陈述句，不是检索请求；
+    # 只有带疑问词/问号时才算"询问我的偏好"（与 memory_router 保持一致）。
+    if any(marker in message for marker in ("我喜欢", "我偏好", "我的喜好", "我的偏好", "我最喜欢", "我常用")):
+        if any(signal in message for signal in ("吗", "什么", "哪些", "是不是", "有没有", "呢", "？", "?")):
+            return "personal_memory"
     return "none"
 
 

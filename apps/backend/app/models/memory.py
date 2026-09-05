@@ -7,7 +7,7 @@ from .event_payloads import AgentActionDecisionFields, AgentMemoryProposalFields
 
 
 class MemorySearchRequest(BaseModel):
-    query: str = Field(min_length=1); top_k: int = Field(default=8, ge=1, le=20); mode: Literal["fts", "vector", "hybrid"] = "fts"; source_scope: Literal["all", "personal_memory", "diary_objects", "daily_chat", "knowledge_base"] = "all"
+    query: str = Field(min_length=1); top_k: int = Field(default=8, ge=1, le=20); mode: Literal["fts", "vector", "hybrid"] = "hybrid"; source_scope: Literal["all", "personal_memory", "diary_objects", "daily_chat", "knowledge_base"] = "all"
 
 
 class MemoryRecallPermissions(BaseModel):
@@ -104,7 +104,11 @@ class RejectProposalRequest(BaseModel):
 
 
 class MemoryProposalResponse(AgentMemoryProposalFields):
-    preview_markdown: str; diff: str | None = None
+    preview_markdown: str
+    diff: str | None = None
+    type: MemoryProposalType | None = None
+    content: str | None = None
+    target_content_hash: str | None = None
 
 
 class MemoryProposalListResponse(BaseModel):

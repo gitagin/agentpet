@@ -15,9 +15,12 @@ from app.models.visible_continuity import (
     VisibleContinuitySnapshotResponse,
     VisibleContinuityTodayCard,
 )
+from app.services.memory_taxonomy import LOW_CONFIDENCE_THRESHOLD
 from app.services.retrospectives import RetrospectiveService
 from app.storage.database import open_database_connection
 from app.utils.time import utc_now_iso
+
+from app.utils.sqlite import json_list, table_exists
 
 
 EMPTY_TODAY_TITLE = "今天随时可以开始"
@@ -158,7 +161,7 @@ class VisibleContinuityService:
         )
 
     def _recent_receipts(self, *, limit: int) -> list[VisibleContinuityReceipt]:
-        if not _table_exists(self.conn, "agent_actions"):
+        if not table_exists(self.conn, "agent_actions", include_views=True):
             return []
         rows = self.conn.execute(
             """
@@ -173,7 +176,7 @@ class VisibleContinuityService:
         ).fetchall()
         receipts: list[VisibleContinuityReceipt] = []
         for row in rows:
-            target_paths = _json_list(row["target_paths_json"])
+            target_paths = json_list(row["target_paths_json"])
             target_path = _safe_target_path(target_paths[0]) if target_paths else None
             summary = str(row["summary"] or "")
             if not summary:
@@ -267,7 +270,7 @@ class VisibleContinuityService:
         )
 
     def _recent_messages(self, *, limit: int) -> list[sqlite3.Row]:
-        if not _table_exists(self.conn, "messages"):
+        if not table_exists(self.conn, "messages", include_views=True):
             return []
         return self.conn.execute(
             """
@@ -281,7 +284,7 @@ class VisibleContinuityService:
         ).fetchall()
 
     def _unfinished_threads(self, *, limit: int) -> list[sqlite3.Row]:
-        if not _table_exists(self.conn, "conversations"):
+        if not table_exists(self.conn, "conversations", include_views=True):
             return []
         return self.conn.execute(
             """
@@ -295,7 +298,7 @@ class VisibleContinuityService:
         ).fetchall()
 
     def _active_tasks(self, *, limit: int) -> list[sqlite3.Row]:
-        if not _table_exists(self.conn, "tasks"):
+        if not table_exists(self.conn, "tasks", include_views=True):
             return []
         return self.conn.execute(
             """
@@ -309,7 +312,7 @@ class VisibleContinuityService:
         ).fetchall()
 
     def _recent_diary_objects(self, *, limit: int) -> list[sqlite3.Row]:
-        if not _table_exists(self.conn, "diary_memory_objects"):
+        if not table_exists(self.conn, "diary_memory_objects", include_views=True):
             return []
         params: list[object] = []
         vault_clause = ""
@@ -330,7 +333,7 @@ class VisibleContinuityService:
         ).fetchall()
 
     def _recent_companion_reports(self, *, limit: int) -> list[sqlite3.Row]:
-        if not _table_exists(self.conn, "companion_retrieval_reports"):
+        if not table_exists(self.conn, "companion_retrieval_reports", include_views=True):
             return []
         return self.conn.execute(
             """
@@ -343,7 +346,7 @@ class VisibleContinuityService:
         ).fetchall()
 
     def _add_project_memory_buckets(self, buckets: dict[str, dict[str, object]]) -> None:
-        if _table_exists(self.conn, "memory_graph_facts"):
+        if table_exists(self.conn, "memory_graph_facts", include_views=True):
             rows = self.conn.execute(
                 """
                 SELECT id, subject, predicate, object, status, memory_type, category, importance, updated_at, created_at
@@ -370,7 +373,7 @@ class VisibleContinuityService:
                 else:
                     _record_project_signal(bucket, "tentative")
                 _add_source(bucket, f"memory_graph_facts:{row['id']}")
-        if _table_exists(self.conn, "memory_candidates"):
+        if table_exists(self.conn, "memory_candidates", include_views=True):
             rows = self.conn.execute(
                 """
                 SELECT id, summary, normalized_value, status, confidence, importance, evidence_count, updated_at, created_at
@@ -405,7 +408,7 @@ class VisibleContinuityService:
                 _add_source(bucket, f"memory_candidates:{row['id']}")
 
     def _add_project_task_buckets(self, buckets: dict[str, dict[str, object]]) -> None:
-        if not _table_exists(self.conn, "tasks"):
+        if not table_exists(self.conn, "tasks", include_views=True):
             return
         rows = self.conn.execute(
             """
@@ -437,11 +440,11 @@ class VisibleContinuityService:
             _add_source(bucket, f"tasks:{row['id']}")
 
     def _add_project_diary_buckets(self, buckets: dict[str, dict[str, object]]) -> None:
-        if not _table_exists(self.conn, "diary_memory_objects"):
+        if not table_exists(self.conn, "diary_memory_objects", include_views=True):
             return
         rows = self._recent_diary_objects(limit=80)
         for row in rows:
-            title = _project_title(" ".join([str(row["topic"] or ""), *_json_list(row["keywords_json"])]))
+            title = _project_title(" ".join([str(row["topic"] or ""), *json_list(row["keywords_json"])]))
             if not title:
                 continue
             confidence = float(row["confidence"] or 0)
@@ -452,14 +455,14 @@ class VisibleContinuityService:
             _append_bucket(bucket, "progress", _safe_text(str(row["summary"])))
             if _looks_completed(str(row["summary"])):
                 _record_project_signal(bucket, "completed")
-            elif str(row["status"] or "") == "candidate" or confidence < 0.65:
+            elif str(row["status"] or "") == "candidate" or confidence < LOW_CONFIDENCE_THRESHOLD:
                 _record_project_signal(bucket, "tentative")
             else:
                 _record_project_signal(bucket, "active")
             _add_source(bucket, f"diary_memory_objects:{row['id']}")
 
     def _add_project_message_buckets(self, buckets: dict[str, dict[str, object]]) -> None:
-        if not _table_exists(self.conn, "messages"):
+        if not table_exists(self.conn, "messages", include_views=True):
             return
         rows = self.conn.execute(
             """
@@ -805,19 +808,8 @@ def _add_source(bucket: dict[str, object], value: str) -> None:
         sources.add(value)
 
 
-def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
-    row = conn.execute("SELECT 1 FROM sqlite_master WHERE type IN ('table', 'view') AND name = ?", (table,)).fetchone()
-    return row is not None
 
 
-def _json_list(value: object) -> list[str]:
-    try:
-        parsed = json.loads(str(value or "[]"))
-    except json.JSONDecodeError:
-        return []
-    if not isinstance(parsed, list):
-        return []
-    return [str(item) for item in parsed if str(item).strip()]
 
 
 def _json_dict(value: object) -> dict[str, object]:

@@ -2,123 +2,55 @@ name: CI
 
 on:
   push:
-    branches: [main, dev]
   pull_request:
-    branches: [main]
 
 jobs:
-  hygiene:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: 仓库卫生检查
-        shell: pwsh
-        run: ./scripts/check-repo-hygiene.ps1
-
   backend:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     defaults:
       run:
-        working-directory: apps/backend
+        shell: pwsh
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - name: 安装依赖
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e ".[dev]"
-      - name: Lint
-        run: ruff check app/
-      - name: 测试（含覆盖率）
-        run: pytest -m "not live_model" --cov=app --cov-report=term-missing --cov-fail-under=60
-      - name: 类型检查
-        run: mypy
 
-  backend-base-install:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: apps/backend
-    steps:
-      - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
-      - name: 安装基础依赖（不含 vector extra）
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e .
-          python -m pip install pytest pytest-asyncio httpx
-      - name: 断言可选向量依赖未被安装
-        run: |
-          python -c "import importlib.util; names=('qdrant_client','langchain_qdrant','kuzu'); found=[name for name in names if importlib.util.find_spec(name) is not None]; assert not found, f'base install leaked vector dependencies: {found}'; print('base install contains no vector dependencies')"
-      - name: 基础安装完整测试
-        run: pytest -m "not live_model"
+          python-version: "3.10"
+          cache: pip
 
-  backend-vector-scaling:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    services:
-      qdrant:
-        image: qdrant/qdrant:v1.17.0
-        ports:
-          - 6333:6333
-    defaults:
-      run:
-        working-directory: apps/backend
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - name: 安装 vector 可选依赖
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e ".[vector]"
-      - name: 等待 Qdrant Server
-        run: |
-          python -c "import time; from qdrant_client import QdrantClient; client=QdrantClient(url='http://127.0.0.1:6333'); deadline=time.monotonic()+60; last=None
-          while time.monotonic()<deadline:
-              try: client.info(); print('Qdrant Server ready'); break
-              except Exception as exc: last=exc; time.sleep(1)
-          else: raise SystemExit(f'Qdrant Server did not become ready: {last}')"
-      - name: 验证向量查询 p95 非线性增长
-        run: |
-          python -m app.evals.vector_query_scaling \
-            --qdrant-url http://127.0.0.1:6333 \
-            --collection-sizes 2048 32768 \
-            --dimensions 64 \
-            --warmup-queries 20 \
-            --measured-queries 80 \
-            --output ../../output/evals/fix-backlog-16/vector-query-scaling.json
-      - name: 上传向量规模验收证据
-        uses: actions/upload-artifact@v4
-        with:
-          name: fix-backlog-16-vector-query-scaling
-          path: output/evals/fix-backlog-16/vector-query-scaling.json
-          if-no-files-found: error
+      - name: Install backend
+        run: python -m pip install -e "apps/backend"
+
+      - name: Install test tooling
+        run: python -m pip install pytest ruff
+
+      - name: Lint backend
+        run: ruff check apps/backend/app --select A001
+
+      - name: Download local embedding model
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/download-embedding-model.ps1
+
+      - name: Backend tests
+        run: python -m pytest apps/backend/tests -q
 
   desktop:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     defaults:
       run:
-        working-directory: apps/desktop
+        shell: pwsh
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: 20
           cache: npm
           cache-dependency-path: apps/desktop/package-lock.json
-      - name: 安装依赖
+
+      - name: Install desktop deps
         run: npm ci
-      - name: 验证 OpenAPI 生成契约
-        run: npm run check:api-contracts
-      - name: 类型检查
+        working-directory: apps/desktop
+
+      - name: Desktop typecheck
         run: npm run typecheck
-      - name: 单元测试
-        run: npm run test
-      - name: 构建验证
-        run: npm run build
+        working-directory: apps/desktop

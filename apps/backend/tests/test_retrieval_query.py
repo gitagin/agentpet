@@ -12,6 +12,7 @@ from app.services.retrieval_query import (
     RetrievalQueryPlanner,
     build_retrieval_plan,
     build_retrieval_plan_telemetry,
+    route_retrieval_channels,
 )
 
 
@@ -286,3 +287,20 @@ def test_telemetry_contains_only_hashes_counts_and_no_raw_query_or_context() -> 
 def test_filters_are_bounded_and_unknown_keys_are_rejected() -> None:
     with pytest.raises(ValueError, match="retrieval_filter_key_invalid"):
         build_retrieval_plan("find note", filters={"raw_query": "must not be stored"})
+
+def test_routing_adds_graph_channel_for_relation_intent() -> None:
+    channels = route_retrieval_channels(("fts", "vector"), "这些实体之间的关系是什么？")
+
+    assert channels == ("fts", "vector", "graph")
+
+
+def test_routing_keeps_identifier_query_channels_unchanged() -> None:
+    channels = route_retrieval_channels(("fts", "vector"), "APOLLO-17 是什么？")
+
+    assert channels == ("fts", "vector")
+
+
+def test_routing_leaves_ordinary_queries_untouched() -> None:
+    channels = route_retrieval_channels(("fts", "vector"), "我上次说的会议时间是什么？")
+
+    assert channels == ("fts", "vector")

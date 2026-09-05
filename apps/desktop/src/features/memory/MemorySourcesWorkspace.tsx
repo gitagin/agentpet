@@ -68,7 +68,9 @@ export function MemorySourcesWorkspace({
         <Search size={17} aria-hidden="true" /><label><span className="sr-only">搜索本地来源</span><input value={searchQuery} onChange={(event) => onSearchQueryChange(event.target.value)} placeholder="搜索来源、Wiki 页面或记忆摘要" /></label><button type="submit" className="primary" disabled={!searchQuery.trim() || searchStatus === "loading"}>{searchStatus === "loading" ? "搜索中…" : "搜索"}</button>
       </form>
       {searchStatus === "error" ? <p className="llmwiki-inline-error" role="alert">来源搜索暂时不可用；请重试或直接打开资料库。</p> : null}
-      {searchResults.length ? <SearchResults results={searchResults} onOpenSource={onOpenSource} /> : searchStatus === "empty" ? <p className="llmwiki-muted">没有找到可引用的本地来源。</p> : null}
+      {searchQuery.trim() ? (
+        searchResults.length ? <SearchResults results={searchResults} onOpenSource={onOpenSource} /> : searchStatus === "empty" ? <p className="llmwiki-muted">没有找到可引用的本地来源。</p> : null
+      ) : null}
 
       <div className="llmwiki-source-actions" aria-label="来源操作">
         <button type="button" className="primary" onClick={onOpenImport}><Upload size={15} />导入来源</button>
@@ -76,7 +78,7 @@ export function MemorySourcesWorkspace({
       </div>
       {rebuildMessage ? <p className="llmwiki-inline-success" role="status">{rebuildMessage}</p> : null}
 
-      {nodes.length ? <div className="llmwiki-source-list" aria-label="本机来源列表">{nodes.map((node) => <button key={node.node_id} type="button" className="llmwiki-source-row" onClick={() => onSelectNode(node.node_id)}><span className="llmwiki-source-icon"><FileText size={16} /></span><span><strong>{safe(node.label, "本地来源")}</strong><small>{safe(node.subtitle, "来源")} · {node.evidence_count ?? 0} 个证据 · {node.updated_at}</small></span><ExternalLink size={15} aria-hidden="true" /></button>)}</div> : <div className="llmwiki-empty-state"><BookOpen size={19} /><strong>还没有来源节点</strong><p>导入一个本地文档或从聊天中保存一条来源，随后可以在证据链中打开它。</p><button type="button" className="primary" onClick={onOpenImport}>打开资料库</button></div>}
+      {nodes.length ? <div className="llmwiki-source-list" aria-label="本机来源列表">{nodes.map((node) => <button key={node.node_id} type="button" className="llmwiki-source-row" onClick={() => onSelectNode(node.node_id)}><span className="llmwiki-source-icon"><FileText size={16} /></span><span><strong>{safe(node.label, "本地来源")}</strong><small>{safe(node.subtitle, "来源")} · {node.evidence_count ?? 0} 个证据 · {node.updated_at}</small></span><ExternalLink size={15} aria-hidden="true" /></button>)}</div> : <div className="llmwiki-empty-state llmwiki-source-empty-state"><BookOpen size={19} /><strong>还没有来源节点</strong><p>使用上方“导入来源”添加本地文档，或从聊天中保存一条来源。</p></div>}
     </section>
   );
 }

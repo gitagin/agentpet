@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import re
 import sqlite3
 from dataclasses import dataclass, field
@@ -12,6 +11,9 @@ from app.services.memory_policy import evaluate_memory_content
 from app.services.memory_taxonomy import LOW_CONFIDENCE_THRESHOLD, LifecycleStatus, MemoryKind, MemoryScope, RiskTier, SourceTrack
 from app.storage.database import open_database_connection
 from app.utils.time import utc_now_iso
+
+from app.utils.coerce import clamp_unit_interval
+from app.utils.sqlite import json_object, table_exists
 
 
 REDACTED_SUMMARY = "这条记忆包含敏感或不适合展示的细节，已隐藏。"
@@ -150,7 +152,7 @@ class MemoryProfileProjectionService:
         return None
 
     def _candidate_rows(self, limit: int) -> list[sqlite3.Row]:
-        if not _table_exists(self.conn, "memory_candidates"):
+        if not table_exists(self.conn, "memory_candidates"):
             return []
         return self.conn.execute(
             """
@@ -159,6 +161,7 @@ class MemoryProfileProjectionService:
                 confidence, importance, evidence_count, status, expires_at,
                 superseded_by, fact_id, metadata_json, updated_at
             FROM memory_candidates
+            WHERE fact_id IS NULL
             ORDER BY updated_at DESC, id DESC
             LIMIT ?
             """,
@@ -166,7 +169,7 @@ class MemoryProfileProjectionService:
         ).fetchall()
 
     def _fact_rows(self, limit: int) -> list[sqlite3.Row]:
-        if not _table_exists(self.conn, "memory_graph_facts"):
+        if not table_exists(self.conn, "memory_graph_facts"):
             return []
         return self.conn.execute(
             """
@@ -195,7 +198,7 @@ class MemoryProfileProjectionService:
                     LIMIT 1
                 ) AS authority_contradicted_by
             FROM memory_graph_facts f
-            WHERE (f.statement_kind IS NULL OR f.statement_kind != 'relation')
+            WHERE f.statement_kind IS NULL
             ORDER BY updated_at DESC, id DESC
             LIMIT ?
             """,
@@ -203,7 +206,7 @@ class MemoryProfileProjectionService:
         ).fetchall()
 
     def _continuity_rows(self, limit: int) -> list[sqlite3.Row]:
-        if not _table_exists(self.conn, "continuity_state"):
+        if not table_exists(self.conn, "continuity_state"):
             return []
         return self.conn.execute(
             """
@@ -321,8 +324,8 @@ def _candidate_item(row: sqlite3.Row) -> tuple[str, MemoryProfileProjectionItem]
     kind = str(row["memory_kind"])
     scope = str(row["memory_scope"])
     risk = str(row["risk_tier"])
-    confidence = _clamp(row["confidence"])
-    importance = _clamp(row["importance"])
+    confidence = clamp_unit_interval(row["confidence"])
+    importance = clamp_unit_interval(row["importance"])
     base_group = _profile_group(kind=kind, scope=scope, category=kind, entity_type=None, expires_at=row["expires_at"])
     is_sensitive = _is_sensitive(
         summary=str(row["summary"]),
@@ -367,11 +370,11 @@ def _candidate_item(row: sqlite3.Row) -> tuple[str, MemoryProfileProjectionItem]
 
 def _fact_item(row: sqlite3.Row) -> tuple[str, MemoryProfileProjectionItem]:
     status = str(row["status"])
-    metadata = _json_object(row["metadata_json"])
+    metadata = json_object(row["metadata_json"])
     risk = str(metadata.get("risk_tier") or RiskTier.LOW.value)
     kind = str(row["memory_type"] or row["category"] or MemoryKind.FACT.value)
-    confidence = _clamp(row["confidence"])
-    importance = _clamp(row["importance"])
+    confidence = clamp_unit_interval(row["confidence"])
+    importance = clamp_unit_interval(row["importance"])
     superseded_by = _optional_text(row["authority_superseded_by"])
     summary = _fact_summary(row)
     base_group = _profile_group(
@@ -419,7 +422,7 @@ def _fact_item(row: sqlite3.Row) -> tuple[str, MemoryProfileProjectionItem]:
 
 def _continuity_item(row: sqlite3.Row) -> tuple[str, MemoryProfileProjectionItem]:
     state_key = str(row["state_key"])
-    confidence = _clamp(row["confidence"])
+    confidence = clamp_unit_interval(row["confidence"])
     base_group = _continuity_group(state_key)
     status = LifecycleStatus.ACTIVE.value if confidence >= LOW_CONFIDENCE_THRESHOLD else LifecycleStatus.CANDIDATE.value
     sensitive = _is_sensitive(summary=str(row["value"]), risk_tier=RiskTier.LOW.value, scope="", status=status)
@@ -480,7 +483,7 @@ def _candidate_target(row: sqlite3.Row, group: str, item: MemoryProfileProjectio
 
 def _fact_target(row: sqlite3.Row, group: str, item: MemoryProfileProjectionItem) -> MemoryProfileProjectionTarget:
     status = str(row["status"])
-    metadata = _json_object(row["metadata_json"])
+    metadata = json_object(row["metadata_json"])
     kind = str(row["memory_type"] or row["category"] or MemoryKind.FACT.value)
     risk = str(metadata.get("risk_tier") or RiskTier.LOW.value)
     sensitive = _is_sensitive(
@@ -501,7 +504,7 @@ def _fact_target(row: sqlite3.Row, group: str, item: MemoryProfileProjectionItem
 
 
 def _continuity_target(row: sqlite3.Row, group: str, item: MemoryProfileProjectionItem) -> MemoryProfileProjectionTarget:
-    status = LifecycleStatus.ACTIVE.value if _clamp(row["confidence"]) >= LOW_CONFIDENCE_THRESHOLD else LifecycleStatus.CANDIDATE.value
+    status = LifecycleStatus.ACTIVE.value if clamp_unit_interval(row["confidence"]) >= LOW_CONFIDENCE_THRESHOLD else LifecycleStatus.CANDIDATE.value
     return MemoryProfileProjectionTarget(
         item=item,
         target_type="continuity",
@@ -821,7 +824,7 @@ def _evidence_stats(
     *,
     exclude_source_prefix: str | None = None,
 ) -> sqlite3.Row | None:
-    if column not in {"candidate_id", "fact_id"} or not _table_exists(conn, "memory_evidence"):
+    if column not in {"candidate_id", "fact_id"} or not table_exists(conn, "memory_evidence"):
         return None
     where = f"{column} = ?"
     params: tuple[object, ...] = (target_id,)
@@ -868,19 +871,12 @@ def _continuity_group(state_key: str) -> str:
         return "identity"
     if state_key in {"relationship_summary"}:
         return "relationships"
-    if state_key in {"unresolved_threads"}:
-        return "projects"
+    # 未完话题（unresolved_threads）是陪伴连续性里的「话题线索」，不是「项目」，
+    # 不能进 projects 组（否则会以 project 节点出现在记忆图谱里）。它和其它
+    # 陪伴状态（情绪/能量）一样归入 recent_state，作为近期状态显示。
     return "recent_state"
 
 
-def _json_object(value: object) -> dict[str, object]:
-    if not value:
-        return {}
-    try:
-        parsed = json.loads(str(value))
-    except (TypeError, json.JSONDecodeError):
-        return {}
-    return parsed if isinstance(parsed, dict) else {}
 
 
 def _optional_text(value: object) -> str | None:
@@ -897,14 +893,5 @@ def _compact(value: str, limit: int) -> str:
     return compacted[: max(0, limit - 1)].rstrip() + "…"
 
 
-def _clamp(value: object) -> float:
-    try:
-        number = float(value)
-    except (TypeError, ValueError):
-        number = 0.0
-    return max(0.0, min(1.0, number))
 
 
-def _table_exists(conn: sqlite3.Connection, name: str) -> bool:
-    row = conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (name,)).fetchone()
-    return row is not None

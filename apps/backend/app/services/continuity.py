@@ -14,6 +14,8 @@ from app.storage.database import open_database_connection
 from app.utils.hash import sha256_hex
 from app.utils.time import utc_now_iso
 
+from app.utils.sqlite import extract_json_object
+
 
 CONTINUITY_STATE_KEYS = (
     "identity_traits",
@@ -335,7 +337,7 @@ class ContinuityService:
                     "摘要与证据使用简体中文。不要包含密钥。不要声称任何内容已确认。"
                 ),
             )
-            payload = json.loads(_extract_json_object(str(text)))
+            payload = json.loads(extract_json_object(str(text), error_code="continuity_json_missing"))
         except Exception:
             logger.warning(
                 "Continuity model extraction failed; falling back to deterministic candidates",
@@ -652,12 +654,6 @@ def _continuity_model_prompt(user_message: str, assistant_answer: str) -> str:
     )
 
 
-def _extract_json_object(text: str) -> str:
-    start = text.find("{")
-    end = text.rfind("}")
-    if start < 0 or end < start:
-        raise ValueError("continuity_json_missing")
-    return text[start : end + 1]
 
 
 def _evidence_excerpt(text: str) -> str:

@@ -12849,3 +12849,752 @@ body[data-window-mode="settings"] #settings-panel > .settings-purpose-grid {
     background: #242128 !important;
   }
 }
+/* Daily wiki flow owns the page scroll. Do not clip the form to the bottom-nav reserve. */
+body[data-window-mode="world"] .feature-window-content {
+  overflow: auto;
+  min-height: 0;
+  padding-bottom: calc(var(--bottom-nav-safe-area) + 8px);
+}
+
+body[data-window-mode="world"] .wiki-page-stack {
+  height: auto;
+  min-height: 0;
+  max-height: none;
+  overflow: visible;
+}
+
+body[data-window-mode="world"] .wiki-page-stack > * {
+  min-height: auto;
+  max-height: none;
+  overflow: visible;
+}
+
+/* World is a document-like route: keep one scroll owner and let the workflow
+   panel grow with its form instead of clipping at the viewport edge. */
+body[data-window-mode="world"] .feature-window-content {
+  display: block;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 0 4px calc(var(--bottom-nav-safe-area) + 8px);
+}
+
+body[data-window-mode="world"] .wiki-page-stack {
+  display: block;
+  width: 100%;
+}
+
+body[data-window-mode="world"] .wiki-page-stack > #wiki-workflow-panel {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  max-height: none;
+  overflow: visible;
+  padding: 16px;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-daily-flow {
+  grid-template-columns: minmax(0, 1.25fr) minmax(300px, 0.75fr);
+  align-items: start;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-daily-primary textarea {
+  min-height: 132px;
+  max-height: 260px;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-daily-primary,
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-daily-preview {
+  min-height: 0;
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+/* Final stacking-context correction for the standalone daily整理 route. */
+body[data-window-mode="world"] .feature-window-content {
+  position: relative !important;
+  z-index: 10 !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  padding-bottom: 20px !important;
+  align-self: stretch;
+  isolation: isolate;
+}
+
+body[data-window-mode="world"] .wiki-page-stack {
+  position: relative !important;
+  z-index: 11 !important;
+  height: auto !important;
+  min-height: max-content !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+body[data-window-mode="world"] .wiki-page-stack > #wiki-workflow-panel {
+  position: relative !important;
+  z-index: 12 !important;
+  height: auto !important;
+  min-height: max-content !important;
+  max-height: none !important;
+  overflow: visible !important;
+  align-self: start;
+}
+
+body[data-window-mode="world"] .feature-shell > .bottom-nav {
+  z-index: 40 !important;
+}
+
+/* Match the memory workspace composition: the route title is a header, while
+   the editable workflow and preview remain the two framed work surfaces. */
+body[data-window-mode="world"] .wiki-page-stack > #wiki-workflow-panel {
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  padding: 0 !important;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel > .panel-title {
+  min-height: 52px;
+  margin: 0 0 14px;
+  padding: 0 0 0 2px;
+  gap: 12px;
+  color: var(--feature-ink);
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel > .panel-title svg {
+  width: 36px;
+  height: 36px;
+  padding: 8px;
+  border-radius: 10px;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel > .panel-title h2 {
+  font-size: clamp(24px, 3vw, 34px);
+  line-height: 1.06;
+}
+
+/* Daily materials route: match the current memory workspace visual language. */
+body[data-window-mode="world"] .feature-shell {
+  --feature-bg: #111214;
+  --feature-ink: #f3f0f2;
+  --feature-soft: rgba(236, 231, 234, 0.72);
+  --feature-muted: rgba(236, 231, 234, 0.5);
+  --feature-line: rgba(255, 255, 255, 0.14);
+  --feature-line-strong: rgba(255, 255, 255, 0.22);
+  --feature-panel: #17191c;
+  --feature-panel-secondary: #151719;
+  background: #111214;
+}
+
+body[data-window-mode="world"] .feature-window-content {
+  scrollbar-width: thin !important;
+  scrollbar-color: rgba(236, 231, 234, 0.34) transparent !important;
+  scrollbar-gutter: stable;
+}
+
+body[data-window-mode="world"] .feature-window-content::-webkit-scrollbar {
+  display: block !important;
+  width: 8px;
+}
+
+body[data-window-mode="world"] .feature-window-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+body[data-window-mode="world"] .feature-window-content::-webkit-scrollbar-thumb {
+  min-height: 42px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  background: rgba(236, 231, 234, 0.28);
+}
+
+body[data-window-mode="world"] .feature-window-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(236, 231, 234, 0.44);
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel > .panel-title svg {
+  background: rgba(120, 199, 189, 0.12);
+  color: #78c7bd;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel > .panel-title h2 {
+  color: #f3f0f2;
+  font-size: clamp(30px, 3.2vw, 42px);
+  font-weight: 780;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-daily-primary,
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-daily-preview {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  background: #17191c;
+  box-shadow: none;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-daily-primary {
+  border-color: rgba(255, 255, 255, 0.16);
+  background: #151719;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .section-heading strong,
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-preview-plan-card strong {
+  color: #f3f0f2;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .section-heading span,
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-preview-plan-card span,
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-preview-plan-card small {
+  color: rgba(236, 231, 234, 0.68);
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-flow-steps span {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: #1a1c1f;
+  color: rgba(236, 231, 234, 0.78);
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-target-type-button {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: #1a1c1f;
+  color: rgba(236, 231, 234, 0.82);
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-target-type-button:hover {
+  border-color: rgba(120, 199, 189, 0.42);
+  background: rgba(120, 199, 189, 0.08);
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-target-type-button.active {
+  border-color: rgba(240, 138, 164, 0.66);
+  background: rgba(213, 111, 138, 0.14);
+  color: #fff4f7;
+  box-shadow: inset 0 0 0 1px rgba(240, 138, 164, 0.12);
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-target-type-button span {
+  color: rgba(236, 231, 234, 0.58);
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel input,
+body[data-window-mode="world"] #wiki-workflow-panel textarea {
+  border-color: rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  background: #111214;
+  color: #f3f0f2;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel input:focus,
+body[data-window-mode="world"] #wiki-workflow-panel textarea:focus {
+  border-color: rgba(120, 199, 189, 0.62);
+  box-shadow: 0 0 0 3px rgba(120, 199, 189, 0.11);
+}
+
+/* Give the standalone world route its own reliable scroll owner. */
+body[data-window-mode="world"] .world-route-content {
+  display: block !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow: hidden !important;
+  padding: 0 !important;
+}
+
+body[data-window-mode="world"] .world-route-scroll {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  max-height: none;
+  overflow-x: hidden;
+  overflow-y: scroll;
+  padding: 0 4px 24px;
+  scrollbar-gutter: stable;
+  scrollbar-width: auto;
+  scrollbar-color: rgba(120, 199, 189, 0.62) transparent;
+}
+
+body[data-window-mode="world"] .world-route-scroll::-webkit-scrollbar {
+  display: block !important;
+  width: 10px;
+}
+
+body[data-window-mode="world"] .world-route-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+body[data-window-mode="world"] .world-route-scroll::-webkit-scrollbar-thumb {
+  min-height: 48px;
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: rgba(120, 199, 189, 0.62);
+  background-clip: padding-box;
+}
+
+/* Restore the original no-scroll presentation for the daily materials route. */
+body[data-window-mode="world"] .feature-shell,
+body[data-window-mode="world"] .feature-window-content,
+body[data-window-mode="world"] .world-route-content,
+body[data-window-mode="world"] .world-route-scroll {
+  overflow: hidden !important;
+}
+
+body[data-window-mode="world"] .world-route-scroll {
+  scrollbar-width: none !important;
+}
+
+body[data-window-mode="world"] .world-route-scroll::-webkit-scrollbar {
+  display: none !important;
+}
+
+/* Hide every ancestor scrollbar for the restored no-scroll presentation. */
+body[data-window-mode="world"],
+body[data-window-mode="world"] #root,
+body[data-window-mode="world"] .stage-host-routes,
+body[data-window-mode="world"] .stage-host-route-world,
+body[data-window-mode="world"] .feature-shell,
+body[data-window-mode="world"] .feature-window-content,
+body[data-window-mode="world"] .world-route-content,
+body[data-window-mode="world"] .world-route-scroll {
+  overflow: hidden !important;
+  scrollbar-width: none !important;
+}
+
+body[data-window-mode="world"]::-webkit-scrollbar,
+body[data-window-mode="world"] #root::-webkit-scrollbar,
+body[data-window-mode="world"] .stage-host-routes::-webkit-scrollbar,
+body[data-window-mode="world"] .stage-host-route-world::-webkit-scrollbar,
+body[data-window-mode="world"] .feature-shell::-webkit-scrollbar,
+body[data-window-mode="world"] .feature-window-content::-webkit-scrollbar,
+body[data-window-mode="world"] .world-route-content::-webkit-scrollbar,
+body[data-window-mode="world"] .world-route-scroll::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* Fixed viewport contract for the non-scrolling daily materials route. */
+body[data-window-mode="world"] #root,
+body[data-window-mode="world"] .stage-host-routes,
+body[data-window-mode="world"] .stage-host-route-world {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100dvh !important;
+  min-height: 0 !important;
+  max-height: 100dvh !important;
+  overflow: hidden !important;
+}
+
+body[data-window-mode="world"] .stage-host-route-world > .feature-shell,
+body[data-window-mode="world"] .feature-shell {
+  position: fixed !important;
+  inset: 0 !important;
+  box-sizing: border-box !important;
+  display: grid !important;
+  grid-template-rows: minmax(0, 1fr) !important;
+  width: 100vw !important;
+  height: 100dvh !important;
+  min-height: 0 !important;
+  max-height: 100dvh !important;
+  overflow: hidden !important;
+}
+
+body[data-window-mode="world"] .feature-shell > .feature-window-content,
+body[data-window-mode="world"] .world-route-content {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: 100% !important;
+  overflow: hidden !important;
+}
+
+body[data-window-mode="world"] .world-route-scroll {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: 100% !important;
+  overflow: hidden !important;
+}
+
+body[data-window-mode="world"] .feature-shell > .bottom-nav {
+  position: fixed !important;
+  z-index: 100 !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+/* Final world-route geometry: restore the normal shell and keep the dock inside
+   the viewport. The content panel is intentionally clipped at the dock edge. */
+body[data-window-mode="world"] #root,
+body[data-window-mode="world"] .stage-host-routes,
+body[data-window-mode="world"] .stage-host-route-world {
+  position: relative !important;
+  inset: auto !important;
+  box-sizing: border-box !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-height: none !important;
+  overflow: hidden !important;
+}
+
+body[data-window-mode="world"] .stage-host-route-world > .feature-shell,
+body[data-window-mode="world"] .feature-shell {
+  position: relative !important;
+  inset: auto !important;
+  box-sizing: border-box !important;
+  display: grid !important;
+  grid-template-rows: minmax(0, 1fr) !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: 100% !important;
+  overflow: hidden !important;
+  padding: 22px 22px 0 !important;
+}
+
+body[data-window-mode="world"] .feature-window-content,
+body[data-window-mode="world"] .world-route-content,
+body[data-window-mode="world"] .world-route-scroll {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: 100% !important;
+  overflow: hidden !important;
+  padding-bottom: 0 !important;
+}
+
+body[data-window-mode="world"] .feature-shell > .bottom-nav {
+  position: fixed !important;
+  left: 50% !important;
+  right: auto !important;
+  bottom: 10px !important;
+  transform: translateX(-50%) !important;
+  z-index: 999 !important;
+  visibility: visible !important;
+}
+
+body[data-window-mode="world"] .world-route-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(120, 199, 189, 0.84);
+  background-clip: padding-box;
+}
+
+/* Teal is the primary interaction color on this route; rose is secondary. */
+body[data-window-mode="world"] #wiki-workflow-panel button:not(.secondary):not(.wiki-target-type-button):not(.icon-button) {
+  border-color: rgba(120, 199, 189, 0.56);
+  background: #78c7bd;
+  color: #101416;
+  box-shadow: 0 8px 20px rgba(120, 199, 189, 0.16);
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel button:not(.secondary):not(.wiki-target-type-button):not(.icon-button):hover:not(:disabled) {
+  border-color: #9de1d8;
+  background: #9de1d8;
+  color: #101416;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel button.secondary {
+  border-color: rgba(213, 111, 138, 0.38);
+  background: rgba(213, 111, 138, 0.1);
+  color: #f0a0b5;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel button.secondary:hover:not(:disabled) {
+  border-color: rgba(240, 138, 164, 0.66);
+  background: rgba(213, 111, 138, 0.18);
+  color: #ffdce5;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-target-type-button.active {
+  border-color: rgba(120, 199, 189, 0.72);
+  background: rgba(120, 199, 189, 0.14);
+  color: #e4fffb;
+  box-shadow: inset 0 0 0 1px rgba(120, 199, 189, 0.18);
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-target-type-button.active span {
+  color: rgba(228, 255, 251, 0.68);
+}
+
+/* Whole-page scrolling for daily materials: the shell itself is the scroller. */
+body[data-window-mode="world"] .stage-host-routes,
+body[data-window-mode="world"] .stage-host-route-world {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: visible !important;
+}
+
+body[data-window-mode="world"] .stage-host-route-world > .feature-shell,
+body[data-window-mode="world"] .feature-shell {
+  display: block !important;
+  width: 100%;
+  height: 100dvh !important;
+  min-height: 100dvh !important;
+  max-height: none !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  padding: 22px 22px 28px !important;
+}
+
+body[data-window-mode="world"] .feature-shell > .feature-window-content,
+body[data-window-mode="world"] .world-route-content {
+  display: block !important;
+  width: min(100%, 1180px);
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow: visible !important;
+  padding: 0 4px 28px !important;
+  margin: 0 auto;
+}
+
+body[data-window-mode="world"] .world-route-scroll {
+  display: contents !important;
+}
+
+body[data-window-mode="world"] .feature-shell::-webkit-scrollbar {
+  display: block !important;
+  width: 10px;
+}
+
+body[data-window-mode="world"] .feature-shell::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+body[data-window-mode="world"] .feature-shell::-webkit-scrollbar-thumb {
+  min-height: 48px;
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: rgba(120, 199, 189, 0.62);
+  background-clip: padding-box;
+}
+
+body[data-window-mode="world"] .feature-shell {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(120, 199, 189, 0.62) transparent;
+}
+
+/* Keep the window and dock fixed; only the content layer below the dock scrolls. */
+body[data-window-mode="world"] .feature-shell {
+  display: grid !important;
+  grid-template-rows: minmax(0, 1fr) !important;
+  box-sizing: border-box !important;
+  height: 100dvh !important;
+  min-height: 100dvh !important;
+  overflow: hidden !important;
+}
+
+body[data-window-mode="world"] .stage-host-routes,
+body[data-window-mode="world"] .stage-host-route-world {
+  box-sizing: border-box;
+}
+
+body[data-window-mode="world"] .world-route-content {
+  display: block !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow: hidden !important;
+}
+
+body[data-window-mode="world"] .world-route-scroll {
+  display: block !important;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  padding: 0 4px 24px;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(120, 199, 189, 0.62) transparent;
+}
+
+body[data-window-mode="world"] .world-route-scroll::-webkit-scrollbar {
+  display: block !important;
+  width: 10px;
+}
+
+body[data-window-mode="world"] .world-route-scroll::-webkit-scrollbar-thumb {
+  min-height: 48px;
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: rgba(120, 199, 189, 0.62);
+  background-clip: padding-box;
+}
+
+/* The world page is mounted inside the stage host when opened from memory.
+   Normalize that host so the inner route gets the viewport and its own scroll. */
+body[data-window-mode="world"] .stage-host-routes,
+body[data-window-mode="world"] .stage-host-route-world {
+  width: 100%;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+body[data-window-mode="world"] .stage-host-route-world > .feature-shell {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+body[data-window-mode="world"] .stage-host-route-world .world-route-content {
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: 100% !important;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-daily-primary {
+  border-color: rgba(213, 111, 138, 0.2);
+  background:
+    linear-gradient(180deg, rgba(213, 111, 138, 0.05), rgba(255, 255, 255, 0.018) 40%),
+    rgba(12, 12, 18, 0.78);
+}
+
+@media (max-width: 900px) {
+  body[data-window-mode="world"] #wiki-workflow-panel .wiki-daily-flow {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Keep the daily materials surface dense enough for the fixed memory-window frame. */
+body[data-window-mode="world"] #wiki-workflow-panel > .panel-title {
+  min-height: 42px;
+  margin-bottom: 10px;
+  gap: 9px;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel > .panel-title svg {
+  width: 30px;
+  height: 30px;
+  padding: 6px;
+  border-radius: 8px;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel > .panel-title h2 {
+  font-size: clamp(24px, 2.4vw, 30px);
+  line-height: 1.1;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-daily-flow {
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-daily-primary,
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-daily-preview {
+  gap: 9px;
+  padding: 12px;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-daily-grid {
+  gap: 8px;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-daily-primary > label,
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-daily-primary .wiki-daily-grid > label {
+  gap: 4px;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-flow-steps {
+  gap: 6px;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-flow-steps span {
+  padding: 6px;
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-target-type-picker {
+  gap: 6px;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-target-type-button {
+  min-height: 64px;
+  gap: 3px;
+  padding: 8px;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-target-type-button strong {
+  font-size: 12px;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-target-type-button span {
+  font-size: 10px;
+  line-height: 1.25;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-daily-primary textarea {
+  min-height: 108px;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .advanced-vault-maintenance > summary {
+  padding: 9px 12px;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .advanced-vault-maintenance > form {
+  padding: 10px 12px 12px;
+}
+
+/* Final density pass: keep the collapsed maintenance entry above the dock. */
+body[data-window-mode="world"] .stage-host-route-world > .feature-shell,
+body[data-window-mode="world"] .feature-shell {
+  padding: 14px 14px 0 !important;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-daily-flow {
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-daily-primary,
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-daily-preview {
+  gap: 7px;
+  padding: 10px;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .section-heading {
+  gap: 3px;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .section-heading span {
+  line-height: 1.3;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-flow-steps span {
+  padding: 5px;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-target-type-button {
+  min-height: 56px;
+  padding: 7px;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-daily-primary textarea {
+  min-height: 88px;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-daily-primary input {
+  min-height: 40px;
+  padding-block: 8px;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .button-row button {
+  min-height: 40px;
+  padding-block: 8px;
+}
