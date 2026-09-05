@@ -13598,3 +13598,94 @@ body[data-window-mode="world"] #wiki-workflow-panel .button-row button {
   min-height: 40px;
   padding-block: 8px;
 }
+
+/* World route layout contract: the shell and dock stay fixed, while the
+   feature content section is the single scroll owner. */
+body[data-window-mode="world"] {
+  overflow: hidden !important;
+}
+
+body[data-window-mode="world"] #root,
+body[data-window-mode="world"] .stage-host-routes,
+body[data-window-mode="world"] .stage-host-route-world {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: 100% !important;
+  overflow: hidden !important;
+}
+
+body[data-window-mode="world"] .feature-shell,
+body[data-window-mode="world"] .stage-host-route-world > .feature-shell {
+  position: relative !important;
+  display: grid !important;
+  grid-template-rows: minmax(0, 1fr) auto !important;
+  box-sizing: border-box !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: 100% !important;
+  overflow: hidden !important;
+  padding: 14px 14px 0 !important;
+}
+
+body[data-window-mode="world"] .feature-shell > .feature-window-content.world-route-content {
+  position: relative !important;
+  display: block !important;
+  box-sizing: border-box !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+  padding: 0 4px 24px !important;
+  scroll-padding-bottom: 24px;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(120, 199, 189, 0.62) transparent;
+}
+
+body[data-window-mode="world"] .world-route-scroll {
+  display: block !important;
+  box-sizing: border-box !important;
+  width: 100% !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+body[data-window-mode="world"] .feature-shell > .bottom-nav {
+  position: relative !important;
+  inset: auto !important;
+  left: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  z-index: 20 !important;
+  display: block !important;
+  width: 100% !important;
+  min-height: 60px !important;
+  transform: none !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+}
+
+body[data-window-mode="world"] .feature-shell > .feature-window-content.world-route-content::-webkit-scrollbar {
+  display: block !important;
+  width: 8px;
+}
+
+body[data-window-mode="world"] .feature-shell > .feature-window-content.world-route-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+body[data-window-mode="world"] .feature-shell > .feature-window-content.world-route-content::-webkit-scrollbar-thumb {
+  min-height: 44px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: rgba(120, 199, 189, 0.62);
+  background-clip: padding-box;
+}
