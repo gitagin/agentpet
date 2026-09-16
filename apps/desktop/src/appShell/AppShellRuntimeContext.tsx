@@ -6,6 +6,7 @@ import type { AgentActivityDomain } from "./useAgentActivityDomain";
 import type { TaskDomain } from "./useTaskDomain";
 import type { MemoryDomain } from "./useMemoryDomain";
 import type { ContinuityDomain } from "./useContinuityDomain";
+import type { ReflectionDomain } from "./useReflectionDomain";
 import type { PetDomain } from "./usePetDomain";
 import type { ChatStreamingDomain } from "./useChatStreamingDomain";
 import type { ResetDomain } from "./useResetDomain";
@@ -17,6 +18,7 @@ export type AppShellRuntime = {
   tasks: TaskDomain;
   memory: MemoryDomain;
   continuity: ContinuityDomain;
+  reflection: ReflectionDomain;
   wiki: ReturnType<typeof useWiki>;
   pet: PetDomain;
   chat: ChatStreamingDomain;

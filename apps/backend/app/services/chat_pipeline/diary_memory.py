@@ -53,15 +53,6 @@ async def archive_structured_diary_memory(
     markdown_path = getattr(daily_entry, "markdown_path", None)
 
     try:
-        expected_object_count = await _has_structured_signal(
-            context=context,
-            user_question=state.user_message,
-            assistant_answer=assistant_answer,
-            occurred_at=occurred_at,
-            markdown_path=markdown_path,
-        )
-        if expected_object_count <= 0:
-            return (), []
         outcome = await _execute_registered_action(
             context,
             action_lifecycle=action_lifecycle(context),
@@ -76,7 +67,6 @@ async def archive_structured_diary_memory(
                 "assistant_answer": assistant_answer,
                 "occurred_at": occurred_at,
                 "markdown_path": markdown_path,
-                "expected_object_count": expected_object_count,
             },
             expected_effect="从这次对话提取结构化日记记忆。",
             source_message_id=state.message_id,
@@ -88,7 +78,9 @@ async def archive_structured_diary_memory(
             raise RuntimeError(outcome.receipt.safe_error_code or "structured_diary_not_verified")
         object_ids = tuple(str(item) for item in outcome.receipt.result.get("object_ids") or ())
         if not object_ids:
-            raise RuntimeError("structured_diary_authoritative_objects_missing")
+            # 这一轮模型抽出了零个对象:动作已完成但零效果,按跳过处理。
+            # 不是失败 —— 否则一次正常的"没内容可记"就会把整条回复后流水线标红。
+            return (), []
         return object_ids, [agent_action_event(state.agent_run_id, outcome.action)]
     except Exception as exc:
         if raise_errors:
@@ -99,33 +91,6 @@ async def archive_structured_diary_memory(
             exc,
         )
         return (), []
-
-
-async def _has_structured_signal(
-    *,
-    context: AppContext,
-    user_question: str,
-    assistant_answer: str,
-    occurred_at: str,
-    markdown_path: str | None,
-) -> int:
-    service = diary_memory_service(context)
-    try:
-        diary_text = "\n".join(
-            [
-                f"User question: {user_question}",
-                f"Assistant answer: {assistant_answer}",
-            ]
-        )
-        memory_date = occurred_at[:10] if len(occurred_at) >= 10 else None
-        extracted = await service.extractor.extract(
-            diary_text,
-            memory_date=memory_date,
-            source_path=markdown_path,
-        )
-        return len(extracted)
-    finally:
-        service.close()
 
 
 def _message_created_at(context: AppContext, assistant_message_id: str) -> str:

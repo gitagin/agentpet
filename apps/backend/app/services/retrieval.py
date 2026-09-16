@@ -9,6 +9,7 @@ from dataclasses import dataclass, replace
 from datetime import date, datetime
 from time import perf_counter_ns
 
+from app.config import get_settings
 from app.models.api import MemorySearchResponse, MemorySearchResult
 from app.models.enums import IndexJobStatus, IndexJobType, NoteStatus
 from app.repositories.storage import IndexJobRepository, NoteRepository, SearchResult, VaultRepository
@@ -25,7 +26,6 @@ from app.services.retrieval_query import (
 from app.services.reranking import DisabledReranker, Reranker, apply_reranker
 from app.services.retrieval_fusion import (
     FUSION_POLICY_VERSION,
-    RRF_K,
     FusionCandidate,
     primary_channel,
     reciprocal_rank_fusion,
@@ -70,9 +70,11 @@ def _retrieval_cache_key(
     Corpus stamp (max indexed_at/updated_at across notes, facts, diary,
     and index jobs) invalidates on any write; the date anchor invalidates
     relative-date queries at midnight; vector generation invalidates on
-    reindex.  Deliberate per-query aggregate cost is bounded by the
-    single-user corpus (see _corpus_stamp).
+    reindex; tuning settings invalidate on parameter changes (rrf_k and
+    channel/scope weights all reshape fusion scores).  Deliberate per-query
+    aggregate cost is bounded by the single-user corpus (see _corpus_stamp).
     """
+    settings = get_settings()
     stamp = _corpus_stamp(conn, vault_id=vault_id)
     anchor = retrieval_today(now).isoformat()
     payload = "\x1f".join(
@@ -86,6 +88,9 @@ def _retrieval_cache_key(
             anchor,
             "1" if local_privacy else "0",
             str(vector_generation or ""),
+            str(settings.tuning_rrf_k),
+            str(settings.tuning_fts_exact_weight),
+            str(settings.tuning_daily_echo_weight),
             stamp,
         )
     )
@@ -230,12 +235,15 @@ class RetrievalService:
         with self.database.session() as conn:
             local_privacy = _local_privacy_enabled(conn)
             sensitive_reason = detect_sensitive_reason(query)
+            vector_transport_local = _vector_transport_is_local(self.vector_index)
             requested_channels = route_retrieval_channels(_channels_for_mode(mode), query)
             plan = build_retrieval_plan(
                 query,
                 approved_source_scopes=_plan_source_scopes(source_scope),
                 requested_channels=requested_channels,
-                local_privacy=local_privacy,
+                # 本地向量不出本机，隐私模式不构成禁用它传输的理由；
+                # sensitive 仍保守禁用（缓存/日志面上不做语义召回）。
+                local_privacy=local_privacy and not vector_transport_local,
                 sensitive=sensitive_reason is not None,
                 now=now,
             )
@@ -260,7 +268,7 @@ class RetrievalService:
                 metadata["cache_status"] = "hit"
                 return cached.model_copy(update={"metadata": metadata}, deep=True)
             fallback_reason: str | None = None
-            if "vector" in requested_channels and local_privacy:
+            if "vector" in requested_channels and local_privacy and not vector_transport_local:
                 fallback_reason = "local_privacy_mode"
                 vector_health.update(
                     semantic_available=False,
@@ -295,13 +303,18 @@ class RetrievalService:
             daily_chunk_ids = None
             if daily_date_range is not None:
                 daily_date_started = perf_counter_ns()
+                daily_fetch = (
+                    min(candidate_limit * 3, _CANDIDATE_POOL_MAX * 2)
+                    if required_atoms
+                    else candidate_limit
+                )
                 daily_date_results = _authoritative_fts_results(
                     conn,
                     note_repository.search_daily_chat_by_date_range(
                         vault_id=vault_id,
                         start_date=daily_date_range.start,
                         end_date=daily_date_range.end,
-                        top_k=candidate_limit,
+                        top_k=daily_fetch,
                     ),
                     vault_id=vault_id,
                     required_atoms=required_atoms,
@@ -379,32 +392,54 @@ class RetrievalService:
                 if daily_date_results is not None:
                     fts_results = daily_date_results
                     fts_search_ms = daily_date_search_ms
+                    completed_channels.append("fts")
                 else:
                     fts_started = perf_counter_ns()
-                    search_results = note_repository.search(
-                        vault_id=vault_id,
-                        query=plan.lexical_query,
-                        top_k=candidate_limit,
-                    )
-                    fts_results = _authoritative_fts_results(
-                        conn,
-                        search_results,
-                        vault_id=vault_id,
-                        required_atoms=required_atoms,
-                    )
+                    try:
+                        # required_atoms 在 LIMIT 之后过滤会丢掉排在候选池之外的
+                        # 精确命中（假阴性），因此带原子约束时超额取回再过滤。
+                        fts_fetch = (
+                            min(candidate_limit * 3, _CANDIDATE_POOL_MAX * 2)
+                            if required_atoms
+                            else candidate_limit
+                        )
+                        search_results = note_repository.search(
+                            vault_id=vault_id,
+                            query=plan.lexical_query,
+                            top_k=fts_fetch,
+                        )
+                        fts_results = _authoritative_fts_results(
+                            conn,
+                            search_results,
+                            vault_id=vault_id,
+                            required_atoms=required_atoms,
+                        )
+                    except Exception:
+                        logger.warning(
+                            "FTS leg failed; treating as no lexical results",
+                            exc_info=True,
+                        )
+                        fts_results = []
+                        fallback_reason = fallback_reason or "fts_unavailable"
+                    else:
+                        completed_channels.append("fts")
                     fts_search_ms = elapsed_ms_ns(fts_started)
-                completed_channels.append("fts")
 
             graph_results = []
             graph_ms = 0.0
             if "graph" in plan.requested_channels and (plan.entities or plan.identifiers):
                 graph_started = perf_counter_ns()
-                graph_results = _graph_fusion_candidates(
-                    conn,
-                    names=(*plan.entities, *plan.identifiers),
-                    vault_id=vault_id,
-                    limit=candidate_limit,
-                )
+                try:
+                    graph_results = _graph_fusion_candidates(
+                        conn,
+                        names=(*plan.entities, *plan.identifiers),
+                        vault_id=vault_id,
+                        limit=candidate_limit,
+                    )
+                except Exception:
+                    logger.warning("Graph leg failed; treating as no graph results", exc_info=True)
+                    graph_results = []
+                    fallback_reason = fallback_reason or "graph_unavailable"
                 graph_ms = elapsed_ms_ns(graph_started)
                 if graph_results:
                     completed_channels.append("graph")
@@ -428,12 +463,15 @@ class RetrievalService:
                 _CANDIDATE_POOL_MAX,
                 max(result_limit, 20 if reranker_enabled else result_limit),
             )
+            rrf_k_value = max(1, min(get_settings().tuning_rrf_k, 1000))
             fusion = reciprocal_rank_fusion(
                 fusion_channels,
                 approved_scopes=plan.source_scopes,
                 top_k=fusion_limit,
                 required_vault_id=vault_id,
+                rrf_k=rrf_k_value,
                 channel_weights=_retrieval_channel_weights(plan, fusion_channels),
+                scope_weights=_retrieval_scope_weights(fusion_channels),
             )
             fusion_ms = round(
                 elapsed_ms_ns(fusion_started)
@@ -466,7 +504,7 @@ class RetrievalService:
                 "fusion": {
                     "policy_version": FUSION_POLICY_VERSION,
                     "algorithm": "reciprocal_rank_fusion",
-                    "rrf_k": RRF_K,
+                    "rrf_k": rrf_k_value,
                     "channel_weights": dict(_retrieval_channel_weights(plan, fusion_channels)),
                     "input_counts": fusion.diagnostics.input_counts,
                     "eligible_counts": fusion.diagnostics.eligible_counts,
@@ -643,6 +681,15 @@ def _local_privacy_enabled(conn) -> bool:
     return False
 
 
+def _vector_transport_is_local(vector_index) -> bool:
+    """Bundled ONNX embeddings never leave the machine, so privacy mode
+    must not disable the vector leg for them.  Only remote transports
+    are blocked by local privacy or sensitive-input policy."""
+    config = getattr(vector_index, "config", None)
+    transport = str(getattr(config, "transport_class", "") or "").strip().casefold()
+    return transport in {"local", "on-device", "on_device"}
+
+
 def _default_vector_health() -> dict[str, object]:
     return {
         "semantic_available": False,
@@ -747,6 +794,7 @@ def _authoritative_vector_results(
                 title=str(row["title"]),
                 heading=str(row["heading"]) if row["heading"] is not None else None,
                 snippet=str(row["content"])[:600],
+                content=str(row["content"]),
             )
         )
     return accepted
@@ -805,6 +853,10 @@ def _authoritative_fts_results(
                 candidate,
                 content_hash=content_hash,
                 vault_id=vault_id,
+                # 重排器拿整块原文而不是居中片段,是按语料测过的选择:同一套 13 条
+                # 标注查询上整块内容不差于片段(MRR 0.885 vs 0.846,hit@1 10/13 vs
+                # 9/13),所以这里不要凭"片段更聚焦"的直觉改回去。
+                content=str(row["content"]),
             )
         )
     return accepted
@@ -838,8 +890,34 @@ def _retrieval_channel_weights(
     weights = {channel: 1.0 for channel in channels}
     has_exact_atoms = bool(plan.exact_terms or plan.identifiers)
     if has_exact_atoms and "fts" in weights:
-        weights["fts"] = 3.0
+        weights["fts"] = max(1.0, get_settings().tuning_fts_exact_weight)
     return weights
+
+
+_KNOWLEDGE_SCOPES = frozenset({"knowledge_base", "wiki", "vault_note"})
+
+
+def _retrieval_scope_weights(
+    channels: Mapping[str, Sequence[FusionCandidate]],
+) -> dict[str, float] | None:
+    """Chat-log echo downweighting: only when knowledge candidates compete.
+
+    A daily-chat chunk that verbatim echoes the current question ranks first
+    in every channel yet adds no information the user doesn't already have.
+    When knowledge candidates exist for the same query, scale the daily_chat
+    scope down so knowledge answers surface first. When no knowledge
+    candidate competes (e.g. "我上次问过什么"), the diary stays the sole
+    answer source at full weight — continuity recall is preserved.
+    """
+    has_knowledge = any(
+        candidate.source_scope in _KNOWLEDGE_SCOPES
+        for channel_candidates in channels.values()
+        for candidate in channel_candidates
+    )
+    if not has_knowledge:
+        return None
+    weight = get_settings().tuning_daily_echo_weight
+    return {"daily_chat": max(0.01, min(weight, 1.0))}
 
 
 def _graph_fusion_candidates(

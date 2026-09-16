@@ -1,0 +1,331 @@
+/* Plan route color contract: graphite workspace, teal actions, semantic states. */
+body[data-window-mode="agent"] {
+  --plan-ink: #F2F4F3;
+  --plan-soft: #B2BEBC;
+  --plan-muted: #7E8E8B;
+  --plan-line: rgba(226, 240, 237, 0.11);
+  --plan-line-strong: rgba(226, 240, 237, 0.19);
+  --plan-surface: rgba(17, 20, 22, 0.84);
+  --plan-surface-strong: rgba(21, 25, 27, 0.94);
+  --plan-teal: #68B8AD;
+  --plan-teal-strong: #8ED6CC;
+  --plan-teal-soft: rgba(104, 184, 173, 0.12);
+  --plan-blue: #7CAFE0;
+  --plan-amber: #D4A56B;
+  --plan-green: #72C49C;
+  --plan-red: #DE6B76;
+  background: #0D0F10;
+  color: var(--plan-ink);
+}
+
+body[data-window-mode="agent"] .feature-shell {
+  --feature-ink: var(--plan-ink);
+  --feature-soft: var(--plan-soft);
+  --feature-muted: var(--plan-muted);
+  --brand: var(--plan-teal);
+  --brand-strong: var(--plan-teal-strong);
+  --brand-soft: var(--plan-teal-soft);
+  --focus-ring: rgba(104, 184, 173, 0.54);
+  background: #0D0F10 !important;
+}
+
+body[data-window-mode="agent"] .feature-shell::before {
+  background:
+    linear-gradient(90deg, rgba(7, 9, 10, 0.93), rgba(7, 9, 10, 0.72) 46%, rgba(7, 9, 10, 0.88)),
+    linear-gradient(180deg, rgba(7, 9, 10, 0.16), rgba(7, 9, 10, 0.88)) !important;
+}
+
+body[data-window-mode="agent"] .feature-shell-backdrop {
+  background:
+    radial-gradient(circle at 76% 14%, rgba(104, 184, 173, 0.08), transparent 28%),
+    linear-gradient(180deg, rgba(8, 10, 11, 0.12), rgba(8, 10, 11, 0.68)) !important;
+}
+
+body[data-window-mode="agent"] .feature-window-copy .eyebrow,
+body[data-window-mode="agent"] .feature-window-brand small {
+  color: var(--plan-teal-strong) !important;
+}
+
+body[data-window-mode="agent"] .feature-window-copy h1,
+body[data-window-mode="agent"] .feature-window-brand strong {
+  color: var(--plan-ink) !important;
+}
+
+body[data-window-mode="agent"] .feature-window-copy p:last-child {
+  color: var(--plan-soft) !important;
+}
+
+body[data-window-mode="agent"] .feature-window-brand {
+  border-color: rgba(104, 184, 173, 0.22) !important;
+  background: rgba(17, 20, 22, 0.82) !important;
+}
+
+body[data-window-mode="agent"] .feature-window-brand-icon {
+  border-color: rgba(104, 184, 173, 0.46) !important;
+  background: var(--plan-teal-soft) !important;
+  color: var(--plan-teal-strong) !important;
+  box-shadow: 0 0 20px rgba(104, 184, 173, 0.13) !important;
+}
+
+body[data-window-mode="agent"] .task-workspace-guide {
+  border-color: rgba(104, 184, 173, 0.2) !important;
+  background:
+    linear-gradient(90deg, rgba(104, 184, 173, 0.09), transparent 44%),
+    rgba(13, 16, 18, 0.82) !important;
+}
+
+body[data-window-mode="agent"] .task-workspace-guide strong,
+body[data-window-mode="agent"] .panel-title h2,
+body[data-window-mode="agent"] .section-heading strong,
+body[data-window-mode="agent"] .task-digest-head strong,
+body[data-window-mode="agent"] .task-step-row strong {
+  color: var(--plan-ink) !important;
+}
+
+body[data-window-mode="agent"] .task-workspace-guide span,
+body[data-window-mode="agent"] .section-heading span,
+body[data-window-mode="agent"] .empty-state,
+body[data-window-mode="agent"] .task-management-main p,
+body[data-window-mode="agent"] .task-digest-card p,
+body[data-window-mode="agent"] .task-digest-meta small,
+body[data-window-mode="agent"] label > span,
+body[data-window-mode="agent"] .field-note {
+  color: var(--plan-soft) !important;
+}
+
+body[data-window-mode="agent"] .task-primary-column > .feature-window-panel,
+body[data-window-mode="agent"] .task-context-rail > .feature-window-panel,
+body[data-window-mode="agent"] .task-trace-drawer > .feature-window-panel,
+body[data-window-mode="agent"] .task-trace-disclosure {
+  border-color: var(--plan-line) !important;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 28%),
+    var(--plan-surface) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035), 0 14px 30px rgba(0, 0, 0, 0.16) !important;
+}
+
+body[data-window-mode="agent"] .panel-title svg {
+  border: 1px solid rgba(104, 184, 173, 0.24) !important;
+  background: var(--plan-teal-soft) !important;
+  color: var(--plan-teal-strong) !important;
+}
+
+body[data-window-mode="agent"] .task-list-panel .panel-title svg,
+body[data-window-mode="agent"] .task-steps-panel .panel-title svg,
+body[data-window-mode="agent"] .task-log-panel .panel-title svg {
+  border-color: rgba(124, 175, 224, 0.25) !important;
+  background: rgba(124, 175, 224, 0.11) !important;
+  color: var(--plan-blue) !important;
+}
+
+body[data-window-mode="agent"] .task-reminder-summary-panel .panel-title svg {
+  border-color: rgba(212, 165, 107, 0.28) !important;
+  background: rgba(212, 165, 107, 0.11) !important;
+  color: var(--plan-amber) !important;
+}
+
+body[data-window-mode="agent"] input,
+body[data-window-mode="agent"] textarea,
+body[data-window-mode="agent"] select {
+  border-color: var(--plan-line-strong) !important;
+  background: rgba(8, 11, 12, 0.72) !important;
+  color: var(--plan-ink) !important;
+  color-scheme: dark;
+}
+
+body[data-window-mode="agent"] input::placeholder,
+body[data-window-mode="agent"] textarea::placeholder {
+  color: var(--plan-muted) !important;
+}
+
+body[data-window-mode="agent"] input:focus,
+body[data-window-mode="agent"] textarea:focus,
+body[data-window-mode="agent"] select:focus {
+  border-color: rgba(104, 184, 173, 0.62) !important;
+  background: rgba(12, 17, 18, 0.9) !important;
+  box-shadow: 0 0 0 3px rgba(104, 184, 173, 0.11) !important;
+}
+
+body[data-window-mode="agent"] button:not(.secondary):not(.danger):not(.bottom-nav-button),
+body[data-window-mode="agent"] .task-button-row button:not(.secondary):not(.danger) {
+  border-color: rgba(104, 184, 173, 0.64) !important;
+  background: linear-gradient(180deg, #68B8AD, #478F87) !important;
+  color: #0A1514 !important;
+  box-shadow: 0 7px 18px rgba(104, 184, 173, 0.14) !important;
+}
+
+body[data-window-mode="agent"] button:not(.secondary):not(.danger):not(.bottom-nav-button):hover:not(:disabled) {
+  border-color: var(--plan-teal-strong) !important;
+  background: linear-gradient(180deg, #8ED6CC, #68B8AD) !important;
+}
+
+body[data-window-mode="agent"] button.secondary,
+body[data-window-mode="agent"] .task-pagination button {
+  border-color: var(--plan-line-strong) !important;
+  background: rgba(255, 255, 255, 0.045) !important;
+  color: var(--plan-soft) !important;
+  box-shadow: none !important;
+}
+
+body[data-window-mode="agent"] button.secondary:hover:not(:disabled),
+body[data-window-mode="agent"] .task-pagination button:hover:not(:disabled) {
+  border-color: rgba(104, 184, 173, 0.44) !important;
+  background: var(--plan-teal-soft) !important;
+  color: var(--plan-teal-strong) !important;
+}
+
+body[data-window-mode="agent"] button.danger,
+body[data-window-mode="agent"] .task-management-actions button:nth-child(2),
+body[data-window-mode="agent"] .task-approval-panel .task-button-row button:first-child {
+  border-color: rgba(222, 107, 118, 0.5) !important;
+  background: rgba(222, 107, 118, 0.12) !important;
+  color: #F2A3AA !important;
+  box-shadow: none !important;
+}
+
+body[data-window-mode="agent"] .field-note.error {
+  border-left: 2px solid var(--plan-red);
+  background: rgba(222, 107, 118, 0.07);
+  color: #EDA0A8 !important;
+  padding: 5px 8px;
+}
+
+body[data-window-mode="agent"] .task-management-card,
+body[data-window-mode="agent"] .task-digest-card,
+body[data-window-mode="agent"] .task-step-row,
+body[data-window-mode="agent"] .task-log-list,
+body[data-window-mode="agent"] .empty-state {
+  border-color: var(--plan-line) !important;
+  background: rgba(8, 11, 12, 0.48) !important;
+  color: var(--plan-soft) !important;
+}
+
+body[data-window-mode="agent"] .task-management-card.done,
+body[data-window-mode="agent"] .task-management-card.completed,
+body[data-window-mode="agent"] .task-digest-card.success {
+  border-color: rgba(114, 196, 156, 0.3) !important;
+  background: rgba(114, 196, 156, 0.08) !important;
+}
+
+body[data-window-mode="agent"] .task-management-card.cancelled,
+body[data-window-mode="agent"] .task-digest-card.warning,
+body[data-window-mode="agent"] .task-reminder-alert {
+  border-color: rgba(212, 165, 107, 0.3) !important;
+  background: rgba(212, 165, 107, 0.08) !important;
+}
+
+body[data-window-mode="agent"] .task-reminder-alert strong {
+  color: #E8C48F !important;
+}
+
+body[data-window-mode="agent"] .task-reminder-alert span {
+  color: #C5B397 !important;
+}
+
+body[data-window-mode="agent"] .task-status-badge.running {
+  background: var(--plan-teal) !important;
+  color: #091513 !important;
+}
+
+body[data-window-mode="agent"] .task-status-badge.idle {
+  background: #566461 !important;
+  color: #E4E9E8 !important;
+}
+
+body[data-window-mode="agent"] .task-status-badge.approval {
+  background: var(--plan-amber) !important;
+  color: #1A130A !important;
+}
+
+body[data-window-mode="agent"] .task-status-badge.completed {
+  background: var(--plan-green) !important;
+  color: #09150F !important;
+}
+
+body[data-window-mode="agent"] .task-status-badge.failed {
+  background: var(--plan-red) !important;
+}
+
+body[data-window-mode="agent"] .task-summary-tabs button {
+  border-color: var(--plan-line) !important;
+  background: rgba(255, 255, 255, 0.035) !important;
+  color: var(--plan-soft) !important;
+}
+
+body[data-window-mode="agent"] .task-summary-tabs button.active {
+  border-color: rgba(104, 184, 173, 0.48) !important;
+  background: rgba(104, 184, 173, 0.15) !important;
+  color: #DFFFFA !important;
+  box-shadow: inset 0 -2px 0 var(--plan-teal) !important;
+}
+
+body[data-window-mode="agent"] .task-summary-tabs button:nth-child(3).active {
+  border-color: rgba(114, 196, 156, 0.48) !important;
+  background: rgba(114, 196, 156, 0.14) !important;
+  color: #C9F4DD !important;
+  box-shadow: inset 0 -2px 0 var(--plan-green) !important;
+}
+
+body[data-window-mode="agent"] .task-summary-tabs button:nth-child(4).active {
+  border-color: rgba(212, 165, 107, 0.5) !important;
+  background: rgba(212, 165, 107, 0.14) !important;
+  color: #F0D3A8 !important;
+  box-shadow: inset 0 -2px 0 var(--plan-amber) !important;
+}
+
+body[data-window-mode="agent"] .task-step-status.done {
+  color: var(--plan-green) !important;
+}
+
+body[data-window-mode="agent"] .task-step-status.running,
+body[data-window-mode="agent"] .task-step-status.pending {
+  color: var(--plan-amber) !important;
+}
+
+body[data-window-mode="agent"] .task-step-status.failed {
+  color: var(--plan-red) !important;
+}
+
+body[data-window-mode="agent"] .task-step-index,
+body[data-window-mode="agent"] .task-step-duration,
+body[data-window-mode="agent"] .task-log-line span,
+body[data-window-mode="agent"] .task-pagination span {
+  color: var(--plan-muted) !important;
+}
+
+body[data-window-mode="agent"] .task-trace-disclosure > summary {
+  color: var(--plan-ink) !important;
+}
+
+body[data-window-mode="agent"] .task-trace-disclosure > summary span {
+  color: var(--plan-soft) !important;
+}
+
+body[data-window-mode="agent"] .feature-window-content,
+body[data-window-mode="agent"] .task-create-form,
+body[data-window-mode="agent"] .task-management-list,
+body[data-window-mode="agent"] .task-digest-list,
+body[data-window-mode="agent"] .task-step-list,
+body[data-window-mode="agent"] .task-log-list {
+  scrollbar-color: rgba(104, 184, 173, 0.34) transparent;
+}
+
+body[data-window-mode="agent"] .feature-window-content::-webkit-scrollbar-thumb,
+body[data-window-mode="agent"] .task-create-form::-webkit-scrollbar-thumb,
+body[data-window-mode="agent"] .task-management-list::-webkit-scrollbar-thumb,
+body[data-window-mode="agent"] .task-digest-list::-webkit-scrollbar-thumb {
+  background: rgba(104, 184, 173, 0.34) !important;
+}
+
+body[data-window-mode="agent"] .feature-shell .bottom-nav-indicator {
+  background: var(--plan-teal) !important;
+  box-shadow: 0 0 0 1px rgba(104, 184, 173, 0.3), 0 0 18px rgba(104, 184, 173, 0.2) !important;
+}
+
+body[data-window-mode="agent"] .feature-shell .bottom-nav-button.active {
+  color: #0B1715 !important;
+}
+
+body[data-window-mode="agent"] .feature-shell .bottom-nav-button:hover:not(.active) {
+  color: var(--plan-teal-strong) !important;
+}

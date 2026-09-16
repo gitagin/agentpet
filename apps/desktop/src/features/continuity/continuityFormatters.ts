@@ -64,6 +64,7 @@ export function normalizeContinuitySignal(payload: Record<string, unknown> | nul
     intensity,
     display_hint: displayHint,
     source_state_keys: keys,
+    source_proposal_id: pickPayloadString(payload, ["source_proposal_id"]),
   };
 }
 

@@ -15,6 +15,7 @@ from app.services.memory_permissions import (
 )
 from app.services.prompt_context_types import PromptRecentTurn
 from app.services.prompt_profile_provider import PromptProfileItem
+from app.utils.text import is_greeting_only
 
 
 PROMPT_MEMORY_TELEMETRY_SCHEMA = "prompt_memory_telemetry_v1"
@@ -397,12 +398,18 @@ class PromptMemoryAssembler:
     ) -> str:
         stable_profile_text = stable_profile_text.strip()
         recent_turns_text = recent_turns_text.strip()
+        # 用户没提起的话题不要自己延续;纯问候时更只是问候。这条规则要出现在
+        # "有引用"和"没引用"两条返回路径上(线上那次就是 0 引用)。
+        conversation_scope_instructions = _conversation_scope_instructions(user_message)
         if not citations:
             context_blocks = [block for block in (stable_profile_text, recent_turns_text) if block]
             if context_blocks:
                 context_text = "\n\n".join(context_blocks)
-                return f"{context_text}\n\nCurrent user message:\n{user_message}"
-            return user_message
+                return (
+                    f"{context_text}\n\nCurrent user message:\n{user_message}\n\n"
+                    f"{conversation_scope_instructions}"
+                )
+            return f"{user_message}\n\n{conversation_scope_instructions}"
         semantic = semantic_analysis
         answer_style = semantic.answer_style if semantic else "grounded"
         source_scope = semantic.source_scope if semantic else "all"
@@ -421,9 +428,13 @@ class PromptMemoryAssembler:
             f"回答风格：{answer_style}\n"
             f"已检索到的上下文片段：\n{prompt_sections_text}\n\n"
             f"{recent_turns_block}"
+            f"{conversation_scope_instructions}"
             "请以本地长期记忆陪伴体的口吻给出简短自然回答。不要逐条展开引用路径或原始 snippet；"
             "只在记忆能直接帮助当前问题时自然带入，不要为了证明检索到了而提及路径、状态、分数或原文；"
             "需要使用记忆时，请改写成温和的一句话背景判断，避免逐字复述；"
+            "标着 kind=我们自己之前的对话记录_不是用户资料 的片段是你说过的话，不是资料库内容："
+            "先用它核对是不是同一件事，不要把上一轮的话题当成这一轮的答案；"
+            "如果用户明确要清单（例如“所有链接”“都列出来”），可以按条目把链接列出来，不必压成一句；"
             "不要把候选、待确认、被拒绝、隔离、封存、标错或已撤回内容说成已确认记忆；"
             f"{source_instruction}"
         )
@@ -573,6 +584,26 @@ def _normalize_recent_turn(turn: PromptRecentTurn | str) -> PromptRecentTurn | N
 
 def _recent_turn_role_label(role: str) -> str:
     return "我" if role == "assistant" else "用户"
+
+
+def _conversation_scope_instructions(user_message: str) -> str:
+    """Rules that keep the assistant from re-raising a topic by itself.
+
+    Reuses the shared greeting predicate rather than a second regex, so "纯问候"
+    means the same thing here as it does for open-thread creation.
+
+    Deliberately NOT part of the [Recent conversation] header: that section's
+    character budget counts its header, so a longer header silently drops older
+    turns.  These rules belong with the other reply instructions instead, and
+    they are returned for the no-citation path too -- that is exactly the case
+    where the model answers from conversation context alone.
+    """
+    parts = ["不要自行延续上一个话题：用户没有提起它时，不要主动拉回来或提议接着聊。\n"]
+    if is_greeting_only(user_message):
+        parts.append(
+            "当前这句话只是问候，只回应问候，不要提议接着聊某件事——除非上面明确列出了未完话题。\n"
+        )
+    return "".join(parts)
 
 
 def _prompt_safe_result(result: MemorySearchResult) -> MemorySearchResult:

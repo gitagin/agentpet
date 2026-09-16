@@ -12,6 +12,7 @@ from app.models.common import new_id
 from app.services.memory_policy import evaluate_memory_content
 from app.storage.database import open_database_connection
 from app.utils.hash import sha256_hex
+from app.utils.text import is_greeting_only
 from app.utils.time import utc_now_iso
 
 from app.utils.sqlite import extract_json_object
@@ -27,6 +28,131 @@ CONTINUITY_STATE_KEYS = (
     "recent_emotional_signals",
 )
 CONTINUITY_PROPOSAL_KINDS = {"identity", "relationship", "mood", "energy", "open_thread"}
+
+# 同话题判定:双门槛,均在真实数据上测得——
+# ① Dice ≥ 0.14:同一话题不同措辞 ≈0.20,不同话题 ≤0.09;
+# ② 共享 bigram ≥ 4:纯靠比例会把短文本误判为同话题(差一字的两个
+#    短摘要 Dice 0.5 但只共享 2 个 bigram,学日语/学英语共享 3),
+#    而真变体共享 8 个、短文本真同话题共享 6 个。
+# 变体措辞若不按此归并,用户拒绝一条后其余变体会继续每轮注入。
+#
+# 这两个门槛只适用于模型自己写的句子。确定性模板句(下面的 *_TEMPLATE 常量)
+# 走模板身份,理由是实测:十一种情绪模板两两共享 4 个 bigram、Dice 0.47-0.5,
+# 整句相似度会把"用户表达了难过"和"用户表达了兴奋"判成同一话题,于是用户
+# 拒绝一条之后整个类别的建议被永久静默抑制——被判定的其实是模板前缀。
+SAME_TOPIC_DICE_THRESHOLD = 0.14
+SAME_TOPIC_MIN_SHARED_BIGRAMS = 4
+
+MOOD_TEMPLATES = (
+    ("tired", "用户听起来有些疲惫或消耗。", "mood_tired"),
+    ("exhausted", "用户听起来很疲惫。", "mood_exhausted"),
+    ("sad", "用户表达了难过情绪。", "mood_sad"),
+    ("lonely", "用户表达了孤独感。", "mood_lonely"),
+    ("stressed", "用户表达了压力。", "mood_stressed"),
+    ("anxious", "用户表达了焦虑。", "mood_anxious"),
+    ("worried", "用户表达了担心。", "mood_worried"),
+    ("happy", "用户表达了积极情绪。", "mood_happy"),
+    ("excited", "用户表达了兴奋。", "mood_excited"),
+    ("angry", "用户表达了生气。", "mood_angry"),
+    ("overwhelmed", "用户表达了不堪重负的感受。", "mood_overwhelmed"),
+)
+ENERGY_TEMPLATES = (
+    (
+        ("tired", "exhausted", "sleepy", "low energy", "burned out"),
+        "用户看起来处于低能量状态。",
+        "energy_low",
+        0.53,
+    ),
+    (
+        ("energized", "high energy", "motivated"),
+        "用户看起来处于较高能量状态。",
+        "energy_high",
+        0.5,
+    ),
+)
+OPEN_THREAD_MARKERS = (
+    "continue this",
+    "continue tomorrow",
+    "tomorrow",
+    "next time",
+    "later",
+    "pick this up",
+    "unfinished",
+)
+OPEN_THREAD_TEMPLATE = ("有一个未完话题适合之后继续。", "open_thread_continue")
+RELATIONSHIP_MARKERS = ("thank you", "thanks", "you helped", "i trust you", "companion", "stay with me")
+RELATIONSHIP_TEMPLATE = ("用户表达了对陪伴助手的信任或感谢。", "relationship_trust")
+IDENTITY_TEMPLATE_PREFIX = "陪伴助手的名称线索："
+IDENTITY_TEMPLATE_SUFFIX = "。"
+# 名字是变量,但"要不要记录助手名字"是同一个话题:拒绝过一次就不该换个名字再来。
+IDENTITY_TEMPLATE_KEY = "identity_name"
+
+_TEMPLATE_TOPIC_KEYS = {
+    **{summary: key for _, summary, key in MOOD_TEMPLATES},
+    **{summary: key for _, summary, key, _confidence in ENERGY_TEMPLATES},
+    OPEN_THREAD_TEMPLATE[0]: OPEN_THREAD_TEMPLATE[1],
+    RELATIONSHIP_TEMPLATE[0]: RELATIONSHIP_TEMPLATE[1],
+}
+
+
+def _template_topic_key(summary: str) -> str | None:
+    """Identity of a deterministic template sentence, or None for free text."""
+    normalized = " ".join(summary.split())
+    key = _TEMPLATE_TOPIC_KEYS.get(normalized)
+    if key is not None:
+        return key
+    if normalized.startswith(IDENTITY_TEMPLATE_PREFIX):
+        return IDENTITY_TEMPLATE_KEY
+    return None
+
+
+def _normalized_summary(summary: str) -> str:
+    """Identity of a free-text summary: whitespace-collapsed, case-folded text."""
+    return " ".join(summary.split()).casefold()
+
+
+def _char_bigrams(text: str) -> set[str]:
+    compact = "".join(char for char in text if not char.isspace())
+    if len(compact) < 2:
+        return {compact} if compact else set()
+    return {compact[index : index + 2] for index in range(len(compact) - 1)}
+
+
+def _is_same_topic(left: str, right: str) -> bool:
+    """Are these two summaries the same topic for suppression purposes?
+
+    Templates are compared by template identity and never by sentence
+    similarity: a template's shared prefix is not topic content, and treating it
+    as such makes one rejection silence every sibling suggestion.
+    """
+    left_key = _template_topic_key(left)
+    right_key = _template_topic_key(right)
+    if left_key is not None or right_key is not None:
+        return left_key is not None and left_key == right_key
+
+    if left.strip().casefold() == right.strip().casefold():
+        return True
+    left_grams = _char_bigrams(left)
+    right_grams = _char_bigrams(right)
+    if not left_grams or not right_grams:
+        return False
+    shared = len(left_grams & right_grams)
+    if shared < SAME_TOPIC_MIN_SHARED_BIGRAMS:
+        return False
+    return 2 * shared / (len(left_grams) + len(right_grams)) >= SAME_TOPIC_DICE_THRESHOLD
+
+
+def _carries_thread_topic(user_message: str) -> bool:
+    """一条消息是否承载"未完话题"的实质内容。
+
+    纯问候(嗨/你好/晚安…)与仅有符号、单字的输入不构成待接续话题:
+    放行它们只会每轮生成“用户以简短问候开场”这类噪音话题。
+    """
+    compact = " ".join(user_message.split())
+    if is_greeting_only(compact):
+        return False
+    meaningful = [char for char in compact if char.isalnum()]
+    return len(meaningful) >= 4
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +205,7 @@ class ContinuitySignal:
     intensity: str
     display_hint: str
     source_state_keys: tuple[str, ...]
+    source_proposal_id: str | None = None
 
 
 class ContinuityService:
@@ -125,9 +252,13 @@ class ContinuityService:
             candidates = _deterministic_candidates(user_message, assistant_answer)
 
         proposals: list[ContinuityProposal] = []
+        carries_topic = _carries_thread_topic(user_message)
         for candidate in candidates:
             normalized = _normalize_candidate(candidate)
             if normalized is None:
+                continue
+            if normalized["kind"] == "open_thread" and not carries_topic:
+                # 纯问候/无实质内容的输入不形成未完话题。
                 continue
             proposal = self._insert_candidate(
                 normalized,
@@ -188,7 +319,15 @@ class ContinuityService:
             item = state.get(key)
             if item is None or not item.value.strip():
                 continue
-            lines.append(f"- {label}: {_truncate(item.value, 220)}")
+            value = item.value
+            if key == "unresolved_threads":
+                # 在场提示只带最近两条未完话题,避免历史线程每轮都注入
+                # 污染新话题;完整列表仍保留在状态里供记忆页查看。
+                recent = [part.strip() for part in value.split(" | ") if part.strip()][-2:]
+                if not recent:
+                    continue
+                value = " | ".join(recent)
+            lines.append(f"- {label}: {_truncate(value, 220)}")
         if len(lines) == 1:
             return ""
         lines.append("仅在相关时使用；永远不要把待处理的连续性提案当作已确认的记忆。")
@@ -222,13 +361,27 @@ class ContinuityService:
         identity = _state_text(state, "identity_traits")
 
         if unresolved:
+            # 在场提示只承载最近一条未完话题,并与按钮落点严格一致:按钮一次只
+            # 静音一个话题;若提示同时展示多条而按钮只命中其中一条,用户会判定
+            # "按钮没反应"。历史线程的完整列表仍留在 continuity_state 供状态页查看。
+            threads = [part.strip() for part in unresolved.split(" | ") if part.strip()]
+            newest = threads[-1] if threads else unresolved
+            owner = self._live_thread_owner([newest])
+            summary = f"我还记着这个未完话题：{_truncate(newest, 180)}"
+            if len(threads) > 1:
+                summary = f"{summary}（另有 {len(threads) - 1} 条待接续话题）"
             return ContinuitySignal(
                 kind="open_thread",
                 title="有个话题还没收好",
-                summary=f"我还记着这个未完话题：{_truncate(unresolved, 180)}",
+                summary=summary,
                 intensity="high",
                 display_hint="可以在这次对话里自然接上，不需要创建提醒或写入 Vault。",
                 source_state_keys=("unresolved_threads",),
+                # 落点从状态"派生"而不是直接读 source_proposal_id:那一列记录的是
+                # 最后一次写入者,话题被拒绝后它仍指向已拒绝的提案,前端于是拿一个
+                # 已拒绝的 id 去调拒绝接口 —— 服务层按幂等直接返回,按钮从此变成
+                # 静默空操作。派生出的 id 必定是仍存活的已确认提案。
+                source_proposal_id=owner.id if owner is not None else None,
             )
         if mood or energy:
             parts = []
@@ -296,8 +449,19 @@ class ContinuityService:
             raise ContinuityProposalNotFoundError(proposal_id)
         proposal = self._map_proposal(row)
         if proposal.status == REJECTED:
-            return proposal
-        if proposal.status != PENDING:
+            # 幂等返回,但"已拒绝"并不等于"状态已经清干净":话题可能以未被相似度
+            # 规则覆盖的措辞留在未完话题里,或者历史状态里的来源指针还停在死提案
+            # 上。此时直接返回会让接口报 success、前端弹「已忽略」,而状态纹丝不动,
+            # 按钮看起来毫无作用。补一次撤销,重复点击才会真正收敛。
+            if proposal.kind == "open_thread":
+                with self.conn:
+                    self._retract_unresolved_thread(proposal.summary)
+            return self._map_proposal(self._proposal_row(proposal_id))
+        # 「下次接着聊」的 open_thread 会在回复后被自动确认(见 api/chat.py),
+        # 用户没有可拒绝的 pending 提案;拒绝一个已确认的线程 = 撤销接续:
+        # 从在场状态中移除该话题,后续对话不再注入。
+        retract_confirmed_thread = proposal.status == CONFIRMED and proposal.kind == "open_thread"
+        if proposal.status != PENDING and not retract_confirmed_thread:
             raise ContinuityProposalStateError(f"proposal {proposal_id} is {proposal.status}")
 
         compact_reason = _truncate(reason.strip() or "user_rejected", 500)
@@ -311,6 +475,8 @@ class ContinuityService:
                 """,
                 (REJECTED, compact_reason, now, proposal_id),
             )
+            if retract_confirmed_thread:
+                self._retract_unresolved_thread(proposal.summary)
             self.conn.execute(
                 """
                 INSERT INTO continuity_events (id, proposal_id, action, reason, created_at)
@@ -319,6 +485,75 @@ class ContinuityService:
                 (new_id(), proposal_id, REJECTED, compact_reason, now),
             )
         return self._map_proposal(self._proposal_row(proposal_id))
+
+    def _retract_unresolved_thread(self, summary: str) -> None:
+        current = self._state_value("unresolved_threads")
+        if not current:
+            return
+        # 只撤下被拒绝的那一条(以及同文的重复项)。这里刻意不用相似度:未完话题是
+        # 用户确认过的在场状态,而相似度会把"只是措辞相近"的其他话题一起删掉——
+        # 一次拒绝造成多条已确认话题静默消失。换措辞的变体交给提案侧的抑制规则,
+        # 用户看到变体时再拒绝一次(重复拒绝是幂等的,会复查在场状态)。
+        target = _normalized_summary(summary)
+        remaining = [
+            item.strip()
+            for item in current.split(" | ")
+            if item.strip() and _normalized_summary(item) != target
+        ]
+        now = utc_now_iso()
+        if not remaining:
+            self.conn.execute(
+                "DELETE FROM continuity_state WHERE state_key = ?",
+                ("unresolved_threads",),
+            )
+            return
+        # 撤下一条后必须把来源列改判给仍然存活的话题:该列是"合并列表"的单一
+        # 归属指针,继续指向刚被拒绝的提案会让状态页与在场提示指向一个死提案。
+        owner = self._live_thread_owner(remaining)
+        self.conn.execute(
+            """
+            UPDATE continuity_state
+            SET value = ?, confidence = ?, source_proposal_id = ?,
+                source_conversation_id = ?, source_message_id = ?, agent_run_id = ?,
+                updated_at = ?
+            WHERE state_key = ?
+            """,
+            (
+                " | ".join(remaining),
+                owner.confidence if owner is not None else 0.0,
+                owner.id if owner is not None else None,
+                owner.source_conversation_id if owner is not None else None,
+                owner.source_message_id if owner is not None else None,
+                owner.agent_run_id if owner is not None else None,
+                now,
+                "unresolved_threads",
+            ),
+        )
+
+    def _live_thread_owner(self, threads: list[str]) -> ContinuityProposal | None:
+        """在给定话题里找出"仍存活"的最新已确认提案。
+
+        未完成话题是一个合并文本列表,而 continuity_state 只存得下一个来源提案。
+        要判断某条话题还能不能被静音,必须回到 continuity_proposals 里查它是否
+        仍有 status=confirmed 的提案;否则按钮会落到已拒绝的提案上,调用方按幂等
+        返回成功,用户看到的却是话题纹丝不动。
+        """
+        if not threads:
+            return None
+        rows = self.conn.execute(
+            """
+            SELECT *
+            FROM continuity_proposals
+            WHERE kind = ? AND status = ?
+            ORDER BY created_at DESC, id DESC
+            """,
+            ("open_thread", CONFIRMED),
+        ).fetchall()
+        for row in rows:
+            proposal = self._map_proposal(row)
+            if any(_is_same_topic(thread, proposal.summary) for thread in threads):
+                return proposal
+        return None
 
     async def _model_candidates(
         self,
@@ -350,6 +585,13 @@ class ContinuityService:
             return []
         return [item for item in proposals if isinstance(item, dict)]
 
+    def _is_rejected_topic(self, *, kind: str, summary: str) -> bool:
+        rows = self.conn.execute(
+            "SELECT summary FROM continuity_proposals WHERE kind = ? AND status = ?",
+            (kind, REJECTED),
+        ).fetchall()
+        return any(_is_same_topic(str(row["summary"]), summary) for row in rows)
+
     def _insert_candidate(
         self,
         candidate: dict[str, Any],
@@ -377,6 +619,9 @@ class ContinuityService:
         if existing is not None:
             proposal = self._map_proposal(existing)
             return proposal if proposal.status == PENDING else None
+        if self._is_rejected_topic(kind=kind, summary=summary):
+            # 用户拒绝过的话题:即使措辞变了也是同一个话题,不再提案。
+            return None
 
         now = utc_now_iso()
         proposal_id = new_id()
@@ -536,39 +781,33 @@ def _deterministic_candidates(user_message: str, assistant_answer: str) -> list[
     candidates: list[dict[str, Any]] = []
     evidence = _evidence_excerpt(user_message)
 
-    mood_markers = {
-        "tired": "用户听起来有些疲惫或消耗。",
-        "exhausted": "用户听起来很疲惫。",
-        "sad": "用户表达了难过情绪。",
-        "lonely": "用户表达了孤独感。",
-        "stressed": "用户表达了压力。",
-        "anxious": "用户表达了焦虑。",
-        "worried": "用户表达了担心。",
-        "happy": "用户表达了积极情绪。",
-        "excited": "用户表达了兴奋。",
-        "angry": "用户表达了生气。",
-        "overwhelmed": "用户表达了不堪重负的感受。",
-    }
-    for marker, summary in mood_markers.items():
+    for marker, summary, _key in MOOD_TEMPLATES:
         if marker in normalized:
             candidates.append(_candidate("mood", summary, evidence, 0.56))
             break
 
-    if any(marker in normalized for marker in ("tired", "exhausted", "sleepy", "low energy", "burned out")):
-        candidates.append(_candidate("energy", "用户看起来处于低能量状态。", evidence, 0.53))
-    elif any(marker in normalized for marker in ("energized", "high energy", "motivated")):
-        candidates.append(_candidate("energy", "用户看起来处于较高能量状态。", evidence, 0.5))
+    for markers, summary, _key, confidence in ENERGY_TEMPLATES:
+        if any(marker in normalized for marker in markers):
+            candidates.append(_candidate("energy", summary, evidence, confidence))
+            break
 
-    if any(marker in normalized for marker in ("continue this", "continue tomorrow", "tomorrow", "next time", "later", "pick this up", "unfinished")):
-        candidates.append(_candidate("open_thread", "有一个未完话题适合之后继续。", evidence, 0.52))
+    if any(marker in normalized for marker in OPEN_THREAD_MARKERS):
+        candidates.append(_candidate("open_thread", OPEN_THREAD_TEMPLATE[0], evidence, 0.52))
 
-    if any(marker in normalized for marker in ("thank you", "thanks", "you helped", "i trust you", "companion", "stay with me")):
-        candidates.append(_candidate("relationship", "用户表达了对陪伴助手的信任或感谢。", evidence, 0.5))
+    if any(marker in normalized for marker in RELATIONSHIP_MARKERS):
+        candidates.append(_candidate("relationship", RELATIONSHIP_TEMPLATE[0], evidence, 0.5))
 
     identity_match = re.search(r"\byour name is ([A-Za-z0-9 _-]{2,40})", normalized)
     if identity_match:
         name = identity_match.group(1).strip()
-        candidates.append(_candidate("identity", f"陪伴助手的名称线索：{name}。", evidence, 0.54))
+        candidates.append(
+            _candidate(
+                "identity",
+                f"{IDENTITY_TEMPLATE_PREFIX}{name}{IDENTITY_TEMPLATE_SUFFIX}",
+                evidence,
+                0.54,
+            )
+        )
 
     return candidates[:4]
 
@@ -614,16 +853,18 @@ def _proposal_hash(
     source_message_id: str | None,
     agent_run_id: str | None,
 ) -> str:
-    raw = "\n".join(
-        [
-            kind,
-            summary.casefold().strip(),
-            evidence.casefold().strip(),
-            conversation_id or "",
-            source_message_id or "",
-            agent_run_id or "",
-        ]
-    )
+    """Content-derived identity for one continuity proposal.
+
+    Identity is (kind, normalized summary) only. Per-turn identifiers
+    (message/run/conversation) and the turn's evidence wording are volatile:
+    including them makes the same thread a brand-new proposal on every turn,
+    so a user rejection could never persist and the topic resurfaced forever
+    (see dev.to "why LLM extraction pipelines create duplicate records on
+    retry" and llm-message-hash's rule to drop per-call id noise). Evidence
+    stays in the row for display; it is not part of the identity.
+    """
+    del evidence, conversation_id, source_message_id, agent_run_id
+    raw = "\n".join([kind.casefold().strip(), " ".join(summary.split()).casefold()])
     return sha256_hex(raw)
 
 

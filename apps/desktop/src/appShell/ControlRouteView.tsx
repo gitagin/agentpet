@@ -8,7 +8,7 @@ import { ConnectionPanelContainer, SettingsPanelContainer, WikiPanelsContainer }
 export function ControlRouteView() {
   const runtime = useAppShellRuntime();
   const presentation = buildAppShellPresentation(runtime);
-  const { app, connection, activity, tasks, memory, continuity } = runtime;
+  const { app, connection, activity, tasks, memory, continuity, reflection } = runtime;
 
   function refreshActivity() {
     void activity.load();
@@ -40,6 +40,9 @@ export function ControlRouteView() {
           onOpenMemory: () => app.routing.setWindowMode("memory"),
           onOpenWiki: (path) => activity.openArtifact("world", path),
           onOpenReport: (path) => activity.openArtifact("memory", path),
+          // 首页的聊天列表也要能点「不再继续」:面板文案正引导用户去点它。
+          onDismissContinuitySignal: (messageId, proposalId) =>
+            void runtime.continuity.dismissSignal(messageId, proposalId),
         },
         onInputChange: app.setControlInput,
         onSubmit: (event) => {
@@ -71,10 +74,17 @@ export function ControlRouteView() {
           onRetryReminder: tasks.controller.retryReminder,
         },
         continuityState: continuity.state,
+        continuitySnapshotRevision: continuity.snapshotRevision,
         pendingContinuityCount: presentation.pendingContinuityCount,
         onLoadContinuity: () => void continuity.load(),
         onLocateWorkflowTarget: scrollToWorkflowTarget,
         workflowItems: presentation.workflowItems,
+        reflectionProposals: reflection.proposals,
+        reflectionLoading: reflection.loading,
+        reflectionError: reflection.error,
+        reflectionActionIds: reflection.actionIds,
+        onAcceptReflection: (proposalId) => void reflection.accept(proposalId),
+        onDismissReflection: (proposalId) => void reflection.dismiss(proposalId),
       }}
       status={{
         modelLabel: connection.settings.settingsStatus?.model_configured

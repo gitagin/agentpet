@@ -29,6 +29,7 @@ export function useContinuityDomain({
   const [latestSignal, setLatestSignal] = useState<ChatContinuitySignal | null>(null);
   const [loading, setLoading] = useState(false);
   const [actionIds, setActionIds] = useState<Set<string>>(() => new Set());
+  const [snapshotRevision, setSnapshotRevision] = useState(0);
 
   async function load(options: { silent?: boolean; signal?: AbortSignal } = {}) {
     setLoading(true);
@@ -116,6 +117,36 @@ export function useContinuityDomain({
     }
   }
 
+  async function dismissSignal(messageId: string, proposalId: string) {
+    setActionIds((current) => new Set(current).add(proposalId));
+    onNotice(null);
+    try {
+      await api.rejectContinuityProposal(proposalId, "用户在对话中点击「不再继续」。");
+      setMessages((current) =>
+        current.map((message) =>
+          message.id === messageId ? { ...message, continuity_signal: undefined } : message,
+        ),
+      );
+      setLatestSignal((current) =>
+        current?.source_proposal_id === proposalId ? null : current,
+      );
+      await load({ silent: true });
+      onAgentActionsRefresh();
+      // 首页的连续性快照由未完话题派生,撤销必须让它重新拉取,否则那条被忽略的
+      // 话题还会挂在面板上,用户会以为按钮没生效。
+      setSnapshotRevision((current) => current + 1);
+      onNotice({ tone: "success", message: "已忽略该话题，不再注入后续对话；随时可以在陪伴状态里重新查看。" });
+    } catch (error) {
+      onNotice({ tone: "error", message: describeError(error, "忽略话题失败") });
+    } finally {
+      setActionIds((current) => {
+        const next = new Set(current);
+        next.delete(proposalId);
+        return next;
+      });
+    }
+  }
+
   const loadEvent = useLatestCallback(load);
   useEffect(() => {
     const abort = new AbortController();
@@ -137,11 +168,13 @@ export function useContinuityDomain({
     setLatestSignal,
     loading,
     actionIds,
+    snapshotRevision,
     load,
     upsertProposal,
     upsertChatProposal,
     upsertChatSignal,
     actOnProposal,
+    dismissSignal,
     reset,
   };
 }

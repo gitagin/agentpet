@@ -2,10 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
+
+import pytest
 
 from app.models.enums import MemoryFactStatus
-from app.services.diary_memory_extractor import DiaryMemoryExtractor, extract_diary_memories
+from app.services.diary_memory_extractor import (
+    DiaryMemoryExtractionError,
+    DiaryMemoryExtractor,
+    extract_diary_memories,
+)
 
 
 class FakeDiaryModel:
@@ -469,22 +474,23 @@ def test_quarantines_model_personality_inference() -> None:
     assert result[0].type == "episode"
 
 
-def test_returns_no_objects_on_unparseable_model_output() -> None:
+def test_unparseable_model_output_fails_instead_of_reporting_nothing() -> None:
+    # 模型被要求只返回 JSON 却回了散文:这是这一轮抽取失败,不是"没有内容可记"。
+    # 收敛成空列表会让动作以"零效果"收尾,记忆随之静默丢失且无人重试。
     model = FakeDiaryModel("Here are the memories: none.")
 
-    result = asyncio.run(DiaryMemoryExtractor(model).extract("Diary text"))
+    with pytest.raises(DiaryMemoryExtractionError) as excinfo:
+        asyncio.run(DiaryMemoryExtractor(model).extract("Diary text"))
 
-    assert result == []
+    assert excinfo.value.code == "diary_memory_extraction_failed"
 
 
-def test_returns_no_objects_when_model_raises(caplog) -> None:
+def test_model_failure_fails_instead_of_reporting_nothing() -> None:
     class FailingModel:
         async def complete(self, *, user_message: str, system_prompt: str | None = None) -> str:
             raise RuntimeError("provider down")
 
-    caplog.set_level(logging.WARNING, logger="app.services.diary_memory_extractor")
+    with pytest.raises(DiaryMemoryExtractionError) as excinfo:
+        asyncio.run(DiaryMemoryExtractor(FailingModel()).extract("Diary text"))
 
-    result = asyncio.run(DiaryMemoryExtractor(FailingModel()).extract("Diary text"))
-
-    assert result == []
-    assert "Diary memory extraction failed; skipping durable memories" in caplog.text
+    assert excinfo.value.code == "diary_memory_extraction_failed"

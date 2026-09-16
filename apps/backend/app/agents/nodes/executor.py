@@ -4,11 +4,15 @@ import asyncio
 import hashlib
 import inspect
 import json
+import logging
 import os
+import sqlite3
 import uuid
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol
+
+from pydantic import ValidationError
 
 from app.models.api import AgentActionResponse
 from app.services.agent_actions import AgentActionCreate
@@ -21,6 +25,8 @@ from ..contracts import (
     VerificationResult,
 )
 from ..roles.verifier_agent import verify_execution_receipt
+
+logger = logging.getLogger(__name__)
 
 
 # A process-level owner lets request-scoped runtimes share one execution
@@ -322,6 +328,15 @@ class ActionLifecycleCoordinator:
             # provide a stable safe code; all other failures use one generic
             # lifecycle code and still trigger authoritative readback.
             error_code = _safe_exception_code(exc) or "action_failed"
+            # 本地日志保留原始堆栈:回执里只能放安全码,但如果连日志都不记,
+            # 这类失败(例如满载时某个适配器抛出的底层异常)就再也无法归因。
+            logger.warning(
+                "Action adapter failed for action_type=%s action_id=%s code=%s",
+                policy.action_type,
+                action.action_id,
+                error_code,
+                exc_info=True,
+            )
             return await self._recover_after_adapter_error(
                 action,
                 proposal,
@@ -1043,6 +1058,13 @@ def _missing_reader(receipt: ExecutionReceipt) -> None:
 def _safe_exception_code(exc: BaseException) -> str | None:
     raw = getattr(exc, "code", None)
     if raw is None:
+        # 领域异常带自己的安全码;下面两类底层失败给出稳定分类,其余仍归入调用方的
+        # 通用码。没有这一步时,存储故障、参数校验失败和未知 bug 在回执与接口上长得
+        # 完全一样,线上遇到的间歇失败因此无法归因。
+        if isinstance(exc, sqlite3.Error):
+            return "storage_unavailable"
+        if isinstance(exc, ValidationError):
+            return "invalid_action_parameters"
         return None
     code = str(raw).strip().casefold()
     if not code or not all(char.isalnum() or char == "_" for char in code):

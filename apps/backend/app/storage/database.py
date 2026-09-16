@@ -143,18 +143,41 @@ class Database:
             conn.close()
 
 
+class MigrationStatementError(ValueError):
+    """A migration statement cannot run inside the runner's single transaction."""
+
+
 class MigrationRunner:
     _ADD_COLUMN_RE = re.compile(
         r"^\s*ALTER\s+TABLE\s+(?P<table>[\"`\[]?\w+[\"`\]]?)\s+ADD\s+COLUMN\s+(?P<column>[\"`\[]?\w+[\"`\]]?)\b",
         re.IGNORECASE,
     )
     _DUPLICATE_COLUMN_RE = re.compile(r"duplicate column name:\s*(?P<column>\w+)", re.IGNORECASE)
+    # SQLite applies these only outside a transaction; inside one they are silent
+    # no-ops.  A migration that carries one must be seen: either it is redundant
+    # (the connection already enables foreign keys) or it needs a real table
+    # rebuild, and neither may be swallowed as "ran but changed nothing".
+    _CONNECTION_SATISFIED_PRAGMAS = frozenset({"foreign_keys = on"})
+    _TRANSACTION_SENSITIVE_PRAGMAS = frozenset({"foreign_keys", "journal_mode"})
 
     def __init__(self, database: Database, migrations_dir: str | Path | None = None) -> None:
         self.database = database
         self.migrations_dir = Path(migrations_dir) if migrations_dir else self._default_dir()
 
     def apply(self) -> list[str]:
+        """Apply pending migrations in file order, each in its own transaction.
+
+        Migration files are IMMUTABLE once an install may have applied them:
+        editing an applied migration does not re-run on those databases (the
+        version marker already exists), which silently desynchronizes schema
+        from code. Fixes for shipped migrations are new forward-only repair
+        migrations (e.g. 027_repair_missing_app_state.sql).
+
+        Schema, data and the version marker share one transaction, so a
+        statement that is only honored outside a transaction (``PRAGMA
+        foreign_keys``, ``PRAGMA journal_mode``) is refused instead of quietly
+        changing nothing.
+        """
         applied: list[str] = []
         with self.database.session() as conn:
             conn.execute(
@@ -174,17 +197,31 @@ class MigrationRunner:
                 if version in seen:
                     continue
                 script = migration.read_text(encoding="utf-8")
-                with conn:
-                    try:
-                        conn.executescript(script)
-                    except sqlite3.OperationalError as exc:
-                        if not self._has_duplicate_column_error(exc):
-                            raise
-                        self._apply_script_allowing_duplicate_columns(conn, script)
+                statements = self._split_sql_statements(script)
+                transactional, post_commit = self._partition_migration_statements(statements)
+                try:
+                    # sqlite3.Connection.executescript() commits any pending
+                    # transaction before it starts.  Execute each statement
+                    # ourselves so the schema/data and marker share one
+                    # transaction, including migrations with compatibility
+                    # ALTER TABLE statements.
+                    conn.execute("BEGIN IMMEDIATE")
+                    self._execute_migration_statements(conn, transactional)
                     conn.execute(
                         "INSERT INTO schema_migrations(version) VALUES (?)",
                         (version,),
                     )
+                    conn.commit()
+                except BaseException:
+                    conn.rollback()
+                    raise
+
+                # VACUUM is a database maintenance command and SQLite rejects
+                # it while a transaction is active.  Run it only after the
+                # migration marker is durable; a failed maintenance pass must
+                # never roll back an already committed schema migration.
+                for statement in post_commit:
+                    conn.execute(statement)
                 applied.append(version)
                 # Database migrations must remain bounded and non-destructive
                 # with respect to freed pages.  Secure scrubbing is exposed by
@@ -207,13 +244,46 @@ class MigrationRunner:
         if journal_mode == "wal":
             conn.execute("PRAGMA journal_mode = WAL")
 
-    def _apply_script_allowing_duplicate_columns(self, conn: sqlite3.Connection, script: str) -> None:
-        for statement in self._split_sql_statements(script):
+    def _execute_migration_statements(self, conn: sqlite3.Connection, statements: list[str]) -> None:
+        for statement in statements:
+            pragma = self._pragma_body(statement)
+            if pragma in self._CONNECTION_SATISFIED_PRAGMAS:
+                # 连接本身已经满足(configure_connection 开外键):事务内执行等于空操作,
+                # 这里明确跳过,而不是执行一条假装生效的语句。
+                continue
+            if pragma is not None and self._pragma_name(pragma) in self._TRANSACTION_SENSITIVE_PRAGMAS:
+                raise MigrationStatementError(
+                    f"migration statement is ignored inside a transaction: {statement.strip()}"
+                )
             try:
                 conn.execute(statement)
             except sqlite3.OperationalError as exc:
                 if not self._is_duplicate_add_column_error(exc, statement):
                     raise
+
+    @staticmethod
+    def _pragma_body(statement: str) -> str | None:
+        """Normalized body of a PRAGMA statement, or None for anything else."""
+        normalized = " ".join(statement.split()).rstrip(";").casefold()
+        if not normalized.startswith("pragma "):
+            return None
+        return normalized[len("pragma ") :].strip()
+
+    @staticmethod
+    def _pragma_name(body: str) -> str:
+        return body.split("=", 1)[0].strip().split(" ", 1)[0]
+
+    @staticmethod
+    def _partition_migration_statements(statements: list[str]) -> tuple[list[str], list[str]]:
+        transactional: list[str] = []
+        post_commit: list[str] = []
+        for statement in statements:
+            keyword = statement.lstrip().split(None, 1)[0].rstrip(";").upper() if statement.strip() else ""
+            if keyword == "VACUUM":
+                post_commit.append(statement)
+            else:
+                transactional.append(statement)
+        return transactional, post_commit
 
     def _is_duplicate_add_column_error(self, exc: sqlite3.OperationalError, statement: str) -> bool:
         duplicate = self._DUPLICATE_COLUMN_RE.search(str(exc))
@@ -221,9 +291,6 @@ class MigrationRunner:
         if duplicate is None or add_column is None:
             return False
         return self._normalize_identifier(add_column.group("column")) == duplicate.group("column").casefold()
-
-    def _has_duplicate_column_error(self, exc: sqlite3.OperationalError) -> bool:
-        return self._DUPLICATE_COLUMN_RE.search(str(exc)) is not None
 
     @staticmethod
     def _split_sql_statements(script: str) -> list[str]:

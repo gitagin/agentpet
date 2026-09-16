@@ -14,7 +14,9 @@ from app.services.memory_graph import MemoryFactCandidate, MemoryGraphStore, Mem
 from app.services.memory_policy import evaluate_memory_content
 from app.services.write_policy import MarkdownWritePolicyRequest, evaluate_markdown_write
 from app.utils.hash import sha256_hex
-DEFAULT_LONG_TERM_MEMORY_TIMEZONE = "Asia/Shanghai"
+from app.utils.time import local_timezone_name
+
+DEFAULT_LONG_TERM_MEMORY_TIMEZONE = local_timezone_name()
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +54,13 @@ class LongTermMemoryCandidate:
 
 
 class LongTermMemoryService:
+    """[legacy] 旧长期记忆 Markdown 写入路径。
+
+    新架构下长期记忆走 MemoryConsolidationService 写入实体图；本类生产主链路
+    不再实例化，保留供迁移/兼容测试。模块级 extract_long_term_memory_candidate
+    仍是活跃路径（consolidation / entity_relation / retrospectives 三处消费）。
+    """
+
     def __init__(
         self,
         writer: SafeMarkdownWriter,

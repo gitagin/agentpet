@@ -19,7 +19,7 @@ def _db(tmp_path):
 
 def test_sidecar_recovery_records_one_paired_incident_and_replays(tmp_path):
     service = ProductMetricsService(_db(tmp_path), secret=b"test-secret")
-    unhealthy_at = datetime(2026, 8, 11, 8, 0, tzinfo=timezone.utc).isoformat()
+    unhealthy_at = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
     ready_at = (datetime.fromisoformat(unhealthy_at) + timedelta(seconds=12.5)).isoformat()
     try:
         first = service.record_sidecar_recovery(
@@ -86,10 +86,11 @@ def test_sidecar_recovery_rejects_payload_conflict_and_unpaired_ready_is_ignored
 
 def test_authenticated_sidecar_recovery_api_persists_and_reads_back_the_pair(client_factory):
     incident_id = "c" * 32
+    unhealthy_dt = datetime.now(timezone.utc) - timedelta(hours=1)
     payload = {
         "incident_id": incident_id,
-        "unhealthy_at": "2026-08-11T08:00:00Z",
-        "ready_at": "2026-08-11T08:00:12.500Z",
+        "unhealthy_at": unhealthy_dt.isoformat(),
+        "ready_at": (unhealthy_dt + timedelta(seconds=12.5)).isoformat(),
         "cause": "process_exited",
         "restart_attempt": 2,
     }

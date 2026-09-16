@@ -1,5 +1,6 @@
 import { Bot, Loader2, ShieldCheck } from "lucide-react";
 import type { EmbeddingTestResponse } from "../../types";
+import { hasUnsavedEmbeddingDraft } from "./settingsDrafts";
 import type { AsyncStatus, EmbeddingDraft } from "./settingsTypes";
 
 type EmbeddingSettingsCardProps = {
@@ -7,18 +8,11 @@ type EmbeddingSettingsCardProps = {
   saveStatus: AsyncStatus;
   testStatus: AsyncStatus;
   testResult?: EmbeddingTestResponse;
+  localPrivacyMode?: boolean;
   onUpdateDraft: (patch: Partial<EmbeddingDraft>) => void;
   onSave: () => void;
   onTest: () => void;
 };
-
-function hasUnsavedEmbeddingDraft(draft: EmbeddingDraft): boolean {
-  return (
-    draft.base_url.trim() !== draft.saved_base_url ||
-    draft.model.trim() !== draft.saved_model ||
-    Boolean(draft.api_key.trim())
-  );
-}
 
 function formatEmbeddingTestResult(result: EmbeddingTestResponse): string {
   const detail = result.dimensions ? `（维度 ${result.dimensions}）` : "";
@@ -30,6 +24,7 @@ export function EmbeddingSettingsCard({
   saveStatus,
   testStatus,
   testResult,
+  localPrivacyMode = false,
   onUpdateDraft,
   onSave,
   onTest,
@@ -50,16 +45,18 @@ export function EmbeddingSettingsCard({
             : hasUnsavedDraft
               ? "有未保存改动，请先保存后测试。"
               : draft.configured
-                ? draft.masked
-                  ? `已配置，密钥已保存（${draft.masked}）。`
-                  : "已配置。"
-                : "未配置向量化；配置后搜索会启用语义召回。";
+                ? localPrivacyMode
+                  ? "外部接口密钥已保存，但已开启本地隐私模式，语义搜索仍使用内置本地向量模型。"
+                  : draft.masked
+                    ? `已配置，密钥已保存（${draft.masked}）。`
+                    : "已配置，语义搜索走外部接口。"
+                : "未配置外部接口；语义搜索使用内置本地向量模型。";
 
   return (
     <section className="agent-model-section settings-card" aria-label="向量检索设置">
       <div className="section-heading">
         <strong>向量检索（Embedding）</strong>
-        <span>配置一个 OpenAI 兼容的 Embedding 接口，用于语义搜索；未配置时使用关键词全文检索。</span>
+        <span>可选：配置一个 OpenAI 兼容的 Embedding 接口；未配置时语义搜索默认使用内置本地向量模型，数据不出本机。</span>
       </div>
       <div className="settings-form-grid">
         <label>

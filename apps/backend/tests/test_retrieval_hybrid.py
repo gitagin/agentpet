@@ -24,11 +24,13 @@ class StubVectorIndex:
         results: list[SearchResult] | None = None,
         search_error: Exception | None = None,
         reconcile_status: str = "success",
+        transport_class: str = "remote-approved",
     ) -> None:
         self.available = True
         self.config = SimpleNamespace(
             unavailable_reason=None,
             privacy_policy_version="privacy-v1",
+            transport_class=transport_class,
         )
         self.results = list(results or [])
         self.search_error = search_error
@@ -289,7 +291,7 @@ def test_vector_failure_falls_back_to_exact_fts(tmp_path: Path, reason: str) -> 
         (False, "SENSITIVE_QUERY_SENTINEL exact-token", "sensitive_content_blocked"),
     ],
 )
-def test_privacy_and_sensitive_queries_make_zero_vector_calls(
+def test_privacy_and_sensitive_queries_make_zero_remote_vector_calls(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     local_privacy: bool,
@@ -313,6 +315,24 @@ def test_privacy_and_sensitive_queries_make_zero_vector_calls(
     assert response.metadata["fallback_reason"] == fallback_reason
     assert response.metadata["semantic_available"] is False
     assert response.metadata["vector_available"] is False
+
+
+def test_local_transport_vector_still_runs_under_local_privacy(
+    tmp_path: Path,
+) -> None:
+    service, vault_id = _indexed_service(tmp_path)
+    candidate = _authoritative_candidate(service, vault_id)
+    vector = StubVectorIndex(results=[candidate], transport_class="local")
+    service.vector_index = vector
+    _set_local_privacy(service, True)
+
+    response = service.search(vault_id=vault_id, query="exact-token", mode="hybrid")
+
+    assert vector.search_calls
+    assert response.metadata["completed_channels"] == ["vector", "fts"]
+    assert response.metadata["effective_mode"] == "hybrid"
+    assert response.metadata["fallback_reason"] is None
+    assert response.metadata["semantic_available"] is True
 
 
 def test_invalid_retrieval_mode_is_rejected_without_silent_hybrid_fallback(tmp_path: Path) -> None:

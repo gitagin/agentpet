@@ -25,6 +25,26 @@ _TRANSPORT_REMOTE = "remote-approved"
 _TRANSPORT_LOCAL = "local"
 
 
+def close_vector_index(vector_index: object) -> bool:
+    """Release a built vector index; True when a closer actually ran.
+
+    A local Qdrant index holds file handles and a ``.lock`` in its runtime
+    directory, so anything that removes or rebuilds that directory — shutdown,
+    reset, or an embedding-config change — must close the current index first.
+    Callers decide how loud a failure is; this keeps one implementation of the
+    "is there a closer, and did it succeed" decision.
+    """
+    close = getattr(vector_index, "close", None)
+    if not callable(close):
+        return False
+    try:
+        close()
+    except Exception:
+        logger.warning("Closing the vector index failed", exc_info=True)
+        return False
+    return True
+
+
 def build_vector_index(db_path: str | Path, settings: Settings) -> LangChainQdrantVectorIndex:
     """Resolve the embedding backend once: local by default, remote on explicit key.
 

@@ -2,20 +2,39 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Iterator
 
 from app.models.common import new_id
 from app.models.enums import MemoryFactStatus
 from app.services.diary_memory_extractor import ALLOWED_DIARY_MEMORY_TYPES, DiaryMemoryExtractor, DiaryMemoryObject
 from app.storage.database import open_database_connection
 from app.utils.hash import sha256_hex
+from app.utils.time import local_timezone_name
 from app.utils.time import utc_now_iso
 
 
 DEFAULT_DIARY_MEMORY_TYPE = "event"
+
+
+def chat_exchange_diary_text(user_question: str, assistant_answer: str) -> str:
+    """The one text both the archiver and the pre-check extract from.
+
+    They used to build their own strings -- English labels in the pre-check,
+    Chinese ones in the archiver -- so the "is there anything worth archiving?"
+    question was asked about a *different* input than the archiving itself, and
+    the two object counts diverged far more easily than model noise alone would
+    explain.  One builder removes that whole class of disagreement.
+    """
+    return "\n".join(
+        [
+            f"用户问题：{user_question}",
+            f"桌宠回答：{assistant_answer}",
+        ]
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,6 +108,52 @@ class DiaryMemoryStore:
         if self._owns_connection:
             self.conn.close()
 
+    @contextmanager
+    def transaction(self) -> Iterator[None]:
+        """Run a whole extracted set as one all-or-nothing unit of work.
+
+        Effect verification for structured diary memory asks a single question
+        the database can answer on its own: does this agent run own any diary
+        object?  That is only equivalent to "the effect is complete" when a
+        partial set cannot exist.  Previously the set was written object by
+        object, so completeness had to be checked against a count agreed before
+        the write -- and that count came from a second, independent model call,
+        which is exactly how production ended up with
+        ``structured_diary_effect_count_mismatch`` on perfectly good exchanges.
+        Committing the set atomically removes the need for that count.
+
+        Implemented so the caller may already hold a transaction on this
+        connection (a batch job, a compound write, a test that wraps writes):
+        inside a caller's transaction a SAVEPOINT simply joins it and lets the
+        caller decide.  With no caller transaction the batch opens with
+        ``BEGIN IMMEDIATE`` rather than a savepoint, because the batch reads
+        before it writes (dedupe by content hash, then insert) and a deferred
+        transaction's read snapshot goes stale the moment another connection
+        commits -- WAL then fails the insert immediately with "database is
+        locked" and ``busy_timeout`` is never consulted.
+        """
+        if not self.conn.in_transaction:
+            self.conn.execute("BEGIN IMMEDIATE")
+            try:
+                yield
+            except BaseException:
+                self.conn.rollback()
+                raise
+            else:
+                self.conn.commit()
+            return
+
+        savepoint = f"diary_memory_batch_{new_id().replace('-', '')[:12]}"
+        self.conn.execute(f"SAVEPOINT {savepoint}")
+        try:
+            yield
+        except BaseException:
+            self.conn.execute(f"ROLLBACK TO {savepoint}")
+            self.conn.execute(f"RELEASE {savepoint}")
+            raise
+        else:
+            self.conn.execute(f"RELEASE {savepoint}")
+
     def insert_object(
         self,
         *,
@@ -99,7 +164,14 @@ class DiaryMemoryStore:
         source: DiaryMemoryObjectSource,
         extraction_model: str | None = None,
         memory_type: str | None = None,
+        commit: bool = True,
     ) -> DiaryMemoryObjectRecord | None:
+        """Store one extracted object, its FTS row and its source link.
+
+        One object is always all-or-nothing.  Pass ``commit=False`` to join a
+        caller-owned transaction (see :meth:`transaction`) so a whole extracted
+        set becomes all-or-nothing too.
+        """
         memory_type = _safe_memory_type(memory_type or extracted.type)
         if memory_type is None:
             return None
@@ -122,7 +194,8 @@ class DiaryMemoryStore:
         object_id = new_id()
         people_json = _dumps_list(extracted.people)
         keywords_json = _dumps_list(extracted.keywords)
-        with self.conn:
+        pending = nullcontext() if commit is False else self.conn
+        with pending:
             self.conn.execute(
                 """
                 INSERT INTO diary_memory_objects (
@@ -175,13 +248,11 @@ class DiaryMemoryStore:
         return self.get(object_id)
 
     def search(self, filters: DiaryMemorySearch, *, vault_id: str) -> list[DiaryMemoryObjectRecord]:
+        from app.repositories.storage import _expanded_query_terms, _to_fts_queries
+
+        query_text = filters.query.strip()
         clauses = ["o.vault_id = ?"]
         params: list[object] = [vault_id]
-        joins = ""
-        if filters.query.strip():
-            joins = "JOIN diary_memory_object_fts fts ON fts.object_id = o.id"
-            clauses.append("diary_memory_object_fts MATCH ?")
-            params.append(_to_fts_query(filters.query.strip()))
         if filters.type:
             clauses.append("o.type = ?")
             params.append(filters.type)
@@ -204,25 +275,70 @@ class DiaryMemoryStore:
         if filters.to:
             clauses.append("o.occurred_at <= ?")
             params.append(filters.to)
+        limit_value = max(1, min(filters.top_k, 50))
 
-        rank_expr = "bm25(diary_memory_object_fts)" if filters.query.strip() else "0"
-        rows = self.conn.execute(
-            f"""
-            SELECT o.*, {rank_expr} AS rank
-            FROM diary_memory_objects o
-            {joins}
-            WHERE {' AND '.join(clauses)}
-            ORDER BY
-                CASE o.status WHEN 'active' THEN 0 WHEN 'candidate' THEN 1 WHEN 'quarantined' THEN 2 ELSE 3 END,
-                o.importance DESC,
-                o.confidence DESC,
-                rank,
-                o.occurred_at DESC
-            LIMIT ?
-            """,
-            (*params, max(1, min(filters.top_k, 50))),
-        ).fetchall()
-        return [self._map(row, include_sources=False) for row in rows]
+        def run(
+            *,
+            extra_join: str,
+            extra_clause: str,
+            extra_params: list[object],
+            rank_expr: str,
+        ) -> list[DiaryMemoryObjectRecord]:
+            where = " AND ".join([*clauses, extra_clause] if extra_clause else clauses)
+            rows = self.conn.execute(
+                f"""
+                SELECT o.*, {rank_expr} AS rank
+                FROM diary_memory_objects o
+                {extra_join}
+                WHERE {where}
+                ORDER BY
+                    CASE o.status WHEN 'active' THEN 0 WHEN 'candidate' THEN 1 WHEN 'quarantined' THEN 2 ELSE 3 END,
+                    o.importance DESC,
+                    o.confidence DESC,
+                    rank,
+                    o.occurred_at DESC
+                LIMIT ?
+                """,
+                (*params, *extra_params, limit_value),
+            ).fetchall()
+            return [self._map(row, include_sources=False) for row in rows]
+
+        if not query_text:
+            return run(extra_join="", extra_clause="", extra_params=[], rank_expr="0")
+
+        # FTS 阶梯：与笔记通道共用同一查询构造器（bigram + 引号转义 + AND→OR 松弛），
+        # 消除两通道分词不一致导致的召回不对称。
+        for fts_query in _to_fts_queries(query_text):
+            results = run(
+                extra_join="JOIN diary_memory_object_fts ON diary_memory_object_fts.object_id = o.id",
+                # FTS5 的 MATCH 左操作数必须是表的真实名称（不能是 JOIN 别名）。
+                extra_clause="diary_memory_object_fts MATCH ?",
+                extra_params=[fts_query],
+                rank_expr="bm25(diary_memory_object_fts)",
+            )
+            if results:
+                return results
+
+        # LIKE 兜底：单字 CJK 查询、混合脚本子串（"python教程"中的"教程"）等
+        # 不进 FTS 索引的情况，与笔记通道的 LIKE 兜底对齐，保证召回对称。
+        like_terms: list[str] = []
+        for term in (query_text, *_expanded_query_terms(query_text)):
+            if term and term not in like_terms:
+                like_terms.append(term)
+        for term in like_terms:
+            results = run(
+                extra_join="",
+                extra_clause=(
+                    "(COALESCE(o.summary, '') || ' ' || COALESCE(o.topic, '') || ' ' || "
+                    "COALESCE(o.emotion, '') || ' ' || COALESCE(o.people_json, '') || ' ' || "
+                    "COALESCE(o.keywords_json, '')) LIKE ? ESCAPE '~'"
+                ),
+                extra_params=[_like_pattern(term)],
+                rank_expr="0",
+            )
+            if results:
+                return results
+        return []
 
     def get(self, object_id: str) -> DiaryMemoryObjectRecord:
         row = self.conn.execute(
@@ -320,7 +436,7 @@ class DiaryMemoryService:
         *,
         vault_id: str,
         extractor: DiaryMemoryExtractor,
-        timezone_name: str = "Asia/Shanghai",
+        timezone_name: str = local_timezone_name(),
         extraction_model: str | None = None,
     ) -> None:
         self.store = store
@@ -344,40 +460,39 @@ class DiaryMemoryService:
         occurred_at: str,
         markdown_path: str | None,
     ) -> DiaryMemoryArchiveResult:
-        diary_text = "\n".join(
-            [
-                f"用户问题：{user_question}",
-                f"桌宠回答：{assistant_answer}",
-            ]
-        )
+        diary_text = chat_exchange_diary_text(user_question, assistant_answer)
         extracted = await self.extractor.extract(
             diary_text,
             memory_date=_date_part(occurred_at),
             source_path=markdown_path,
         )
         object_ids: list[str] = []
-        for item in extracted:
-            source = DiaryMemoryObjectSource(
-                object_id="",
-                source_type="chat_exchange",
-                source_id=agent_run_id,
-                conversation_id=conversation_id,
-                user_message_id=user_message_id,
-                assistant_message_id=assistant_message_id,
-                agent_run_id=agent_run_id,
-                markdown_path=markdown_path,
-            )
-            record = self.store.insert_object(
-                vault_id=self.vault_id,
-                extracted=item,
-                occurred_at=occurred_at,
-                timezone=self.timezone_name,
-                source=source,
-                extraction_model=self.extraction_model,
-                memory_type=item.type,
-            )
-            if record is not None:
-                object_ids.append(record.id)
+        # 整批一个事务:中途失败要么全落库、要么全不落库。部分落库会让"效果是否
+        # 完整"无法只靠数据库判断,只能去比对一个更不可靠的模型预估条数。
+        with self.store.transaction():
+            for item in extracted:
+                source = DiaryMemoryObjectSource(
+                    object_id="",
+                    source_type="chat_exchange",
+                    source_id=agent_run_id,
+                    conversation_id=conversation_id,
+                    user_message_id=user_message_id,
+                    assistant_message_id=assistant_message_id,
+                    agent_run_id=agent_run_id,
+                    markdown_path=markdown_path,
+                )
+                record = self.store.insert_object(
+                    vault_id=self.vault_id,
+                    extracted=item,
+                    occurred_at=occurred_at,
+                    timezone=self.timezone_name,
+                    source=source,
+                    extraction_model=self.extraction_model,
+                    memory_type=item.type,
+                    commit=False,
+                )
+                if record is not None:
+                    object_ids.append(record.id)
         return DiaryMemoryArchiveResult(
             objects_seen=len(extracted),
             objects_written=len(object_ids),
@@ -440,8 +555,10 @@ def _object_hash(
             vault_id.strip(),
             memory_type.casefold().strip(),
             summary.casefold().strip(),
-            topic.casefold().strip(),
-            emotion.casefold().strip(),
+            # insert_object 对 topic/emotion 采用 or None 的容忍路径（写入 NULL），
+            # 哈希必须同样容忍 None，否则 topic=None 的对象会让整个归档崩溃。
+            (topic or "").casefold().strip(),
+            (emotion or "").casefold().strip(),
             ",".join(item.casefold().strip() for item in people),
             ",".join(item.casefold().strip() for item in keywords),
             source_id.strip(),
@@ -462,14 +579,6 @@ def _json_list_value(value: str) -> list[str]:
     if not isinstance(parsed, list):
         return []
     return [str(item) for item in parsed if str(item).strip()]
-
-
-def _to_fts_query(query: str) -> str:
-    from app.repositories.storage import _bigram_cjk
-
-    bigrammed = _bigram_cjk(query)
-    terms = [term.strip('"') for term in bigrammed.split() if term.strip()]
-    return " OR ".join(f'"{term.replace(chr(34), chr(34) + chr(34))}"' for term in terms) or '""'
 
 
 def _like_pattern(query: str) -> str:

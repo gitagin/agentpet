@@ -1,22 +1,5 @@
 /* Demo scope lock: this file is intentionally small and imported last. */
 
-.stage-command-shell {
-  /* The stage uses light translucent panels over the night scene. Keep its
-     local ink tokens dark instead of inheriting the dark console theme. */
-  --text: #24323a;
-  --muted: #52656d;
-  --color-text: #24323a;
-  --color-text-muted: #52656d;
-  --color-text-soft: #52656d;
-  --color-text-faint: #6b7a80;
-  --brand: #a6406b;
-  --brand-strong: #8f315b;
-}
-
-.stage-action-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
 .memory-workspace-tabs > [hidden] {
   display: none !important;
 }
@@ -160,7 +143,6 @@ body[data-window-mode="agent"] .task-trace-disclosure .task-trace-drawer {
 }
 
 @media (max-width: 760px) {
-  .stage-action-grid,
   .message-agent-action-buckets {
     grid-template-columns: minmax(0, 1fr);
   }

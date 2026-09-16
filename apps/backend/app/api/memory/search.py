@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from time import monotonic
 
 from fastapi import APIRouter, Depends, Request
@@ -45,7 +46,8 @@ async def search_memory(
     request_id = str(request.state.request_id)
     started_at = monotonic()
     _record_lookup_start(request, request_id=request_id, source_scope=search_request.source_scope)
-    response = service.search(
+    response = await asyncio.to_thread(
+        service.search,
         query=search_request.query,
         top_k=search_request.top_k,
         mode=search_request.mode,

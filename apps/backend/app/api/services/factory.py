@@ -25,13 +25,13 @@ from app.services.continuity import ContinuityService
 from app.services.diary_memory import DiaryMemoryService, DiaryMemoryStore
 from app.services.diary_memory_extractor import DiaryMemoryExtractor
 from app.services.health import component_health_from_vector_index
-from app.services.long_term_memory import LongTermMemoryService
 from app.services.memory import MemoryProposalStore, MemoryService, SafeMarkdownWriter
 from app.services.memory_candidates import MemoryCandidateStore
 from app.services.memory_consolidation import MemoryConsolidationService
 from app.services.memory_graph import MemoryGraphStore
 from app.services.memory_entity_graph import MemoryEntityGraphStore
 from app.services.memory_lifecycle import MemoryLifecycleService
+from app.services.reflection_proposals import ReflectionProposalService
 from app.services.memory_permissions import MemoryActivationEventRecorder
 from app.services.prompt_profile_provider import PromptProfileProvider
 from app.services.retrieval import RetrievalService
@@ -347,16 +347,6 @@ def ensure_vault_path(path: str, *, create_if_missing: bool) -> Path:
     return root
 
 
-def ensure_default_vault_content(root: Path) -> None:
-    """已废弃：默认目录改为按需创建，不再在绑定 vault 时预建。
-
-    历史行为会在 vault 根目录预建 Inbox/、Memories/ 与 Inbox/Pending Memories.md，
-    用户删除后重新绑定又会被重建。SafeMarkdownWriter.write 写入时会自动创建
-    父目录，因此这些目录/文件只会在真正需要时出现，删除后不会被自动重建。
-    """
-    del root  # 保留签名兼容调用方，语义已废弃
-
-
 class VaultServiceContainer:
     def __init__(self, request: Request | AppContext):
         self.request = request
@@ -392,22 +382,6 @@ class VaultServiceContainer:
             ChatAutoMemoryStore(self.db.path),
             self.writer(),
             index_refresh=self.index_refresh(),
-        )
-
-    def long_term_memory_service(self) -> LongTermMemoryService:
-        extraction_model = chat_model_client(self.request, AgentId.REFLECTION_AGENT.value)
-        extraction_model_name = AgentId.REFLECTION_AGENT.value if extraction_model is not None else None
-        if extraction_model is None:
-            extraction_model = chat_model_client(self.request, AgentId.SEMANTIC_ANALYSIS_AGENT.value)
-            extraction_model_name = AgentId.SEMANTIC_ANALYSIS_AGENT.value if extraction_model is not None else None
-        return LongTermMemoryService(
-            self.writer(),
-            index_refresh=self.index_refresh(),
-            graph_store=MemoryEntityGraphStore(
-                self.db.path,
-            ),
-            extraction_model=extraction_model,
-            extraction_model_name=extraction_model_name,
         )
 
     def wiki_service(self) -> WikiService:
@@ -461,8 +435,8 @@ def diary_memory_service(request: Request | AppContext) -> DiaryMemoryService:
     )
 
 
-def long_term_memory_service(request: Request | AppContext) -> LongTermMemoryService:
-    return vault_services(request).long_term_memory_service()
+def reflection_proposal_service(request: Request | AppContext) -> ReflectionProposalService:
+    return ReflectionProposalService(database(request).path)
 
 
 def memory_consolidation_service(request: Request | AppContext) -> MemoryConsolidationService:

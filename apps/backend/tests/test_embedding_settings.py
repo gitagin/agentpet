@@ -55,15 +55,46 @@ def test_embedding_settings_are_persisted_separately_from_chat_model(client: Tes
     assert "embedding-test-secret" not in status.text
 
 
-def test_embedding_test_reports_missing_key(client: TestClient) -> None:
+def test_embedding_test_without_remote_key_probes_local_model(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "app.api.settings.build_local_onnx_embeddings",
+        lambda model_dir: None,
+    )
+
     response = client.post("/api/settings/embedding-test", headers=auth())
 
     assert response.status_code == 200
     assert response.json()["status"] == "failed"
-    assert response.json()["error_code"] == "not_configured"
+    assert response.json()["error_code"] == "local_embedding_unavailable"
+    assert response.json()["provider"] == "local-onnx"
+    assert response.json()["model"] == "bge-small-zh-v1.5"
 
 
-def test_embedding_test_is_blocked_without_constructing_client_in_local_privacy_mode(
+def test_embedding_test_reports_ready_local_model(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    class ReadyLocalModel:
+        def embed_query(self, text: str) -> list[float]:
+            assert text == "embedding connection test"
+            return [0.1, 0.2, 0.3]
+
+    monkeypatch.setattr(
+        "app.api.settings.build_local_onnx_embeddings",
+        lambda model_dir: ReadyLocalModel(),
+    )
+
+    response = client.post("/api/settings/embedding-test", headers=auth())
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ok"
+    assert payload["provider"] == "local-onnx"
+    assert payload["model"] == "bge-small-zh-v1.5"
+    assert payload["dimensions"] == 3
+
+
+def test_embedding_test_probes_local_model_without_constructing_client_in_local_privacy_mode(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -97,6 +128,10 @@ def test_embedding_test_is_blocked_without_constructing_client_in_local_privacy_
             raise AssertionError("embedding client must not be constructed in local privacy mode")
 
     monkeypatch.setattr("app.api.settings.LangChainEmbeddingClient", ForbiddenEmbeddingClient)
+    monkeypatch.setattr(
+        "app.api.settings.build_local_onnx_embeddings",
+        lambda model_dir: None,
+    )
 
     response = client.post("/api/settings/embedding-test", headers=auth())
 
@@ -105,20 +140,13 @@ def test_embedding_test_is_blocked_without_constructing_client_in_local_privacy_
     assert privacy.status_code == 200
     assert constructed == []
     assert response.status_code == 200
-    assert response.json() == {
-        "status": "blocked",
-        "provider": None,
-        "base_url": None,
-        "model": None,
-        "dimensions": None,
-        "latency_ms": None,
-        "message": "本地隐私模式已开启，Embedding 试连已阻止。",
-        "error_code": "local_privacy_mode",
-        "error_detail": None,
-    }
+    payload = response.json()
+    assert payload["status"] == "failed"
+    assert payload["provider"] == "local-onnx"
+    assert payload["model"] == "bge-small-zh-v1.5"
+    assert payload["error_code"] == "local_embedding_unavailable"
     assert secret not in response.text
     assert private_path_marker not in response.text
-    assert "embedding connection test" not in response.text
 
 
 def test_automation_refreshes_vector_index_only_when_local_privacy_mode_changes(

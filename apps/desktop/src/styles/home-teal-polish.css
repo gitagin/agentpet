@@ -1,0 +1,528 @@
+/* The home route keeps the photographic night scene while teal identifies interaction. */
+.control-home-shell {
+  --home-ink: #F2F4F3;
+  --home-soft: #B2BEBC;
+  --home-muted: #7E8E8B;
+  --home-line: rgba(210, 224, 221, 0.14);
+  --home-line-strong: rgba(210, 224, 221, 0.24);
+  --home-glass: rgba(18, 21, 22, 0.8);
+  --home-glass-strong: rgba(20, 24, 25, 0.92);
+  --home-teal: #68B8AD;
+  --home-teal-strong: #8ED6CC;
+  --home-teal-deep: #3F8F86;
+  --home-primary-soft: rgba(104, 184, 173, 0.12);
+  --home-violet: #9B8FD8;
+  --home-amber: #D4A56B;
+  --home-blue: #7CAFE0;
+  --home-green: #72C49C;
+  --home-red: #DE6B76;
+  background: #0C0F10 !important;
+  color: var(--home-ink);
+}
+
+.control-home-shell::before {
+  background:
+    linear-gradient(90deg, rgba(6, 8, 9, 0.96) 0%, rgba(6, 8, 9, 0.66) 30%, rgba(6, 8, 9, 0.42) 62%, rgba(6, 8, 9, 0.9) 100%),
+    linear-gradient(180deg, rgba(6, 8, 9, 0.08), rgba(6, 8, 9, 0.84)),
+    url("/images/home.png") center / cover no-repeat !important;
+}
+
+.control-home-shell .control-home-backdrop {
+  background: linear-gradient(180deg, rgba(6, 8, 9, 0.02), rgba(6, 8, 9, 0.5)) !important;
+}
+
+.control-home-shell .control-brand-icon {
+  border-color: rgba(104, 184, 173, 0.58) !important;
+  background: rgba(104, 184, 173, 0.1) !important;
+  color: var(--home-teal-strong) !important;
+  box-shadow: 0 0 24px rgba(104, 184, 173, 0.16) !important;
+}
+
+.control-home-shell .control-brand-copy strong,
+.control-home-shell .control-card-title strong,
+.control-home-shell .control-pet-vitals > strong,
+.control-home-shell .control-memory-head strong {
+  color: var(--home-ink) !important;
+}
+
+.control-home-shell .control-brand-copy small,
+.control-home-shell .control-card-title > span,
+.control-home-shell .control-journal-card > span,
+.control-home-shell .control-journal-card > small,
+.control-home-shell .control-goal-empty,
+.control-home-shell .control-pet-vitals dt,
+.control-home-shell .control-pet-vitals dd small {
+  color: var(--home-muted) !important;
+}
+
+.control-home-shell .control-icon-button,
+.control-home-shell .control-mini-button,
+.control-home-shell .control-date-actions button,
+.control-home-shell .control-memory-actions button,
+.control-home-shell .control-stage-composer button:not(.control-send-button) {
+  border-color: var(--home-line) !important;
+  background: rgba(18, 21, 22, 0.78) !important;
+  color: var(--home-soft) !important;
+  box-shadow: none !important;
+}
+
+.control-home-shell .control-icon-button:hover:not(:disabled),
+.control-home-shell .control-mini-button:hover:not(:disabled),
+.control-home-shell .control-date-actions button:hover:not(:disabled),
+.control-home-shell .control-memory-actions button:hover:not(:disabled),
+.control-home-shell .control-stage-composer button:not(.control-send-button):hover:not(:disabled) {
+  border-color: rgba(104, 184, 173, 0.52) !important;
+  background: rgba(104, 184, 173, 0.12) !important;
+  color: var(--home-teal-strong) !important;
+}
+
+.control-home-shell .control-icon-button:disabled,
+.control-home-shell .control-mini-button:disabled,
+.control-home-shell .control-date-actions button:disabled,
+.control-home-shell .control-memory-actions button:disabled {
+  border-color: rgba(210, 224, 221, 0.08) !important;
+  background: rgba(18, 21, 22, 0.46) !important;
+  color: rgba(178, 190, 188, 0.38) !important;
+  box-shadow: none !important;
+}
+
+.control-home-shell .control-journal-card .control-card-title .control-mini-button,
+.control-home-shell .control-goals-card .control-card-title .control-mini-button {
+  border-color: rgba(104, 184, 173, 0.38) !important;
+  background: rgba(104, 184, 173, 0.1) !important;
+  color: var(--home-teal-strong) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 8px 20px rgba(0, 0, 0, 0.18) !important;
+}
+
+.control-home-shell .control-journal-card .control-card-title .control-mini-button:hover:not(:disabled),
+.control-home-shell .control-goals-card .control-card-title .control-mini-button:hover:not(:disabled),
+.control-home-shell .control-goals-card .control-card-title .control-mini-button[aria-pressed="true"] {
+  border-color: rgba(142, 214, 204, 0.68) !important;
+  background: rgba(104, 184, 173, 0.18) !important;
+  color: #D9FFFA !important;
+  box-shadow: 0 0 18px rgba(104, 184, 173, 0.14) !important;
+}
+
+.control-home-shell .control-glass-card,
+.control-home-shell .control-date-card,
+.control-home-shell .control-memory-panel,
+.control-home-shell .control-status-left,
+.control-home-shell .control-status-right {
+  border-color: var(--home-line) !important;
+  background: var(--home-glass) !important;
+}
+
+.control-home-shell .control-journal-card textarea,
+.control-home-shell .control-goal-form input,
+.control-home-shell .control-stage-composer input {
+  border-color: rgba(210, 224, 221, 0.12) !important;
+  background: rgba(8, 11, 12, 0.48) !important;
+  color: var(--home-ink) !important;
+  caret-color: var(--home-teal-strong);
+}
+
+.control-home-shell .control-journal-card textarea::placeholder,
+.control-home-shell .control-goal-form input::placeholder,
+.control-home-shell .control-stage-composer input::placeholder {
+  color: rgba(178, 190, 188, 0.48) !important;
+}
+
+.control-home-shell .control-stage-composer input:focus,
+.control-home-shell .control-journal-card textarea:focus,
+.control-home-shell .control-goal-form input:focus {
+  border-color: rgba(104, 184, 173, 0.66) !important;
+  box-shadow: 0 0 0 3px rgba(104, 184, 173, 0.12) !important;
+}
+
+.control-home-shell .control-journal-card textarea {
+  scrollbar-color: rgba(104, 184, 173, 0.42) rgba(255, 255, 255, 0.04) !important;
+}
+
+.control-home-shell .control-journal-card textarea::-webkit-scrollbar-track {
+  border-left-color: rgba(104, 184, 173, 0.14) !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+}
+
+.control-home-shell .control-journal-card textarea::-webkit-scrollbar-thumb {
+  border-color: rgba(18, 21, 22, 0.9) !important;
+  background: rgba(104, 184, 173, 0.42) !important;
+}
+
+.control-home-shell .control-journal-card textarea::-webkit-scrollbar-thumb:hover {
+  background: rgba(142, 214, 204, 0.58) !important;
+}
+
+.control-home-shell .control-wide-button,
+.control-home-shell .control-memory-more {
+  border-color: rgba(104, 184, 173, 0.42) !important;
+  background: rgba(104, 184, 173, 0.08) !important;
+  color: var(--home-teal-strong) !important;
+  box-shadow: none !important;
+}
+
+.control-home-shell .control-wide-button:hover:not(:disabled),
+.control-home-shell .control-memory-more:hover:not(:disabled) {
+  border-color: var(--home-teal) !important;
+  background: rgba(104, 184, 173, 0.16) !important;
+  color: #D9FFFA !important;
+}
+
+.control-home-shell .control-goal-create-submit {
+  border-color: rgba(104, 184, 173, 0.72) !important;
+  background: var(--home-teal) !important;
+  color: #0A1715 !important;
+  box-shadow: 0 8px 20px rgba(104, 184, 173, 0.18) !important;
+}
+
+.control-home-shell .control-goal-create-submit:hover:not(:disabled) {
+  border-color: var(--home-teal-strong) !important;
+  background: var(--home-teal-strong) !important;
+}
+
+.control-home-shell .control-goal-create-submit:disabled {
+  border-color: rgba(104, 184, 173, 0.16) !important;
+  background: rgba(104, 184, 173, 0.08) !important;
+  color: rgba(178, 190, 188, 0.42) !important;
+  box-shadow: none !important;
+}
+
+.control-home-shell .control-goal-toggle {
+  color: var(--home-soft) !important;
+}
+
+.control-home-shell .control-goal-toggle:hover:not(:disabled) {
+  color: var(--home-ink) !important;
+}
+
+.control-home-shell .control-goal-toggle span {
+  border-color: rgba(210, 224, 221, 0.2) !important;
+  background: rgba(104, 184, 173, 0.05) !important;
+  color: var(--home-green) !important;
+}
+
+.control-home-shell .control-goal-row.done .control-goal-toggle span {
+  border-color: rgba(114, 196, 156, 0.62) !important;
+  background: rgba(114, 196, 156, 0.18) !important;
+  color: #A9E6C7 !important;
+  box-shadow: 0 0 12px rgba(114, 196, 156, 0.14) !important;
+}
+
+.control-home-shell .control-goal-toggle strong {
+  color: var(--home-soft) !important;
+}
+
+.control-home-shell .control-goal-row.done .control-goal-toggle strong {
+  color: rgba(178, 190, 188, 0.48) !important;
+  text-decoration-color: rgba(178, 190, 188, 0.5) !important;
+}
+
+.control-home-shell .control-goal-delete {
+  border-color: transparent !important;
+  background: transparent !important;
+  color: rgba(222, 107, 118, 0.72) !important;
+  box-shadow: none !important;
+}
+
+.control-home-shell .control-goal-delete:hover:not(:disabled) {
+  border-color: rgba(222, 107, 118, 0.34) !important;
+  background: rgba(222, 107, 118, 0.11) !important;
+  color: #F08A94 !important;
+}
+
+.control-home-shell .control-vital-orb {
+  border-color: rgba(104, 184, 173, 0.2) !important;
+  border-top-color: rgba(104, 184, 173, 0.78) !important;
+  background: radial-gradient(circle, rgba(104, 184, 173, 0.14), rgba(104, 184, 173, 0.06) 58%, rgba(104, 184, 173, 0.02) 72%) !important;
+  color: var(--home-teal-strong) !important;
+  box-shadow: inset 0 0 26px rgba(104, 184, 173, 0.14), 0 0 24px rgba(104, 184, 173, 0.08) !important;
+}
+
+.control-home-shell .control-speech-bubble,
+.control-home-shell .control-stage-composer {
+  border-color: rgba(104, 184, 173, 0.24) !important;
+  background: linear-gradient(105deg, rgba(104, 184, 173, 0.055), rgba(255, 255, 255, 0.018)), rgba(15, 18, 19, 0.88) !important;
+}
+
+.control-home-shell .control-speech-bubble {
+  color: var(--home-ink) !important;
+}
+
+.control-home-shell .control-speech-bubble p,
+.control-home-shell .control-speech-bubble small,
+.control-home-shell .control-speech-bubble .control-voice-wave {
+  color: var(--home-soft) !important;
+}
+
+.control-home-shell .control-speech-bubble::after {
+  border-color: rgba(104, 184, 173, 0.2) !important;
+  background: rgba(15, 18, 19, 0.92) !important;
+}
+
+.control-home-shell .control-send-button {
+  border-color: rgba(104, 184, 173, 0.72) !important;
+  background: linear-gradient(180deg, var(--home-teal), var(--home-teal-deep)) !important;
+  color: #0A1715 !important;
+  box-shadow: 0 0 22px rgba(104, 184, 173, 0.2) !important;
+}
+
+.control-home-shell .control-send-button:hover:not(:disabled) {
+  border-color: var(--home-teal-strong) !important;
+  background: linear-gradient(180deg, var(--home-teal-strong), var(--home-teal)) !important;
+}
+
+.control-home-shell .control-send-button:disabled {
+  border-color: rgba(104, 184, 173, 0.24) !important;
+  background: rgba(104, 184, 173, 0.38) !important;
+  color: rgba(10, 23, 21, 0.72) !important;
+  box-shadow: none !important;
+}
+
+.control-home-shell .control-send-button.danger,
+.control-home-shell .control-send-button.danger:hover:not(:disabled) {
+  border-color: rgba(222, 107, 118, 0.72) !important;
+  background: var(--home-red) !important;
+  color: #19090B !important;
+  box-shadow: 0 0 18px rgba(222, 107, 118, 0.2) !important;
+}
+
+/* The orbit and memory markers stay categorical instead of becoming status controls. */
+.control-home-shell .control-orbit-map,
+.control-home-shell .orbit-point {
+  overflow: visible !important;
+}
+
+.control-home-shell .orbit-point i {
+  flex: 0 0 auto;
+}
+
+.control-home-shell .control-orbit-map::before {
+  border-color: rgba(104, 184, 173, 0.16) !important;
+}
+
+.control-home-shell .orbit-point.point-one i {
+  background: var(--home-violet) !important;
+  box-shadow: 0 0 10px rgba(155, 143, 216, 0.38) !important;
+}
+
+.control-home-shell .orbit-point.point-two i {
+  background: var(--home-amber) !important;
+  box-shadow: 0 0 10px rgba(212, 165, 107, 0.34) !important;
+}
+
+.control-home-shell .orbit-point.point-three i {
+  background: var(--home-green) !important;
+  box-shadow: 0 0 10px rgba(114, 196, 156, 0.34) !important;
+}
+
+.control-home-shell .orbit-point.point-four i {
+  background: var(--home-blue) !important;
+  box-shadow: 0 0 10px rgba(124, 175, 224, 0.34) !important;
+}
+
+.control-home-shell .control-memory-entry.rose .control-memory-entry-dot {
+  background: rgba(155, 143, 216, 0.9) !important;
+  box-shadow: 0 0 0 4px rgba(155, 143, 216, 0.1), 0 0 10px rgba(155, 143, 216, 0.24) !important;
+}
+
+.control-home-shell .control-memory-entry.green .control-memory-entry-dot {
+  background: rgba(114, 196, 156, 0.9) !important;
+  box-shadow: 0 0 0 4px rgba(114, 196, 156, 0.1), 0 0 10px rgba(114, 196, 156, 0.24) !important;
+}
+
+.control-home-shell .control-memory-entry.blue .control-memory-entry-dot {
+  background: rgba(124, 175, 224, 0.9) !important;
+  box-shadow: 0 0 0 4px rgba(124, 175, 224, 0.1), 0 0 10px rgba(124, 175, 224, 0.24) !important;
+}
+
+.control-home-shell .control-memory-day-toggle,
+.control-home-shell .control-memory-entry {
+  color: var(--home-soft) !important;
+}
+
+.control-home-shell .control-memory-day-toggle:hover,
+.control-home-shell .control-memory-entry:hover {
+  background: rgba(104, 184, 173, 0.07) !important;
+  color: var(--home-ink) !important;
+}
+
+.control-home-shell .control-memory-filter,
+.control-home-shell .control-memory-day-label > span,
+.control-home-shell .control-memory-day-count,
+.control-home-shell .control-memory-entry-kicker,
+.control-home-shell .control-memory-entry-main p {
+  color: var(--home-muted) !important;
+}
+
+.control-home-shell .control-memory-entry-card {
+  border-color: rgba(210, 224, 221, 0.1) !important;
+  background: rgba(8, 11, 12, 0.36) !important;
+}
+
+.control-home-shell .control-memory-entry-kicker {
+  border-color: rgba(104, 184, 173, 0.22) !important;
+  background: rgba(104, 184, 173, 0.08) !important;
+  color: var(--home-teal-strong) !important;
+}
+
+.control-home-shell .control-memory-empty-icon {
+  border-color: rgba(104, 184, 173, 0.28) !important;
+  background: rgba(104, 184, 173, 0.1) !important;
+  color: var(--home-teal-strong) !important;
+  box-shadow: 0 0 24px rgba(104, 184, 173, 0.1) !important;
+}
+
+.control-home-shell .control-memory-empty strong {
+  color: var(--home-ink) !important;
+}
+
+.control-home-shell .control-memory-empty p {
+  color: var(--home-muted) !important;
+}
+
+.control-home-shell .control-goal-pager button,
+.control-home-shell .control-speech-pager button {
+  border-color: var(--home-line) !important;
+  background: rgba(18, 21, 22, 0.78) !important;
+  color: var(--home-soft) !important;
+  box-shadow: none !important;
+}
+
+.control-home-shell .control-goal-pager button:hover:not(:disabled),
+.control-home-shell .control-speech-pager button:hover:not(:disabled) {
+  border-color: rgba(104, 184, 173, 0.52) !important;
+  background: rgba(104, 184, 173, 0.12) !important;
+  color: var(--home-teal-strong) !important;
+}
+
+.control-home-shell .control-goal-pager button:disabled,
+.control-home-shell .control-speech-pager button:disabled {
+  border-color: rgba(210, 224, 221, 0.08) !important;
+  background: rgba(18, 21, 22, 0.46) !important;
+  color: rgba(178, 190, 188, 0.36) !important;
+}
+
+.control-home-shell .control-quick-prompts {
+  border-color: var(--home-line) !important;
+  background: rgba(15, 18, 19, 0.96) !important;
+}
+
+.control-home-shell .control-quick-prompts button {
+  border-color: rgba(210, 224, 221, 0.1) !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+  color: var(--home-soft) !important;
+  box-shadow: none !important;
+}
+
+.control-home-shell .control-quick-prompts button:hover:not(:disabled) {
+  border-color: rgba(104, 184, 173, 0.5) !important;
+  background: rgba(104, 184, 173, 0.12) !important;
+  color: var(--home-ink) !important;
+}
+
+.control-home-shell > .notice {
+  border-color: rgba(104, 184, 173, 0.24) !important;
+  background: rgba(15, 18, 19, 0.94) !important;
+  color: var(--home-soft) !important;
+}
+
+.control-home-shell > .notice.success {
+  border-color: rgba(114, 196, 156, 0.38) !important;
+  background: rgba(114, 196, 156, 0.1) !important;
+  color: #A9E6C7 !important;
+}
+
+.control-home-shell > .notice.error,
+.control-home-shell .field-note.error {
+  border-color: rgba(222, 107, 118, 0.38) !important;
+  background: rgba(222, 107, 118, 0.1) !important;
+  color: #F2A0A8 !important;
+}
+
+.control-home-shell .control-detail-drawer {
+  border-color: var(--home-line) !important;
+  background: var(--home-glass-strong) !important;
+  color: var(--home-soft) !important;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.34) !important;
+}
+
+.control-home-shell .control-detail-drawer summary {
+  border-color: transparent !important;
+  background: rgba(104, 184, 173, 0.045) !important;
+  color: var(--home-ink) !important;
+}
+
+.control-home-shell .control-detail-drawer[open] summary {
+  border-bottom-color: rgba(104, 184, 173, 0.16) !important;
+}
+
+.control-home-shell .control-drawer-body,
+.control-home-shell .control-support-grid,
+.control-home-shell .control-secondary-grid {
+  border-top-color: rgba(104, 184, 173, 0.14) !important;
+  background: rgba(12, 15, 16, 0.74) !important;
+}
+
+.control-home-shell .control-continuity-card,
+.control-home-shell .control-continuity-panel,
+.control-home-shell .control-activity-list > *,
+.control-home-shell .control-secondary-grid > * {
+  border-color: rgba(210, 224, 221, 0.1) !important;
+  background: rgba(255, 255, 255, 0.03) !important;
+}
+
+.control-home-shell .control-drawer-toolbar p,
+.control-home-shell .control-continuity-card dt,
+.control-home-shell .control-continuity-card small,
+.control-home-shell .empty-state {
+  color: var(--home-muted) !important;
+}
+
+.control-home-shell .control-continuity-card strong,
+.control-home-shell .control-continuity-card dd {
+  color: var(--home-ink) !important;
+}
+
+.control-home-shell .control-below-fold button.secondary {
+  border-color: rgba(104, 184, 173, 0.32) !important;
+  background: rgba(104, 184, 173, 0.08) !important;
+  color: var(--home-teal-strong) !important;
+  box-shadow: none !important;
+}
+
+.control-home-shell .control-below-fold button.secondary:hover:not(:disabled) {
+  border-color: rgba(142, 214, 204, 0.62) !important;
+  background: rgba(104, 184, 173, 0.16) !important;
+  color: #D9FFFA !important;
+}
+
+.control-home-shell .bottom-nav-track {
+  border-color: var(--home-line) !important;
+  background: rgba(11, 14, 15, 0.9) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 16px 42px rgba(0, 0, 0, 0.38) !important;
+}
+
+.control-home-shell .bottom-nav-indicator {
+  background: var(--home-teal) !important;
+  box-shadow: 0 0 0 1px rgba(142, 214, 204, 0.34), 0 0 18px rgba(104, 184, 173, 0.2) !important;
+}
+
+.control-home-shell .bottom-nav-button {
+  color: var(--home-muted) !important;
+}
+
+.control-home-shell .bottom-nav-button:hover:not(.active),
+.control-home-shell .bottom-nav-button:hover:not(.active) .bottom-nav-icon,
+.control-home-shell .bottom-nav-button:hover:not(.active) .bottom-nav-label {
+  color: var(--home-teal-strong) !important;
+}
+
+.control-home-shell .bottom-nav-button.active,
+.control-home-shell .bottom-nav-button.active .bottom-nav-icon,
+.control-home-shell .bottom-nav-button.active .bottom-nav-label {
+  color: #0A1715 !important;
+}
+
+.control-home-shell :where(button, input, textarea):focus-visible {
+  outline-color: var(--home-teal-strong) !important;
+  box-shadow: 0 0 0 3px rgba(104, 184, 173, 0.16) !important;
+}

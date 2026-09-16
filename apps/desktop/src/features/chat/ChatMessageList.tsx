@@ -22,6 +22,7 @@ type ChatMessageListProps = {
   onOpenMemory?: () => void;
   onOpenWiki?: (path?: string) => void;
   onOpenReport?: (path?: string) => void;
+  onDismissContinuitySignal?: (messageId: string, proposalId: string) => void;
   listRef?: Ref<HTMLDivElement>;
 };
 
@@ -60,6 +61,7 @@ export function ChatMessageList({
   onOpenMemory,
   onOpenWiki,
   onOpenReport,
+  onDismissContinuitySignal,
   listRef,
 }: ChatMessageListProps) {
   const visibleMessages = messages.filter((message) => message.role !== "system");
@@ -80,7 +82,11 @@ export function ChatMessageList({
           const hasContent = displayContent.trim().length > 0;
           const isPending = message.status === "partial" && !hasContent;
           return (
-            <article key={message.id} id={`message-${message.id}`} className={`message-row ${message.role}`}>
+            <article
+              key={message.id}
+              id={`message-${message.id}`}
+              className={`message-row ${message.role} status-${message.status || "complete"}`}
+            >
               {message.role === "assistant" ? <span className="message-avatar" aria-hidden="true">AI</span> : null}
               <div className={`message message-bubble ${message.role}`}>
               {showMeta ? (
@@ -108,7 +114,7 @@ export function ChatMessageList({
                     onOpenWiki,
                     onOpenReport,
                   )}
-                  {renderAssistantTrace(message)}
+                  {renderAssistantTrace(message, onDismissContinuitySignal)}
                 </>
               ) : null}
               </div>
@@ -133,7 +139,11 @@ function renderAssistantProgress(message: ChatMessage) {
     <section className="message-agent-actions" aria-label="聊天进度">
       <div className="message-agent-action-buckets">
         {cards.map((card) => (
-          <article key={card.id} className={`message-agent-action-bucket ${progressBucketClass(card.state)}`}>
+          <article
+            key={card.id}
+            className={`message-agent-action-bucket ${progressBucketClass(card.state)}`}
+            data-stage={card.id}
+          >
             <div className="message-agent-action-bucket-head">
               <span aria-hidden="true">{progressBucketIcon(card.state)}</span>
               <strong>{card.label}</strong>
@@ -259,7 +269,10 @@ function renderAssistantArtifacts(
   );
 }
 
-function renderAssistantTrace(message: ChatMessage) {
+function renderAssistantTrace(
+  message: ChatMessage,
+  onDismissContinuitySignal?: (messageId: string, proposalId: string) => void,
+) {
   const hasCitationTrace =
     (message.citations?.length || 0) > 0 || Boolean(message.retrieval_attempted && message.status !== "partial");
   const hasEvents = Boolean(message.events?.length);
@@ -293,6 +306,17 @@ function renderAssistantTrace(message: ChatMessage) {
           <strong>{message.continuity_signal.title}</strong>
           <span>{message.continuity_signal.summary}</span>
           <small>{message.continuity_signal.display_hint}</small>
+          {message.continuity_signal.source_proposal_id && onDismissContinuitySignal ? (
+            <button
+              type="button"
+              className="continuity-dismiss-button"
+              onClick={() =>
+                onDismissContinuitySignal(message.id, message.continuity_signal!.source_proposal_id!)
+              }
+            >
+              不再继续
+            </button>
+          ) : null}
         </div>
       ) : null}
     </details>

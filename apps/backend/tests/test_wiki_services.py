@@ -8,7 +8,7 @@ from apps.backend.tests._schema import migrated_connection
 from app.services.agent_actions import AgentActionCreate, AgentActionService, AgentActionStore
 from app.services.memory import MarkdownWriteError, SafeMarkdownWriter
 from app.services.retrospectives import RetrospectiveService
-from app.services.wiki import SensitiveWikiRejectedError, WikiService, WikiWriteError, resolve_wiki_path
+from app.services.wiki import SensitiveWikiRejectedError, WikiConflictError, WikiService, WikiWriteError, resolve_wiki_path
 from app.storage.markdown import read_markdown
 
 
@@ -42,6 +42,74 @@ def test_wiki_service_writes_pages_under_wiki(tmp_path) -> None:
     assert (tmp_path / "Wiki" / "AGENTS.md").exists()
     assert (tmp_path / "Wiki" / "index.md").exists()
     assert (tmp_path / "Wiki" / "log.md").exists()
+
+
+def test_wiki_write_page_conflict_gate_stops_overwrite_and_preserves_file(tmp_path) -> None:
+    writer = SafeMarkdownWriter(tmp_path)
+    service = WikiService(writer)
+    first = service.write_page(
+        WikiPageWriteRequest(title="Draft", content="original content", target_path="Wiki/Draft.md")
+    )
+    original_hash = writer.current_hash(first.relative_path)
+
+    (tmp_path / "Wiki" / "Draft.md").write_text("external edit\n", encoding="utf-8")
+
+    with pytest.raises(WikiConflictError) as captured:
+        service.write_page(
+            WikiPageWriteRequest(
+                title="Draft",
+                content="overwrite attempt",
+                target_path="Wiki/Draft.md",
+                target_content_hash=original_hash,
+            )
+        )
+
+    assert captured.value.code == "wiki_page_conflict"
+    assert captured.value.current_hash == writer.current_hash("Wiki/Draft.md")
+    assert (tmp_path / "Wiki" / "Draft.md").read_text(encoding="utf-8") == "external edit\n"
+
+
+def test_wiki_write_page_applies_when_target_hash_matches(tmp_path) -> None:
+    writer = SafeMarkdownWriter(tmp_path)
+    service = WikiService(writer)
+    service.write_page(
+        WikiPageWriteRequest(title="Draft", content="original content", target_path="Wiki/Draft.md")
+    )
+    original_hash = writer.current_hash("Wiki/Draft.md")
+
+    response = service.write_page(
+        WikiPageWriteRequest(
+            title="Draft",
+            content="appended entry",
+            target_path="Wiki/Draft.md",
+            target_content_hash=original_hash,
+        )
+    )
+
+    assert response.status == "updated"
+    assert "appended entry" in (tmp_path / "Wiki" / "Draft.md").read_text(encoding="utf-8")
+
+
+def test_wiki_write_page_conflicts_when_target_deleted_after_preview(tmp_path) -> None:
+    writer = SafeMarkdownWriter(tmp_path)
+    service = WikiService(writer)
+    service.write_page(
+        WikiPageWriteRequest(title="Draft", content="original content", target_path="Wiki/Draft.md")
+    )
+    original_hash = writer.current_hash("Wiki/Draft.md")
+    (tmp_path / "Wiki" / "Draft.md").unlink()
+
+    with pytest.raises(WikiConflictError) as captured:
+        service.write_page(
+            WikiPageWriteRequest(
+                title="Draft",
+                content="overwrite attempt",
+                target_path="Wiki/Draft.md",
+                target_content_hash=original_hash,
+            )
+        )
+
+    assert captured.value.current_hash is None
 
 
 def test_wiki_default_schema_documents_typed_pages_and_evidence_rules(tmp_path) -> None:

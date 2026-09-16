@@ -814,16 +814,6 @@ def _validate_transition(
         raise MemoryLifecycleTransitionError("superseded_transition_requires_replacement")
 
 
-def _coerce_lifecycle_status(status: LifecycleStatus | MemoryFactStatus | str) -> LifecycleStatus:
-    if isinstance(status, LifecycleStatus):
-        return status
-    if isinstance(status, MemoryFactStatus):
-        return fact_lifecycle_status(status)
-    if str(status) == MemoryFactStatus.QUARANTINED.value:
-        return LifecycleStatus.CANDIDATE
-    return LifecycleStatus(str(status))
-
-
 def _coerce_fact_status(status: LifecycleStatus | MemoryFactStatus | str) -> MemoryFactStatus:
     if isinstance(status, MemoryFactStatus):
         return status

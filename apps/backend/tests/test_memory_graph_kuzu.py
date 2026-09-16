@@ -78,6 +78,7 @@ def test_rebuild_publishes_active_generation_and_read_only_connection(tmp_path: 
 
 
 def test_generation_revision_changes_force_sqlite_fallback(tmp_path: Path) -> None:
+    pytest.importorskip("kuzu", reason="Kuzu optional dependency is not installed")
     db, self_id, _project_id, _relation_id = _graph_fixture(tmp_path)
     service = KuzuGraphService(db, tmp_path / "graph")
     try:
@@ -97,6 +98,7 @@ def test_generation_revision_changes_force_sqlite_fallback(tmp_path: Path) -> No
 
 
 def test_deleted_or_corrupt_generation_falls_back_without_losing_sqlite(tmp_path: Path) -> None:
+    pytest.importorskip("kuzu", reason="Kuzu optional dependency is not installed")
     db, self_id, _project_id, relation_id = _graph_fixture(tmp_path)
     service = KuzuGraphService(db, tmp_path / "graph")
     try:
@@ -120,6 +122,7 @@ def test_deleted_or_corrupt_generation_falls_back_without_losing_sqlite(tmp_path
 
 
 def test_source_change_during_build_is_stale_and_not_published(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("kuzu", reason="Kuzu optional dependency is not installed")
     db, _self_id, _project_id, _relation_id = _graph_fixture(tmp_path)
     service = KuzuGraphService(db, tmp_path / "graph")
     original = service._build_database

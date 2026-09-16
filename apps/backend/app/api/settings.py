@@ -1,3 +1,4 @@
+import asyncio
 from time import perf_counter
 
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Request, status
@@ -28,9 +29,15 @@ from ..models.api import (
     TtsSettingsRequest,
     TtsSettingsResponse,
 )
-from ..services.embeddings import LangChainEmbeddingClient
+from ..services.embeddings import (
+    LOCAL_EMBEDDING_DIMENSIONS,
+    LOCAL_EMBEDDING_MODEL_NAME,
+    LangChainEmbeddingClient,
+    build_local_onnx_embeddings,
+)
 from ..services.chat_model import ChatModelError, LangChainGraphChatClient
 from ..services.health import component_health_from_vector_index
+from ..services.retrieval_factory import close_vector_index
 from ..services.settings import (
     AGENT_MODEL_IDS,
     ConfigurationError,
@@ -48,17 +55,12 @@ from app.utils.time import elapsed_ms
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
+REMOTE_OPENAI_PROVIDERS = frozenset({"openai", "openai-compatible", "openai_compatible"})
+
 
 def _refresh_vector_index(request: Request, background_tasks: BackgroundTasks) -> None:
     retrieval = getattr(request.app.state, "retrieval_service", None)
-    current = getattr(retrieval, "vector_index", None)
-    close = getattr(current, "close", None)
-    if callable(close):
-        try:
-            close()
-        except Exception:
-            # Refresh still installs a safe fallback index; no exception detail is exposed.
-            pass
+    close_vector_index(getattr(retrieval, "vector_index", None))
     refresh_retrieval_vector_index(request)
     retrieval = getattr(request.app.state, "retrieval_service", None)
     vector_index = getattr(retrieval, "vector_index", None)
@@ -301,54 +303,45 @@ async def set_embedding_config(
 async def test_embedding_connection(
     store: SettingsStore = Depends(settings_store_dependency),
 ) -> EmbeddingTestResponse:
-    if store.get_automation_settings().local_privacy_mode:
-        return EmbeddingTestResponse(
-            status="blocked",
-            message="本地隐私模式已开启，Embedding 试连已阻止。",
-            error_code="local_privacy_mode",
-        )
+    """Probe whichever embedding backend the factory would actually select.
 
+    Mirrors build_vector_index precedence: a configured remote key wins
+    unless local privacy mode forces the bundled model.  Without a remote
+    key the bundled ONNX model is the default, so the probe runs locally
+    and never transmits the test string.
+    """
     defaults = get_settings()
-    key_status = store.get_embedding_key_status()
-    config = store.get_embedding_config(
-        default_provider=key_status.provider or "openai-compatible",
-        default_base_url=defaults.embedding_base_url,
-        default_model=defaults.embedding_model,
-        default_dimensions=defaults.embedding_dimensions,
-    )
-    if config.provider.strip().lower() not in {"openai", "openai-compatible", "openai_compatible"}:
+    try:
+        key_status = store.get_embedding_key_status()
+        config = store.get_embedding_config(
+            default_provider=key_status.provider or "openai-compatible",
+            default_base_url=defaults.embedding_base_url,
+            default_model=defaults.embedding_model,
+            default_dimensions=defaults.embedding_dimensions,
+        )
+        automation = store.get_automation_settings()
+        # 读密钥也在这里:凭据存储不可用时它同样抛 CredentialStoreError,落在守卫外面
+        # 会变成未处理异常(500),而这个接口本该用友好失败告诉用户去修凭据。
+        provider = config.provider.strip().lower()
+        api_key = None
+        if provider in REMOTE_OPENAI_PROVIDERS and key_status.configured:
+            api_key = store.get_embedding_key(config.provider)
+            if not api_key and key_status.provider:
+                api_key = store.get_embedding_key(key_status.provider)
+    except CredentialStoreError:
         return EmbeddingTestResponse(
             status="failed",
-            provider=config.provider,
-            base_url=config.base_url,
-            model=config.model,
-            dimensions=config.dimensions,
-            message="当前 embedding 提供方暂不支持试连，请使用 OpenAI 兼容接口。",
-            error_code="unsupported_provider",
+            provider="local-onnx",
+            message="本地凭据存储不可用，暂时无法测试 Embedding 连接。",
+            error_code="credential_store_unavailable",
         )
-    if not key_status.configured:
-        return EmbeddingTestResponse(
-            status="failed",
-            provider=config.provider,
-            base_url=config.base_url,
-            model=config.model,
-            dimensions=config.dimensions,
-            message="尚未保存 embedding API 密钥。",
-            error_code="not_configured",
-        )
-    api_key = store.get_embedding_key(config.provider)
-    if not api_key and key_status.provider:
-        api_key = store.get_embedding_key(key_status.provider)
+    if automation.local_privacy_mode:
+        return await _test_local_embedding(defaults)
+
+    if provider not in REMOTE_OPENAI_PROVIDERS:
+        return await _test_local_embedding(defaults)
     if not api_key:
-        return EmbeddingTestResponse(
-            status="failed",
-            provider=config.provider,
-            base_url=config.base_url,
-            model=config.model,
-            dimensions=config.dimensions,
-            message="本地凭据服务没有找到 embedding API 密钥，请重新保存密钥。",
-            error_code="credential_missing",
-        )
+        return await _test_local_embedding(defaults)
 
     started = perf_counter()
     client = LangChainEmbeddingClient(
@@ -380,6 +373,44 @@ async def test_embedding_connection(
         dimensions=len(vector),
         latency_ms=elapsed_ms(started),
         message=f"Embedding 试连成功，向量维度：{len(vector)}",
+    )
+
+
+async def _test_local_embedding(defaults) -> EmbeddingTestResponse:
+    started = perf_counter()
+    model = await asyncio.to_thread(build_local_onnx_embeddings, defaults.local_embedding_dir)
+    if model is None:
+        return EmbeddingTestResponse(
+            status="failed",
+            provider="local-onnx",
+            base_url=None,
+            model=LOCAL_EMBEDDING_MODEL_NAME,
+            dimensions=LOCAL_EMBEDDING_DIMENSIONS,
+            latency_ms=elapsed_ms(started),
+            message="本地 embedding 模型不可用，请确认模型文件已随安装包捆绑。",
+            error_code="local_embedding_unavailable",
+        )
+    try:
+        vector = await asyncio.to_thread(model.embed_query, "embedding connection test")
+    except Exception as exc:
+        return EmbeddingTestResponse(
+            status="failed",
+            provider="local-onnx",
+            base_url=None,
+            model=LOCAL_EMBEDDING_MODEL_NAME,
+            dimensions=LOCAL_EMBEDDING_DIMENSIONS,
+            latency_ms=elapsed_ms(started),
+            message=str(exc),
+            error_code="local_embedding_unavailable",
+        )
+    return EmbeddingTestResponse(
+        status="ok",
+        provider="local-onnx",
+        base_url=None,
+        model=LOCAL_EMBEDDING_MODEL_NAME,
+        dimensions=len(vector),
+        latency_ms=elapsed_ms(started),
+        message=f"本地 Embedding 试连成功，向量维度：{len(vector)}",
     )
 
 
@@ -498,7 +529,7 @@ async def test_model_connection(
     base_url = model_config.base_url
     model = model_config.model
 
-    if normalized_provider not in {"openai", "openai-compatible", "openai_compatible"}:
+    if normalized_provider not in REMOTE_OPENAI_PROVIDERS:
         return ModelTestResponse(
             status="failed",
             agent_id=agent_id,

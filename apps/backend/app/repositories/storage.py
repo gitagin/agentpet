@@ -13,8 +13,16 @@ from app.storage.markdown import ParsedMarkdown
 
 
 FTS_TOKEN_RE = re.compile(r"[\w-]+", re.UNICODE)
+# 松弛腿（OR/逐词）最多展开这么多 token：限制病历式超长查询的 SQL 执行次数。
+_MAX_RELAXED_QUERY_TOKENS = 16
 CJK_RE = re.compile(r"[\u3400-\u9fff]")
 CJK_RUN_RE = re.compile(r"[\u3400-\u9fff\u2e80-\u9fff\uf900-\ufaff]+")
+# 混合脚本边界：unicode61 不在脚本边界切分，"python教程"/"第3章" 会成为一个
+# 原子 token，子串查询全部落空。先在 CJK 与 ASCII/数字相邻处插空格，再切 bigram。
+_SCRIPT_BOUNDARY_RE = re.compile(
+    r"(?<=[\u3400-\u9fff\u2e80-\u9fff\uf900-\ufaff])(?=[A-Za-z0-9])"
+    r"|(?<=[A-Za-z0-9])(?=[\u3400-\u9fff\u2e80-\u9fff\uf900-\ufaff])"
+)
 
 
 def _bigram_cjk(text: str) -> str:
@@ -34,7 +42,7 @@ def _bigram_cjk(text: str) -> str:
             return run
         return " " + " ".join(run[index : index + 2] for index in range(len(run) - 1)) + " "
 
-    return CJK_RUN_RE.sub(split, text)
+    return CJK_RUN_RE.sub(split, _SCRIPT_BOUNDARY_RE.sub(" ", text))
 
 # Wiki 核心文件是给 LLM 做规划/整理用的规范，不是可检索回答的资料。
 # 全文搜索必须排除它们，避免用户一问就被拿来引用。
@@ -104,6 +112,7 @@ class SearchResult:
     score: float
     content_hash: str | None = None
     vault_id: str | None = None
+    content: str | None = None
     generation: str | None = None
 
 
@@ -278,7 +287,15 @@ class NoteRepository:
         fts_queries = _to_fts_queries(query)
         if not fts_queries:
             return []
+        collected: list[SearchResult] = []
+        seen_chunks: set[str] = set()
+        # 精确腿与松弛腿合并而不是短路：整句查询逐字命中（如日记里回放用户
+        # 原话）时，旧逻辑直接返回精确腿，把所有部分匹配的知识块挤出候选集，
+        # 导致“答案就在资料库里，模型却说没找到”。精确命中仍排在最前，
+        # 松弛腿只负责把 top_k 补齐。
         for fts_query in fts_queries:
+            if len(collected) >= top_k:
+                break
             rows = self.conn.execute(
                 """
                 SELECT
@@ -298,11 +315,15 @@ class NoteRepository:
                 """,
                 (vault_id, fts_query, top_k),
             ).fetchall()
-            if rows:
-                return [
+            for row in rows:
+                chunk_id = str(row["chunk_id"])
+                if chunk_id in seen_chunks:
+                    continue
+                seen_chunks.add(chunk_id)
+                collected.append(
                     SearchResult(
                         note_id=str(row["note_id"]),
-                        chunk_id=str(row["chunk_id"]),
+                        chunk_id=chunk_id,
                         relative_path=str(row["relative_path"]),
                         title=str(row["title"]),
                         heading=row["heading"],
@@ -314,8 +335,11 @@ class NoteRepository:
                         ),
                         score=float(-row["rank"]),
                     )
-                    for row in rows
-                ]
+                )
+                if len(collected) >= top_k:
+                    break
+        if collected:
+            return collected
 
         like_queries = _to_like_queries(query)
         if not like_queries:
@@ -452,9 +476,28 @@ def _to_fts_queries(query: str) -> list[str]:
     terms = _expanded_query_terms(query)
     queries = [exact_query] if exact_query else []
     if terms:
-        queries.append(" OR ".join(_quote_fts_token(term) for term in terms))
-        queries.extend(_quote_fts_token(term) for term in terms)
+        # OR/逐词松弛腿必须与写入侧同一套脚本边界+bigram 规则切词，
+        # 否则像 "第3章" 这样的混合脚本词在松弛腿仍是未切分短语，
+        # 永远命中不了切分后的索引（exact 腿的超集不变量被反转）。
+        relaxed_tokens = [
+            token
+            for term in terms
+            for token in _bigrammed_fts_tokens(term)
+        ]
+        relaxed_tokens = _unique_non_empty(relaxed_tokens)[:_MAX_RELAXED_QUERY_TOKENS]
+        if relaxed_tokens:
+            queries.append(" OR ".join(_quote_fts_token(token) for token in relaxed_tokens))
+            queries.extend(_quote_fts_token(token) for token in relaxed_tokens)
     return _unique_non_empty(queries)
+
+
+def _bigrammed_fts_tokens(text: str) -> list[str]:
+    """按索引写入侧相同的分词规则切一个查询词（脚本边界 + CJK bigram）。"""
+    return [
+        token.strip("-_")
+        for token in FTS_TOKEN_RE.findall(_bigram_cjk(text))
+        if token.strip("-_")
+    ]
 
 
 def _to_like_queries(query: str) -> list[str]:
@@ -508,15 +551,32 @@ def _to_like_pattern(query: str) -> str:
 
 def _make_like_snippet(*, content: str, query: str, title: str, heading: str | None) -> str:
     sources = [content, heading or "", title]
-    for source in sources:
-        index = source.casefold().find(query.casefold())
-        if index >= 0:
-            start = max(0, index - 40)
-            end = min(len(source), index + len(query) + 40)
+    folded_sources = [source.casefold() for source in sources]
+    # 命中词居中优先于原文逐字：检索查询常被改写/合并（如“黑色修士酒馆卡”），
+    # 原文不会逐字出现；若逐字查找失败就退回块头截断，模型永远看不到真正
+    # 命中的条目（列表类资料尤甚）。按「整句 → 扩展词 → bigram 词」依次居中。
+    for term in _snippet_match_terms(query):
+        folded = term.casefold()
+        for source, folded_source in zip(sources, folded_sources):
+            index = folded_source.find(folded)
+            if index < 0:
+                continue
+            start = max(0, index - 120)
+            end = min(len(source), index + len(term) + 280)
             prefix = "..." if start > 0 else ""
             suffix = "..." if end < len(source) else ""
-            return f"{prefix}{source[start:index]}[{source[index:index + len(query)]}]{source[index + len(query):end]}{suffix}"
+            return f"{prefix}{source[start:index]}[{source[index:index + len(term)]}]{source[index + len(term):end]}{suffix}"
     return content[:120]
+
+
+def _snippet_match_terms(query: str) -> list[str]:
+    terms = _unique_non_empty([query.strip(), *_expanded_query_terms(query)])
+    # 追加写入侧同规则的 bigram token：整句与扩展词都不逐字出现时，
+    # 最小命中词也能把窗口对准真正命中的条目。
+    for token in _bigrammed_fts_tokens(query):
+        if token not in terms:
+            terms.append(token)
+    return sorted(terms, key=len, reverse=True)
 
 
 def _make_daily_date_snippet(content: str) -> str:

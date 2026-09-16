@@ -10,6 +10,7 @@ import { useTaskDomain } from "./appShell/useTaskDomain";
 import { useAgentActivityDomain } from "./appShell/useAgentActivityDomain";
 import { useMemoryDomain } from "./appShell/useMemoryDomain";
 import { useContinuityDomain } from "./appShell/useContinuityDomain";
+import { useReflectionDomain } from "./appShell/useReflectionDomain";
 import { usePetDomain } from "./appShell/usePetDomain";
 import { useChatStreamingDomain } from "./appShell/useChatStreamingDomain";
 import { useResetDomain } from "./appShell/useResetDomain";
@@ -50,6 +51,12 @@ export function AppShell() {
     onNotice: app.setNotice,
     onAgentActionsRefresh: () => void activity.load({ silent: true }),
   });
+  const reflection = useReflectionDomain({
+    api: connection.connection.api,
+    enabled: connection.hasConnection,
+    onNotice: app.setNotice,
+    onAgentActionsRefresh: () => void activity.load({ silent: true }),
+  });
   const wiki = useWiki({
     api: connection.connection.api,
     conversationId: app.conversationId,
@@ -81,6 +88,7 @@ export function AppShell() {
     tasks,
     memory,
     continuity,
+    reflection,
     wiki,
     pet,
   });
@@ -91,6 +99,7 @@ export function AppShell() {
     tasks,
     memory,
     continuity,
+    reflection,
     wiki,
     pet,
     confirm,
@@ -130,7 +139,7 @@ export function AppShell() {
 
   return (
     <AppShellRuntimeProvider
-      runtime={{ app, connection, activity, tasks, memory, continuity, wiki, pet, chat, reset, onboardingPanel }}
+      runtime={{ app, connection, activity, tasks, memory, continuity, reflection, wiki, pet, chat, reset, onboardingPanel }}
     >
       <AppShellView />
       {confirmationDialog}

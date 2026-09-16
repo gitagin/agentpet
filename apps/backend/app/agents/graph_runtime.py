@@ -40,7 +40,7 @@ from .nodes.policy_guard import evaluate_action_proposal
 from .nodes.retrieval import _retrieval_node
 from .prompts.system import _semantic_system_prompt
 from .registry import AgentRegistry, default_agent_registry
-from .retrieval.router import _chat_agent_tool_names
+from .retrieval.router import _chat_agent_tool_names, _mentions_time_topic
 from .retrieval.scoping import (
     _force_search_memory_source_scope,
     _retrieval_top_k_for_state,
@@ -366,8 +366,6 @@ class LangGraphAgentRuntime:
             return None
         if prepared_state.citations or _needs_chat_context(prepared_state):
             return None
-        if _chat_agent_tool_names(prepared_state, self.services):
-            return None
         return graph_state
 
     async def _run_streaming_chat_fast_path(self, graph_state: dict[str, Any]) -> AsyncIterator[Any]:
@@ -508,40 +506,36 @@ class LangGraphAgentRuntime:
     async def _semantic_node(self, graph_state: dict[str, Any]) -> dict[str, Any]:
         state = _agent_state(graph_state)
         if (
-            state.route
-            and state.route.intent
-            in {
-                AgentIntent.PROPOSE_MEMORY,
-                AgentIntent.MANAGE_WIKI,
-                AgentIntent.CREATE_TASK,
-            }
-            and not is_high_risk_mutation_request(state.user_message)
+            state.route is not None
+            and state.route.intent == AgentIntent.CHAT
+            and _mentions_time_topic(state.user_message)
         ):
+            # 时间是确定性问题：直接交给聊天 agent 调用 get_current_time 工具，
+            # 不经语义模型分类，也不允许被路由成记忆检索（会反刍旧对话里的错误答案）。
             state.semantic_analysis = SemanticAnalysisResult(
                 needs_context=False,
                 source_scope="none",
                 query=state.user_message,
-                answer_style="concise",
-                confidence=state.route.confidence,
-                reason=state.route.reason,
+                answer_style="casual",
+                confidence=0.99,
+                reason="deterministic_time_question",
             )
             state.classifier = _fallback_classifier(state)
-            _append_status(graph_state, "已规划本地动作。", stage="classifier")
+            _append_status(graph_state, "时间问题由本机时钟工具回答。", stage="classifier")
             return graph_state
 
+        # 模型裁决模糊意图；用户明确指定的读取来源仍由本机路由形成执行约束，
+        # 避免分类波动把知识库查询扩大到个人记忆或聊天日记。
         state.memory_route = route_memory(state.user_message)
         route_semantic = _semantic_from_memory_route(state.memory_route, state)
         state.semantic_analysis = route_semantic
         state.classifier = _fallback_classifier(state)
-        if not _should_call_semantic_agent(state):
-            _append_status(graph_state, "已选择上下文范围。", stage="memory_router")
-            return graph_state
         _append_status(graph_state, "正在调用语义分析 Agent。", stage="semantic_analysis")
         try:
             semantic_model = self._model_for(AgentId.SEMANTIC_ANALYSIS_AGENT)
             if semantic_model is None:
-                state.semantic_analysis = route_semantic or _fallback_semantic_analysis(state)
-                state.classifier = _fallback_classifier(state)
+                _apply_offline_action_route(graph_state, state)
+                _append_status(graph_state, "语义模型未配置，使用确定性路由。", stage="memory_router")
                 return graph_state
             response = await semantic_model.complete(
                 user_message=state.user_message,
@@ -553,8 +547,7 @@ class LangGraphAgentRuntime:
             _apply_classifier_route(state)
         except Exception:
             logger.warning("Semantic analysis agent failed; using fallback semantic analysis", exc_info=True)
-            state.semantic_analysis = route_semantic or _fallback_semantic_analysis(state)
-            state.classifier = _fallback_classifier(state)
+            _apply_offline_action_route(graph_state, state)
         return graph_state
 
     def _select_agent_node(self, graph_state: dict[str, Any]) -> str:
@@ -764,6 +757,7 @@ class LangGraphAgentRuntime:
         state: AgentState,
         tools: tuple[AgentToolName, ...],
         system_prompt: str,
+        forced_source_scope: str | None = None,
     ) -> tuple[str, list[AgentToolResult]]:
         tool_results: list[AgentToolResult] = []
         observed_toolset = AgentToolSet(
@@ -780,6 +774,7 @@ class LangGraphAgentRuntime:
             tools_for_agent = _force_search_memory_source_scope(
                 tools_for_agent,
                 system_prompt,
+                forced_source_scope=forced_source_scope,
                 forced_top_k=(
                     _retrieval_top_k_for_state(state)
                     if agent_id == AgentId.RETRIEVAL_AGENT
@@ -1220,59 +1215,18 @@ def _latest_negotiation_confidence(state: NegotiationState) -> float:
     return 0.0
 
 
-# 模型分类兜底：规则判定为普通闲聊时，只要消息带"弱查询信号"
-# （疑问词、时间/指代词、问号），仍调用一次语义分类器。
-# 规则词表永远追不上口语变化（如"我刚刚说了什么""昨天那个事你还有印象吗"），
-# 漏检时由模型分类器纠正为检索/动作，而不是直接走单模型快路径瞎答。
-_WEAK_QUERY_SIGNAL_RE = re.compile(
-    r"什么|啥|哪|哪里|怎么|为什么|是不是|有没有|什么时候|几点|多少|吗|呢|"
-    r"刚刚|刚才|之前|上次|昨天|前天|说来着|"
-    r"\b(what|where|when|why|how|which|who|did i|did we|do you|are you|is it|remember|recall|say|said|talk|chat|mention)\b|"
-    r"[?？]"
-)
-
-
-def _has_weak_query_signal(message: str) -> bool:
-    return bool(_WEAK_QUERY_SIGNAL_RE.search(message))
-
-
-def _should_call_semantic_agent(state: AgentState) -> bool:
-    if is_high_risk_mutation_request(state.user_message):
-        return True
-    if state.route and state.route.intent in {
-        AgentIntent.PROPOSE_MEMORY,
-        AgentIntent.MANAGE_WIKI,
-        AgentIntent.CREATE_TASK,
-    }:
-        return False
-    if state.memory_route and state.memory_route.semantic_fallback:
-        return True
-    if state.route and state.route.intent == AgentIntent.SEARCH_MEMORY:
-        return True
-    if state.route and state.route.intent == AgentIntent.CHAT and _has_weak_query_signal(state.user_message):
-        return True
-    # 规则把普通聊天误判为"需要检索"时（如「我喜欢牛奶」被当成偏好检索，
-    # 「我超喜欢咖啡」这类新说法不在规则词表里），让 LLM 分类器做最终裁决，
-    # 而不是让脆弱的关键词表直接决定回复形态（"没找到记录"）。
-    if (
-        state.route
-        and state.route.intent == AgentIntent.CHAT
-        and state.memory_route
-        and any(scope != "none" for scope in state.memory_route.all_scopes)
-    ):
-        return True
-    return False
-
-
 def _needs_chat_context(state: AgentState) -> bool:
     semantic = state.semantic_analysis
     if semantic is not None and semantic.needs_context and semantic.source_scope != "none":
         return True
     if state.route is not None and state.route.intent == AgentIntent.SEARCH_MEMORY:
         return True
+    # 语义模型在线时由它裁决是否检索；确定性 memory_route 只在模型
+    # 不可用（semantic_analysis 为 None）时作为离线兜底。
     route = state.memory_route
     return (
-        route is not None
+        semantic is None
+        and route is not None
         and not route.semantic_fallback
         and bool(route.all_scopes)
         and route.all_scopes != ("none",)
@@ -1373,4 +1327,33 @@ def _local_privacy_reason_label(reason: str | None) -> str:
         "crisis": "危机内容",
     }
     return labels.get(reason or "", "敏感内容")
+
+def _apply_offline_action_route(graph_state: dict[str, Any], state: AgentState) -> None:
+    """语义模型缺失或失败时的离线兜底：
+    动作意图（任务/记忆/wiki）优先于记忆范围路由，
+    避免「提醒我回邮件」被 memory_router 判成检索而丢失任务创建。
+    语义模型可用时这里不会被调用：分类器是唯一裁决者。
+    """
+    if (
+        state.route
+        and state.route.intent
+        in {
+            AgentIntent.PROPOSE_MEMORY,
+            AgentIntent.MANAGE_WIKI,
+            AgentIntent.CREATE_TASK,
+        }
+        and not is_high_risk_mutation_request(state.user_message)
+    ):
+        state.semantic_analysis = SemanticAnalysisResult(
+            needs_context=False,
+            source_scope="none",
+            query=state.user_message,
+            answer_style="concise",
+            confidence=state.route.confidence,
+            reason=state.route.reason,
+        )
+        state.classifier = _fallback_classifier(state)
+        return
+    state.semantic_analysis = state.semantic_analysis or _fallback_semantic_analysis(state)
+    state.classifier = _fallback_classifier(state)
 

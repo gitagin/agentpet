@@ -60,11 +60,14 @@ type FlowNode = Node<FlowNodeData, "memoryGraphNode">;
 type FlowEdge = Edge<Record<string, never>>;
 
 const palette = {
-  rose: "#D56F8A",
   teal: "#68B8AD",
-  amber: "#D1A44B",
-  red: "#D75B5B",
-  muted: "#89919B",
+  violet: "#9B8FD8",
+  blue: "#7CAFE0",
+  cyan: "#79BFD4",
+  green: "#72C49C",
+  amber: "#D4A56B",
+  red: "#DE6B76",
+  muted: "#7E8E8B",
 } as const;
 
 const typeLabels: Record<string, string> = {
@@ -82,14 +85,14 @@ const typeLabels: Record<string, string> = {
 };
 
 const typeColors: Record<string, string> = {
-  user: palette.rose,
-  preference: palette.rose,
-  boundary: "#bc83c6",
-  project: "#75a6d7",
-  episode: palette.teal,
-  mood: "#89c995",
-  qa: "#7eb6d8",
-  source: palette.teal,
+  user: palette.teal,
+  preference: palette.violet,
+  boundary: palette.amber,
+  project: palette.blue,
+  episode: palette.green,
+  mood: "#80C8B8",
+  qa: palette.cyan,
+  source: "#6E93C8",
   pending: palette.amber,
   archived: palette.muted,
   cleanup: palette.amber,

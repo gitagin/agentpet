@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import re
 from collections.abc import AsyncIterator, Callable, Sequence
 from dataclasses import dataclass
@@ -9,9 +8,20 @@ from dataclasses import replace as dataclass_replace
 from typing import Any, Mapping, Protocol, runtime_checkable
 from urllib.parse import urlparse
 
-from pydantic import BaseModel
-
+from app.config import get_settings
 from app.models.enums import AgentId
+
+# 通用退避重试只针对"临时性"错误（限流/网络/超时），鉴权、参数、配额类
+# 错误重试无意义。重试次数与退避基数从 settings 读取（env 可覆盖）。
+_RETRYABLE_ERROR_CODES = frozenset({"rate_limited", "provider_unreachable", "provider_timeout"})
+_MAX_EXTRA_RETRIES = 3
+# 流式响应的总时长上限 = 单个 token 间隔超时 × 该系数；只用于兜底
+# "永远挤牙膏"的病态流，正常匀速长回答不会触顶。
+_STREAM_TOTAL_TIMEOUT_MULTIPLIER = 8.0
+
+
+def _bounded_retry_attempts(value: int) -> int:
+    return min(max(value, 0), _MAX_EXTRA_RETRIES)
 
 
 AGENT_IDS: tuple[AgentId, ...] = (
@@ -87,71 +97,6 @@ class ChatModelRunResult:
     raw_result: Any
 
 
-RoleAgentFactory = Callable[..., Any]
-
-
-@dataclass(frozen=True, slots=True)
-class StructuredRoleAgent:
-    structured_model: Any
-    system_prompt: str
-    output_schema: type[BaseModel]
-
-    async def ainvoke(self, task: BaseModel | Mapping[str, Any]) -> BaseModel:
-        if isinstance(task, BaseModel):
-            user_content = task.model_dump_json()
-        else:
-            user_content = json.dumps(dict(task), ensure_ascii=True, sort_keys=True)
-        messages = [
-            ("system", self.system_prompt),
-            ("user", user_content),
-        ]
-        if hasattr(self.structured_model, "ainvoke"):
-            result = await self.structured_model.ainvoke(messages)
-        else:
-            result = await asyncio.to_thread(self.structured_model.invoke, messages)
-        return self.output_schema.model_validate(result)
-
-
-def create_structured_role_agent(
-    *,
-    model: Any,
-    system_prompt: str,
-    output_schema: type[BaseModel],
-) -> StructuredRoleAgent:
-    if not hasattr(model, "with_structured_output"):
-        raise TypeError("structured role model must support with_structured_output")
-    structured_model = model.with_structured_output(output_schema)
-    return StructuredRoleAgent(
-        structured_model=structured_model,
-        system_prompt=system_prompt,
-        output_schema=output_schema,
-    )
-
-
-def create_tool_role_agent(
-    *,
-    model: Any,
-    system_prompt: str,
-    tools: Sequence[Any],
-    allowed_tool_names: Sequence[str],
-    output_schema: type[BaseModel],
-    agent_factory: RoleAgentFactory | None = None,
-) -> Any:
-    allowed = frozenset(allowed_tool_names)
-    actual = tuple(getattr(tool, "name", None) for tool in tools)
-    if any(not isinstance(name, str) or name not in allowed for name in actual):
-        raise ValueError("tool_not_allowed_for_role")
-    if len(set(actual)) != len(actual):
-        raise ValueError("duplicate_role_tool")
-    factory = agent_factory or _default_role_agent_factory
-    return factory(
-        model=model,
-        tools=list(tools),
-        system_prompt=system_prompt,
-        response_format=output_schema,
-    )
-
-
 @dataclass(frozen=True, slots=True)
 class AgentModelRegistry:
     clients: Mapping[AgentId, ChatModelClientProtocol]
@@ -195,41 +140,51 @@ class LangChainGraphChatClient:
         return result.text
 
     async def stream_complete(self, *, user_message: str, system_prompt: str | None = None) -> AsyncIterator[str]:
-        saw_text = False
-        try:
-            async for chunk in self._stream_model(
-                user_message=user_message,
-                system_prompt=system_prompt,
-            ):
-                text = _extract_stream_text(chunk)
-                if not text:
-                    continue
-                saw_text = True
-                yield text
-        except ImportError as exc:
-            raise ChatModelError(
-                "LangChain dependency is not installed.",
-                code="dependency_missing",
-            ) from exc
-        except TimeoutError as exc:
-            raise classify_chat_model_exception(exc) from exc
-        except Exception as exc:
-            error = classify_chat_model_exception(exc)
-            if self._should_retry_with_bearer_auth(error):
-                async for chunk in self._retry_with_bearer_auth().stream_complete(
+        retry_attempts = _bounded_retry_attempts(get_settings().tuning_chat_retry_attempts)
+        backoff_seconds = max(0.0, get_settings().tuning_chat_retry_backoff_seconds)
+        attempt = 0
+        while True:
+            saw_text = False
+            try:
+                async for chunk in self._stream_model(
                     user_message=user_message,
                     system_prompt=system_prompt,
                 ):
+                    text = _extract_stream_text(chunk)
+                    if not text:
+                        continue
                     saw_text = True
-                    yield chunk
-                return
-            raise error from exc
+                    yield text
+            except ImportError as exc:
+                raise ChatModelError(
+                    "LangChain dependency is not installed.",
+                    code="dependency_missing",
+                ) from exc
+            except Exception as exc:
+                if isinstance(exc, ChatModelError):
+                    raise exc
+                error = classify_chat_model_exception(exc)
+                if self._should_retry_with_bearer_auth(error) and not saw_text:
+                    async for chunk in self._retry_with_bearer_auth().stream_complete(
+                        user_message=user_message,
+                        system_prompt=system_prompt,
+                    ):
+                        saw_text = True
+                        yield chunk
+                    return
+                # 流式仅在尚未产出任何文本时重试，避免把半截回答重复发给用户。
+                if attempt < retry_attempts and not saw_text and error.code in _RETRYABLE_ERROR_CODES:
+                    attempt += 1
+                    await asyncio.sleep(backoff_seconds * (2 ** (attempt - 1)))
+                    continue
+                raise error from exc
 
-        if not saw_text:
-            raise ChatModelError(
-                "Model returned an empty response.",
-                code="empty_response",
-            )
+            if not saw_text:
+                raise ChatModelError(
+                    "Model returned an empty response.",
+                    code="empty_response",
+                )
+            return
 
     async def complete_with_tools(
         self,
@@ -238,33 +193,41 @@ class LangChainGraphChatClient:
         system_prompt: str | None = None,
         tools: Sequence[Any] = (),
     ) -> ChatModelRunResult:
-        try:
-            result = await asyncio.wait_for(
-                self._invoke_agent(
-                    user_message=user_message,
-                    system_prompt=system_prompt,
-                    tools=tools,
-                ),
-                timeout=max(self.timeout_seconds, 0.001),
-            )
-        except ImportError as exc:
-            raise ChatModelError(
-                "LangChain 依赖未安装，请先安装后端依赖。",
-                code="dependency_missing",
-            ) from exc
-        except TimeoutError as exc:
-            raise classify_chat_model_exception(exc) from exc
-        except Exception as exc:
-            error = classify_chat_model_exception(exc)
-            if self._should_retry_with_bearer_auth(error):
-                return await self._retry_with_bearer_auth().complete_with_tools(
-                    user_message=user_message,
-                    system_prompt=system_prompt,
-                    tools=tools,
+        retry_attempts = _bounded_retry_attempts(get_settings().tuning_chat_retry_attempts)
+        backoff_seconds = max(0.0, get_settings().tuning_chat_retry_backoff_seconds)
+        attempt = 0
+        while True:
+            try:
+                result = await asyncio.wait_for(
+                    self._invoke_agent(
+                        user_message=user_message,
+                        system_prompt=system_prompt,
+                        tools=tools,
+                    ),
+                    timeout=max(self.timeout_seconds, 0.001),
                 )
-            raise error from exc
-
-        return ChatModelRunResult(text=_extract_text(result), raw_result=result)
+                return ChatModelRunResult(text=_extract_text(result), raw_result=result)
+            except ImportError as exc:
+                raise ChatModelError(
+                    "LangChain 依赖未安装，请先安装后端依赖。",
+                    code="dependency_missing",
+                ) from exc
+            except Exception as exc:
+                # 已分类的业务错误（如 empty_response）直接透传，不再二次分类。
+                if isinstance(exc, ChatModelError):
+                    raise exc
+                error = classify_chat_model_exception(exc)
+                if self._should_retry_with_bearer_auth(error):
+                    return await self._retry_with_bearer_auth().complete_with_tools(
+                        user_message=user_message,
+                        system_prompt=system_prompt,
+                        tools=tools,
+                    )
+                if attempt < retry_attempts and error.code in _RETRYABLE_ERROR_CODES:
+                    attempt += 1
+                    await asyncio.sleep(backoff_seconds * (2 ** (attempt - 1)))
+                    continue
+                raise error from exc
 
     def _should_retry_with_bearer_auth(self, error: ChatModelError) -> bool:
         return (
@@ -304,9 +267,18 @@ class LangChainGraphChatClient:
         if hasattr(model, "astream"):
             stream = model.astream(messages)
             iterator = stream.__aiter__()
-            deadline = asyncio.get_running_loop().time() + max(self.timeout_seconds, 0.001)
+            # Streaming budget is an inactivity budget, not a total-duration
+            # budget: the first token must arrive within timeout_seconds and
+            # each following token within the same gap after the previous one.
+            # A steady long answer streams to completion instead of dying at
+            # the 30s mark; the total cap only bounds endless token dribbling.
+            timeout = max(self.timeout_seconds, 0.001)
+            total_deadline = asyncio.get_running_loop().time() + max(
+                timeout * _STREAM_TOTAL_TIMEOUT_MULTIPLIER,
+                timeout,
+            )
             while True:
-                remaining = deadline - asyncio.get_running_loop().time()
+                remaining = min(timeout, total_deadline - asyncio.get_running_loop().time())
                 if remaining <= 0:
                     raise TimeoutError("chat model streaming timed out")
                 try:
@@ -371,23 +343,6 @@ def _default_agent_factory(model: Any, system_prompt: str | None, tools: Sequenc
         model=model,
         tools=list(tools),
         system_prompt=system_prompt,
-    )
-
-
-def _default_role_agent_factory(
-    *,
-    model: Any,
-    tools: Sequence[Any],
-    system_prompt: str,
-    response_format: type[BaseModel],
-) -> Any:
-    from langchain.agents import create_agent
-
-    return create_agent(
-        model=model,
-        tools=list(tools),
-        system_prompt=system_prompt,
-        response_format=response_format,
     )
 
 

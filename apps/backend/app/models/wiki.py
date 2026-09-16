@@ -10,7 +10,7 @@ from .memory import MemorySearchResult
 class WikiPageWriteRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
     title: str = Field(min_length=1); content: str = Field(min_length=1); operation: Literal["create", "append", "replace_section"] = "append"; target_path: str | None = None; section: str | None = None; tags: list[str] = Field(default_factory=list); links: list[str] = Field(default_factory=list); source_message_id: str | None = None; page_type: str | None = Field(default=None, alias="type"); confidence: str | None = None; expiry: str | None = None; authors: list[str] = Field(default_factory=list); contributors: list[str] = Field(default_factory=list); disputed: bool = False; aliases: list[str] = Field(default_factory=list); sources: list[str] = Field(default_factory=list)
-    wiki_id: str | None = None; entity_ids: list[str] = Field(default_factory=list); fact_ids: list[str] = Field(default_factory=list); evidence_ids: list[str] = Field(default_factory=list); revision: int = Field(default=1, ge=1); inference: bool = False; updated_at: str | None = None
+    wiki_id: str | None = None; entity_ids: list[str] = Field(default_factory=list); fact_ids: list[str] = Field(default_factory=list); evidence_ids: list[str] = Field(default_factory=list); revision: int = Field(default=1, ge=1); inference: bool = False; updated_at: str | None = None; target_content_hash: str | None = None
 
 
 class WikiPageResponse(BaseModel):

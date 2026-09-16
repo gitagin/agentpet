@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from langchain_core.tools import StructuredTool
 
 from app.models.api import MemorySearchResponse
@@ -13,6 +15,8 @@ from ..semantic import _fallback_semantic_analysis
 from .compression import filter_search_response
 
 # 从 graph_runtime.py 迁移，原函数名：_select_retrieval_entry_node, _effective_retrieval_source_scope, _retrieval_query, _semantic_from_memory_route, _source_scope_from_memory_route, _memory_aggregation_scopes, _force_search_memory_source_scope, _source_scope_from_prompt, _context_source_weight, _context_source_scope, _source_scope_label, _stage_for_source_scope
+
+logger = logging.getLogger(__name__)
 
 
 def _select_retrieval_entry_node(graph_state: dict[str, object]) -> str:
@@ -42,14 +46,6 @@ def _select_retrieval_entry_node(graph_state: dict[str, object]) -> str:
 def _effective_retrieval_source_scope(state: AgentState, semantic: SemanticAnalysisResult) -> str:
     if state.route and state.route.intent == AgentIntent.SEARCH_MEMORY and semantic.source_scope == "none":
         return "all"
-    if (
-        state.route
-        and state.route.intent == AgentIntent.SEARCH_MEMORY
-        and semantic.source_scope == "knowledge_base"
-        and state.memory_route is not None
-        and semantic.reason == state.memory_route.reason
-    ):
-        return "all"
     return semantic.source_scope
 
 
@@ -69,7 +65,7 @@ def _retrieval_top_k_for_state(state: AgentState) -> int:
 
 def _semantic_from_memory_route(route: MemoryRoute, state: AgentState) -> SemanticAnalysisResult:
     source_scope = _source_scope_from_memory_route(route)
-    if state.route and state.route.intent == AgentIntent.SEARCH_MEMORY and source_scope in {"none", "knowledge_base"}:
+    if state.route and state.route.intent == AgentIntent.SEARCH_MEMORY and source_scope == "none":
         source_scope = "all"
     return SemanticAnalysisResult(
         needs_context=source_scope != "none",
@@ -85,6 +81,8 @@ def _source_scope_from_memory_route(route: MemoryRoute) -> str:
     scopes = route.all_scopes
     if not scopes or scopes == ("none",):
         return "none"
+    if not route.primary_scopes:
+        return route.legacy_source_scope
     first = route.primary_scopes[0] if route.primary_scopes else scopes[0]
     if first == "graph_facts":
         return "personal_memory" if len(scopes) == 1 else route.legacy_source_scope
@@ -119,14 +117,35 @@ def _force_search_memory_source_scope(
     tools: list[StructuredTool],
     system_prompt: str,
     *,
+    forced_source_scope: str | None = None,
     forced_top_k: int | None = None,
 ) -> list[StructuredTool]:
-    source_scope = _source_scope_from_prompt(system_prompt)
+    """Force the retrieval scope onto search_memory.
+
+    Prefer the structured `forced_source_scope` passed by the caller; parsing the
+    scope back out of the prompt text is only a legacy fallback (the prompt is
+    presentation, so re-parsing it couples wording to enforcement).
+    """
+    source_scope = forced_source_scope
+    if source_scope is None:
+        source_scope = _source_scope_from_prompt(system_prompt)
     return _guard_search_memory_tools(
         tools,
         forced_source_scope=source_scope,
         forced_top_k=forced_top_k,
     )
+
+
+def _enforceable_source_scope(value: str | None) -> str | None:
+    """The scope a tool call must use, or None when this turn decided nothing.
+
+    "none" is a decision about retrieval, not a searchable scope, so it is never
+    forwarded as a tool argument; the guard reports the resulting free choice
+    instead of pretending a constraint is in force.
+    """
+    if value in {"personal_memory", "diary_objects", "daily_chat", "knowledge_base", "all"}:
+        return value
+    return None
 
 
 def _guard_search_memory_tools(
@@ -141,7 +160,14 @@ def _guard_search_memory_tools(
             wrapped.append(tool)
             continue
 
-        forced_scope = forced_source_scope
+        forced_scope = _enforceable_source_scope(forced_source_scope)
+        if forced_scope is None:
+            # 没有可执行的范围决定时,搜索范围由模型自选(缺省 all)。这条曾经是静默的:
+            # 调用方没给结构化范围、提示词又反解析不出来时,约束就没了,而日志里看不出
+            # 任何异常。宁可吵一点,也不要"以为在管、其实没管"。
+            logger.warning(
+                "search_memory is called without an enforced source scope; the model chooses it"
+            )
 
         async def search_memory_with_scope(
             query: str,

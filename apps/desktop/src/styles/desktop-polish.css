@@ -9393,6 +9393,124 @@ body[data-window-mode="growth"] .growth-page-stack > * {
   line-height: 1.55;
 }
 
+.control-reflection-panel {
+  display: grid;
+  gap: 8px;
+  padding: 12px 13px;
+  border: 1px solid rgba(120, 199, 189, 0.22);
+  border-radius: 14px;
+  background: rgba(120, 199, 189, 0.06);
+}
+
+.control-reflection-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.control-reflection-head strong {
+  color: var(--home-ink);
+  font-size: 13px;
+}
+
+.control-reflection-count {
+  min-width: 22px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(120, 199, 189, 0.18);
+  color: var(--home-teal);
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.control-reflection-empty,
+.control-reflection-note {
+  margin: 0;
+  color: var(--home-soft);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.control-reflection-empty.is-error {
+  color: #e8a1a1;
+}
+
+.control-reflection-note {
+  font-size: 11px;
+  opacity: 0.85;
+}
+
+.control-reflection-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.control-reflection-item {
+  display: grid;
+  gap: 6px;
+  padding: 9px 10px;
+  border: 1px solid rgba(120, 199, 189, 0.16);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.control-reflection-item p {
+  margin: 0;
+  color: var(--home-ink);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.control-reflection-item.is-failed {
+  border-color: rgba(226, 138, 106, 0.34);
+}
+
+.control-reflection-item p.control-reflection-failure {
+  color: rgb(226, 138, 106);
+  font-size: 11px;
+}
+
+.control-reflection-kind {
+  justify-self: start;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(120, 199, 189, 0.14);
+  color: var(--home-teal);
+  font-size: 10px;
+}
+
+.control-reflection-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.control-reflection-actions button {
+  flex: 1;
+  padding: 5px 8px;
+  border: 1px solid rgba(120, 199, 189, 0.3);
+  border-radius: 9px;
+  background: rgba(120, 199, 189, 0.16);
+  color: var(--home-ink);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.control-reflection-actions button.is-secondary {
+  background: transparent;
+  color: var(--home-soft);
+}
+
+.control-reflection-actions button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 @media (max-width: 1100px), (max-height: 720px) {
   .control-home-shell {
     --home-shell-x: 10px;
@@ -13098,7 +13216,7 @@ body[data-window-mode="world"] #wiki-workflow-panel textarea:focus {
 /* Give the standalone world route its own reliable scroll owner. */
 body[data-window-mode="world"] .world-route-content {
   display: block !important;
-  height: 100% !important;
+  height: auto !important;
   min-height: 0 !important;
   max-height: none !important;
   overflow: hidden !important;
@@ -13641,8 +13759,8 @@ body[data-window-mode="world"] .feature-shell > .feature-window-content.world-ro
   overflow-x: hidden !important;
   overflow-y: auto !important;
   overscroll-behavior: contain;
-  padding: 0 4px 24px !important;
-  scroll-padding-bottom: 24px;
+  padding: 0 4px 92px !important;
+  scroll-padding-bottom: 92px;
   scrollbar-gutter: stable;
   scrollbar-width: thin;
   scrollbar-color: rgba(120, 199, 189, 0.62) transparent;
@@ -13667,7 +13785,8 @@ body[data-window-mode="world"] .feature-shell > .bottom-nav {
   z-index: 20 !important;
   display: block !important;
   width: 100% !important;
-  min-height: 60px !important;
+  min-height: 62px !important;
+  margin-top: 0 !important;
   transform: none !important;
   visibility: visible !important;
   opacity: 1 !important;
@@ -13688,4 +13807,721 @@ body[data-window-mode="world"] .feature-shell > .feature-window-content.world-ro
   border-radius: 999px;
   background: rgba(120, 199, 189, 0.62);
   background-clip: padding-box;
+}
+
+/* Final world-route color contract: graphite is the surface, teal is the
+   primary system color, and rose is reserved for secondary actions. */
+body[data-window-mode="world"] .feature-shell {
+  --world-bg: #111214;
+  --world-surface: #171a1d;
+  --world-surface-soft: #1b2022;
+  --world-teal: #78c7bd;
+  --world-teal-strong: #9de1d8;
+  --world-teal-muted: rgba(120, 199, 189, 0.16);
+  --world-rose: #d56f8a;
+  --world-rose-muted: rgba(213, 111, 138, 0.1);
+  background: var(--world-bg) !important;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel > .panel-title svg {
+  background: var(--world-teal-muted) !important;
+  color: var(--world-teal) !important;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel > .panel-title h2 {
+  color: #f3f0f2 !important;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-daily-primary,
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-daily-preview {
+  border-color: rgba(120, 199, 189, 0.24) !important;
+  background: var(--world-surface) !important;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-daily-primary {
+  border-color: rgba(120, 199, 189, 0.34) !important;
+  background: linear-gradient(180deg, rgba(120, 199, 189, 0.08), rgba(17, 18, 20, 0.12) 42%), var(--world-surface) !important;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-flow-steps span {
+  border-color: rgba(120, 199, 189, 0.26) !important;
+  background: rgba(120, 199, 189, 0.08) !important;
+  color: rgba(228, 255, 251, 0.84) !important;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-target-type-button {
+  border-color: rgba(120, 199, 189, 0.2) !important;
+  background: var(--world-surface-soft) !important;
+  color: rgba(236, 247, 245, 0.86) !important;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-target-type-button:hover,
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-target-type-button.active {
+  border-color: var(--world-teal) !important;
+  background: rgba(120, 199, 189, 0.16) !important;
+  color: #e4fffb !important;
+  box-shadow: inset 0 0 0 1px rgba(120, 199, 189, 0.2) !important;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-target-type-button.active span {
+  color: rgba(228, 255, 251, 0.76) !important;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel input,
+body[data-window-mode="world"] #wiki-workflow-panel textarea {
+  border-color: rgba(120, 199, 189, 0.22) !important;
+  background: #101416 !important;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel input:focus,
+body[data-window-mode="world"] #wiki-workflow-panel textarea:focus {
+  border-color: var(--world-teal) !important;
+  box-shadow: 0 0 0 3px rgba(120, 199, 189, 0.14) !important;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .button-row button:not(.secondary) {
+  border-color: rgba(120, 199, 189, 0.7) !important;
+  background: var(--world-teal) !important;
+  color: #101416 !important;
+  box-shadow: 0 8px 20px rgba(120, 199, 189, 0.18) !important;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .button-row button:not(.secondary):hover:not(:disabled) {
+  border-color: var(--world-teal-strong) !important;
+  background: var(--world-teal-strong) !important;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .button-row button.secondary {
+  border-color: rgba(213, 111, 138, 0.42) !important;
+  background: var(--world-rose-muted) !important;
+  color: #f0a0b5 !important;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .advanced-vault-maintenance {
+  border-color: rgba(120, 199, 189, 0.2) !important;
+  background: rgba(120, 199, 189, 0.035) !important;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .advanced-vault-maintenance > summary,
+body[data-window-mode="world"] #wiki-workflow-panel .advanced-vault-maintenance[open] > summary {
+  border-color: rgba(120, 199, 189, 0.18) !important;
+  background: rgba(120, 199, 189, 0.055) !important;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .advanced-vault-maintenance > summary strong {
+  color: #e4fffb !important;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .advanced-vault-maintenance > summary span {
+  color: #9eabad !important;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .advanced-vault-maintenance .button-row button {
+  border-color: rgba(120, 199, 189, 0.28) !important;
+  background: rgba(120, 199, 189, 0.08) !important;
+  color: #c7e9e4 !important;
+  box-shadow: none !important;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .advanced-vault-maintenance .button-row button:hover:not(:disabled) {
+  border-color: rgba(120, 199, 189, 0.62) !important;
+  background: rgba(120, 199, 189, 0.16) !important;
+  color: #e4fffb !important;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .advanced-vault-maintenance .button-row .wiki-advanced-apply-button {
+  border-color: rgba(120, 199, 189, 0.72) !important;
+  background: var(--world-teal) !important;
+  color: #101416 !important;
+  box-shadow: 0 8px 20px rgba(120, 199, 189, 0.16) !important;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .advanced-vault-maintenance .button-row .wiki-advanced-apply-button:hover:not(:disabled) {
+  border-color: var(--world-teal-strong) !important;
+  background: var(--world-teal-strong) !important;
+  color: #101416 !important;
+}
+
+/* Daily and advanced wiki flows: apply is the primary commit action; preview stays
+   secondary. Both preview buttons share one rose accent so the advanced row does not
+   keep a class name without any rule behind it. */
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-daily-primary .wiki-preview-button,
+body[data-window-mode="world"] #wiki-workflow-panel .advanced-vault-maintenance .button-row .wiki-advanced-preview-button {
+  border-color: rgba(213, 111, 138, 0.58) !important;
+  background: var(--world-rose-muted) !important;
+  color: #ffdce5 !important;
+  box-shadow: 0 8px 20px rgba(213, 111, 138, 0.14) !important;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-daily-primary .wiki-preview-button:hover:not(:disabled),
+body[data-window-mode="world"] #wiki-workflow-panel .advanced-vault-maintenance .button-row .wiki-advanced-preview-button:hover:not(:disabled) {
+  border-color: var(--world-rose) !important;
+  background: rgba(213, 111, 138, 0.28) !important;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-daily-primary .wiki-apply-button {
+  border-color: rgba(120, 199, 189, 0.7) !important;
+  background: var(--world-teal) !important;
+  color: #101416 !important;
+  box-shadow: 0 8px 20px rgba(120, 199, 189, 0.18) !important;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-daily-primary .wiki-apply-button:hover:not(:disabled) {
+  border-color: var(--world-teal-strong) !important;
+  background: var(--world-teal-strong) !important;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-apply-summary {
+  gap: 6px;
+  margin-top: 2px;
+  border: 1px solid rgba(120, 199, 189, 0.24) !important;
+  border-left: 3px solid var(--world-teal) !important;
+  border-radius: 8px;
+  background: rgba(120, 199, 189, 0.07) !important;
+  padding: 11px 12px 12px !important;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-apply-summary strong {
+  color: var(--world-teal-strong) !important;
+  font-size: 12px;
+  letter-spacing: 0.01em;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-apply-summary span {
+  color: var(--feature-ink) !important;
+  line-height: 1.45;
+}
+
+/* Unified memory-window composition. The editor, preview and recent pages
+   share one dark surface language so the page reads as a single workspace. */
+body[data-window-mode="world"] #wiki-workflow-panel,
+body[data-window-mode="world"] #wiki-browser-panel {
+  color: #f3f0f2;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-daily-flow {
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+  gap: 18px;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-daily-primary,
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-daily-preview {
+  min-width: 0;
+  border-radius: 10px;
+  padding: 18px;
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.16) !important;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-daily-preview {
+  align-content: stretch;
+  min-height: 100%;
+  background: linear-gradient(180deg, rgba(120, 199, 189, 0.045), rgba(17, 18, 20, 0.08) 42%), var(--world-surface) !important;
+}
+
+/* Remove legacy rose wash from the main editing surface. Rose is reserved
+   for the explicit preview action, never for the page background or choices. */
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-daily-primary {
+  border-color: rgba(120, 199, 189, 0.34) !important;
+  background: linear-gradient(180deg, rgba(120, 199, 189, 0.08), rgba(17, 18, 20, 0.12) 42%), var(--world-surface) !important;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-target-type-button,
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-target-type-button:hover,
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-target-type-button.active {
+  border-color: rgba(120, 199, 189, 0.24) !important;
+  background: var(--world-surface-soft) !important;
+  color: rgba(236, 247, 245, 0.9) !important;
+  box-shadow: none !important;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-target-type-button:hover {
+  border-color: rgba(120, 199, 189, 0.5) !important;
+  background: rgba(120, 199, 189, 0.08) !important;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-target-type-button.active {
+  border-color: var(--world-teal) !important;
+  background: rgba(120, 199, 189, 0.16) !important;
+  box-shadow: inset 0 0 0 1px rgba(120, 199, 189, 0.18) !important;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-target-type-button.active span,
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-target-type-button:hover span {
+  color: rgba(228, 255, 251, 0.76) !important;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-daily-primary .section-heading,
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-daily-preview .section-heading,
+body[data-window-mode="world"] #wiki-browser-panel .section-heading {
+  gap: 5px;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-daily-primary .section-heading strong,
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-daily-preview .section-heading strong,
+body[data-window-mode="world"] #wiki-browser-panel .section-heading strong {
+  color: #f3f0f2 !important;
+  font-size: 14px;
+  letter-spacing: 0;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-daily-primary .section-heading span,
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-daily-preview .section-heading span,
+body[data-window-mode="world"] #wiki-browser-panel .section-heading span {
+  color: #9eabad !important;
+  line-height: 1.45;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-preview-overview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid rgba(120, 199, 189, 0.2);
+  border-radius: 9px;
+  background: rgba(120, 199, 189, 0.06);
+  padding: 11px 12px;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-preview-overview > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-preview-overview strong {
+  color: #e4fffb;
+  font-size: 13px;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-preview-overview div span {
+  color: #9bb8b5;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-preview-overview-mark,
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-preview-empty-icon,
+body[data-window-mode="world"] #wiki-browser-panel .wiki-empty-pages-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(120, 199, 189, 0.28);
+  border-radius: 8px;
+  background: rgba(120, 199, 189, 0.1);
+  color: var(--world-teal-strong);
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-preview-plan-list {
+  gap: 8px;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-preview-plan-card {
+  gap: 5px;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  border-radius: 9px;
+  background: rgba(9, 12, 13, 0.52) !important;
+  padding: 11px 12px;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-preview-plan-card strong {
+  color: #f3f0f2 !important;
+  font-size: 13px;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-preview-plan-card span,
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-preview-plan-card small {
+  color: #9eabad !important;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-preview-empty,
+body[data-window-mode="world"] #wiki-browser-panel .wiki-empty-pages {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 156px;
+  border: 1px dashed rgba(120, 199, 189, 0.24);
+  border-radius: 10px;
+  background: rgba(9, 12, 13, 0.34);
+  padding: 16px;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-preview-empty > div,
+body[data-window-mode="world"] #wiki-browser-panel .wiki-empty-pages > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-preview-empty strong,
+body[data-window-mode="world"] #wiki-browser-panel .wiki-empty-pages strong {
+  color: #e8f2f0;
+  font-size: 13px;
+}
+
+body[data-window-mode="world"] #wiki-workflow-panel .wiki-preview-empty span:not(.wiki-preview-empty-icon),
+body[data-window-mode="world"] #wiki-browser-panel .wiki-empty-pages span:not(.wiki-empty-pages-icon) {
+  color: #9eabad;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel {
+  margin-top: 18px;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel > .panel-title svg {
+  background: var(--world-teal-muted) !important;
+  color: var(--world-teal) !important;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel > .panel-title h2 {
+  color: #f3f0f2 !important;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-browser-shell {
+  gap: 18px;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-recent-output {
+  gap: 14px;
+  border: 1px solid rgba(120, 199, 189, 0.22);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(120, 199, 189, 0.05), rgba(17, 18, 20, 0.08) 38%), var(--world-surface);
+  padding: 18px;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-readiness-banner {
+  border-radius: 9px;
+  background: rgba(120, 199, 189, 0.07) !important;
+  border-color: rgba(120, 199, 189, 0.24) !important;
+  padding: 11px 12px;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-readiness-banner.error {
+  border-color: rgba(213, 111, 138, 0.42) !important;
+  background: rgba(213, 111, 138, 0.09) !important;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-readiness-banner strong {
+  color: #e4fffb !important;
+  font-size: 13px;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-readiness-banner span {
+  color: #a5b5b4 !important;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-recent-actions {
+  margin-top: -2px;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-snippet-button {
+  border-color: rgba(120, 199, 189, 0.7) !important;
+  background: var(--world-teal) !important;
+  color: #101416 !important;
+  box-shadow: 0 8px 20px rgba(120, 199, 189, 0.16) !important;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-snippet-button:hover:not(:disabled) {
+  border-color: var(--world-teal-strong) !important;
+  background: var(--world-teal-strong) !important;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-recent-page-grid {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 10px;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-page-card {
+  gap: 10px;
+  border-color: rgba(120, 199, 189, 0.2) !important;
+  border-radius: 9px;
+  background: rgba(9, 12, 13, 0.52) !important;
+  padding: 13px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-page-card-head svg {
+  color: var(--world-teal) !important;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-page-card-head strong {
+  color: #f3f0f2 !important;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-page-card-head small,
+body[data-window-mode="world"] #wiki-browser-panel .wiki-page-card p,
+body[data-window-mode="world"] #wiki-browser-panel .wiki-page-card-meta dd {
+  color: #a5b5b4 !important;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-page-card-meta dt {
+  color: #718582 !important;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-browser-maintenance {
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.025) !important;
+  padding: 0;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-browser-maintenance summary {
+  padding: 14px 16px;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-browser-maintenance summary strong {
+  color: #f3f0f2 !important;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-browser-maintenance summary span {
+  color: #98a6a7 !important;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-browser-maintenance[open] summary {
+  border-bottom-color: rgba(120, 199, 189, 0.16) !important;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-browser-maintenance[open] > section {
+  padding: 0 16px 16px;
+}
+
+@media (max-width: 860px) {
+  body[data-window-mode="world"] #wiki-workflow-panel .wiki-daily-flow {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Maintenance drawer: use the same graphite/teal language as the main flow. */
+body[data-window-mode="world"] #wiki-browser-panel .wiki-browser-maintenance,
+body[data-window-mode="world"] #wiki-browser-panel .wiki-browser-maintenance[open] {
+  display: grid;
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid rgba(120, 199, 189, 0.2) !important;
+  background: #15191b !important;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-browser-maintenance > summary {
+  min-height: 54px;
+  box-sizing: border-box;
+  padding: 12px 16px !important;
+  border: 0 !important;
+  background: rgba(120, 199, 189, 0.055) !important;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-browser-maintenance > summary strong {
+  color: #e4fffb !important;
+  font-size: 13px;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-browser-maintenance > summary span {
+  color: #9eabad !important;
+  line-height: 1.4;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-browser-maintenance[open] > summary {
+  border-bottom: 1px solid rgba(120, 199, 189, 0.16) !important;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-browser-maintenance > section {
+  display: grid;
+  gap: 12px;
+  margin: 0 !important;
+  padding: 16px !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  background: #15191b !important;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-browser-maintenance > section:first-of-type {
+  border-top: 0;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-browser-maintenance .section-heading {
+  gap: 4px;
+  padding-bottom: 2px;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-browser-maintenance .section-heading strong {
+  color: #f3f0f2 !important;
+  font-size: 13px;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-browser-maintenance .section-heading span {
+  color: #98a6a7 !important;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-browser-status-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-browser-status-grid > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: #101416;
+  padding: 9px 10px;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-browser-status-grid dt {
+  color: #718582 !important;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-browser-status-grid dd {
+  margin: 0;
+  color: #d6e4e1 !important;
+  font-size: 12px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-browser-maintenance .button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-browser-maintenance .button-row button,
+body[data-window-mode="world"] #wiki-browser-panel .wiki-browser-maintenance .button-row button.secondary {
+  min-height: 34px;
+  border: 1px solid rgba(120, 199, 189, 0.3) !important;
+  border-radius: 7px;
+  background: rgba(120, 199, 189, 0.08) !important;
+  color: #c7e9e4 !important;
+  box-shadow: none !important;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-browser-maintenance .button-row button:hover:not(:disabled),
+body[data-window-mode="world"] #wiki-browser-panel .wiki-browser-maintenance .button-row button.secondary:hover:not(:disabled) {
+  border-color: rgba(120, 199, 189, 0.68) !important;
+  background: rgba(120, 199, 189, 0.16) !important;
+  color: #e4fffb !important;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-browser-maintenance .field-note {
+  margin: 0;
+  color: #9eabad !important;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-browser-maintenance .field-note.error {
+  border-left: 2px solid var(--world-rose) !important;
+  background: rgba(213, 111, 138, 0.07) !important;
+  color: #f0b6c4 !important;
+  padding: 8px 10px;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-browser-list {
+  display: grid;
+  gap: 8px;
+  max-height: 240px;
+  overflow: auto;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-browser-item {
+  display: grid;
+  gap: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 8px;
+  background: #101416 !important;
+  padding: 10px 11px;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-browser-item strong {
+  color: #e4fffb !important;
+  font-size: 12px;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-browser-item span,
+body[data-window-mode="world"] #wiki-browser-panel .wiki-browser-item small {
+  color: #9eabad !important;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-browser-events {
+  display: grid;
+  gap: 6px;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-browser-events > span {
+  display: block;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 7px;
+  background: #101416 !important;
+  color: #aab7b6 !important;
+  padding: 8px 10px;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-browser-events > span strong {
+  color: #c7e9e4 !important;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-browser-events > span.error {
+  border-color: rgba(213, 111, 138, 0.34) !important;
+  background: rgba(213, 111, 138, 0.07) !important;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-archive-history-list {
+  display: grid;
+  gap: 8px;
+  max-height: 260px;
+  overflow: auto;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-archive-history-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(120px, 0.7fr) auto;
+  gap: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 8px;
+  background: #101416 !important;
+  padding: 10px;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-archive-history-main strong {
+  color: #e4fffb !important;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-archive-history-main span,
+body[data-window-mode="world"] #wiki-browser-panel .wiki-archive-history-main small,
+body[data-window-mode="world"] #wiki-browser-panel .wiki-archive-history-item p {
+  color: #9eabad !important;
+}
+
+body[data-window-mode="world"] #wiki-browser-panel .wiki-archive-history-item button,
+body[data-window-mode="world"] #wiki-browser-panel .wiki-archive-history-item button.secondary {
+  border-color: rgba(120, 199, 189, 0.3) !important;
+  background: rgba(120, 199, 189, 0.08) !important;
+  color: #c7e9e4 !important;
+}
+
+@media (max-width: 720px) {
+  body[data-window-mode="world"] #wiki-browser-panel .wiki-browser-status-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  body[data-window-mode="world"] #wiki-browser-panel .wiki-archive-history-item {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  body[data-window-mode="world"] #wiki-browser-panel .wiki-archive-history-item > p {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
 }

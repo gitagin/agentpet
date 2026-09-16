@@ -140,11 +140,13 @@ function ContinuityProposalActivityCard({ entry, busy, onAct }: ContinuityPropos
         <button
           type="button"
           className="secondary"
-          disabled={busy || proposal.status !== "pending"}
+          // 已自动确认的「下次接着聊」线程同样可拒绝:拒绝=撤销接续,
+          // 该话题从在场状态移除,后续对话不再注入(后端支持)。
+          disabled={busy || (proposal.status !== "pending" && !(isOpenThread && proposal.status === "confirmed"))}
           onClick={() => onAct(proposal.proposal_id, "reject")}
         >
-          <X size={16} />
-          {isOpenThread ? "不用记" : "不使用"}
+          {busy ? <Loader2 className="spin" size={16} /> : <X size={16} />}
+          {isOpenThread && proposal.status === "confirmed" ? "不再继续" : isOpenThread ? "不用记" : "不使用"}
         </button>
       </div>
     </article>

@@ -954,6 +954,21 @@ def test_reset_memory_state_preserves_model_task_vault_and_credentials(
         )
         conn.commit()
 
+        conn.execute(
+            """
+            INSERT INTO reflection_proposals (
+                id, proposal_hash, proposal_kind, action_type, target_ref,
+                content, confidence, reversible, status, created_at, updated_at
+            )
+            VALUES (
+                'reflection-memory-reset', 'reflection-hash-memory-reset', 'structured_memory',
+                'diary.structured_memory', NULL, 'test memory', 0.8, 1, 'pending',
+                datetime('now'), datetime('now')
+            )
+            """
+        )
+        conn.commit()
+
     credentials_dir = db_path.with_suffix(f"{db_path.suffix}.credentials")
     assert credentials_dir.exists()
 
@@ -967,6 +982,7 @@ def test_reset_memory_state_preserves_model_task_vault_and_credentials(
     assert response.json()["status"] == "memory_reset"
     assert response.json()["cleared_tables"]["messages"] == 1
     assert response.json()["cleared_tables"]["memory_graph_facts"] == 1
+    assert response.json()["cleared_tables"]["reflection_proposals"] == 1
     assert credentials_dir.exists()
     assert (vault / "Keep.md").exists()
 
@@ -977,6 +993,7 @@ def test_reset_memory_state_preserves_model_task_vault_and_credentials(
         assert conn.execute("SELECT COUNT(*) FROM conversations").fetchone()[0] == 0
         assert conn.execute("SELECT COUNT(*) FROM messages").fetchone()[0] == 0
         assert conn.execute("SELECT COUNT(*) FROM memory_graph_facts").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM reflection_proposals").fetchone()[0] == 0
 
 
 def test_reset_local_state_clears_user_state_and_credentials(

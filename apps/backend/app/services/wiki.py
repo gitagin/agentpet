@@ -33,6 +33,10 @@ WIKI_SCHEMA_PATH = f"{WIKI_ROOT}/AGENTS.md"
 WIKI_INDEX_PATH = f"{WIKI_ROOT}/index.md"
 WIKI_LOG_PATH = f"{WIKI_ROOT}/log.md"
 WIKI_CORE_PATHS = {WIKI_SCHEMA_PATH, WIKI_INDEX_PATH, WIKI_LOG_PATH}
+# 预览时目标页面还不存在：确认/应用之间若有外部写入，同样按冲突停止。
+WIKI_TARGET_ABSENT_HASH = "absent"
+
+
 @dataclass(frozen=True)
 class _GraphPage:
     title: str
@@ -47,6 +51,20 @@ class WikiWriteError(Exception):
     def __init__(self, message: str, *, reason: str | None = None) -> None:
         self.reason = reason
         super().__init__(message)
+
+
+class WikiConflictError(WikiWriteError):
+    """目标页面在预览/规划后被外部修改，写入已停止。"""
+
+    code = "wiki_page_conflict"
+
+    def __init__(self, relative_path: str, current_hash: str | None) -> None:
+        self.relative_path = relative_path
+        self.current_hash = current_hash
+        super().__init__(
+            "Wiki 页面在预览后已被外部修改。请查看差异并基于最新版本重试。",
+            reason="wiki_page_conflict",
+        )
 
 
 class SensitiveWikiRejectedError(Exception):
@@ -128,6 +146,13 @@ class WikiService:
             except (OSError, UnicodeDecodeError):
                 pass
         now = utc_now_iso()
+        if request.target_content_hash is not None:
+            current_hash = self.writer.current_hash(relative_path)
+            expected_absent = request.target_content_hash == WIKI_TARGET_ABSENT_HASH
+            if (expected_absent and current_hash is not None) or (
+                not expected_absent and current_hash != request.target_content_hash
+            ):
+                raise WikiConflictError(relative_path, current_hash)
         if existed:
             try:
                 existing_frontmatter = read_markdown(target).frontmatter

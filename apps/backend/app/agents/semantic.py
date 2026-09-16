@@ -6,6 +6,7 @@ from html import unescape
 
 from app.models.enums import AgentIntent
 
+from .memory_router import explicit_memory_read_scope
 from .runtime_helpers import _strip_search_command
 from .state import AgentState, ClassifierResult, SemanticAnalysisResult
 
@@ -19,15 +20,7 @@ def _parse_semantic_analysis(text: str, user_message: str) -> SemanticAnalysisRe
     result = SemanticAnalysisResult.model_validate(data)
     forced_scope = _forced_source_scope(user_message)
     if forced_scope is not None:
-        return result.model_copy(
-            update={
-                "needs_context": True,
-                "source_scope": forced_scope,
-                "query": user_message,
-                "answer_style": "grounded",
-                "reason": "forced_date_or_memory_scope",
-            }
-        )
+        return _semantic_with_forced_scope(result, user_message, forced_scope)
     if result.needs_context and not result.query.strip():
         return result.model_copy(update={"query": user_message})
     return result
@@ -41,6 +34,10 @@ def _parse_classifier_analysis(text: str, user_message: str) -> tuple[Classifier
 
     classifier = ClassifierResult.model_validate(data)
     semantic = _semantic_from_classifier(classifier, user_message)
+    forced_scope = _forced_source_scope(user_message)
+    if forced_scope is not None:
+        semantic = _semantic_with_forced_scope(semantic, user_message, forced_scope)
+        classifier = _classifier_from_semantic(semantic)
     return classifier, semantic
 
 
@@ -50,15 +47,7 @@ def _semantic_from_legacy_payload(data: dict[str, object], user_message: str) ->
     result = SemanticAnalysisResult.model_validate(data)
     forced_scope = _forced_source_scope(user_message)
     if forced_scope is not None:
-        return result.model_copy(
-            update={
-                "needs_context": True,
-                "source_scope": forced_scope,
-                "query": user_message,
-                "answer_style": "grounded",
-                "reason": "forced_date_or_memory_scope",
-            }
-        )
+        return _semantic_with_forced_scope(result, user_message, forced_scope)
     if result.needs_context and not result.query.strip():
         return result.model_copy(update={"query": user_message})
     return result
@@ -208,9 +197,28 @@ def _fallback_source_scope(message: str) -> str:
 
 
 def _forced_source_scope(message: str) -> str | None:
+    explicit_scope = explicit_memory_read_scope(message)
+    if explicit_scope is not None:
+        return explicit_scope
     if _is_daily_chat_date_recall(message):
         return "daily_chat"
     return None
+
+
+def _semantic_with_forced_scope(
+    semantic: SemanticAnalysisResult,
+    user_message: str,
+    source_scope: str,
+) -> SemanticAnalysisResult:
+    return semantic.model_copy(
+        update={
+            "needs_context": True,
+            "source_scope": source_scope,
+            "query": user_message,
+            "answer_style": "grounded",
+            "reason": "explicit_source_scope_constraint",
+        }
+    )
 
 
 def _is_daily_chat_date_recall(message: str) -> bool:

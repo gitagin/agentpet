@@ -309,7 +309,7 @@ body[data-window-mode="memory"] .feature-shell > .bottom-nav {
 }
 
 .llmwiki-workspace-tab.is-active {
-  border-bottom-color: var(--wiki-rose);
+  border-bottom-color: var(--wiki-teal);
   color: var(--wiki-warm);
 }
 
@@ -522,17 +522,17 @@ body[data-window-mode="memory"] .feature-shell > .bottom-nav {
 }
 
 .llmwiki-graph-node:focus-visible {
-  outline: 2px solid var(--wiki-rose);
+  outline: 2px solid var(--wiki-teal);
   outline-offset: 4px;
 }
 
 .llmwiki-react-flow .react-flow__edge:focus-visible {
-  outline: 2px solid var(--wiki-rose);
+  outline: 2px solid var(--wiki-teal);
   outline-offset: 3px;
 }
 
 .llmwiki-react-flow .react-flow__edge:focus-visible .react-flow__edge-path {
-  stroke: var(--wiki-rose);
+  stroke: var(--wiki-teal);
   stroke-width: 3;
 }
 
@@ -1515,4 +1515,521 @@ body[data-window-mode="memory"] .feature-shell > .bottom-nav {
 .maintenance-consolidation-result {
   color: var(--wiki-teal, #68B8AD);
   font-size: 12px;
+}
+
+/* Memory-only visual contract: graphite surfaces, teal actions, and a reserved nav-safe viewport. */
+body[data-window-mode="memory"] {
+  --memory-primary: #68B8AD;
+  --memory-primary-strong: #8ED6CC;
+  --memory-primary-soft: rgba(104, 184, 173, 0.12);
+  --memory-ink: #F2F4F3;
+  --memory-soft: #B2BEBC;
+  --memory-muted: #7E8E8B;
+  --memory-line: rgba(226, 240, 237, 0.11);
+  --memory-line-strong: rgba(226, 240, 237, 0.19);
+  --memory-surface: rgba(17, 20, 22, 0.88);
+  --memory-surface-strong: rgba(21, 25, 27, 0.96);
+  --memory-blue: #7CAFE0;
+  --memory-violet: #9B8FD8;
+  --memory-amber: #D4A56B;
+  --memory-green: #72C49C;
+  --memory-danger: #DE6B76;
+  --memory-danger-strong: #F2A3AA;
+  --memory-danger-soft: rgba(222, 107, 118, 0.12);
+  --color-primary: var(--memory-primary);
+  --color-primary-strong: var(--memory-primary-strong);
+  --color-primary-soft: var(--memory-primary-soft);
+  --color-primary-action: #3F8F86;
+  --color-primary-action-strong: #2F706A;
+  --color-danger: var(--memory-danger);
+  --color-danger-soft: var(--memory-danger-soft);
+  --color-danger-action: #A63F45;
+  --color-danger-action-strong: #7F2A32;
+  --focus-ring: var(--memory-primary-strong);
+  background: #0D0F10;
+  color: var(--memory-ink);
+}
+
+body[data-window-mode="memory"] .llmwiki-memory-shell {
+  --wiki-graphite: #0D0F10;
+  --wiki-graphite-soft: #15191B;
+  --wiki-warm: var(--memory-ink);
+  --wiki-muted: var(--memory-soft);
+  --wiki-subtle: var(--memory-muted);
+  --wiki-line: var(--memory-line);
+  --wiki-line-strong: var(--memory-line-strong);
+  --wiki-rose: var(--memory-violet);
+  --wiki-teal: var(--memory-primary);
+  --wiki-amber: var(--memory-amber);
+  --wiki-red: var(--memory-danger);
+}
+
+body[data-window-mode="memory"] .feature-shell {
+  min-height: 100dvh;
+  height: 100dvh !important;
+  grid-template-rows: minmax(0, 1fr) auto !important;
+  overflow: hidden !important;
+  padding-bottom: 0 !important;
+  background: #0D0F10;
+}
+
+body[data-window-mode="memory"] .feature-shell > .feature-window-content {
+  grid-row: 1;
+  min-height: 0;
+  height: auto !important;
+  max-height: none !important;
+  overscroll-behavior: contain;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  scrollbar-color: rgba(104, 184, 173, 0.72) rgba(255, 255, 255, 0.06);
+  scrollbar-width: thin;
+}
+
+body[data-window-mode="memory"] .feature-shell > .bottom-nav {
+  grid-row: 2;
+  position: relative !important;
+  inset: auto !important;
+  left: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  z-index: 10 !important;
+  width: 100% !important;
+  min-height: 60px;
+  transform: none !important;
+}
+
+body[data-window-mode="memory"] .feature-shell > .feature-window-content::-webkit-scrollbar {
+  width: 8px;
+}
+
+body[data-window-mode="memory"] .feature-shell > .feature-window-content::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.035);
+}
+
+body[data-window-mode="memory"] .feature-shell > .feature-window-content::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: rgba(104, 184, 173, 0.62);
+  background-clip: padding-box;
+}
+
+body[data-window-mode="memory"] .feature-shell .bottom-nav-indicator {
+  background: var(--memory-primary) !important;
+  box-shadow: 0 0 0 1px rgba(104, 184, 173, 0.3), 0 0 18px rgba(104, 184, 173, 0.2) !important;
+}
+
+body[data-window-mode="memory"] .feature-shell .bottom-nav-button.active,
+body[data-window-mode="memory"] .feature-shell .bottom-nav-button.active .bottom-nav-icon,
+body[data-window-mode="memory"] .feature-shell .bottom-nav-button.active .bottom-nav-label {
+  color: #0A1715 !important;
+}
+
+body[data-window-mode="memory"] .feature-shell .bottom-nav-button:hover:not(.active) {
+  color: var(--memory-primary-strong) !important;
+}
+
+body[data-window-mode="memory"] .llmwiki-memory-shell button.primary,
+body[data-window-mode="memory"] .llmwiki-memory-shell .primary {
+  border-color: var(--memory-primary) !important;
+  background: var(--memory-primary) !important;
+  color: #0d1716 !important;
+  box-shadow: 0 8px 18px rgba(104, 184, 173, 0.16) !important;
+}
+
+body[data-window-mode="memory"] .llmwiki-memory-shell button.primary:hover:not(:disabled),
+body[data-window-mode="memory"] .llmwiki-memory-shell .primary:hover:not(:disabled) {
+  border-color: var(--memory-primary-strong) !important;
+  background: var(--memory-primary-strong) !important;
+}
+
+body[data-window-mode="memory"] .llmwiki-memory-shell button.secondary,
+body[data-window-mode="memory"] .llmwiki-memory-shell .secondary {
+  border-color: var(--memory-line-strong) !important;
+  background: rgba(255, 255, 255, 0.045) !important;
+  color: var(--memory-soft) !important;
+  box-shadow: none !important;
+}
+
+body[data-window-mode="memory"] .llmwiki-memory-shell button.secondary:hover:not(:disabled),
+body[data-window-mode="memory"] .llmwiki-memory-shell .secondary:hover:not(:disabled) {
+  border-color: rgba(104, 184, 173, 0.44) !important;
+  background: var(--memory-primary-soft) !important;
+  color: var(--memory-primary-strong) !important;
+}
+
+body[data-window-mode="memory"] .llmwiki-memory-shell button.danger-button,
+body[data-window-mode="memory"] .llmwiki-memory-shell button.danger,
+body[data-window-mode="memory"] .llmwiki-memory-shell .danger-button,
+body[data-window-mode="memory"] .llmwiki-memory-shell .danger {
+  border: 1px solid rgba(224, 107, 111, 0.62) !important;
+  background: var(--memory-danger-soft) !important;
+  color: var(--memory-danger-strong) !important;
+  box-shadow: none !important;
+}
+
+body[data-window-mode="memory"] .llmwiki-memory-shell button.danger-button:hover:not(:disabled),
+body[data-window-mode="memory"] .llmwiki-memory-shell button.danger:hover:not(:disabled),
+body[data-window-mode="memory"] .llmwiki-memory-shell .danger-button:hover:not(:disabled),
+body[data-window-mode="memory"] .llmwiki-memory-shell .danger:hover:not(:disabled) {
+  border-color: var(--memory-danger-strong) !important;
+  background: rgba(224, 107, 111, 0.2) !important;
+  color: #FFD0CE !important;
+}
+
+body[data-window-mode="memory"] .llmwiki-global-error,
+body[data-window-mode="memory"] .llmwiki-state-error {
+  border-color: rgba(229, 138, 138, 0.34);
+  border-left-color: var(--memory-danger);
+  background: rgba(229, 138, 138, 0.055);
+}
+
+body[data-window-mode="memory"] .llmwiki-global-error {
+  min-height: 38px;
+  padding: 7px 10px;
+  color: #F0D8D8;
+}
+
+body[data-window-mode="memory"] .llmwiki-state-error {
+  min-height: 96px;
+}
+
+body[data-window-mode="memory"] .llmwiki-empty-state,
+body[data-window-mode="memory"] .llmwiki-source-empty-state {
+  min-height: 220px;
+  border-color: rgba(104, 184, 173, 0.28);
+  background: rgba(104, 184, 173, 0.035);
+}
+
+body[data-window-mode="memory"] .llmwiki-empty-state svg,
+body[data-window-mode="memory"] .llmwiki-source-empty-state svg {
+  color: var(--memory-primary);
+}
+
+body[data-window-mode="memory"] .llmwiki-maintenance-grid {
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+}
+
+body[data-window-mode="memory"] .maintenance-card {
+  border-color: rgba(104, 184, 173, 0.2);
+  background: rgba(27, 29, 33, 0.74);
+}
+
+body[data-window-mode="memory"] .maintenance-item {
+  border-color: rgba(243, 238, 232, 0.12);
+  background: rgba(17, 18, 20, 0.52);
+}
+
+body[data-window-mode="memory"] .llmwiki-memory-title h1,
+body[data-window-mode="memory"] :where(.llmwiki-panel-header h2, .llmwiki-rail-header h3, .llmwiki-list-heading strong, .llmwiki-timeline-heading strong),
+body[data-window-mode="memory"] :where(.maintenance-card .section-heading strong, .maintenance-item-copy strong) {
+  color: var(--memory-ink) !important;
+}
+
+body[data-window-mode="memory"] .llmwiki-eyebrow,
+body[data-window-mode="memory"] .maintenance-consolidation-result {
+  color: var(--memory-primary-strong) !important;
+}
+
+body[data-window-mode="memory"] :where(.llmwiki-memory-title > p:last-child, .llmwiki-panel-description, .llmwiki-muted),
+body[data-window-mode="memory"] :where(.maintenance-card .section-heading span, .maintenance-item-copy p, .maintenance-item-copy small, .maintenance-stat-grid dt) {
+  color: var(--memory-soft) !important;
+}
+
+body[data-window-mode="memory"] .llmwiki-memory-header-status > span,
+body[data-window-mode="memory"] .llmwiki-health-chip {
+  border-color: var(--memory-line-strong) !important;
+  background: rgba(17, 20, 22, 0.76) !important;
+  color: var(--memory-soft) !important;
+}
+
+body[data-window-mode="memory"] .llmwiki-memory-header-status > span:first-child {
+  border-color: rgba(124, 175, 224, 0.27) !important;
+  background: rgba(124, 175, 224, 0.08) !important;
+  color: #BCD8F1 !important;
+}
+
+body[data-window-mode="memory"] .llmwiki-memory-header-status .is-amber,
+body[data-window-mode="memory"] .llmwiki-health-chip.is-degraded {
+  border-color: rgba(212, 165, 107, 0.36) !important;
+  background: rgba(212, 165, 107, 0.09) !important;
+  color: #E8C48F !important;
+}
+
+body[data-window-mode="memory"] :where(.llmwiki-global-search, .llmwiki-source-search) {
+  border-color: var(--memory-line-strong) !important;
+  background: rgba(14, 17, 18, 0.92) !important;
+}
+
+body[data-window-mode="memory"] :where(.llmwiki-global-search, .llmwiki-source-search):focus-within {
+  border-color: rgba(104, 184, 173, 0.6) !important;
+  box-shadow: 0 0 0 3px rgba(104, 184, 173, 0.11) !important;
+}
+
+body[data-window-mode="memory"] .llmwiki-memory-shell :where(input, textarea, select) {
+  border-color: var(--memory-line-strong) !important;
+  background: rgba(8, 11, 12, 0.74) !important;
+  color: var(--memory-ink) !important;
+  color-scheme: dark;
+}
+
+body[data-window-mode="memory"] .llmwiki-memory-shell :where(input, textarea)::placeholder {
+  color: var(--memory-muted) !important;
+}
+
+body[data-window-mode="memory"] .llmwiki-memory-shell :where(input, textarea, select):focus {
+  border-color: rgba(104, 184, 173, 0.66) !important;
+  box-shadow: 0 0 0 3px rgba(104, 184, 173, 0.11) !important;
+}
+
+body[data-window-mode="memory"] .llmwiki-memory-shell :where(button, input, textarea, select, summary):focus-visible {
+  outline: 2px solid var(--memory-primary-strong) !important;
+  outline-offset: 2px;
+}
+
+body[data-window-mode="memory"] .llmwiki-memory-shell button.icon-button {
+  border-color: var(--memory-line-strong) !important;
+  background: rgba(255, 255, 255, 0.045) !important;
+  color: var(--memory-soft) !important;
+}
+
+body[data-window-mode="memory"] .llmwiki-memory-shell button.icon-button:hover:not(:disabled) {
+  border-color: rgba(104, 184, 173, 0.44) !important;
+  background: var(--memory-primary-soft) !important;
+  color: var(--memory-primary-strong) !important;
+}
+
+body[data-window-mode="memory"] .llmwiki-memory-shell button.icon-button.is-danger {
+  border-color: rgba(222, 107, 118, 0.5) !important;
+  background: var(--memory-danger-soft) !important;
+  color: var(--memory-danger-strong) !important;
+}
+
+body[data-window-mode="memory"] :where(.llmwiki-global-results button, .llmwiki-workspace-panel, .llmwiki-evidence-rail, .maintenance-card) {
+  border-color: var(--memory-line) !important;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent 30%),
+    var(--memory-surface) !important;
+  color: var(--memory-soft) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025) !important;
+}
+
+body[data-window-mode="memory"] .llmwiki-workspace-tabs {
+  border-bottom-color: var(--memory-line) !important;
+}
+
+body[data-window-mode="memory"] .llmwiki-workspace-tab {
+  color: var(--memory-muted) !important;
+}
+
+body[data-window-mode="memory"] .llmwiki-workspace-tab:hover:not(.is-active) {
+  background: rgba(104, 184, 173, 0.055) !important;
+  color: var(--memory-soft) !important;
+}
+
+body[data-window-mode="memory"] .llmwiki-workspace-tab.is-active {
+  border-bottom-color: var(--memory-primary) !important;
+  color: var(--memory-ink) !important;
+  box-shadow: inset 0 -1px 0 var(--memory-primary) !important;
+}
+
+body[data-window-mode="memory"] .llmwiki-workspace-tab.is-active span {
+  color: var(--memory-primary-strong) !important;
+}
+
+body[data-window-mode="memory"] :where(.llmwiki-summary-strip, .llmwiki-relation-list, .llmwiki-graph-canvas) {
+  border-color: var(--memory-line) !important;
+  background: rgba(8, 11, 12, 0.58) !important;
+}
+
+body[data-window-mode="memory"] .llmwiki-summary-strip {
+  background: var(--memory-line) !important;
+}
+
+body[data-window-mode="memory"] .llmwiki-summary-strip > div {
+  background: #101315 !important;
+}
+
+body[data-window-mode="memory"] .llmwiki-summary-strip dt {
+  color: var(--memory-muted) !important;
+}
+
+body[data-window-mode="memory"] .llmwiki-summary-strip dd {
+  color: var(--memory-ink) !important;
+}
+
+body[data-window-mode="memory"] .llmwiki-summary-strip dd.is-amber {
+  color: var(--memory-amber) !important;
+}
+
+body[data-window-mode="memory"] .llmwiki-react-flow,
+body[data-window-mode="memory"] .llmwiki-graph-canvas {
+  background: #0E1112 !important;
+}
+
+body[data-window-mode="memory"] .llmwiki-react-flow .react-flow__controls {
+  border-color: var(--memory-line-strong) !important;
+}
+
+body[data-window-mode="memory"] .llmwiki-react-flow .react-flow__controls-button {
+  border-bottom-color: var(--memory-line) !important;
+  background: #171B1D !important;
+  color: var(--memory-soft) !important;
+  fill: var(--memory-soft) !important;
+}
+
+body[data-window-mode="memory"] .llmwiki-react-flow .react-flow__controls-button:hover {
+  background: var(--memory-primary-soft) !important;
+  color: var(--memory-primary-strong) !important;
+  fill: var(--memory-primary-strong) !important;
+}
+
+body[data-window-mode="memory"] :where(.llmwiki-relation-row, .llmwiki-source-row) {
+  border-bottom-color: var(--memory-line) !important;
+  color: var(--memory-ink) !important;
+}
+
+body[data-window-mode="memory"] :where(.llmwiki-relation-row, .llmwiki-source-row):hover,
+body[data-window-mode="memory"] .llmwiki-relation-row.is-selected {
+  background: var(--memory-primary-soft) !important;
+}
+
+body[data-window-mode="memory"] .llmwiki-source-icon {
+  border-color: rgba(124, 175, 224, 0.34) !important;
+  background: rgba(124, 175, 224, 0.08) !important;
+  color: var(--memory-blue) !important;
+}
+
+body[data-window-mode="memory"] .llmwiki-step-index {
+  border-color: rgba(104, 184, 173, 0.42) !important;
+  background: #171B1D !important;
+  color: var(--memory-primary-strong) !important;
+}
+
+body[data-window-mode="memory"] .llmwiki-evidence-step.is-conflict .llmwiki-step-index {
+  border-color: rgba(222, 107, 118, 0.58) !important;
+  color: var(--memory-danger-strong) !important;
+}
+
+body[data-window-mode="memory"] :where(.llmwiki-source-item, .llmwiki-correction-record) {
+  border-left-color: var(--memory-blue) !important;
+  background: rgba(124, 175, 224, 0.07) !important;
+}
+
+body[data-window-mode="memory"] :where(.llmwiki-source-item code, .llmwiki-correction-record code, .llmwiki-evidence-step code) {
+  color: #A8CAE9 !important;
+}
+
+body[data-window-mode="memory"] :where(.llmwiki-source-link, .llmwiki-text-button, button.text-button) {
+  color: var(--memory-primary-strong) !important;
+}
+
+body[data-window-mode="memory"] .llmwiki-inline-success {
+  border-left-color: var(--memory-green) !important;
+  background: rgba(114, 196, 156, 0.08) !important;
+  color: #C9F4DD !important;
+}
+
+body[data-window-mode="memory"] :where(.llmwiki-inline-error, .llmwiki-global-error, .llmwiki-state-error) {
+  border-color: rgba(222, 107, 118, 0.34) !important;
+  border-left-color: var(--memory-danger) !important;
+  background: rgba(222, 107, 118, 0.07) !important;
+  color: #F3C4C8 !important;
+}
+
+body[data-window-mode="memory"] :where(.llmwiki-empty-state, .llmwiki-source-empty-state) {
+  border-color: rgba(104, 184, 173, 0.24) !important;
+  background: rgba(104, 184, 173, 0.035) !important;
+}
+
+body[data-window-mode="memory"] .llmwiki-timeline-marker {
+  border-color: var(--memory-green) !important;
+}
+
+body[data-window-mode="memory"] .llmwiki-timeline-row.is-pending .llmwiki-timeline-marker {
+  border-color: var(--memory-amber) !important;
+}
+
+body[data-window-mode="memory"] .llmwiki-timeline-row.is-conflict .llmwiki-timeline-marker {
+  border-color: var(--memory-danger) !important;
+}
+
+body[data-window-mode="memory"] .llmwiki-status-label {
+  border-color: rgba(114, 196, 156, 0.34) !important;
+  background: rgba(114, 196, 156, 0.09) !important;
+  color: #C9F4DD !important;
+}
+
+body[data-window-mode="memory"] .llmwiki-status-label.is-pending {
+  border-color: rgba(212, 165, 107, 0.38) !important;
+  background: rgba(212, 165, 107, 0.09) !important;
+  color: #E8C48F !important;
+}
+
+body[data-window-mode="memory"] .llmwiki-status-label.is-conflict {
+  border-color: rgba(222, 107, 118, 0.42) !important;
+  background: rgba(222, 107, 118, 0.09) !important;
+  color: var(--memory-danger-strong) !important;
+}
+
+body[data-window-mode="memory"] .llmwiki-status-label.is-archived {
+  border-color: var(--memory-line) !important;
+  background: rgba(255, 255, 255, 0.035) !important;
+  color: var(--memory-muted) !important;
+}
+
+body[data-window-mode="memory"] :where(.llmwiki-review-row, .llmwiki-source-search-results article, .llmwiki-activity-item, .maintenance-item) {
+  border-color: var(--memory-line) !important;
+  background: rgba(8, 11, 12, 0.46) !important;
+}
+
+body[data-window-mode="memory"] .llmwiki-activity-drawer {
+  border-top-color: var(--memory-line) !important;
+}
+
+body[data-window-mode="memory"] .llmwiki-activity-drawer summary {
+  color: var(--memory-soft) !important;
+}
+
+body[data-window-mode="memory"] .llmwiki-activity-drawer[open] summary {
+  color: var(--memory-primary-strong) !important;
+}
+
+body[data-window-mode="memory"] .maintenance-stat-grid dd {
+  color: var(--memory-ink) !important;
+}
+
+body[data-window-mode="memory"] .maintenance-item-actions .is-positive {
+  border-color: rgba(114, 196, 156, 0.4) !important;
+  background: rgba(114, 196, 156, 0.1) !important;
+  color: #C9F4DD !important;
+}
+
+body[data-window-mode="memory"] .feature-shell .bottom-nav-track {
+  border-color: var(--memory-line-strong) !important;
+  background: rgba(15, 18, 19, 0.92) !important;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.3) !important;
+}
+
+body[data-window-mode="memory"] .feature-shell .bottom-nav-button {
+  color: var(--memory-muted) !important;
+}
+
+@media (max-width: 680px) {
+  body[data-window-mode="memory"] .feature-shell > .feature-window-content {
+    padding-bottom: calc(var(--bottom-nav-safe-area) + env(safe-area-inset-bottom, 0px) + 12px);
+  }
+
+  body[data-window-mode="memory"] .llmwiki-workspace-tabs {
+    scrollbar-width: none;
+  }
+
+  body[data-window-mode="memory"] .llmwiki-workspace-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  body[data-window-mode="memory"] .llmwiki-workspace-tab {
+    flex: 0 0 auto;
+    min-width: 112px;
+  }
 }

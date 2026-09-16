@@ -89,12 +89,18 @@ def reciprocal_rank_fusion(
     required_vault_id: str | None = None,
     rrf_k: int = RRF_K,
     channel_weights: Mapping[str, float] | None = None,
+    scope_weights: Mapping[str, float] | None = None,
 ) -> FusionResult:
     """Fuse ranked channels; optional per-channel weights scale contributions.
 
     Weighted RRF (Qdrant v1.17+): contribution = weight / (rrf_k + rank).
     Weights must be finite and positive; channels without a weight keep 1.0.
     Per-channel rank is unaffected, so primary_channel stays weight-free.
+
+    scope_weights additionally scales the FINAL fused score by the presented
+    candidate's source scope (e.g. downweighting chat-log echoes when knowledge
+    candidates compete). Contributions stay the raw weighted-RRF components,
+    so diagnostics remain interpretable.
     """
     if not 1 <= top_k <= MAX_CANDIDATES_PER_CHANNEL:
         raise ValueError("top_k must be between 1 and 40")
@@ -106,6 +112,12 @@ def reciprocal_rank_fusion(
             if not isfinite(weight) or weight <= 0:
                 raise ValueError("channel weights must be finite and positive")
             weights[str(channel)] = float(weight)
+    scope_scale: dict[str, float] = {}
+    if scope_weights is not None:
+        for scope, weight in scope_weights.items():
+            if not isfinite(weight) or weight <= 0:
+                raise ValueError("scope weights must be finite and positive")
+            scope_scale[str(scope)] = float(weight)
 
     ordered_scopes = _ordered_scopes(approved_scopes)
     allowed_scopes = set(ordered_scopes)
@@ -187,7 +199,8 @@ def reciprocal_rank_fusion(
                 content_hash=presentation_candidate.content_hash,
                 source_scope=presentation_candidate.source_scope,
                 payload=presentation_candidate.payload,
-                score=fsum(contribution.component for contribution in contributions),
+                score=fsum(contribution.component for contribution in contributions)
+                * scope_scale.get(presentation_candidate.source_scope, 1.0),
                 best_rank=min(contribution.rank for contribution in contributions),
                 contributions=contributions,
                 stable_order_key=(

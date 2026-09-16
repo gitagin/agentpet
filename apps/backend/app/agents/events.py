@@ -101,6 +101,7 @@ class AgentContinuitySignalEvent(AgentEventBase):
     intensity: str
     display_hint: str
     source_state_keys: list[str] = Field(default_factory=list)
+    source_proposal_id: str | None = None
 
 
 class AgentContextBudgetEvent(ContextBudgetFields, AgentEventBase):

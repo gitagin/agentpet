@@ -4,6 +4,7 @@ import re
 
 from app.models.enums import AgentIntent
 
+from .memory_router import explicit_memory_read_scope
 from .state import AgentRoute
 
 
@@ -107,6 +108,13 @@ def route_intent(message: str) -> AgentRoute:
             intent=AgentIntent.PROPOSE_MEMORY,
             confidence=0.95,
             reason="explicit memory proposal command",
+        )
+
+    if explicit_memory_read_scope(message) is not None:
+        return AgentRoute(
+            intent=AgentIntent.SEARCH_MEMORY,
+            confidence=0.96,
+            reason="explicit memory source read request",
         )
 
     if _is_daily_chat_recall_query(message) or _is_memory_recall_query(message) or _is_recent_chat_recall_query(message):

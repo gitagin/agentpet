@@ -1,0 +1,139 @@
+/* Shared navigation geometry: one viewport-anchored dock for every page shell. */
+:root {
+  --nav-dock-height: 62px;
+  --nav-item-width: 56px;
+  --nav-item-height: 48px;
+  --nav-gap: 5px;
+  --nav-bottom-offset: 12px;
+  --nav-dock-width: 310px;
+}
+
+.bottom-nav,
+.control-bottom-dock .bottom-nav,
+.feature-shell > .bottom-nav,
+.stage-footer .bottom-nav {
+  position: fixed !important;
+  left: 50% !important;
+  right: auto !important;
+  bottom: var(--nav-bottom-offset) !important;
+  top: auto !important;
+  width: min(var(--nav-dock-width), calc(100vw - 24px)) !important;
+  max-width: calc(100vw - 24px) !important;
+  min-width: 0 !important;
+  height: var(--nav-dock-height) !important;
+  min-height: var(--nav-dock-height) !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  transform: translateX(-50%) !important;
+  z-index: 120 !important;
+  overflow: visible !important;
+  box-sizing: border-box !important;
+}
+
+.bottom-nav-track,
+.control-bottom-dock .bottom-nav-track,
+.feature-shell > .bottom-nav .bottom-nav-track,
+.stage-footer .bottom-nav-track {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: var(--nav-gap) !important;
+  width: 100% !important;
+  max-width: none !important;
+  height: var(--nav-dock-height) !important;
+  min-height: var(--nav-dock-height) !important;
+  padding: 4px !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  box-sizing: border-box !important;
+}
+
+.bottom-nav-button,
+.control-bottom-dock .bottom-nav-button,
+.feature-shell > .bottom-nav .bottom-nav-button,
+.stage-footer .bottom-nav-button {
+  flex: 0 0 var(--nav-item-width) !important;
+  width: var(--nav-item-width) !important;
+  min-width: var(--nav-item-width) !important;
+  max-width: var(--nav-item-width) !important;
+  height: var(--nav-item-height) !important;
+  min-height: var(--nav-item-height) !important;
+  box-sizing: border-box !important;
+}
+
+/* Mode-specific rules in legacy polish sheets use higher specificity; match it
+   here so memory/world shells cannot fall back to in-flow navigation. */
+body[data-window-mode] .bottom-nav,
+body[data-window-mode] .feature-shell > .bottom-nav,
+body[data-window-mode] .control-home-shell .bottom-nav,
+body[data-window-mode] .stage-footer .bottom-nav {
+  position: fixed !important;
+  inset: auto auto var(--nav-bottom-offset) 50% !important;
+  width: min(var(--nav-dock-width), calc(100vw - 24px)) !important;
+  max-width: calc(100vw - 24px) !important;
+  height: var(--nav-dock-height) !important;
+  min-height: var(--nav-dock-height) !important;
+  transform: translateX(-50%) !important;
+  z-index: 120 !important;
+  overflow: visible !important;
+}
+
+body[data-window-mode] .bottom-nav-track {
+  width: 100% !important;
+  max-width: none !important;
+  height: var(--nav-dock-height) !important;
+  min-height: var(--nav-dock-height) !important;
+  gap: var(--nav-gap) !important;
+  padding: 4px !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+body[data-window-mode] .bottom-nav-track::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+body[data-window-mode] .bottom-nav-button {
+  flex: 0 0 var(--nav-item-width) !important;
+  width: var(--nav-item-width) !important;
+  min-width: var(--nav-item-width) !important;
+  max-width: var(--nav-item-width) !important;
+  height: var(--nav-item-height) !important;
+  min-height: var(--nav-item-height) !important;
+}
+
+/* The home/plan shell wraps the nav in a transformed dock. A transformed
+   ancestor becomes the containing block for fixed children, shifting them by
+   the dock's own layout offset. Keep that wrapper inert and let the nav anchor
+   to the viewport like every other page. */
+body[data-window-mode="stage"] .control-bottom-dock {
+  position: static !important;
+  inset: auto !important;
+  width: 0 !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  transform: none !important;
+}
+
+@media (max-width: 560px) {
+  :root {
+    --nav-item-width: 52px;
+    --nav-gap: 4px;
+    --nav-bottom-offset: 8px;
+    --nav-dock-width: 310px;
+  }
+
+  .bottom-nav,
+  .bottom-nav-track,
+  .control-bottom-dock .bottom-nav-track,
+  .feature-shell > .bottom-nav .bottom-nav-track,
+  .stage-footer .bottom-nav-track {
+    max-width: calc(100vw - 16px) !important;
+  }
+}

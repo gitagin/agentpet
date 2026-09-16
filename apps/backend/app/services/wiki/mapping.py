@@ -66,4 +66,5 @@ def _map_plan(row: sqlite3.Row) -> _StoredPagePlan:
         content=str(row["content"]),
         tags=_load_json_list(row["tags_json"]),
         links=_load_json_list(row["links_json"]),
+        target_content_hash=str(row["target_content_hash"]) if row["target_content_hash"] is not None else None,
     )

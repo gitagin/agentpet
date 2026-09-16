@@ -197,6 +197,58 @@ def _complete_ingest(client, request_body: dict[str, object]) -> dict[str, dict[
     }
 
 
+def test_ingest_apply_stops_when_target_appears_after_confirmation(
+    client_factory,
+    tmp_path: Path,
+) -> None:
+    vault = tmp_path / "Vault"
+    with client_factory(data_dir=tmp_path / "data") as client:
+        _bind_vault(client, vault)
+        preview = client.post(
+            "/api/wiki/ingest/preview",
+            headers=AUTH_HEADERS,
+            json=_ingest_request(source_metadata={"origin": "explicit_user"}),
+        )
+        assert preview.status_code == 200
+        confirm = client.post(
+            "/api/wiki/ingest/confirm",
+            headers=AUTH_HEADERS,
+            json={"preview_token": preview.json()["preview_token"], "user_confirmed": True},
+        )
+        assert confirm.status_code == 200
+        confirm_payload = confirm.json()
+        target_path = confirm_payload["page_plans"][0]["target_path"]
+
+        target = vault / target_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("external edit after preview\n", encoding="utf-8")
+
+        review = client.post(
+            "/api/wiki/ingest/review",
+            headers=AUTH_HEADERS,
+            json={"run_id": confirm_payload["run_id"]},
+        )
+        assert review.status_code == 200
+        apply = client.post(
+            "/api/wiki/ingest/apply",
+            headers=AUTH_HEADERS,
+            json={
+                "run_id": confirm_payload["run_id"],
+                "approved_targets": [target_path],
+                "review_id": review.json()["review_id"],
+                "review_acknowledged": True,
+            },
+        )
+
+    assert apply.status_code == 200
+    payload = apply.json()
+    assert payload["status"] == "failed"
+    assert payload["pages_written"] == 0
+    assert payload["page_results"][0]["status"] == "failed"
+    assert "预览后已被外部修改" in str(payload["page_results"][0]["error"])
+    assert target.read_text(encoding="utf-8") == "external edit after preview\n"
+
+
 def _durable_ingest_state(database_path: Path) -> dict[str, object]:
     with sqlite3.connect(database_path) as conn:
         conn.row_factory = sqlite3.Row

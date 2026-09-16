@@ -2,12 +2,26 @@ from __future__ import annotations
 
 import logging
 import re
+from datetime import datetime
 
 from .events import AgentContinuitySignalEvent
 from .services import ContinuityServiceProtocol, ContinuitySignalProtocol
 
 
 logger = logging.getLogger(__name__)
+
+_WEEKDAY_NAMES = ("一", "二", "三", "四", "五", "六", "日")
+
+
+def _current_local_time_text(now: datetime | None = None) -> str:
+    # 与 get_current_time 工具一致：用本机时区（datetime.now().astimezone()），
+    # 而不是硬编码 Asia/Shanghai——用户机器时区不同时提示词锚与工具返回会矛盾。
+    local = (now or datetime.now().astimezone()).astimezone()
+    weekday = _WEEKDAY_NAMES[local.weekday()]
+    return (
+        f"{local.year}年{local.month}月{local.day}日"
+        f"（星期{weekday}）{local.hour:02d}:{local.minute:02d}"
+    )
 
 
 def _chat_system_prompt() -> str:
@@ -29,6 +43,13 @@ def _chat_system_prompt() -> str:
         "回复包含多个要点、步骤或日期记录时，使用简洁 Markdown 分段：短标题、列表和必要的加粗，且每个要点单独一行。"
         "短回答仍保持一到两句，不要强行加标题；除非确实需要比较多项信息，否则不要使用表格。"
         "涉及健康、法律、金钱、关系危机、自伤或他伤风险时，先给支持性回应，说明边界，鼓励求助专业人士或可信赖的人；紧急风险要建议立即联系当地紧急服务。"
+        f"当前本地时间（每次对话都会刷新，以这一行为准）：{_current_local_time_text()}。"
+        "当用户询问当前日期、星期或时间时：有 get_current_time 工具就用它取本机实时时间；"
+        "没有工具时直接引用上面这行时间；绝不根据训练数据或知识截止日期编造。"
+        "凡是需要外部实时信息的提问（天气、新闻、股价、赛事、航班、交通、他人动态、网络内容），"
+        "或需要读取本机设备状态的提问（电量、CPU、磁盘、其它应用、系统设置），你都没有对应工具："
+        "直接说明你拿不到这些实时/系统数据，不要凭训练数据编造具体数值、事件或结果；"
+        "可以请用户提供信息，或改用你确实拥有的本地记忆与一般经验来回答。"
     )
 
 
@@ -71,6 +92,7 @@ def _continuity_signal_event(agent_run_id: str, signal: ContinuitySignalProtocol
         intensity=signal.intensity,
         display_hint=signal.display_hint,
         source_state_keys=list(signal.source_state_keys),
+        source_proposal_id=getattr(signal, "source_proposal_id", None),
     )
 
 

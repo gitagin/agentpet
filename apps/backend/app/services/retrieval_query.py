@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.utils.hash import sha256_hex
+from app.utils.time import local_timezone
 
 
 RETRIEVAL_PLAN_VERSION = "retrieval-plan.v1"
@@ -16,8 +17,14 @@ RETRIEVAL_PLAN_TELEMETRY_VERSION = "retrieval-plan-telemetry.v1"
 MAX_QUERY_CHARS = 2_000
 MAX_SEMANTIC_VARIANTS = 3
 MAX_FILTERS = 8
+# 检索"今天/昨天"等相对日期按本机时区解释；常量保留为文档化缺省。
 DEFAULT_RETRIEVAL_TIMEZONE = "Asia/Shanghai"
-_RETRIEVAL_TIMEZONE = ZoneInfo(DEFAULT_RETRIEVAL_TIMEZONE)
+
+
+def _current_local_tz():
+    # 每次取值而不是模块级冻结：fixed-offset tz 在 DST 切换后的长驻进程里
+    # 日期锚定会漂移 1 小时，动态取本机 tz 保证"今天"始终是本机今天。
+    return local_timezone()
 
 RetrievalSourceScope = Literal[
     "personal_memory",
@@ -564,11 +571,11 @@ def _anchor_date(context: ApprovedRetrievalContext, now: date | datetime | None)
     if context.reference_date is not None:
         return context.reference_date
     if isinstance(now, datetime):
-        current = now if now.tzinfo is not None else now.replace(tzinfo=_RETRIEVAL_TIMEZONE)
-        return current.astimezone(_RETRIEVAL_TIMEZONE).date()
+        current = now if now.tzinfo is not None else now.replace(tzinfo=_current_local_tz())
+        return current.astimezone(_current_local_tz()).date()
     if isinstance(now, date):
         return now
-    return datetime.now(_RETRIEVAL_TIMEZONE).date()
+    return datetime.now(_current_local_tz()).date()
 
 
 def _extract_date_range(query: str, *, anchor_date: date) -> RetrievalDateRange | None:

@@ -1,7 +1,6 @@
 import { ConnectionManagementPanel } from "../features/desktop/ConnectionManagementPanel";
 import { WikiManagementPanels } from "../features/desktop/WikiManagementPanels";
 import { SettingsPanel } from "../features/settings/SettingsPanel";
-import StageView from "../views/StageView";
 import { formatIssueSeverity } from "./appShellUtils";
 import { buildAppShellPresentation } from "./appShellPresentation";
 import { useAppShellRuntime } from "./AppShellRuntimeContext";
@@ -110,27 +109,6 @@ export function SettingsPanelContainer() {
         resettingMemoryState: reset.resettingMemoryState,
         onResetMemoryState: () => void reset.resetStoredMemoryState(),
       }}
-    />
-  );
-}
-
-export function StageViewContainer() {
-  const runtime = useAppShellRuntime();
-  const isStageHostWindow = runtime.app.routing.desktopHostMode === "stage";
-  return (
-    <StageView
-      connected={runtime.connection.hasConnection}
-      streaming={runtime.app.streaming}
-      bubble={runtime.pet.chat.bubble}
-      onSendChat={runtime.chat.sendChatText}
-      onStopStreaming={runtime.chat.stopStreaming}
-      onPreviousPage={runtime.pet.chat.retreatPageManually}
-      onAdvancePage={runtime.pet.chat.advancePageManually}
-      onPausePaging={runtime.pet.chat.pausePaging}
-      onResumePaging={runtime.pet.chat.resumePaging}
-      ttsSpeaking={runtime.pet.tts.speaking}
-      active={!isStageHostWindow || runtime.app.routing.windowMode === "stage"}
-      api={runtime.connection.connection.api}
     />
   );
 }

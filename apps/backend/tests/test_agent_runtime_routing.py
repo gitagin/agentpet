@@ -39,6 +39,7 @@ from app.storage.database import Database, MigrationRunner
         ("remind me to stretch tomorrow", AgentIntent.CREATE_TASK),
         ("5月3号我说了什么", AgentIntent.SEARCH_MEMORY),
         ("搜索记忆 Ada", AgentIntent.SEARCH_MEMORY),
+        ("我知识库中有什么？", AgentIntent.SEARCH_MEMORY),
         ("记住：Ada 喜欢简洁的状态更新", AgentIntent.PROPOSE_MEMORY),
         ("提醒我明天伸展", AgentIntent.CREATE_TASK),
         ("5秒钟后提醒我写笔记", AgentIntent.CREATE_TASK),
@@ -81,6 +82,7 @@ def test_langgraph_runtime_uses_langchain_structured_tools_for_core_services() -
         "plan_wiki_lint",
         "manage_wiki_page",
         "create_task",
+        "get_current_time",
     ]
 
 
@@ -158,12 +160,12 @@ def test_langgraph_runtime_uses_independent_registry_models_and_allowed_tools() 
         task_events,
     ) = asyncio.run(run_case())
 
-    assert chat_model.calls[0][2] == []
+    assert chat_model.calls[0][2] == ["search_memory", "get_current_time", "manage_wiki_page"]
     assert semantic_model.calls
     assert [call[2] for call in retrieval_model.calls] == [["search_memory"], ["search_memory"]]
     assert retrieval.calls == [
-        ("Ada", 5, "fts", "personal_memory"),
-        ("Ada", 5, "fts", "knowledge_base"),
+        ("Ada", 5, "hybrid", "personal_memory"),
+        ("Ada", 5, "hybrid", "knowledge_base"),
     ]
     assert action_model.calls == []
     assert_langgraph_events(chat_events, ["token", "done"])

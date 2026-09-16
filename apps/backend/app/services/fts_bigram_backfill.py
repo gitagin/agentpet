@@ -18,7 +18,9 @@ from app.storage.database import Database
 
 logger = logging.getLogger(__name__)
 
-BACKFILL_MARKER = "fts_bigram_backfill_v1"
+BACKFILL_MARKER = "fts_bigram_backfill_v2"
+# 分批 executemany：SQLite 变量上限内保持批量，同时避免超大 IN 列表。
+_BACKFILL_BATCH = 500
 
 
 def ensure_bigram_fts(db: Database) -> None:
@@ -51,47 +53,61 @@ def _backfill_notes(conn: sqlite3.Connection) -> None:
         FROM note_chunks
         """
     ).fetchall()
-    for row in rows:
-        conn.execute("DELETE FROM note_fts WHERE chunk_id = ?", (str(row["chunk_id"]),))
+    for start in range(0, len(rows), _BACKFILL_BATCH):
+        batch = rows[start : start + _BACKFILL_BATCH]
+        placeholders = ",".join("?" for _ in batch)
         conn.execute(
+            f"DELETE FROM note_fts WHERE chunk_id IN ({placeholders})",
+            [str(row["chunk_id"]) for row in batch],
+        )
+        conn.executemany(
             """
             INSERT INTO note_fts(chunk_id, note_id, vault_id, relative_path, title, heading, content)
             VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (
-                str(row["chunk_id"]),
-                str(row["note_id"]),
-                str(row["vault_id"]),
-                str(row["relative_path"]),
-                _bigram_cjk(str(row["title"])),
-                _bigram_cjk(str(row["heading"] or "")),
-                _bigram_cjk(str(row["content"])),
-            ),
+            [
+                (
+                    str(row["chunk_id"]),
+                    str(row["note_id"]),
+                    str(row["vault_id"]),
+                    str(row["relative_path"]),
+                    _bigram_cjk(str(row["title"])),
+                    _bigram_cjk(str(row["heading"] or "")),
+                    _bigram_cjk(str(row["content"])),
+                )
+                for row in batch
+            ],
         )
 
 
 def _backfill_diary(conn: sqlite3.Connection) -> None:
     rows = conn.execute("SELECT * FROM diary_memory_objects").fetchall()
-    for row in rows:
+    for start in range(0, len(rows), _BACKFILL_BATCH):
+        batch = rows[start : start + _BACKFILL_BATCH]
+        placeholders = ",".join("?" for _ in batch)
         conn.execute(
-            "DELETE FROM diary_memory_object_fts WHERE object_id = ?", (str(row["id"]),)
+            f"DELETE FROM diary_memory_object_fts WHERE object_id IN ({placeholders})",
+            [str(row["id"]) for row in batch],
         )
-        conn.execute(
+        conn.executemany(
             """
             INSERT INTO diary_memory_object_fts(
                 object_id, type, summary, topic, emotion, people, keywords
             )
             VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (
-                str(row["id"]),
-                str(row["type"]),
-                _bigram_cjk(str(row["summary"])),
-                _bigram_cjk(str(row["topic"] or "")),
-                _bigram_cjk(str(row["emotion"] or "")),
-                _bigram_cjk(" ".join(_json_items(str(row["people_json"])))),
-                _bigram_cjk(" ".join(_json_items(str(row["keywords_json"])))),
-            ),
+            [
+                (
+                    str(row["id"]),
+                    str(row["type"]),
+                    _bigram_cjk(str(row["summary"])),
+                    _bigram_cjk(str(row["topic"] or "")),
+                    _bigram_cjk(str(row["emotion"] or "")),
+                    _bigram_cjk(" ".join(_json_items(str(row["people_json"])))),
+                    _bigram_cjk(" ".join(_json_items(str(row["keywords_json"])))),
+                )
+                for row in batch
+            ],
         )
 
 

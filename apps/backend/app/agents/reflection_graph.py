@@ -5,6 +5,7 @@ import hashlib
 import inspect
 import logging
 import time
+from collections import OrderedDict
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
@@ -12,7 +13,7 @@ from typing import Any, Literal
 
 from app.agents.contracts import ActionProposal, ReflectionProposalBatch
 from app.agents.nodes.policy_guard import evaluate_action_proposal
-from app.agents.roles.reflection_agent import build_role_agent
+from app.agents.roles.reflection_agent import MAX_REFLECTION_PROPOSALS, propose_reflection_batch
 from app.agents.state import AgentState
 from app.models.enums import AgentRunStatus
 from app.services.memory_policy import evaluate_memory_content
@@ -20,10 +21,13 @@ from app.services.memory_policy import evaluate_memory_content
 logger = logging.getLogger(__name__)
 
 REFLECTION_POLICY_VERSION = "reflection-policy.v1"
-REFLECTION_MAX_PROPOSALS = 4
 REFLECTION_MAX_MODEL_CALLS = 2
 REFLECTION_STAGE_TIMEOUT_SECONDS = 15.0
 REFLECTION_JOB_DEADLINE_SECONDS = 60.0
+# Retention window for finished jobs. A run holds a deep copy of the exchange
+# plus its proposal batch and one job is created per chat reply, so an unbounded
+# result map would keep the whole conversation resident.
+REFLECTION_RESULT_RETENTION = 64
 
 ReflectionStatus = Literal[
     "queued",
@@ -65,6 +69,7 @@ class ReflectionJobInput:
     model: Any | None = None
     reflector: Callable[[dict[str, Any]], Any | Awaitable[Any]] | None = None
     executor: Callable[[ActionProposal], Any | Awaitable[Any]] | None = None
+    recorder: Callable[["ReflectionJobRun"], Any | Awaitable[Any]] | None = None
     job_id: str | None = None
     policy_version: str = REFLECTION_POLICY_VERSION
     stage_timeout_seconds: float = REFLECTION_STAGE_TIMEOUT_SECONDS
@@ -120,17 +125,18 @@ class ReflectionJobRunner:
         started = time.perf_counter()
         try:
             projection = _bounded_projection(state, payload.assistant_answer)
+            stage_timeout = min(payload.stage_timeout_seconds, payload.deadline_seconds)
             if payload.reflector is not None:
-                raw = payload.reflector(projection)
+                batch = ReflectionProposalBatch.model_validate(
+                    await asyncio.wait_for(payload.reflector(projection), timeout=stage_timeout)
+                )
             else:
-                role = build_role_agent(model=payload.model)
-                raw = role.ainvoke(projection)
-            result = await asyncio.wait_for(
-                raw,
-                timeout=min(payload.stage_timeout_seconds, payload.deadline_seconds),
-            )
-            batch = ReflectionProposalBatch.model_validate(result)
-            if len(batch.proposals) > REFLECTION_MAX_PROPOSALS:
+                batch = await asyncio.wait_for(
+                    propose_reflection_batch(model_client=payload.model, projection=projection),
+                    timeout=stage_timeout,
+                )
+            # 注入的 reflector 绕过了角色层的裁剪,这里再守一道预算。
+            if len(batch.proposals) > MAX_REFLECTION_PROPOSALS:
                 raise ValueError("reflection_proposal_budget_exceeded")
             proposal_results = await self._route_proposals(
                 batch,
@@ -146,7 +152,7 @@ class ReflectionJobRunner:
                 if "failed" in statuses or "denied" in statuses
                 else "completed"
             )
-            return ReflectionJobRun(
+            run = ReflectionJobRun(
                 state=replace(
                     base,
                     status=final_status,
@@ -156,6 +162,8 @@ class ReflectionJobRunner:
                 ),
                 proposals=batch,
             )
+            await _record_run(payload.recorder, run)
+            return run
         except asyncio.CancelledError:
             raise
         except (asyncio.TimeoutError, TimeoutError):
@@ -202,7 +210,16 @@ class ReflectionJobRunner:
                 routed.append(ReflectionProposalResult(reflection.proposal_id, "pending_confirmation", policy.reason_code))
                 continue
             if executor is None:
-                routed.append(ReflectionProposalResult(reflection.proposal_id, "failed", "reflection_executor_unavailable"))
+                # 策略放行但没有执行器:这不等于失败。没有执行器的部署把"可以自动
+                # 执行"的建议交给用户审阅,因此记成待确认;记成 failed 会让每次
+                # 反思都以 partial 收场,建议也永远不会出现在审阅队列里。
+                routed.append(
+                    ReflectionProposalResult(
+                        reflection.proposal_id,
+                        "pending_confirmation",
+                        "reflection_review_required",
+                    )
+                )
                 continue
             try:
                 executed = executor(proposal)
@@ -216,10 +233,18 @@ class ReflectionJobRunner:
 
 
 class ReflectionJobManager:
+    """Owns the running reflection jobs and a bounded window of finished ones.
+
+    ``start`` stays idempotent per job id while a job runs and while its result
+    is still inside the retention window; past that window the same job id may
+    be started again, which costs one model call and writes no duplicate
+    proposals because recording is content-addressable.
+    """
+
     def __init__(self, runner: ReflectionJobRunner | None = None) -> None:
         self.runner = runner or ReflectionJobRunner()
         self._tasks: dict[str, asyncio.Task[ReflectionJobRun]] = {}
-        self._results: dict[str, ReflectionJobRun] = {}
+        self._results: OrderedDict[str, ReflectionJobRun] = OrderedDict()
 
     def start(self, payload: ReflectionJobInput) -> asyncio.Task[ReflectionJobRun] | None:
         job_id = payload.job_id or deterministic_reflection_job_id(payload.state.message_id, payload.policy_version)
@@ -251,12 +276,36 @@ class ReflectionJobManager:
         return orphaned
 
     def _capture(self, job_id: str, task: asyncio.Task[ReflectionJobRun]) -> None:
+        self._tasks.pop(job_id, None)
         if task.cancelled():
             return
         try:
             self._results[job_id] = task.result()
         except Exception:
             logger.warning("Reflection manager lost job result for %s", job_id, exc_info=True)
+            return
+        self._results.move_to_end(job_id)
+        while len(self._results) > REFLECTION_RESULT_RETENTION:
+            self._results.popitem(last=False)
+
+
+async def _record_run(
+    recorder: Callable[[ReflectionJobRun], Any | Awaitable[Any]] | None,
+    run: ReflectionJobRun,
+) -> None:
+    """Hand one finished run to the caller's recorder.
+
+    Recording is bookkeeping: a failure here must not turn a usable batch of
+    proposals into a failed job, and must not touch the foreground at all.
+    """
+    if recorder is None:
+        return
+    try:
+        outcome = recorder(run)
+        if inspect.isawaitable(outcome):
+            await outcome
+    except Exception:
+        logger.warning("Reflection proposal recording failed", exc_info=True)
 
 
 def deterministic_reflection_job_id(source_message_id: str, policy_version: str = REFLECTION_POLICY_VERSION) -> str:
@@ -284,12 +333,21 @@ def _bounded_projection(state: AgentState, assistant_answer: str) -> dict[str, A
 
 
 def _action_proposal(reflection: Any, state: AgentState) -> ActionProposal:
+    parameters = {
+        "content": reflection.content,
+        "proposal_kind": reflection.proposal_kind,
+    }
+    if reflection.proposal_kind == "wiki_summary":
+        parameters["target_path"] = reflection.target_ref
     return ActionProposal(
         proposal_id=reflection.proposal_id,
-        explicit_intent_ref=f"reflection:{state.message_id}:{reflection.proposal_kind}",
+        # 前缀必须是策略允许的 intent:/task:/wiki-title: 之一:兜底目标会走
+        # explicit_intent_ref,而其它前缀(例如 reflection:)会被判 unsafe_target,
+        # 所有建议都会被拒绝,审阅队列永远是空的。
+        explicit_intent_ref=f"intent:reflection/{state.message_id}/{reflection.proposal_kind}",
         action_type=reflection.action_type,
         target_ref=reflection.target_ref,
-        parameters={"content": reflection.content, "proposal_kind": reflection.proposal_kind},
+        parameters=parameters,
         expected_effect=f"Reflection proposal: {reflection.proposal_kind}",
         reversible=reflection.reversible,
         source_message_id=state.message_id,

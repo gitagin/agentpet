@@ -1,5 +1,7 @@
 from pathlib import Path
 
+# [internal] /wiki/graph、/wiki/pages(GET)、/wiki/import/preview、/wiki/query-archives/lint
+# 当前无桌面端 UI 调用方（仅 agent 内部/MCP 适配/测试消费）；如需对用户开放请先接 UI。
 from fastapi import APIRouter, Depends, Query, Request, status
 
 from ..errors import AppError
@@ -33,7 +35,7 @@ from ..models.api import (
     WikiSynthesizeResponse,
 )
 from ..services.memory import MarkdownWriteError
-from ..services.wiki import SensitiveWikiRejectedError, WikiService, WikiWriteError
+from ..services.wiki import SensitiveWikiRejectedError, WikiConflictError, WikiService, WikiWriteError, resolve_wiki_path
 from ..utils.hash import sha256_hex
 from ..utils.time import utc_now_iso
 from ..services.wiki_workflows import (
@@ -116,6 +118,7 @@ async def get_wiki_log(
 async def write_wiki_page(
     page_request: WikiPageWriteRequest,
     request: Request,
+    service: WikiService = Depends(wiki_service_dependency),
 ) -> WikiPageResponse:
     try:
         response = await RuntimeWikiAdapter(
@@ -148,6 +151,24 @@ async def write_wiki_page(
             code=getattr(exc, "code", "wiki_write_failed"),
             message=str(exc),
             status_code=status.HTTP_400_BAD_REQUEST,
+        ) from exc
+    except RuntimeError as exc:
+        safe_code = str(exc).removeprefix("action_lifecycle_")
+        if safe_code != WikiConflictError.code:
+            raise
+        record_audit(
+            request,
+            action="wiki.page.write",
+            result="conflict",
+            target_path=page_request.target_path,
+            reason=audit_reason(request, code=WikiConflictError.code),
+        )
+        target = resolve_wiki_path(page_request.title, page_request.target_path)
+        raise AppError(
+            code=WikiConflictError.code,
+            message="Wiki 页面在预览后已被外部修改。请查看差异并基于最新版本重试。",
+            status_code=status.HTTP_409_CONFLICT,
+            details={"current_hash": service.writer.current_hash(target)},
         ) from exc
     record_audit(
         request,
@@ -562,6 +583,13 @@ def _diagnostic_question(raw) -> str:
 def _workflow_error(exc: Exception) -> AppError:
     if isinstance(exc, MarkdownWriteError):
         return AppError("markdown_write_failed", str(exc), status.HTTP_400_BAD_REQUEST)
+    if isinstance(exc, WikiConflictError):
+        return AppError(
+            exc.code,
+            str(exc),
+            status.HTTP_409_CONFLICT,
+            details={"current_hash": exc.current_hash},
+        )
     if isinstance(exc, WikiWriteError):
         return AppError(exc.code, str(exc), status.HTTP_400_BAD_REQUEST)
     if isinstance(exc, WikiWorkflowError):
@@ -571,5 +599,11 @@ def _workflow_error(exc: Exception) -> AppError:
         code = message.removeprefix("action_lifecycle_").strip() or "wiki_workflow_failed"
         if not code.replace("_", "").isalnum():
             code = "wiki_workflow_failed"
+        if code == WikiConflictError.code:
+            return AppError(
+                code,
+                "Wiki 页面在预览后已被外部修改。请查看差异并基于最新版本重试。",
+                status.HTTP_409_CONFLICT,
+            )
         return AppError(code, "Wiki 工作流未完成，未把不确定结果显示为成功。", status.HTTP_400_BAD_REQUEST)
     return AppError("wiki_workflow_failed", str(exc), status.HTTP_400_BAD_REQUEST)

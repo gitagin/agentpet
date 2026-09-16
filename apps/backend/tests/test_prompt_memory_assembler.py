@@ -17,6 +17,7 @@ from app.services.prompt_memory_assembler import (
 )
 from app.services.prompt_context_types import PromptRecentTurn
 from app.services.prompt_profile_provider import PromptProfileItem, PromptProfileSelection
+from app.utils.text import is_greeting_only
 
 
 def _result(
@@ -73,7 +74,11 @@ def _assert_total_dropped_count_matches_sections(assembly) -> None:
 def test_empty_input_only_generates_current_user_message_section() -> None:
     assembly = PromptMemoryAssembler().assemble(PromptMemoryAssemblyInput(user_message="hello"))
 
-    assert assembly.prompt_text == "hello"
+    # 无上下文时提示词就是这句话本身,外加"不要自行延续话题"的规则
+    # ("hello" 是纯问候,所以还带问候专用那条)。
+    assert assembly.prompt_text.startswith("hello")
+    assert "不要自行延续上一个话题" in assembly.prompt_text
+    assert "当前这句话只是问候" in assembly.prompt_text
     assert [section.key for section in assembly.sections] == ["current_user_message"]
     assert assembly.recall_sections is None
     assert assembly.telemetry.permission_usage_counts == {
@@ -429,7 +434,10 @@ def test_current_user_message_is_not_clipped_by_budget() -> None:
     long_message = "review this log\n" + ("x" * 13_500) + sentinel
     assembly = PromptMemoryAssembler().assemble(PromptMemoryAssemblyInput(user_message=long_message))
 
-    assert assembly.prompt_text.endswith(sentinel)
+    # 规则文本会追加在用户消息之后,所以不能用 endswith 判断是否被截断;
+    # 结尾的哨兵仍必须完整存在。
+    assert sentinel in assembly.prompt_text
+    assert assembly.prompt_text.startswith("review this log")
     current = next(section for section in assembly.sections if section.key == "current_user_message")
     metric = next(section for section in assembly.telemetry.sections if section.key == "current_user_message")
     assert current.dropped_count == 0
@@ -756,3 +764,98 @@ def _contains_forbidden_prompt_detail(value: str) -> bool:
         "lifecycle_status",
     )
     return any(item in lowered for item in forbidden)
+
+
+OWN_CHAT_LABEL = "kind=我们自己之前的对话记录_不是用户资料"
+
+
+def test_own_chat_records_are_labelled_so_they_are_not_read_as_knowledge() -> None:
+    # 聊天日记是"我们自己说过的话",不是用户提供的资料。线上曾把上一轮的回答
+    # 当成资料库内容照抄,所以渲染时必须标出来源性质。
+    assembly = PromptMemoryAssembler().assemble(
+        PromptMemoryAssemblyInput(
+            user_message="给我墨墨相关酒馆卡的所有链接",
+            citations=[
+                _result(
+                    snippet="## 20:22:11 - 用户问题：给我黑色修士酒馆卡的链接 - 桌宠回答：…",
+                    source_scope="daily_chat",
+                    retrieval_mode="fts",
+                    memory_kind=None,
+                ).model_copy(update={"relative_path": "Memories/Daily/2026/09/2026-09-13.md"}),
+                _result(
+                    snippet="23. [墨墨的乡村故事](https://example.test/card)",
+                    source_scope="knowledge_base",
+                    retrieval_mode="fts",
+                    memory_kind=None,
+                ).model_copy(update={"relative_path": "酒馆/卡.md"}),
+            ],
+        )
+    )
+
+    prompt = assembly.prompt_text
+    own_chat_lines = [line for line in prompt.splitlines() if "2026-09-13.md" in line]
+    knowledge_lines = [line for line in prompt.splitlines() if "酒馆/卡.md" in line]
+
+    # 同一条记忆可以同时进入"回答证据"与"主动提及"两个段落,所以按行判断:
+    # 聊天日记那几行必须带来源性质标注,知识库那几行不能带。
+    assert own_chat_lines and all(OWN_CHAT_LABEL in line for line in own_chat_lines)
+    assert knowledge_lines and all(OWN_CHAT_LABEL not in line for line in knowledge_lines)
+
+
+def test_instruction_allows_listing_when_the_user_asks_for_a_list() -> None:
+    # 用户明确要"所有链接"时,不能还被"简短自然、不要逐条展开"压成一句话。
+    assembly = PromptMemoryAssembler().assemble(
+        PromptMemoryAssemblyInput(
+            user_message="给我墨墨相关酒馆卡的所有链接",
+            citations=[
+                _result(
+                    snippet="23. [墨墨的乡村故事](https://example.test/card)",
+                    source_scope="knowledge_base",
+                    retrieval_mode="fts",
+                    memory_kind=None,
+                )
+            ],
+        )
+    )
+
+    assert "可以按条目把链接列出来" in assembly.prompt_text
+    assert OWN_CHAT_LABEL in assembly.prompt_text
+
+
+def test_greeting_message_is_told_not_to_drag_a_previous_topic_back() -> None:
+    # 线上形态:用户只说一句 "hi"(该轮引用条数为 0),回答却问"想接着聊某某吗" ——
+    # 因为最近几轮正好在聊那个话题。纯问候不承载话题,提示词必须说明这一点。
+    assembly = PromptMemoryAssembler().assemble(
+        PromptMemoryAssemblyInput(
+            user_message="hi",
+            recent_turns=[
+                PromptRecentTurn(role="user", content="给我黑色修士酒馆卡的链接"),
+                PromptRecentTurn(role="assistant", content="链接是 https://example.test/card"),
+            ],
+        )
+    )
+
+    prompt = assembly.prompt_text
+    assert "当前这句话只是问候" in prompt
+    # 没引用那条路径(线上这次就是 0 引用)也必须带上这条规则。
+    assert "[Recent conversation]" in prompt
+    # 通用那条也要在:不是"永远别提",而是"用户没提就别自己拉回来"。
+    assert "不要自行延续上一个话题" in prompt
+
+
+def test_greeting_rule_stays_out_of_real_questions() -> None:
+    assembly = PromptMemoryAssembler().assemble(
+        PromptMemoryAssemblyInput(
+            user_message="给我黑色修士酒馆卡的链接",
+            recent_turns=[PromptRecentTurn(role="user", content="hi")],
+        )
+    )
+
+    assert "当前这句话只是问候" not in assembly.prompt_text
+
+
+def test_shared_greeting_predicate_covers_chinese_and_english_openers() -> None:
+    for greeting in ("hi", "Hi!", "你好", "在吗？", "早上好", "晚安~"):
+        assert is_greeting_only(greeting) is True
+    for substantive in ("给我墨墨相关酒馆卡的所有链接", "hi 顺便问下酒馆卡", "帮我看看这个"):
+        assert is_greeting_only(substantive) is False

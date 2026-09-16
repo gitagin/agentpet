@@ -1,9 +1,5 @@
-import json
 import sqlite3
-import subprocess
-import sys
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
 import pytest
 
@@ -345,49 +341,3 @@ def test_confirmation_burden_exposes_queue_and_revocation_counts(tmp_path):
         assert metric["revocation_count"] == 1
     finally:
         service.close()
-
-
-def test_fixed_metrics_runner_fails_the_current_threshold_fixture(tmp_path):
-    repo_root = Path(__file__).resolve().parents[3]
-    completed = subprocess.run(
-        [
-            sys.executable,
-            str(repo_root / "scripts" / "verify_llmwiki_metrics.py"),
-            "--fixture",
-            str(repo_root / "apps" / "backend" / "tests" / "evals" / "retrieval" / "retrieval-corpus-v1.json"),
-            "--out",
-            str(tmp_path / "report"),
-        ],
-        cwd=repo_root,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-
-    assert completed.returncode == 1
-    summary = json.loads(completed.stdout)
-    assert summary["status"] == "failed"
-    assert summary["production_evaluator"] == "app.evals.retrieval_eval"
-    assert '"status": "passed"' not in completed.stdout
-    report = json.loads((tmp_path / "report" / "report.json").read_text(encoding="utf-8"))
-    assert report["exit_code"] == 1
-    assert report["results"]["production_evaluator"]["module"] == "app.evals.retrieval_eval"
-    assert report["results"]["channels"]["sqlite_fts"]["status"] == "failed"
-    assert report["results"]["baseline"]["no_evidence_accuracy"]["status"] == "passed"
-    assert report["results"]["baseline"]["citation_coverage"]["status"] == "insufficient_sample"
-    assert report["results"]["channels"]["sqlite_graph"]["status"] == "passed"
-    assert report["results"]["channels"]["sqlite_graph_fallback"]["status"] == "passed"
-    assert report["results"]["channels"]["kuzu_acceleration"]["status"] in {
-        "passed",
-        "not_run",
-    }
-    assert report["results"]["lifecycle_metrics"]["correction_propagation"]["numerator"] == 3
-    assert report["results"]["lifecycle_metrics"]["correction_propagation"]["denominator"] == 3
-    assert (
-        report["results"]["lifecycle_metrics"]["correction_propagation"]["status"]
-        == "insufficient_sample"
-    )
-    assert report["results"]["ablation"]["status"] == "partial"
-    assert report["results"]["ablation"]["llm_extraction_synthesis"]["status"] == "not_run"
-    assert (tmp_path / "report" / "production-fts" / "fts-baseline.json").is_file()
-    assert (tmp_path / "report" / "graph-lifecycle" / "graph-report.json").is_file()

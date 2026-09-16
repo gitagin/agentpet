@@ -213,14 +213,16 @@ class WikiIngestStorageMixin:
         status: str,
         index_job_id: str | None,
         error: str | None,
+        target_content_hash: str | None = None,
     ) -> None:
         with self.database.session() as conn:
             conn.execute(
                 """
                 UPDATE wiki_workflow_page_updates
-                SET status = ?, index_job_id = ?, error = ?, updated_at = ?
+                SET status = ?, index_job_id = ?, error = ?, updated_at = ?,
+                    target_content_hash = COALESCE(?, target_content_hash)
                 WHERE id = ?
                 """,
-                (status, index_job_id, error, utc_now_iso(), page_update_id),
+                (status, index_job_id, error, utc_now_iso(), target_content_hash, page_update_id),
             )
             conn.commit()

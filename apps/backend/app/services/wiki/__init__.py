@@ -13,12 +13,14 @@ sys.modules[_legacy_spec.name] = _legacy_wiki
 _legacy_spec.loader.exec_module(_legacy_wiki)
 
 SensitiveWikiRejectedError = _legacy_wiki.SensitiveWikiRejectedError
+WikiConflictError = _legacy_wiki.WikiConflictError
 WikiService = _legacy_wiki.WikiService
 WikiWriteError = _legacy_wiki.WikiWriteError
 resolve_wiki_path = _legacy_wiki.resolve_wiki_path
 slugify_wiki_title = _legacy_wiki.slugify_wiki_title
 utc_now_iso_from_mtime = _legacy_wiki.utc_now_iso_from_mtime
 WIKI_CORE_PATHS = _legacy_wiki.WIKI_CORE_PATHS
+WIKI_TARGET_ABSENT_HASH = _legacy_wiki.WIKI_TARGET_ABSENT_HASH
 WIKI_INDEX_PATH = _legacy_wiki.WIKI_INDEX_PATH
 WIKI_LOG_PATH = _legacy_wiki.WIKI_LOG_PATH
 WIKI_ROOT = _legacy_wiki.WIKI_ROOT
@@ -42,6 +44,7 @@ __all__ = [
     "ReviewModelResolver",
     "SensitiveWikiRejectedError",
     "WIKI_CORE_PATHS",
+    "WIKI_TARGET_ABSENT_HASH",
     "WIKI_INDEX_PATH",
     "WIKI_LOG_PATH",
     "WIKI_ROOT",
@@ -49,6 +52,7 @@ __all__ = [
     "WikiIngestApplyRejectedError",
     "WikiIngestPreviewTokenError",
     "WikiReviewModelProtocol",
+    "WikiConflictError",
     "WikiService",
     "WikiSourceImportRejectedError",
     "WikiWriteError",

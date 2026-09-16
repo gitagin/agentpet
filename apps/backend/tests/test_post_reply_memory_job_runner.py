@@ -720,3 +720,84 @@ async def test_archive_chat_memory_wrapper_returns_legacy_action_list(
         "slow-action",
         "wiki-action",
     ]
+
+
+def _reflect_scheduling_probe(monkeypatch: pytest.MonkeyPatch, *, automation) -> list[dict]:
+    """Capture whether archive_chat_memory asks for a background reflection run."""
+    import app.services.chat_pipeline as chat_pipeline
+
+    scheduled: list[dict] = []
+    monkeypatch.setattr(chat_pipeline, "automation_settings", lambda _context: automation)
+    monkeypatch.setattr(
+        chat_pipeline,
+        "_schedule_reflection_job",
+        lambda **kwargs: scheduled.append(kwargs),
+    )
+    return scheduled
+
+
+@pytest.mark.asyncio
+async def test_reflection_is_not_scheduled_when_all_background_automation_is_off(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # 后台整理整体关闭时,不要再花一次模型调用去提议更多整理 —— 反思现在真的会
+    # 发出请求,所以这条门必须与用户的自动化设置一致。
+    scheduled = _reflect_scheduling_probe(
+        monkeypatch,
+        automation=_automation(daily=False, structured=False, slow=False, wiki=False),
+    )
+
+    actions = await chat_pipeline_archive(client, monkeypatch)
+
+    assert scheduled == []
+    assert len(actions) == 1  # 只留下"已跳过自动整理"的说明事件
+
+
+@pytest.mark.asyncio
+async def test_reflection_is_scheduled_when_any_background_automation_is_on(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    scheduled = _reflect_scheduling_probe(
+        monkeypatch,
+        automation=_automation(daily=True, structured=False, slow=False, wiki=False),
+    )
+    import app.services.chat_pipeline as chat_pipeline
+
+    daily_result = SimpleNamespace(entry=SimpleNamespace(markdown_path=None))
+    monkeypatch.setattr(
+        chat_pipeline,
+        "archive_daily_diary",
+        lambda **_kwargs: (daily_result, [_action("daily-action", "chat.daily_diary")]),
+    )
+
+    await chat_pipeline_archive(client, monkeypatch)
+
+    assert len(scheduled) == 1
+    assert scheduled[0]["assistant_answer"] == "The checkpoint is recorded."
+
+
+async def chat_pipeline_archive(client: TestClient, monkeypatch: pytest.MonkeyPatch):
+    """Run archive_chat_memory with inert stages so only scheduling is observed."""
+    import app.services.chat_pipeline as chat_pipeline
+    from app.api.wiring import AppContext
+
+    async def structured_stage(**_kwargs):
+        return (), []
+
+    monkeypatch.setattr(chat_pipeline, "archive_structured_diary_memory", structured_stage)
+    monkeypatch.setattr(chat_pipeline, "consolidate_slow_memory", lambda **_kwargs: [])
+    monkeypatch.setattr(chat_pipeline, "archive_wiki_answer_summary", lambda **_kwargs: [])
+    monkeypatch.setattr(
+        chat_pipeline,
+        "archive_daily_diary",
+        lambda **_kwargs: (SimpleNamespace(entry=SimpleNamespace(markdown_path=None)), []),
+    )
+
+    return await chat_pipeline.archive_chat_memory(
+        context=AppContext(app=client.app),
+        state=_state(),
+        assistant_message_id="assistant-message-reflection-gate",
+        assistant_answer="The checkpoint is recorded.",
+    )

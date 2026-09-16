@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
+from datetime import datetime, timedelta, timezone
+
 from apps.backend.tests._schema import migrate_db, migrated_connection
 from app.models.enums import ReminderStatus, TaskStatus
 from app.scheduler import ReminderSchedulerError
@@ -124,6 +126,28 @@ def test_create_task_without_time_expression_remains_plain_task():
     assert result.task.status == TaskStatus.PENDING
     assert result.reminder is None
     assert result.metadata["time_parse_status"] == "not_found"
+
+
+def test_list_today_defaults_to_local_timezone_day(monkeypatch):
+    import app.services.tasks as tasks_module
+
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            current = datetime(2026, 1, 2, 1, 0, tzinfo=timezone.utc)
+            return current.astimezone(tz) if tz is not None else current.replace(tzinfo=None)
+
+    monkeypatch.setattr(tasks_module, "datetime", FrozenDateTime)
+    monkeypatch.setattr(tasks_module, "DEFAULT_NATURAL_TIMEZONE", "Asia/Shanghai")
+    service = TaskService(TaskStore(migrated_connection()))
+    created = service.create(
+        title="Local midnight task",
+        due_at="2026-01-02T00:30:00",
+        timezone="Asia/Shanghai",
+    )
+
+    assert [task.id for task in service.list_today()] == [created.task.id]
+    assert service.list_today("UTC") == []
 
 
 def test_scheduler_failure_keeps_task_and_marks_reminder_unscheduled():

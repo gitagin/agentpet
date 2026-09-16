@@ -14,7 +14,6 @@ export function preloadDesktopFeatureRoutes() {
 type DesktopFeatureRoutesProps = {
   windowMode: DesktopWindowMode;
   isStageHostWindow: boolean;
-  stageView: ReactNode;
   agentWorkspaceProps: ComponentProps<typeof AgentWorkspaceView>;
   chatWindowProps: ComponentProps<typeof ChatWindowView>;
   memoryWindowProps: ComponentProps<typeof MemoryWindowView>;
@@ -26,7 +25,6 @@ type DesktopFeatureRoutesProps = {
 export function DesktopFeatureRoutes({
   windowMode,
   isStageHostWindow,
-  stageView,
   agentWorkspaceProps,
   chatWindowProps,
   memoryWindowProps,
@@ -64,25 +62,11 @@ export function DesktopFeatureRoutes({
 
     return (
       <div className="stage-host-routes" data-active-route={windowMode}>
-        <div
-          className={`stage-host-route${windowMode === "stage" ? " is-active" : ""}`}
-          aria-label="首页常驻路由"
-          aria-hidden={windowMode !== "stage"}
-          hidden={windowMode !== "stage"}
-        >
-          {stageView}
+        <div className={`stage-host-route is-active stage-host-route-${windowMode}`} aria-label="当前活动路由">
+          {activeRoute}
         </div>
-        {windowMode !== "stage" ? (
-          <div className={`stage-host-route is-active stage-host-route-${windowMode}`} aria-label="当前活动路由">
-            {activeRoute}
-          </div>
-        ) : null}
       </div>
     );
-  }
-
-  if (windowMode === "stage") {
-    return <>{stageView}</>;
   }
 
   return <>{renderFeatureRoute(windowMode, { standalone: windowMode === "world" })}</>;

@@ -9,6 +9,7 @@ import type { AgentActivityDomain } from "./useAgentActivityDomain";
 import type { TaskDomain } from "./useTaskDomain";
 import type { MemoryDomain } from "./useMemoryDomain";
 import type { ContinuityDomain } from "./useContinuityDomain";
+import type { ReflectionDomain } from "./useReflectionDomain";
 import type { PetDomain } from "./usePetDomain";
 
 type WikiDomain = ReturnType<typeof useWiki>;
@@ -20,6 +21,7 @@ type UseResetDomainOptions = {
   tasks: TaskDomain;
   memory: MemoryDomain;
   continuity: ContinuityDomain;
+  reflection: ReflectionDomain;
   wiki: WikiDomain;
   pet: PetDomain;
   confirm: (request: ConfirmationDialogRequest) => Promise<boolean>;
@@ -32,6 +34,7 @@ export function useResetDomain({
   tasks,
   memory,
   continuity,
+  reflection,
   wiki,
   pet,
   confirm,
@@ -47,6 +50,8 @@ export function useResetDomain({
     memory.resetMemoryState();
     activity.reset();
     continuity.reset();
+    // 建议也存在后端:不一起清掉的话,重置后界面还留着已经不存在、点下去只会 404 的卡片。
+    reflection.reset();
   }
 
   async function resetLocalState() {

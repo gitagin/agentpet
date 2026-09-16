@@ -45,6 +45,7 @@ MEMORY_RESET_TABLES = (
     "continuity_proposals",
     "continuity_state",
     "memory_proposals",
+    "reflection_proposals",
     "agent_actions",
     "agent_runs",
     "messages",
@@ -97,6 +98,7 @@ SQLITE_RESET_TABLES = (
     "continuity_events",
     "continuity_state",
     "continuity_proposals",
+    "reflection_proposals",
     "memory_graph_events",
     "memory_graph_facts",
     "memory_fact_artifact_bindings",
@@ -249,6 +251,9 @@ class MemoryStateResetService(LocalStateResetService):
     def _remove_memory_runtime_paths(self) -> list[str]:
         removed: list[str] = []
         seen: set[Path] = set()
+        # 注意：不删除 vector-index。Windows 上多实例/测试共享 data_dir 时，
+        # 删除会与其他仍持有 .lock 的 Qdrant 客户端冲突；向量腿有权威性回查
+        # （note_chunks + content_hash），残留向量会被过滤，下次 reconcile 重建代数。
         for root in self._runtime_state_roots():
             for path in (root / "memory-graph", root / "memory_graph.kuzu"):
                 resolved = path.resolve()

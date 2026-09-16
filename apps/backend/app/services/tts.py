@@ -117,25 +117,6 @@ class TtsService:
             await asyncio.to_thread(_store_audio_response, self.cache, cache_key, provider, response)
         return response
 
-    def synthesize_blocking(self, request: TtsSynthesisRequest) -> TtsSynthesisResponse:
-        settings = self.store.get_tts_settings()
-        provider = normalize_tts_provider(request.provider or settings.provider)
-        if not settings.enabled:
-            raise TtsServiceError("TTS playback is disabled.", code="disabled", status_code=422)
-        if settings.requires_api_key:
-            api_key = self.store.get_tts_key(provider)
-        else:
-            api_key = None
-        cache_key = _cache_key_for_request(self.cache, request, settings, provider)
-        if cache_key:
-            cached = self.cache.get(cache_key)
-            if cached:
-                return _cached_audio_response(provider, cached)
-        response = self.synthesize_with_settings(request, settings, provider, api_key)
-        if cache_key:
-            _store_audio_response(self.cache, cache_key, provider, response)
-        return response
-
     def synthesize_with_settings(
         self,
         request: TtsSynthesisRequest,

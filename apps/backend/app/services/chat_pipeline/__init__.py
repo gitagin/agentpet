@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from app.agents.events import AgentActionEvent
 from app.agents.state import AgentState
@@ -52,7 +52,8 @@ async def archive_chat_memory(
         actions = [_disabled_automation_skip_event(context=context, state=state)]
     else:
         actions = list(run.action_events)
-    _schedule_reflection_job(context=context, state=state, assistant_answer=assistant_answer)
+        # 后台记忆整理被用户整体关掉时,不要再花一次模型调用去提议更多整理。
+        _schedule_reflection_job(context=context, state=state, assistant_answer=assistant_answer)
     return actions
 
 
@@ -79,8 +80,59 @@ def _schedule_reflection_job(*, context: AppContext, state: AgentState, assistan
             state=state.model_copy(deep=True),
             assistant_answer=assistant_answer,
             model=model,
+            recorder=reflection_recorder(context, conversation_id=state.conversation_id),
         )
     )
+
+
+def reflection_recorder(context: AppContext, *, conversation_id: str | None):
+    """Persist one finished reflection run into the review queue.
+
+    The job itself stays storage-free: it produces proposals and routes them
+    through the policy guard, then hands the run here.  A proposal keeps the
+    decision it was given -- `pending` waits for the user, `denied` and
+    `failed` are recorded with their reason so the queue can explain itself.
+    """
+    from app.api.services.factory import reflection_proposal_service
+
+    def record(run) -> None:
+        results = {item.proposal_id: item for item in run.state.proposal_results}
+        service = reflection_proposal_service(context)
+        try:
+            for proposal in run.proposals.proposals:
+                status, error = _reflection_proposal_status(results.get(proposal.proposal_id))
+                service.record(
+                    proposal_kind=proposal.proposal_kind,
+                    action_type=proposal.action_type,
+                    content=proposal.content,
+                    confidence=proposal.confidence,
+                    status=status,
+                    target_ref=proposal.target_ref,
+                    reversible=proposal.reversible,
+                    source_conversation_id=conversation_id,
+                    source_message_id=proposal.source_message_id,
+                    agent_run_id=run.state.source_agent_run_id,
+                    error=error,
+                )
+        finally:
+            service.close()
+
+    return record
+
+
+def _reflection_proposal_status(result) -> tuple[str, str | None]:
+    from app.services.reflection_proposals import APPLIED, DENIED, FAILED, PENDING
+
+    if result is None:
+        # 没有路由结论时按待审阅处理:宁可让用户看到一条建议,也不要静默丢弃。
+        return PENDING, None
+    if result.status == "denied":
+        return DENIED, result.reason_code
+    if result.status == "failed":
+        return FAILED, result.reason_code
+    if result.status == "executed":
+        return APPLIED, None
+    return PENDING, None
 
 
 def _post_chat_automation_disabled(automation) -> bool:

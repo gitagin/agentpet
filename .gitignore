@@ -59,7 +59,7 @@ logs/
 
 # Local product data and agent-local state
 /vault/
-# 本地 embedding 模型二进制（构建期由 scripts/download-embedding-model.ps1 下载）
+# 本地 embedding/reranker 模型二进制（构建期由 scripts/download-*.ps1 下载）
 /apps/backend/models/
 /.codex/
 /.impeccable/live/

@@ -347,6 +347,10 @@ def _source_context_line(result: MemorySearchResult) -> str:
         if reference.startswith("citation_") and is_public_reference(reference)
     )
     provenance = [f"source={source_ref or '(none)'}"]
+    if result.source_scope == "daily_chat":
+        # 聊天日记是我们自己过去说过的话,不是用户提供的资料。标注出来,
+        # 模型才不会把上一轮的回答当成资料库内容照抄(也提醒它先核对是否同一件事)。
+        provenance.append("kind=我们自己之前的对话记录_不是用户资料")
     if citation_refs:
         provenance.append(f"citations={','.join(citation_refs)}")
     return f"- {'; '.join(provenance)}{heading}: {result.snippet}"

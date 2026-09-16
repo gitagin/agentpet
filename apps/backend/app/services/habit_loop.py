@@ -3,9 +3,11 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
-from dataclasses import dataclass
-from datetime import datetime, time, timedelta, timezone
+from dataclasses import dataclass, replace
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+from app.config import get_settings
 
 from app.models.api import HabitLoopCandidateResponse, HabitLoopTriggerResponse
 from app.models.common import new_id
@@ -36,8 +38,6 @@ FREQUENCY_POLICIES: dict[ProactiveTriggerFrequency, _FrequencyPolicy] = {
     "normal": _FrequencyPolicy(daily_limit=2, cooldown_minutes=4 * 60, min_idle_minutes=90),
     "high": _FrequencyPolicy(daily_limit=3, cooldown_minutes=2 * 60, min_idle_minutes=45),
 }
-QUIET_START = time(hour=22)
-QUIET_END = time(hour=8)
 TERMINAL_TASK_STATUSES = {"done", "completed", "cancelled", "canceled", "rejected", "archived"}
 TRIGGER_ACTION_TYPE = "habit.proactive_trigger"
 SECRET_TEXT_PATTERNS: tuple[re.Pattern[str], ...] = (
@@ -60,11 +60,19 @@ class HabitLoopTriggerService:
         local_now = now_utc.astimezone(timezone_info)
         frequency = self._frequency()
         policy = FREQUENCY_POLICIES[frequency]
+        settings = get_settings()
+        if settings.tuning_habit_daily_limit is not None:
+            policy = replace(policy, daily_limit=max(0, settings.tuning_habit_daily_limit))
+        if settings.tuning_habit_cooldown_minutes is not None:
+            policy = replace(policy, cooldown_minutes=max(0, settings.tuning_habit_cooldown_minutes))
+        quiet_start_hour = min(23, max(0, settings.tuning_habit_quiet_start_hour))
+        quiet_end_hour = min(23, max(0, settings.tuning_habit_quiet_end_hour))
         if frequency == "off":
             return self._blocked("frequency_off", frequency, policy)
 
-        if _is_quiet_time(local_now):
-            next_eligible = _next_quiet_end(local_now).astimezone(timezone.utc)
+        # start == end 视为"无静默窗口"，避免全天被 quiet_hours 拦截。
+        if quiet_start_hour != quiet_end_hour and _is_quiet_time(local_now, quiet_start_hour, quiet_end_hour):
+            next_eligible = _next_quiet_end(local_now, quiet_end_hour).astimezone(timezone.utc)
             return self._blocked("quiet_hours", frequency, policy, next_eligible_at=_iso_utc(next_eligible))
 
         last_chat_at = self._latest_user_message_at()
@@ -347,14 +355,14 @@ def _timezone(timezone_name: str) -> ZoneInfo:
         return ZoneInfo("UTC")
 
 
-def _is_quiet_time(local_now: datetime) -> bool:
+def _is_quiet_time(local_now: datetime, quiet_start_hour: int, quiet_end_hour: int) -> bool:
     current = local_now.time()
-    return current >= QUIET_START or current < QUIET_END
+    return current.hour >= quiet_start_hour or current.hour < quiet_end_hour
 
 
-def _next_quiet_end(local_now: datetime) -> datetime:
-    end_today = local_now.replace(hour=QUIET_END.hour, minute=0, second=0, microsecond=0)
-    if local_now.time() < QUIET_END:
+def _next_quiet_end(local_now: datetime, quiet_end_hour: int) -> datetime:
+    end_today = local_now.replace(hour=quiet_end_hour, minute=0, second=0, microsecond=0)
+    if local_now.hour < quiet_end_hour:
         return end_today
     return end_today + timedelta(days=1)
 

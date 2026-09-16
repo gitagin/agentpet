@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 from app.models.api import (
     MemoryProposalActionResponse,
     MemorySearchResponse,
+    MemorySearchResult,
     QueryArchiveResponse,
     TaskCreateResponse,
     WikiLintProposal,
@@ -63,6 +65,35 @@ def _append_status(
     )
 
 
+MIN_RECENT_TURN_ECHO_CHARS = 12
+
+
+def _echoes_recent_turn(citation: MemorySearchResult, recent_turns: Sequence[Any]) -> bool:
+    """Is this citation really one of this conversation's own recent turns?
+
+    A chat-diary record of a turn that is still in ``recent_turns`` reaches the
+    model twice: once as [Recent conversation], and again as retrieved evidence,
+    where it reads like a source and pulls the answer back to the previous
+    topic.  Recent turns are already in the prompt, so dropping the duplicate
+    costs no information.
+
+    A user question is specific enough that containing one is proof of
+    duplication, so the check is exact containment rather than fuzzy matching --
+    no new similarity machinery.  Short turns are skipped because greetings and
+    one-word replies appear everywhere.
+    """
+    snippet = " ".join(citation.snippet.split())
+    if not snippet:
+        return False
+    for turn in recent_turns:
+        text = " ".join(str(getattr(turn, "content", "") or "").split())
+        if len(text) < MIN_RECENT_TURN_ECHO_CHARS:
+            continue
+        if text in snippet:
+            return True
+    return False
+
+
 def _emit_tool_results(graph_state: dict[str, Any], results: list[AgentToolResult]) -> None:
     state = _agent_state(graph_state)
     for result in results:
@@ -75,6 +106,7 @@ def _emit_tool_results(graph_state: dict[str, Any], results: list[AgentToolResul
                 envelope.result
                 for envelope in accepted
                 if envelope.citation_id not in existing_ids
+                and not _echoes_recent_turn(envelope.result, state.recent_turns)
             ]
             state.citations = [*state.citations, *citations]
             for citation in citations:

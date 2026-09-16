@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections import OrderedDict
 from dataclasses import replace
 from math import isclose
@@ -46,6 +47,35 @@ def _candidate(
         vault_id=vault_id,
         **changes,
     )
+
+
+def test_scope_weights_downweight_echo_scope_when_knowledge_competes() -> None:
+    channels = {
+        "fts": [_candidate("diary-echo", source_scope="daily_chat")],
+        "vector": [_candidate("knowledge", source_scope="vault_note")],
+    }
+
+    result = reciprocal_rank_fusion(
+        channels,
+        approved_scopes=("daily_chat", "vault_note"),
+        top_k=5,
+        scope_weights={"daily_chat": 0.5},
+    )
+
+    assert [candidate.stable_id for candidate in result.candidates] == ["knowledge", "diary-echo"]
+    knowledge, echo = result.candidates
+    assert isclose(echo.score, knowledge.score * 0.5)
+
+
+def test_scope_weights_reject_invalid_values() -> None:
+    channels = {"fts": [_candidate("a", source_scope="daily_chat")]}
+    with pytest.raises(ValueError, match="scope weights"):
+        reciprocal_rank_fusion(
+            channels,
+            approved_scopes=("daily_chat",),
+            top_k=5,
+            scope_weights={"daily_chat": 0.0},
+        )
 
 
 def test_rrf_uses_only_channel_ranks_and_records_contributions() -> None:
@@ -268,7 +298,56 @@ async def test_retrieval_agent_scope_wrapper_forces_route_result_budget() -> Non
 
 
 @pytest.mark.asyncio
-async def test_agent_tool_forces_fts_and_does_not_retry_internal_type_error() -> None:
+async def test_search_memory_guard_warns_when_no_scope_is_enforced(caplog) -> None:
+    # 没有可执行的范围决定时,范围由模型自选。这条路径曾经静默:调用方没给结构化
+    # 范围、提示词也反解析不出来时,约束消失而日志里毫无痕迹。
+    import logging
+
+    async def search_memory(query: str, top_k: int = 5, source_scope: str = "all"):
+        return {"results": [], "metadata": {}}
+
+    tool = StructuredTool.from_function(
+        coroutine=search_memory,
+        name="search_memory",
+        description="Test-only memory search.",
+        args_schema=SearchMemoryInput,
+    )
+    caplog.set_level(logging.WARNING, logger="app.agents.retrieval.scoping")
+
+    _force_search_memory_source_scope([tool], "这里没有 source_scope 标记,也没有结构化范围。")
+
+    assert "without an enforced source scope" in caplog.text
+
+
+@pytest.mark.parametrize("scope", ["none", "", "graph_facts", "什么东西"])
+def test_search_memory_guard_does_not_forward_an_unsearchable_scope(caplog, scope: str) -> None:
+    # "none" 是"这轮不检索"的决定,不是可搜索范围:转发给工具会变成非法参数,
+    # 而当成已强制又会假装约束存在。
+    import logging
+
+    calls: list[str] = []
+
+    async def search_memory(query: str, top_k: int = 5, source_scope: str = "all"):
+        calls.append(source_scope)
+        return {"results": [], "metadata": {}}
+
+    tool = StructuredTool.from_function(
+        coroutine=search_memory,
+        name="search_memory",
+        description="Test-only memory search.",
+        args_schema=SearchMemoryInput,
+    )
+    caplog.set_level(logging.WARNING, logger="app.agents.retrieval.scoping")
+    wrapped = _force_search_memory_source_scope([tool], "", forced_source_scope=scope)
+
+    asyncio.run(wrapped[0].ainvoke({"query": "hi", "top_k": 5, "source_scope": "daily_chat"}))
+
+    assert calls == ["daily_chat"]
+    assert "without an enforced source scope" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_agent_tool_uses_hybrid_and_does_not_retry_internal_type_error() -> None:
     class BrokenScopedRetrieval:
         def __init__(self) -> None:
             self.calls: list[dict[str, object]] = []
@@ -304,7 +383,7 @@ async def test_agent_tool_forces_fts_and_does_not_retry_internal_type_error() ->
         {
             "query": "remembered preference",
             "top_k": 7,
-            "mode": "fts",
+            "mode": "hybrid",
             "source_scope": "personal_memory",
         }
     ]

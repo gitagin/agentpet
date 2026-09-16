@@ -34,6 +34,8 @@ import type {
   ContinuityStateResponse,
   DesktopSidecarStatus,
   HealthResponse,
+  ReflectionProposal,
+  ReflectionProposalKind,
   TaskItem,
 } from "../../types";
 import type { DesktopApi } from "../../services/desktopApi";
@@ -51,6 +53,7 @@ import { BottomNav } from "../../views/BottomNav";
 import { navigationHashForTab, type PrimaryNavigationTab } from "../../views/navigation";
 import { readRendererUiState, writeRendererUiState } from "../../services/rendererUiState";
 import { useVersionedPublicAsset } from "../../hooks/useVersionedPublicAsset";
+import { useStreamingElapsed } from "../../hooks/useStreamingElapsed";
 import { paginatePetBubbleReply } from "../../services/petBubblePagination";
 import { productCopy } from "../../productCopy";
 import type { AdvancedManagementToolsProps } from "./AdvancedManagementTools";
@@ -113,10 +116,17 @@ export type ControlDashboardProps = {
     tasks: TaskItem[];
     taskPanelProps: ComponentProps<typeof TaskPanel>;
     continuityState: ContinuityStateResponse | null;
+    continuitySnapshotRevision: number;
     pendingContinuityCount: number;
     onLoadContinuity: () => void;
     onLocateWorkflowTarget: (targetId?: string) => void;
     workflowItems: ControlWorkflowItem[];
+    reflectionProposals: ReflectionProposal[];
+    reflectionLoading: boolean;
+    reflectionError: string | null;
+    reflectionActionIds: Set<string>;
+    onAcceptReflection: (proposalId: string) => void;
+    onDismissReflection: (proposalId: string) => void;
   };
   status: {
     modelLabel: string;
@@ -226,9 +236,16 @@ export function ControlDashboard({
     tasks,
     taskPanelProps,
     continuityState,
+    continuitySnapshotRevision,
     pendingContinuityCount,
     onLoadContinuity,
     onLocateWorkflowTarget,
+    reflectionProposals,
+    reflectionLoading,
+    reflectionError,
+    reflectionActionIds,
+    onAcceptReflection,
+    onDismissReflection,
   } = memory;
   const { modelLabel: modelStatusLabel, knowledgeLabel: knowledgeStatusLabel } = status;
   const composerInputRef = useRef<HTMLInputElement | null>(null);
@@ -284,8 +301,16 @@ export function ControlDashboard({
   const todayWeekdayLabel = formatWeekdayLabel(displayDate);
   const connectionCopy = hasConnection ? "本地模式 · 已连接" : "本地模式 · 连接中";
   const petMood = continuityState?.current_mood?.trim() || (streaming ? "专注" : hasConnection ? "陪伴中" : "等待");
+  const streamingElapsed = useStreamingElapsed(streaming);
   const energyCopy =
-    continuityState?.energy_level?.trim() || (streaming ? "思考中" : hasConnection ? "在线" : "待连接");
+    continuityState?.energy_level?.trim() ||
+    (streaming
+      ? streamingElapsed === null || streamingElapsed < 1
+        ? "思考中"
+        : `思考中 ${streamingElapsed}s`
+      : hasConnection
+        ? "在线"
+        : "待连接");
   const affinityLabel = buildAffinityLabel(messages, agentActivityEntries, tasks, continuityState);
   const moodScore = buildPetVitalScore("mood", streaming, hasConnection, continuityState);
   const energyScore = buildPetVitalScore("energy", streaming, hasConnection, continuityState);
@@ -884,6 +909,71 @@ export function ControlDashboard({
         </section>
 
         <aside className="control-right-rail" aria-label="记忆回顾">
+          <section className="control-reflection-panel" aria-label="后台建议">
+            <div className="control-reflection-head">
+              <strong>建议记下来</strong>
+              <span className="control-reflection-count" aria-label={`待处理建议 ${reflectionProposals.length} 条`}>
+                {reflectionProposals.length}
+              </span>
+            </div>
+            {reflectionProposals.length === 0 ? (
+              <p className={`control-reflection-empty${reflectionError ? " is-error" : ""}`}>
+                {reflectionError
+                  ? `建议读取失败：${reflectionError}`
+                  : reflectionLoading
+                    ? "正在读取建议…"
+                    : "暂时没有新建议。聊过之后，这里会列出值得记住或整理的内容。"}
+              </p>
+            ) : (
+              <ul className="control-reflection-list">
+                {reflectionProposals.map((proposal) => {
+                  const busy = reflectionActionIds.has(proposal.proposal_id);
+                  const failed = proposal.status === "failed";
+                  const acceptLabel = failed
+                    ? "重试写入"
+                    : proposal.proposal_kind === "wiki_summary"
+                      && proposal.action_type === "wiki.answer_summary.write"
+                      ? "写入 Wiki 摘要"
+                      : "记下来";
+                  return (
+                    <li
+                      key={proposal.proposal_id}
+                      className={`control-reflection-item${failed ? " is-failed" : ""}`}
+                    >
+                      <span className="control-reflection-kind">{reflectionKindLabel(proposal.proposal_kind)}</span>
+                      <p>{proposal.content}</p>
+                      {failed ? (
+                        <p className="control-reflection-failure">
+                          上次没能写进去（{proposal.error || "原因未知"}）。可以重试，或标记为不用记。
+                        </p>
+                      ) : null}
+                      <div className="control-reflection-actions">
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => onAcceptReflection(proposal.proposal_id)}
+                        >
+                          {busy ? "处理中…" : acceptLabel}
+                        </button>
+                        <button
+                          type="button"
+                          className="is-secondary"
+                          disabled={busy}
+                          onClick={() => onDismissReflection(proposal.proposal_id)}
+                        >
+                          不用记
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            <p className="control-reflection-note">
+              这里只确认是否保存为记忆或写入 Wiki 摘要；不影响它在对话里被提到。不想让它再提某个话题，请在对话里那条提示上点「不再继续」。
+            </p>
+          </section>
+
           <section className="control-memory-panel">
             <div className="control-memory-head">
               <strong>记忆回顾</strong>
@@ -1046,7 +1136,11 @@ export function ControlDashboard({
                   <div><dt>待确认</dt><dd>{pendingContinuityCount} 个</dd></div>
                 </dl>
               </section>
-              <VisibleContinuityPanel api={api} className="control-continuity-panel" />
+              <VisibleContinuityPanel
+                api={api}
+                className="control-continuity-panel"
+                snapshotRefreshKey={continuitySnapshotRevision}
+              />
             </div>
           ) : null}
         </details>
@@ -1364,6 +1458,17 @@ export function buildOrbitItems(memoryDays: MemoryDayGroup[]): OrbitItem[] {
       label: truncateText(entry.title, 8),
       date: entry.date,
     }));
+}
+
+const REFLECTION_KIND_LABELS: Record<ReflectionProposalKind, string> = {
+  daily_diary: "日记",
+  structured_memory: "记忆",
+  long_term_memory: "长期记忆",
+  wiki_summary: "知识整理",
+};
+
+function reflectionKindLabel(kind: ReflectionProposalKind): string {
+  return REFLECTION_KIND_LABELS[kind] ?? kind;
 }
 
 function buildAffinityLabel(

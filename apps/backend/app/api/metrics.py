@@ -4,6 +4,8 @@ import hashlib
 from datetime import timezone
 from typing import Annotated, Literal
 
+# [internal] /metrics/local-impact 与 /metrics/recall-feedback 当前无桌面端 UI 调用方
+# （前者为诊断只读，后者供外部评测脚本回调）；不影响全局鉴权要求。
 from fastapi import APIRouter, Depends, Request, status
 from pydantic import BeforeValidator
 

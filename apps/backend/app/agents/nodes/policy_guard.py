@@ -95,6 +95,25 @@ def evaluate_action_proposal(proposal: ActionProposal) -> PolicyDecision:
     )
     target_paths = _target_paths(normalized_target, canonical_parameters)
 
+    if action_type == "wiki.answer_summary.write":
+        summary_target = str(canonical_parameters.get("target_path") or canonical_parameters.get("target_ref") or "").replace("\\", "/")
+        if (
+            summary_target != normalized_target
+            or not summary_target.startswith("Wiki/Companion/Summaries/")
+            or not summary_target.endswith(".md")
+        ):
+            return _decision(
+                proposal,
+                action_type=action_type,
+                normalized_target=normalized_target,
+                canonical_parameters=canonical_parameters,
+                idempotency_key=idempotency_key,
+                risk_tier="high",
+                decision="denied",
+                requires_confirmation=False,
+                reason_code="wiki_summary_target_invalid",
+            )
+
     if _normalized_target_is_unsafe(normalized_target):
         return _decision(
             proposal,

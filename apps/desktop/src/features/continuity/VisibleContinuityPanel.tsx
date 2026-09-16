@@ -17,6 +17,9 @@ type VisibleContinuityPanelProps = {
   autoLoad?: boolean;
   className?: string;
   onContinuePrompt?: (prompt: string) => void;
+  // 快照由未完话题等状态派生:别处撤销了话题就要重新拉,否则面板会继续显示
+  // 已经被用户忽略的那一条。调用方(面板宿主)负责在变更后递增值。
+  snapshotRefreshKey?: number;
 };
 
 export function VisibleContinuityPanel({
@@ -25,6 +28,7 @@ export function VisibleContinuityPanel({
   autoLoad = true,
   className = "",
   onContinuePrompt,
+  snapshotRefreshKey = 0,
 }: VisibleContinuityPanelProps) {
   const [revertingReceiptIds, setRevertingReceiptIds] = useState<Set<string>>(new Set());
   const [receiptNotice, setReceiptNotice] = useState<{ tone: "success" | "error"; message: string } | null>(null);
@@ -37,6 +41,7 @@ export function VisibleContinuityPanel({
     api: api ?? fallbackApi,
     enabled: Boolean(api) && providedSnapshot === undefined,
     autoLoad,
+    refreshKey: snapshotRefreshKey,
   });
   const snapshot = providedSnapshot === undefined ? loader.snapshot : providedSnapshot;
   const loading = providedSnapshot === undefined && loader.status === "loading";

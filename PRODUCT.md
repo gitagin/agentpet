@@ -46,7 +46,9 @@ control over writes.
 
 Every transition has a visible state and a user action. A candidate is not an
 active fact; a graph edge is not proof; a Markdown page is not an authority for
-permissions. Those distinctions are part of the user experience.
+permissions. A background suggestion is likewise not a memory: it waits in the
+review queue, and accepting it is what writes one. Those distinctions are part
+of the user experience.
 
 ## Why AI is necessary, and where it is forbidden
 
@@ -54,6 +56,9 @@ AI is useful for the parts that are genuinely linguistic and ambiguous:
 
 - extracting an entity, preference, boundary, event, concept, source, page or
   decision from prose;
+- proposing follow-up memory or organisation suggestions after a finished
+  exchange — as review-queue proposals, never as writes: a suggestion is not a
+  memory until the user accepts it;
 - suggesting a match between an alias and an existing entity;
 - planning a bounded evidence query from a natural-language question;
 - synthesizing multiple cited facts into a readable page or answer.
@@ -67,15 +72,18 @@ The deterministic layer handles the parts where guessing would create damage:
 - Markdown path/hash checks, citation acceptance, Kuzu fallback and metrics
   aggregation.
 
-Ordinary social chat may use a direct streaming model path. The opt-in
-evidence path is deliberately bounded: an Orchestrator can dispatch at most one
-sequential read-only Retrieval Agent per round, then a Synthesizer writes the
-single natural-language response. This is a control decision, not a claim of
-autonomous model governance.
+Ordinary social chat may use a direct streaming model path. The evidence path is
+deliberately bounded: when the orchestration graph is enabled, an Orchestrator
+can dispatch at most one sequential read-only Retrieval Agent per round, then a
+Synthesizer writes the single natural-language response. The graph is opt-in
+(`use_negotiation`, off by default); the default path is the simple runtime
+graph with the deterministic action planner, which never lets the model write
+more than one response. This is a control decision, not a claim of autonomous
+model governance.
 
-The current lifecycle gate covers the primary task and post-reply memory/Wiki
-paths. Memory feedback, profile actions, hygiene actions, retrospective reports
-and continuity proposal creation still contain direct domain writes outside the
+The current lifecycle gate covers the primary task, post-reply memory/Wiki paths
+and memory feedback. Profile actions, hygiene actions, retrospective reports and
+continuity proposal creation still contain direct domain writes outside the
 coordinator; the product must keep those paths marked `Partial` until they are
 independently wrapped and recovered.
 
@@ -120,7 +128,7 @@ packaged sidecar smoke, but no real 24-hour sample series. The status remains
 | No evidence | Explain that no authorized source was found; return no confident fact | Add/import a source or ask a narrower question |
 | Model offline or invalid output | Keep local data intact; mark the run/candidate failed with a stable code | Browse FTS/Wiki locally or retry the read-only step |
 | Conflicting facts/entities | Keep both evidence chains isolated; block deterministic answer context | Choose the entity or correct one claim |
-| Markdown conflict | Stop the page write and preserve snapshot/hash | Inspect diff, retry with the latest revision, or abandon |
+| Markdown conflict | Stop the page write and preserve the current file plus its hash: memory proposals and Wiki pages both compare the preview hash before writing | Inspect diff, retry with the latest revision, or abandon |
 | Effect before receipt | Read the target by stable idempotency key; replay the receipt if uniquely verified | Wait for recovery or open manual review; never press a blind repeat button |
 | Kuzu unavailable | Use the SQLite authority and show degraded projection status | Continue working and rebuild the projection later |
 | Sidecar/notification failure | Persist the task; show recovery or display-unknown, not success | Restart/retry manually; check Windows permission |
@@ -142,7 +150,7 @@ the underlying fact is true.
 | Markdown Vault | Immutable sources and portable Wiki body | External edits require hash reconciliation |
 | FTS5 | Default deterministic retrieval/fallback | Lexical, not semantic proof |
 | Kuzu | Rebuildable graph traversal projection | Never the authority; fallback is visible |
-| Qdrant | Optional vector candidate experiment | Disabled as default until quality promotion |
+| Qdrant | Embedded local vector index for hybrid retrieval; a Qdrant server is not wired | The embedded client is the default vector backend whenever the bundled model is present; server mode is a separate, unshipped experiment |
 | APScheduler/SQLAlchemy | Persisted reminders and recovery catch-up | Sleep/shutdown are offline |
 | SSE | Streaming progress/citation/action status | Does not guarantee correctness |
 
@@ -159,8 +167,8 @@ and 7-day evidence first.
 
 ## Design requirements
 
-- The memory page uses `图谱 / 时间线 / 来源`; desktop defaults to graph and a
-  390px viewport defaults to timeline.
+- The memory page uses `图谱 / 时间线 / 来源 / 维护`; desktop defaults to graph
+  and a viewport of 600px or narrower defaults to timeline.
 - Selecting a relation opens an evidence rail in this order: entity, relation,
   original source, Wiki page, lifecycle and correction record.
 - Empty, no-evidence, offline, conflict, degraded and recovery states each have

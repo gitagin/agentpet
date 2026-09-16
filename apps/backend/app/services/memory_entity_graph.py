@@ -185,7 +185,12 @@ class MemoryEntityGraphStore:
         outer = self._transaction_depth == 0
         self._transaction_depth += 1
         if outer:
-            self.conn.execute("BEGIN")
+            # BEGIN IMMEDIATE 而不是裸 BEGIN:WAL 下 deferred 事务的读快照在第一次读时
+            # 固定,期间任何别的连接提交都会让后续写立刻报 database is locked
+            # (SQLITE_BUSY_SNAPSHOT,busy_timeout 不参与)。这类事务常常先读后写
+            # (例如 bind_authoritative_wiki_page 先查实体再绑定页面),所以必须一开始
+            # 就拿写锁——与账本、检查点、迁移器同一约定。
+            self.conn.execute("BEGIN IMMEDIATE")
         try:
             yield self
         except BaseException:
@@ -1962,7 +1967,8 @@ class MemoryEntityGraphStore:
         before = self.conn.total_changes
         outer = self._transaction_depth == 0
         if outer:
-            self.conn.execute("BEGIN")
+            # 同上:写范围一开就拿写锁,避免"先读后写"的 deferred 快照冲突。
+            self.conn.execute("BEGIN IMMEDIATE")
         try:
             yield
         except BaseException:

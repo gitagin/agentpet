@@ -9,6 +9,8 @@ type UseVisibleContinuityOptions = {
   api: VisibleContinuityApi;
   enabled?: boolean;
   autoLoad?: boolean;
+  /** Bump to refetch: the snapshot is derived state that other panels can invalidate. */
+  refreshKey?: number;
 };
 
 const SIDECAR_STARTING_RETRY_DELAY_MS = 500;
@@ -20,6 +22,7 @@ export function useVisibleContinuity({
   api,
   enabled = true,
   autoLoad = true,
+  refreshKey = 0,
 }: UseVisibleContinuityOptions) {
   const [snapshot, setSnapshot] = useState<VisibleContinuitySnapshotResponse | null>(null);
   const [status, setStatus] = useState<VisibleContinuityLoadStatus>("idle");
@@ -75,6 +78,16 @@ export function useVisibleContinuity({
     void refresh(controller.signal);
     return () => controller.abort();
   }, [autoLoad, enabled, refresh]);
+
+  // 外部失效:宿主(例如撤销未完话题的页面)递增值表示"这份派生快照过期了"。
+  const previousRefreshKeyRef = useRef(refreshKey);
+  useEffect(() => {
+    if (previousRefreshKeyRef.current === refreshKey) {
+      return;
+    }
+    previousRefreshKeyRef.current = refreshKey;
+    void refresh();
+  }, [refresh, refreshKey]);
 
   return {
     error,

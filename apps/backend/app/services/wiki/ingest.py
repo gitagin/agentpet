@@ -176,9 +176,9 @@ class WikiIngestWorkflowMixin(WikiIngestReviewMixin, WikiIngestStorageMixin):
                     """
                 INSERT INTO wiki_workflow_page_updates(
                         id, run_id, title, target_path, operation, section, content,
-                        tags_json, links_json, status, created_at, updated_at
+                        tags_json, links_json, status, target_content_hash, created_at, updated_at
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(id) DO UPDATE SET
                         title = excluded.title,
                         target_path = excluded.target_path,
@@ -191,6 +191,7 @@ class WikiIngestWorkflowMixin(WikiIngestReviewMixin, WikiIngestStorageMixin):
                             WHEN wiki_workflow_page_updates.status = 'written' THEN 'written'
                             ELSE excluded.status
                         END,
+                        target_content_hash = excluded.target_content_hash,
                         updated_at = excluded.updated_at
                     """,
                     (
@@ -204,6 +205,7 @@ class WikiIngestWorkflowMixin(WikiIngestReviewMixin, WikiIngestStorageMixin):
                         _dumps_list(plan.tags),
                         _dumps_list(plan.links),
                         "planned",
+                        self.wiki.writer.current_hash(plan.target_path) or WIKI_TARGET_ABSENT_HASH,
                         now,
                         now,
                     ),
@@ -327,6 +329,7 @@ class WikiIngestWorkflowMixin(WikiIngestReviewMixin, WikiIngestStorageMixin):
                         **closure.page_metadata(),
                         inference=page_type != "source",
                         source_message_id=request.run_id,
+                        target_content_hash=plan.target_content_hash,
                     ),
                     action_marker=action_marker,
                 )
@@ -337,7 +340,13 @@ class WikiIngestWorkflowMixin(WikiIngestReviewMixin, WikiIngestStorageMixin):
                     operation=page.operation,
                     index_job_id=page.index_job_id,
                 )
-                self._update_page_result(plan.id, status="written", index_job_id=page.index_job_id, error=None)
+                self._update_page_result(
+                    plan.id,
+                    status="written",
+                    index_job_id=page.index_job_id,
+                    error=None,
+                    target_content_hash=self.wiki.writer.current_hash(page.relative_path),
+                )
             except Exception as exc:
                 result = WikiIngestPageResult(
                     title=plan.title,

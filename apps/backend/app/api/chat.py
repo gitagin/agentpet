@@ -37,7 +37,7 @@ from ..services.prompt_context_types import PromptRecentTurn
 from ..models.common import new_id
 from ..models.enums import AgentId, AgentIntent, AgentRunStatus, ConversationStatus, MessageRole, MessageStatus
 from ..storage.database import Database
-from ..utils.time import utc_now_iso
+from ..utils.time import local_timezone_name, utc_now_iso
 from ..agents.retrieval.compression import gate_evidence
 from .wiring import (
     AppContext,
@@ -73,7 +73,8 @@ _RECENT_TURN_STACK_TRACE_PATTERN = re.compile(
     r"Traceback \(most recent call last\)|\bFile \"[^\"]+\", line \d+",
     re.IGNORECASE,
 )
-_DEFAULT_DAILY_HISTORY_TIMEZONE = "Asia/Shanghai"
+# 每日聊天历史按本机时区解释（东八区机器解析结果与原来一致）。
+_DEFAULT_DAILY_HISTORY_TIMEZONE = local_timezone_name()
 _DAILY_HISTORY_DEFAULT_LIMIT = 160
 # Streaming PARTIAL persistence throttle: flush after this many tokens or
 # this many seconds since the last flush, whichever comes first. Terminal
@@ -90,9 +91,19 @@ _POST_REPLY_TASKS: set["asyncio.Task[None]"] = set()
 # Durable post-reply work is deliberately bounded. A permanently failing
 # local provider remains visible as a failed row for manual retry instead of
 # creating an unbounded restart loop.
-POST_REPLY_MAX_ATTEMPTS = 3
-_POST_REPLY_LEASE_SECONDS = 300
+# 队列重试/租约/恢复上限收敛到 settings（env 可覆盖）。刻意用函数在每次
+# 使用时读取：模块导入期求值会与 conftest 的 cache_clear 失配，测试也无法覆盖。
+from ..config import get_settings as _get_settings
+
 _POST_REPLY_RECOVERY_LIMIT = 100
+
+
+def _post_reply_max_attempts() -> int:
+    return max(1, _get_settings().tuning_post_reply_max_attempts)
+
+
+def _post_reply_lease_seconds() -> int:
+    return max(1, _get_settings().tuning_post_reply_lease_seconds)
 _POST_REPLY_WORKER_ID = f"post-reply-worker-{new_id()}"
 
 
@@ -891,11 +902,11 @@ async def _complete_assistant_message_background(
         record, claimed = store.claim(
             job_id,
             owner=owner,
-            lease_seconds=_POST_REPLY_LEASE_SECONDS,
-            max_attempts=POST_REPLY_MAX_ATTEMPTS,
+            lease_seconds=_post_reply_lease_seconds(),
+            max_attempts=_post_reply_max_attempts(),
         )
         if not claimed or record is None:
-            if record is not None and record.attempts >= POST_REPLY_MAX_ATTEMPTS:
+            if record is not None and record.attempts >= _post_reply_max_attempts():
                 store.mark_exhausted(job_id)
                 logger.warning("Post-reply job retry budget exhausted for job_id=%s", job_id)
             return
@@ -960,8 +971,8 @@ async def _run_persisted_post_reply_job(
         record, claimed = store.claim(
             job_id,
             owner=owner,
-            lease_seconds=_POST_REPLY_LEASE_SECONDS,
-            max_attempts=POST_REPLY_MAX_ATTEMPTS,
+            lease_seconds=_post_reply_lease_seconds(),
+            max_attempts=_post_reply_max_attempts(),
         )
         if not claimed or record is None:
             return
@@ -1039,13 +1050,13 @@ def recover_post_reply_memory_jobs(app: object, *, limit: int = _POST_REPLY_RECO
     scheduled = 0
     try:
         store = PostReplyMemoryJobStore(database_instance.path)
-        store.requeue_expired(max_attempts=POST_REPLY_MAX_ATTEMPTS)
+        store.requeue_expired(max_attempts=_post_reply_max_attempts())
         for record in store.list_pending(limit=limit):
-            if record.attempts >= POST_REPLY_MAX_ATTEMPTS:
+            if record.attempts >= _post_reply_max_attempts():
                 store.mark_exhausted(record.id)
                 continue
             if record.status == "failed":
-                if not store.requeue_failed(record.id, max_attempts=POST_REPLY_MAX_ATTEMPTS):
+                if not store.requeue_failed(record.id, max_attempts=_post_reply_max_attempts()):
                     continue
                 refreshed = store.get(record.id)
                 if refreshed is None:

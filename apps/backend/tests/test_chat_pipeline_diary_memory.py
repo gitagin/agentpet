@@ -335,7 +335,7 @@ async def test_auto_structured_memory_false_skips_sqlite_diary_object(
 
 
 @pytest.mark.asyncio
-async def test_do_not_remember_and_sensitive_payloads_do_not_write_diary_objects(
+async def test_do_not_remember_exchange_writes_no_diary_object(
     client: TestClient,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -343,44 +343,74 @@ async def test_do_not_remember_and_sensitive_payloads_do_not_write_diary_objects
     diary_memory_stage = _diary_memory_stage()
     vault_root = tmp_path / "Vault"
     _insert_vault_row(client, vault_root)
-
-    do_not_remember_model = FakeDiaryModel(
+    model = FakeDiaryModel(
         """
         [{"type":"event","summary":"Should not write.","topic":"private","emotion":"","people":[],"keywords":[],"source_text":"Should not write.","importance":0.8,"confidence":0.9}]
         """
     )
-    sensitive_model = FakeDiaryModel(
-        """
-        [{"type":"event","summary":"Credential was discussed.","topic":"security","emotion":"worried","people":[],"keywords":["credential"],"source_text":"Authorization: Bearer secret-token-value","importance":0.8,"confidence":0.9}]
-        """
-    )
-    models = iter((do_not_remember_model, sensitive_model))
 
     def service_factory(_context: object) -> DiaryMemoryService:
         return DiaryMemoryService(
             DiaryMemoryStore(client.app.state.database.path),
             vault_id="vault-1",
-            extractor=DiaryMemoryExtractor(next(models)),
+            extractor=DiaryMemoryExtractor(model),
             extraction_model="fake-diary-model",
         )
 
     monkeypatch.setattr(diary_memory_stage, "diary_memory_service", service_factory)
 
-    for user_message in (
-        "Please do not remember this conversation.",
-        "We discussed a temporary Authorization token in this debugging note.",
-    ):
-        await diary_memory_stage.archive_structured_diary_memory(
-            context=_context(client),
-            state=_state(user_message=user_message),
-            assistant_message_id="assistant-message-1",
-            assistant_answer="Understood.",
-            daily_result=None,
-            automation=_automation(auto_chat_diary=False, auto_structured_memory=True),
-            policy=AutomationPolicy(),
+    await diary_memory_stage.archive_structured_diary_memory(
+        context=_context(client),
+        state=_state(user_message="Please do not remember this conversation."),
+        assistant_message_id="assistant-message-1",
+        assistant_answer="Understood.",
+        daily_result=None,
+        automation=_automation(auto_chat_diary=False, auto_structured_memory=True),
+        policy=AutomationPolicy(),
+    )
+
+    # "不要记住"在提示模型之前就被拦下,所以模型一次都没被调用。
+    assert model.calls == []
+    assert _rows(client, "diary_memory_objects") == []
+    assert _no_markdown_files(vault_root)
+
+
+@pytest.mark.asyncio
+async def test_sensitive_diary_payload_writes_no_diary_object(
+    client: TestClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    diary_memory_stage = _diary_memory_stage()
+    vault_root = tmp_path / "Vault"
+    _insert_vault_row(client, vault_root)
+    model = FakeDiaryModel(
+        """
+        [{"type":"event","summary":"Credential was discussed.","topic":"security","emotion":"worried","people":[],"keywords":["credential"],"source_text":"Authorization: Bearer secret-token-value","importance":0.8,"confidence":0.9}]
+        """
+    )
+
+    def service_factory(_context: object) -> DiaryMemoryService:
+        return DiaryMemoryService(
+            DiaryMemoryStore(client.app.state.database.path),
+            vault_id="vault-1",
+            extractor=DiaryMemoryExtractor(model),
+            extraction_model="fake-diary-model",
         )
 
+    monkeypatch.setattr(diary_memory_stage, "diary_memory_service", service_factory)
+
+    await diary_memory_stage.archive_structured_diary_memory(
+        context=_context(client),
+        state=_state(user_message="We discussed a temporary Authorization token in this debugging note."),
+        assistant_message_id="assistant-message-1",
+        assistant_answer="Understood.",
+        daily_result=None,
+        automation=_automation(auto_chat_diary=False, auto_structured_memory=True),
+        policy=AutomationPolicy(),
+    )
+
+    # 敏感对象被策略拦下之后是"零效果",不是失败:模型只被问一次,库里什么都不该有。
+    assert len(model.calls) == 1
     assert _rows(client, "diary_memory_objects") == []
-    assert do_not_remember_model.calls == []
-    assert len(sensitive_model.calls) == 1
     assert _no_markdown_files(vault_root)

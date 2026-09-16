@@ -22,7 +22,7 @@ from tests.agent_runtime_fakes import (
 
 from app.agents import AgentRuntimeServices, LangGraphAgentRuntime
 from app.models.api import MemoryRecallPermissions, MemorySearchResponse, MemorySearchResult
-from app.services.chat_model import AgentId, AgentModelRegistry
+from app.services.chat_model import AgentId, AgentModelRegistry, ChatModelRunResult
 
 
 class StreamingChatModel:
@@ -72,6 +72,41 @@ class CandidateOnlyRetrieval:
                 )
             ]
         )
+
+
+class EchoTimeToolModel:
+    def __init__(self) -> None:
+        self.calls = []
+
+    async def complete_with_tools(self, *, user_message: str, system_prompt: str | None, tools):
+        self.calls.append((user_message, system_prompt, [tool.name for tool in tools]))
+        by_name = {tool.name: tool for tool in tools}
+        payload = await by_name["get_current_time"].ainvoke({})
+        return ChatModelRunResult(text=f"现在是{payload.local_time}", raw_result={"messages": []})
+
+
+def test_time_question_routes_to_chat_with_time_tool_and_no_retrieval() -> None:
+    async def run_case():
+        retrieval = FakeRetrieval()
+        chat_model = EchoTimeToolModel()
+        runtime = LangGraphAgentRuntime(
+            AgentRuntimeServices(chat_model=chat_model, retrieval=retrieval)
+        )
+
+        events = [event async for event in runtime.run(make_state("现在的时间是多久？"))]
+
+        return chat_model, retrieval, events
+
+    chat_model, retrieval, events = asyncio.run(run_case())
+
+    assert retrieval.calls == []
+    assert chat_model.calls
+    _user_message, _system_prompt, tool_names = chat_model.calls[0]
+    assert "get_current_time" in tool_names
+    token_text = "".join(event.text for event in events if event.event == "token")
+    assert token_text.startswith("现在是2026年")
+    assert "星期" in token_text
+    assert events[-1].event == "done"
 
 
 def test_langgraph_runtime_streams_plain_chat_tokens_when_model_supports_streaming() -> None:
@@ -131,7 +166,9 @@ def test_langgraph_runtime_uses_configured_chat_model_for_plain_chat() -> None:
 
     chat_model, events = asyncio.run(run_case())
 
-    assert chat_model.calls[0][0] == "你好"
+    # "你好" 是纯问候:提示词以用户消息开头,并附带"不要自行延续话题"的规则。
+    assert chat_model.calls[0][0].startswith("你好")
+    assert "不要自行延续上一个话题" in chat_model.calls[0][0]
     assert "本地长期记忆陪伴体" in chat_model.calls[0][1]
     assert "温和、稳定、有分寸的中文" in chat_model.calls[0][1]
     assert "只有在相关时才引用检索到的记忆" in chat_model.calls[0][1]
@@ -229,7 +266,11 @@ def test_langgraph_runtime_does_not_inject_pending_continuity_when_adapter_is_em
 
     chat_model, events = asyncio.run(run_case())
 
-    assert chat_model.calls[0][0] == "hello"
+    # 无上下文时提示词以用户消息开头,并附带"不要自行延续话题"的规则
+    # ("hello" 是纯问候,因此还带问候专用那条)。
+    prompt = chat_model.calls[0][0]
+    assert prompt.startswith("hello")
+    assert "不要自行延续上一个话题" in prompt
     assert_langgraph_events(events, ["token", "done"])
 
 
@@ -324,8 +365,8 @@ def test_langgraph_runtime_uses_chat_model_to_answer_search_intent() -> None:
     retrieval, chat_model, events = asyncio.run(run_case())
 
     assert retrieval.calls == [
-        ("Ada", 5, "fts", "personal_memory"),
-        ("Ada", 5, "fts", "knowledge_base"),
+        ("Ada", 5, "hybrid", "personal_memory"),
+        ("Ada", 5, "hybrid", "knowledge_base"),
     ]
     assert chat_model.calls
     assert "Ada prefers concise status updates." in chat_model.calls[0][0]
@@ -352,10 +393,10 @@ def test_langgraph_chat_agent_maps_model_search_tool_call_to_citation_event() ->
     retrieval, chat_model, events = asyncio.run(run_case())
 
     assert retrieval.calls == [
-        ("Ada", 5, "fts", "personal_memory"),
-        ("Ada", 5, "fts", "knowledge_base"),
+        ("Ada", 5, "hybrid", "personal_memory"),
+        ("Ada", 5, "hybrid", "knowledge_base"),
     ]
-    assert chat_model.calls[0][2] == []
+    assert chat_model.calls[0][2] == ["get_current_time"]
     assert_langgraph_events(events, ["citation", "citation", "token", "done"])
     assert first_event(events, "citation").citation.relative_path == "People/Ada.md"
     assert first_event(events, "token").text == "已根据记忆回答。"
@@ -380,7 +421,7 @@ def test_langgraph_chat_agent_does_not_search_for_plain_question_when_model_skip
     retrieval, chat_model, events = asyncio.run(run_case())
 
     assert retrieval.calls == []
-    assert chat_model.calls[0][2] == []
+    assert chat_model.calls[0][2] == ["search_memory", "get_current_time", "manage_wiki_page"]
     assert events[0].event == "status"
     assert events[-1].event == "done"
     token_text = "".join(event.text for event in events if event.event == "token")
@@ -406,9 +447,9 @@ def test_langgraph_chat_agent_retrieves_memory_route_before_default_negotiation_
     retrieval, events = asyncio.run(run_case())
 
     assert retrieval.calls == [
-        ("Do I prefer concise status updates?", 5, "fts", "personal_memory"),
-        ("Do I prefer concise status updates?", 5, "fts", "diary_objects"),
-        ("Do I prefer concise status updates?", 5, "fts", "daily_chat"),
+        ("Do I prefer concise status updates?", 5, "hybrid", "personal_memory"),
+        ("Do I prefer concise status updates?", 5, "hybrid", "diary_objects"),
+        ("Do I prefer concise status updates?", 5, "hybrid", "daily_chat"),
     ]
     assert events[0].event == "status"
     assert events[-1].event == "done"
@@ -469,7 +510,7 @@ def test_langgraph_chat_agent_can_surface_wiki_manager_for_obsidian_note_request
 
     wiki, chat_model, events = asyncio.run(run_case())
 
-    assert chat_model.calls[0][2] == ["manage_wiki_page"]
+    assert chat_model.calls[0][2] == ["search_memory", "get_current_time", "manage_wiki_page"]
     assert wiki.requests[0].title == "Runtime"
     assert wiki.requests[0].content == "Wiki content"
     assert_langgraph_events(events, ["agent_action", "token", "done"])
@@ -498,7 +539,7 @@ def test_langgraph_chat_agent_executes_text_search_tool_call_instead_of_echoing(
     retrieval, events = asyncio.run(run_case())
 
     assert len(retrieval.calls) == 1
-    assert retrieval.calls[0][1:] == (5, "fts", "all")
+    assert retrieval.calls[0][1:] == (5, "hybrid", "all")
     assert events[0].event == "status"
     assert first_event(events, "citation").event == "citation"
     assert events[-1].event == "done"
@@ -528,6 +569,6 @@ def test_langgraph_chat_agent_answers_naturally_when_search_is_empty() -> None:
     retrieval, events = asyncio.run(run_case())
 
     assert retrieval.calls
-    assert all(call == ("你记得我喜欢什么吗", 5, "fts") for call in retrieval.calls)
+    assert all(call == ("你记得我喜欢什么吗", 5, "hybrid") for call in retrieval.calls)
     assert_langgraph_events(events, ["token", "done"])
     assert "翻了下记忆本" in first_event(events, "token").text

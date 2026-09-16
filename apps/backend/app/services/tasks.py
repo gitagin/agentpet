@@ -12,7 +12,7 @@ from app.models.common import new_id
 from app.models.enums import ReminderStatus, TaskStatus
 from app.scheduler import ReminderScheduler
 from app.storage.database import open_database_connection
-from app.utils.time import utc_now_iso
+from app.utils.time import local_timezone_label, local_timezone_name, utc_now_iso
 
 
 class TaskServiceError(Exception):
@@ -73,14 +73,16 @@ class NaturalReminderParseResult:
     error: str = ""
 
 
-DEFAULT_NATURAL_TIMEZONE = "Asia/Shanghai"
-DEFAULT_NATURAL_TIMEZONE_LABEL = "北京时间"
+# 默认时区跟随本机时区（东八区机器解析结果与原来一致）；用户显式传入时区仍优先。
+DEFAULT_NATURAL_TIMEZONE = local_timezone_name()
 TIMEZONE_ALIASES = {
-    "Asia/Beijing": DEFAULT_NATURAL_TIMEZONE,
-    "Beijing": DEFAULT_NATURAL_TIMEZONE,
-    "北京": DEFAULT_NATURAL_TIMEZONE,
-    "北京时间": DEFAULT_NATURAL_TIMEZONE,
-    "China/Beijing": DEFAULT_NATURAL_TIMEZONE,
+    # 显式说"北京时间/北京"是明确选择东八区，与本机时区无关
+    # （不能映射到 DEFAULT_NATURAL_TIMEZONE，否则非东八区用户会被排到错误时区）。
+    "Asia/Beijing": "Asia/Shanghai",
+    "Beijing": "Asia/Shanghai",
+    "北京": "Asia/Shanghai",
+    "北京时间": "Asia/Shanghai",
+    "China/Beijing": "Asia/Shanghai",
 }
 CHINESE_DIGITS = {
     "零": 0,
@@ -171,8 +173,13 @@ def normalize_timezone_name(timezone: str | None, default: str | None = None) ->
 
 def display_timezone_name(timezone: str | None) -> str:
     normalized = normalize_timezone_name(timezone)
+    if normalized is None:
+        # 未指定时区时用本机标签（非东八区机器不应显示"北京时间"）。
+        return local_timezone_label()
+    if normalized == "Asia/Shanghai":
+        return "北京时间"
     if normalized == DEFAULT_NATURAL_TIMEZONE:
-        return DEFAULT_NATURAL_TIMEZONE_LABEL
+        return local_timezone_label()
     return normalized or ""
 
 
@@ -659,7 +666,11 @@ class TaskService:
         return self.store.list_tasks()
 
     def list_today(self, timezone: str | None = None) -> list[Task]:
-        tz_name = normalize_timezone_name(timezone, "UTC") or "UTC"
+        # An omitted timezone means the user's machine-local day, matching
+        # chat daily history and the task editor.  Falling back to UTC makes
+        # late-evening tasks disappear from the desktop's "today" view for
+        # users whose local date differs from UTC.
+        tz_name = normalize_timezone_name(timezone, DEFAULT_NATURAL_TIMEZONE) or DEFAULT_NATURAL_TIMEZONE
         try:
             tz = ZoneInfo(tz_name)
         except ZoneInfoNotFoundError as exc:

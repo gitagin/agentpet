@@ -1,4 +1,4 @@
-import { BookOpen, CircleAlert, Clock3, FolderOpen, Loader2, RefreshCw } from "lucide-react";
+import { BookOpen, CircleAlert, Clock3, FileText, FolderOpen, Loader2, RefreshCw } from "lucide-react";
 import { Panel } from "../../components/layout";
 import type {
   WikiDiagnosticQueueResponse,
@@ -141,8 +141,8 @@ export function WikiBrowserPanel({
             </div>
           ) : null}
           {onTryKnowledgeSnippet ? (
-            <div className="guided-trial-actions" aria-label="试用资料整理操作">
-              <button type="button" className="secondary" onClick={onTryKnowledgeSnippet} disabled={workflowBusy}>
+            <div className="guided-trial-actions wiki-recent-actions" aria-label="试用资料整理操作">
+              <button type="button" className="wiki-snippet-button" onClick={onTryKnowledgeSnippet} disabled={workflowBusy}>
                 <BookOpen size={16} />
                 粘贴知识片段
               </button>
@@ -181,7 +181,13 @@ export function WikiBrowserPanel({
                 </article>
               ))
             ) : (
-              <p className="field-note">还没有可展示的资料页。请从上方整理器创建或更新一个页面。</p>
+              <div className="wiki-empty-pages">
+                <span className="wiki-empty-pages-icon"><FileText size={20} aria-hidden="true" /></span>
+                <div>
+                  <strong>还没有可展示的资料页</strong>
+                  <span>从上方整理器创建或更新页面后，最近结果会出现在这里。</span>
+                </div>
+              </div>
             )}
           </div>
         </section>

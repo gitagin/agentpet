@@ -1,5 +1,5 @@
 import type { FormEvent } from "react";
-import { Check, CircleAlert, FileDown, FolderOpen, ListChecks, Loader2, MessageSquareText, RefreshCw, Search, ShieldCheck } from "lucide-react";
+import { Check, CircleAlert, FileDown, FileText, FolderOpen, ListChecks, Loader2, MessageSquareText, RefreshCw, Search, ShieldCheck } from "lucide-react";
 import { Panel } from "../../components/layout";
 import type {
   ChatMessage,
@@ -219,11 +219,11 @@ export function WikiWorkflowPanel({
             </label>
           </div>
           <div className="button-row">
-            <button type="submit" disabled={workflowBusy}>
+            <button type="submit" className="wiki-preview-button" disabled={workflowBusy}>
               {workflowAction === "preview" ? <Loader2 className="spin" size={16} /> : <Search size={16} />}
               预览
             </button>
-            <button type="button" className="secondary" onClick={onApply} disabled={workflowBusy || !preview}>
+            <button type="button" className="wiki-apply-button" onClick={onApply} disabled={workflowBusy || !preview}>
               {workflowAction === "apply" ? <Loader2 className="spin" size={16} /> : <Check size={16} />}
               应用
             </button>
@@ -240,7 +240,15 @@ export function WikiWorkflowPanel({
             </span>
           </div>
           {preview ? (
-            <div className="wiki-preview-plan-list">
+            <>
+              <div className="wiki-preview-overview">
+                <div>
+                  <strong>{preview.page_plans.length} 个计划页面</strong>
+                  <span>{formatTaskStatus(preview.status)} / 来源指纹 {preview.source_hash.slice(0, 12)}</span>
+                </div>
+                <span className="wiki-preview-overview-mark"><FileText size={16} aria-hidden="true" /></span>
+              </div>
+              <div className="wiki-preview-plan-list">
               {previewPlans.map((plan) => (
                 <article key={`${plan.target_path}-${plan.section || "page"}`} className="wiki-preview-plan-card">
                   <strong>{plan.title}</strong>
@@ -251,13 +259,20 @@ export function WikiWorkflowPanel({
               {preview.page_plans.length > previewPlans.length ? (
                 <p className="field-note">还有 {preview.page_plans.length - previewPlans.length} 个计划页面。</p>
               ) : null}
-            </div>
+              </div>
+            </>
           ) : (
-            <p className="field-note">还没有预览。应用经过审查的计划前，这里保持只读。</p>
+            <div className="wiki-preview-empty">
+              <span className="wiki-preview-empty-icon"><FileDown size={20} aria-hidden="true" /></span>
+              <div>
+                <strong>等待预览计划</strong>
+                <span>填写来源内容后，先生成页面计划，再决定是否应用。</span>
+              </div>
+            </div>
           )}
           {applyResult ? (
-            <div className="wiki-apply-summary" aria-label="最近资料页应用结果">
-              <strong>最近输出</strong>
+            <div className="wiki-apply-summary" aria-label="最近整理出的资料页">
+              <strong>最近整理出的资料页</strong>
               <span>{latestApplySummary}</span>
             </div>
           ) : null}
@@ -366,7 +381,7 @@ export function WikiWorkflowPanel({
             </label>
           </div>
           <div className="button-row">
-            <button type="submit" disabled={workflowBusy}>
+            <button type="submit" className="wiki-advanced-preview-button" disabled={workflowBusy}>
               {workflowAction === "preview" ? <Loader2 className="spin" size={16} /> : <Search size={16} />}
               预览
             </button>
@@ -374,7 +389,7 @@ export function WikiWorkflowPanel({
               {workflowAction === "review" ? <Loader2 className="spin" size={16} /> : <ShieldCheck size={16} />}
               审查
             </button>
-            <button type="button" className="secondary" onClick={onApply} disabled={workflowBusy}>
+            <button type="button" className="wiki-advanced-apply-button" onClick={onApply} disabled={workflowBusy}>
               {workflowAction === "apply" ? <Loader2 className="spin" size={16} /> : <Check size={16} />}
               应用
             </button>

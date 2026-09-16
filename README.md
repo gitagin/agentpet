@@ -6,12 +6,13 @@ Agent Pet 是面向 Windows 单用户的本地个人 LLM Wiki 与记忆图谱桌
 
 - Electron 桌面宠物与工作台
 - FastAPI 本地 sidecar
-- SQLite 权威状态与全文检索
+- SQLite 权威状态与中文 bigram 全文检索
 - Markdown Vault 与 Wiki
-- 可选的 Qdrant 和 Kuzu 检索层
+- 本地语义检索：内置 bge-small-zh-v1.5 向量模型 + bge-reranker-base 重排（数据不出本机）
+- 混合检索：FTS + 向量 RRF 融合，向量索引默认走嵌入式本地 Qdrant，另可选 Kuzu 图投影层
 - 带来源的记忆召回、纠正和忘记
 - 本地任务、提醒与桌面通知
-- OpenAI-compatible 模型配置
+- OpenAI-compatible 模型配置（配置外部 embedding 接口后自动切换为外部语义检索）
 
 本项目是本地单用户应用，不提供团队空间、云同步、企业租户或跨设备协作。
 
@@ -24,12 +25,20 @@ Agent Pet 是面向 Windows 单用户的本地个人 LLM Wiki 与记忆图谱桌
 
 ## 从源码运行
 
-安装后端：
+安装后端（含本地向量运行时）：
 
 ```powershell
 cd apps\backend
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -e .
+.\.venv\Scripts\python.exe -m pip install -e ".[vector,local-vector]"
+```
+
+下载内置向量与重排模型（仅首次，模型文件不入仓库）：
+
+```powershell
+cd ..\..
+.\scripts\download-embedding-model.ps1
+.\scripts\download-reranker-model.ps1
 ```
 
 启动桌面端：
@@ -40,7 +49,7 @@ npm ci
 npm run dev
 ```
 
-模型地址、模型名称和 API Key 在应用设置中配置。API Key 只保存在本机凭据存储中，不应写入仓库文件。
+模型地址、模型名称和 API Key 在应用设置中配置。API Key 保存在本机凭据文件里（Windows 上用 DPAPI 按当前用户加密，非 Windows 需显式开启不安全文件凭据才写明文），不应写入仓库文件。
 
 ## 构建 Windows 发布包
 
@@ -48,8 +57,10 @@ npm run dev
 
 ```powershell
 cd apps\backend
-.\.venv\Scripts\python.exe -m pip install -e ".[packaging]"
+.\.venv\Scripts\python.exe -m pip install -e ".[packaging,vector,local-vector]"
 ```
+
+构建前先下载内置模型（`scripts/download-embedding-model.ps1` 与 `scripts/download-reranker-model.ps1`），构建脚本会把模型随 sidecar 一起打进发布包。
 
 构建 sidecar、前端和 Electron ZIP：
 

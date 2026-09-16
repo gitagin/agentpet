@@ -102,8 +102,10 @@ def client_factory(
         monkeypatch.setenv("AGENT_PET_SQLITE_PATH", str(tmp_path / sqlite_name))
         if session_token != "hardening-token":
             monkeypatch.setenv("AGENT_PET_ALLOW_INSECURE_FILE_CREDENTIALS", "1")
-        if data_dir is not None:
-            monkeypatch.setenv("AGENT_PET_DATA_DIR", str(data_dir))
+        # 未显式指定 data_dir 时也隔离到 tmp：否则所有 TestClient 应用共享
+        # 真实 %LOCALAPPDATA%\AgentPet 数据目录（vector-index/.lock、凭据、缓存），
+        # 前序测试的 Qdrant 客户端会把后续应用的健康状态污染成 degraded。
+        monkeypatch.setenv("AGENT_PET_DATA_DIR", str(data_dir or tmp_path / "data-dir"))
 
         from app.main import create_app
 

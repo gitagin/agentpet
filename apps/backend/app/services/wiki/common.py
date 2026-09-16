@@ -44,7 +44,7 @@ from app.models.enums import AgentId
 from app.services.chat_model import ChatModelError
 from app.utils.hash import sha256_hex
 from app.utils.time import utc_now_iso
-from app.services.wiki import WikiService, slugify_wiki_title
+from app.services.wiki import WIKI_TARGET_ABSENT_HASH, WikiService, slugify_wiki_title
 from app.storage.database import Database
 from app.storage.markdown import parse_markdown
 
@@ -117,6 +117,7 @@ class _StoredPagePlan:
     content: str
     tags: list[str]
     links: list[str]
+    target_content_hash: str | None = None
 
 
 @dataclass(frozen=True)

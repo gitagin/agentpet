@@ -265,6 +265,8 @@ async def _split_retrieval_node(
                 state=state,
                 tools=(AgentToolName.SEARCH_MEMORY,),
                 system_prompt=system_prompt,
+                # 结构化传递检索范围：不再依赖从 prompt 文本反解析（措辞一变就静默失约束）。
+                forced_source_scope=source_scope,
             )
             _emit_tool_results(graph_state, tool_results)
             await _maybe_emit_daily_chat_fallback(

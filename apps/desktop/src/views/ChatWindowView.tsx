@@ -12,6 +12,7 @@ import { useEffect, useRef } from "react";
 import type { FormEvent } from "react";
 import { Panel } from "../components/layout";
 import { ChatMessageList } from "../features/chat/ChatMessageList";
+import { useStreamingElapsed } from "../hooks/useStreamingElapsed";
 import { productCopy } from "../productCopy";
 import type { AgentAction, AgentCheckpointSummary, ChatMessage, TaskItem } from "../types";
 import { FeatureWindowShell } from "./FeatureWindowShell";
@@ -56,6 +57,7 @@ export default function ChatWindowView({
   onOpenMemory,
   onOpenWiki,
   onOpenReport,
+  onDismissContinuitySignal,
   pendingCheckpoints,
   decidingCheckpointIds,
   onDecideCheckpoint,
@@ -73,6 +75,7 @@ export default function ChatWindowView({
   onOpenMemory?: () => void;
   onOpenWiki?: (path?: string) => void;
   onOpenReport?: (path?: string) => void;
+  onDismissContinuitySignal?: (messageId: string, proposalId: string) => void;
   pendingCheckpoints?: AgentCheckpointSummary[];
   decidingCheckpointIds?: Set<string>;
   onDecideCheckpoint?: (checkpoint: AgentCheckpointSummary, decision: "approved" | "rejected") => void;
@@ -80,6 +83,7 @@ export default function ChatWindowView({
   const visibleMessages = messages.filter((message) => message.role !== "system");
   const messageListRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const streamingElapsed = useStreamingElapsed(streaming);
   const latestMessage = visibleMessages[visibleMessages.length - 1];
   const canSend = connected && !streaming && input.trim().length > 0;
 
@@ -179,6 +183,7 @@ export default function ChatWindowView({
           onOpenMemory={onOpenMemory}
           onOpenWiki={onOpenWiki}
           onOpenReport={onOpenReport}
+          onDismissContinuitySignal={onDismissContinuitySignal}
           listRef={messageListRef}
         />
         <form className="chat-form" onSubmit={onSend}>
@@ -206,6 +211,7 @@ export default function ChatWindowView({
         {streaming ? (
           <p className="field-note">
             <Loader2 className="spin" size={14} /> 正在整理回答...
+            {streamingElapsed !== null && streamingElapsed >= 1 ? ` ${streamingElapsed}s` : ""}
           </p>
         ) : null}
       </Panel>

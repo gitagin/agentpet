@@ -64,6 +64,9 @@ def test_health_reports_vector_index_initialization_failure(
 ) -> None:
     monkeypatch.setenv("AGENT_PET_SESSION_TOKEN", SESSION_TOKEN)
     monkeypatch.setenv("AGENT_PET_SQLITE_PATH", str(tmp_path / "agent_pet.sqlite3"))
+    # 此测试直接 create_app()（不走 client_factory），必须显式隔离 data_dir，
+    # 否则会针对真实 %LOCALAPPDATA%\AgentPet 目录初始化向量索引。
+    monkeypatch.setenv("AGENT_PET_DATA_DIR", str(tmp_path / "data-dir"))
 
     from app.config import get_settings
     from app.main import create_app
@@ -142,7 +145,8 @@ def test_vault_init_creates_and_binds_temp_vault(client: TestClient, tmp_path: P
     assert payload["vault_id"]
     assert payload["status"] in {"created", "bound", "ok"}
     assert vault_root.exists()
-    assert any(vault_root.iterdir()), "vault initialization should create default folders or templates"
+    # 默认目录/模板按需创建：绑定本身不预建内容，只有首次写入时才出现。
+    assert list(vault_root.iterdir()) == []
 
     status_response = client.get("/api/vaults/status", headers=AUTH_HEADERS)
     assert status_response.status_code == 200

@@ -13,6 +13,12 @@ export type StreamHandlers = {
   onOpen?: () => void;
 };
 
+export function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException
+    ? error.name === "AbortError"
+    : error instanceof Error && error.name === "AbortError";
+}
+
 export async function fetchSseStream(
   client: ApiClient,
   pathOrUrl: string,
@@ -53,12 +59,23 @@ export async function fetchSseStream(
   let buffer = "";
 
   while (true) {
-    const { value, done } = await reader.read();
-    if (done) {
-      break;
+    let chunk: Uint8Array;
+    try {
+      const result = await reader.read();
+      if (result.done) {
+        break;
+      }
+      chunk = result.value;
+    } catch (error) {
+      // 只有读取出错才算"连接中断"。事件处理里的异常必须原样抛出:把它也说成
+      // 网络故障会让渲染层的 bug 无法定位。
+      if (isAbortError(error) || error instanceof ApiError) {
+        throw error;
+      }
+      throw new ApiError("流式连接意外中断。", 0);
     }
 
-    buffer = emitSseChunk(buffer + decoder.decode(value, { stream: true }), handlers);
+    buffer = emitSseChunk(buffer + decoder.decode(chunk, { stream: true }), handlers);
   }
 
   emitFinalSseChunk(buffer + decoder.decode(), handlers);
@@ -98,14 +115,25 @@ function fetchDesktopSseStream(
         opened = true;
         handlers.onOpen?.();
       }
-      buffer = emitSseChunk(buffer + chunk, handlers);
+      try {
+        buffer = emitSseChunk(buffer + chunk, handlers);
+      } catch (error) {
+        // IPC 回调里抛出的异常不会回到这个 Promise:不在这里拒绝,调用方会一直等,
+        // 而渲染层的真实错误彻底消失。
+        finish(() => reject(error instanceof Error ? error : new Error(String(error))));
+      }
     }) ?? (() => undefined));
 
     cleanupCallbacks.push(window.agentDesktop?.onSseEnd?.((incomingStreamId) => {
       if (incomingStreamId !== streamId) {
         return;
       }
-      emitFinalSseChunk(buffer, handlers);
+      try {
+        emitFinalSseChunk(buffer, handlers);
+      } catch (error) {
+        finish(() => reject(error instanceof Error ? error : new Error(String(error))));
+        return;
+      }
       finish(resolve);
     }) ?? (() => undefined));
 

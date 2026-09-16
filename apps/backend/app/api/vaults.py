@@ -1,5 +1,6 @@
 from pathlib import Path, PureWindowsPath
 
+# [internal] /vaults/bind 当前无桌面端 UI 调用方（UI 走 /vaults/init）；保留供脚本/测试。
 from fastapi import APIRouter, Request, status
 
 from ..errors import AppError
@@ -10,7 +11,6 @@ from .wiring import (
     active_vault_id,
     audit_reason,
     database,
-    ensure_default_vault_content,
     ensure_vault_path,
     record_audit,
     retrieval_service,
@@ -111,8 +111,6 @@ async def init_vault(bind_request: VaultBindRequest, request: Request) -> VaultB
             reason=audit_reason(request, code=exc.code),
         )
         raise
-    if bind_request.create_if_missing:
-        ensure_default_vault_content(root)
     try:
         vault_id = retrieval_service(request).bind_vault(str(root))
     except Exception as exc:

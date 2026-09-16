@@ -3,7 +3,7 @@
   "source": {
     "openapiVersion": "3.1.0",
     "apiVersion": "0.0.1-alpha",
-    "sha256": "f23a8def502490a69804c884a506feaecd57d40a97d94618aa35647e146999bf"
+    "sha256": "46dfa9a3505d9f6f42e5dc8db4631c632ce0200645e990112f96504c7d831050"
   },
   "routes": [
     {
@@ -291,6 +291,24 @@
     },
     {
       "path": "/api/metrics/recall-feedback",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/reflection/proposals",
+      "methods": [
+        "GET"
+      ]
+    },
+    {
+      "path": "/api/reflection/proposals/{proposal_id}/confirm",
+      "methods": [
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/reflection/proposals/{proposal_id}/reject",
       "methods": [
         "POST"
       ]

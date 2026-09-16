@@ -81,6 +81,64 @@ def test_invalid_relation_and_unknown_fields_reject_the_whole_batch() -> None:
         parse_extraction_output(payload, "我在做 Atlas 项目，偏好 VS Code")
 
 
+def test_dangling_relation_endpoint_is_dropped_without_losing_the_batch() -> None:
+    # 线上失败形态:模型给出一条端点指向未声明引用的 relation。
+    # 整批拒绝会连带丢掉本轮所有实体与事实;只应剔除出错的那一条。
+    text = "我在做 Atlas 项目，偏好 VS Code"
+    payload = _payload()
+    payload["relations"] = [
+        *payload["relations"],
+        {
+            "subject": {"kind": "entity", "ref": "self"},
+            "relation": "knows",
+            "object": {"kind": "entity", "ref": "undeclared-person"},
+            "confidence": 0.7,
+            "evidence": {"start": 0, "end": 5},
+        },
+    ]
+
+    batch = parse_extraction_output(payload, text)
+
+    assert [relation.relation for relation in batch.relations] == ["works_on"]
+    assert {entity.entity_ref for entity in batch.entities} == {"self", "project-atlas"}
+    assert [claim.claim_ref for claim in batch.claims] == ["claim-editor"]
+    # 调用方传入的 payload 不应被就地修改。
+    assert len(payload["relations"]) == 2
+
+
+def test_claim_with_undeclared_subject_is_dropped_together_with_its_referrers() -> None:
+    text = "我在做 Atlas 项目，偏好 VS Code"
+    payload = _payload()
+    payload["claims"] = [
+        *payload["claims"],
+        {
+            "claim_ref": "claim-orphan",
+            "subject_entity_ref": "no-such-entity",
+            "predicate": "prefers",
+            "value": "dark mode",
+            "fact_type": "preference",
+            "confidence": 0.6,
+            "evidence": {"start": 0, "end": 5},
+        },
+    ]
+    payload["relations"] = [
+        *payload["relations"],
+        {
+            "subject": {"kind": "entity", "ref": "self"},
+            "relation": "supports",
+            "object": {"kind": "claim", "ref": "claim-orphan"},
+            "confidence": 0.6,
+            "evidence": {"start": 0, "end": 5},
+        },
+    ]
+
+    batch = parse_extraction_output(payload, text)
+
+    assert [claim.claim_ref for claim in batch.claims] == ["claim-editor"]
+    # 指向被剔除 claim 的关系必须一起撤下,否则它自己就成了新的悬空引用。
+    assert [relation.relation for relation in batch.relations] == ["works_on"]
+
+
 def test_evidence_bounds_are_checked_before_writes(tmp_path) -> None:
     payload = _payload()
     payload["claims"] = [

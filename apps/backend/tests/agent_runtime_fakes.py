@@ -574,6 +574,8 @@ class FakeToolCallingChatModel:
                     "source_message_id": "message-1",
                 }
             )
+        elif self.tool_name == "get_current_time":
+            await by_name["get_current_time"].ainvoke({})
         return ChatModelRunResult(text=self.response, raw_result={"messages": []})
 
 
@@ -705,18 +707,66 @@ class FakeSemanticModel:
 
 
 class FakeKeywordSemanticModel:
+    """按旧关键字规则输出新 classifier 格式的测试替身。
+
+    动态化后语义模型是唯一裁决者，测试替身因此必须模拟它输出
+    intent/retrieval_scope/action_type，而不是只输出 legacy needs_context。
+    """
+
     def __init__(self) -> None:
         self.calls = []
 
     async def complete(self, *, user_message: str, system_prompt: str | None = None) -> str:
         self.calls.append((user_message, system_prompt))
-        needs_context = "search" in user_message.lower()
+        lowered = user_message.lower()
+        if "search" in lowered:
+            return json.dumps(
+                {
+                    "intent": "need_retrieval",
+                    "retrieval_scope": "both",
+                    "retrieval_query": "Ada",
+                    "confidence": 0.9,
+                    "reason": "test",
+                },
+                ensure_ascii=False,
+            )
+        if "add to wiki" in lowered or "wiki" in lowered:
+            return json.dumps(
+                {
+                    "intent": "action",
+                    "action_type": "wiki",
+                    "action_params": {"content": user_message},
+                    "confidence": 0.9,
+                    "reason": "test",
+                },
+                ensure_ascii=False,
+            )
+        if "remember this" in lowered:
+            return json.dumps(
+                {
+                    "intent": "action",
+                    "action_type": "memory_proposal",
+                    "action_params": {"content": user_message},
+                    "confidence": 0.9,
+                    "reason": "test",
+                },
+                ensure_ascii=False,
+            )
+        if "remind" in lowered:
+            return json.dumps(
+                {
+                    "intent": "action",
+                    "action_type": "task",
+                    "action_params": {"source_text": user_message},
+                    "confidence": 0.9,
+                    "reason": "test",
+                },
+                ensure_ascii=False,
+            )
         return json.dumps(
             {
-                "needs_context": needs_context,
-                "source_scope": "all" if needs_context else "none",
-                "query": "Ada" if needs_context else user_message,
-                "answer_style": "grounded" if needs_context else "casual",
+                "intent": "chat",
+                "retrieval_query": None,
                 "confidence": 0.9,
                 "reason": "test",
             },

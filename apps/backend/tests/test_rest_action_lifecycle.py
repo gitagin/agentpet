@@ -271,6 +271,9 @@ def test_memory_reject_api_returns_original_receipt_without_markdown_effect(
     vault = tmp_path / "Vault"
     with client_factory(data_dir=tmp_path / "data") as client:
         _bind_vault(client, vault)
+        inbox = vault / "Inbox" / "Pending Memories.md"
+        inbox.parent.mkdir(parents=True, exist_ok=True)
+        inbox.write_text("- Pre-existing inbox content.\n", encoding="utf-8")
         content = "- This rejected candidate must never be written."
         created = client.post(
             "/api/memory/proposals",
@@ -605,6 +608,66 @@ def test_continuity_rest_mutations_use_one_claim_receipt_and_one_domain_event(
         assert sorted((proposal_id, action, count) for proposal_id, action, count in events) == sorted(
             [(confirmed_id, "confirmed", 1), (rejected_id, "rejected", 1)]
         )
+
+
+def test_rejecting_confirmed_open_thread_retracts_presence_state_via_api(
+    client_factory,
+    tmp_path: Path,
+) -> None:
+    # 「下次接着聊」线程会被自动确认;用户在对话里点「不再继续」时,
+    # 拒绝 API 必须接受已确认的 open_thread 并撤销其在场状态。
+    with client_factory(data_dir=tmp_path / "data") as client:
+        service = ContinuityService(client.app.state.database.path)
+        try:
+            proposals = asyncio.run(
+                service.create_proposals_from_exchange(
+                    user_message="I feel tired today, can we continue this tomorrow?",
+                    assistant_answer="We can pause and pick it up tomorrow.",
+                    conversation_id="conversation-reject-confirmed",
+                    source_message_id="message-reject-confirmed",
+                    agent_run_id="run-reject-confirmed",
+                )
+            )
+            thread = next(proposal for proposal in proposals if proposal.kind == "open_thread")
+            proposal_id = thread.id
+        finally:
+            service.close()
+        confirmed = client.post(
+            f"/api/continuity/proposals/{proposal_id}/confirm",
+            headers=auth_headers(),
+        )
+        assert confirmed.status_code == 200
+        with sqlite3.connect(client.app.state.database.path) as conn:
+            conn.row_factory = sqlite3.Row
+            proposal_row = conn.execute(
+                "SELECT kind FROM continuity_proposals WHERE id = ?",
+                (proposal_id,),
+            ).fetchone()
+            state_before = conn.execute(
+                "SELECT value FROM continuity_state WHERE state_key = 'unresolved_threads'"
+            ).fetchone()
+        assert proposal_row["kind"] == "open_thread"
+        assert state_before is not None
+
+        rejected = client.post(
+            f"/api/continuity/proposals/{proposal_id}/reject",
+            headers=auth_headers(),
+            json={"reason": "不再继续这个话题"},
+        )
+
+        assert rejected.status_code == 200
+        assert rejected.json() == {"proposal_id": proposal_id, "status": "rejected"}
+        with sqlite3.connect(client.app.state.database.path) as conn:
+            conn.row_factory = sqlite3.Row
+            proposal = conn.execute(
+                "SELECT status FROM continuity_proposals WHERE id = ?",
+                (proposal_id,),
+            ).fetchone()
+            state_after = conn.execute(
+                "SELECT value FROM continuity_state WHERE state_key = 'unresolved_threads'"
+            ).fetchone()
+        assert proposal["status"] == "rejected"
+        assert state_after is None
 
 
 def test_continuity_confirm_recovers_effect_before_receipt_from_sqlite(

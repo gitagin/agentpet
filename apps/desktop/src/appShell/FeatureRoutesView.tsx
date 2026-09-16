@@ -2,7 +2,7 @@ import { DesktopFeatureRoutes } from "../features/desktop/DesktopFeatureRoutes";
 import { buildAppShellPresentation } from "./appShellPresentation";
 import { useAppShellRuntime } from "./AppShellRuntimeContext";
 import { AgentActivityEntryContainer } from "./AgentActivityEntryContainer";
-import { SettingsPanelContainer, StageViewContainer, WikiPanelsContainer } from "./AppShellPanels";
+import { SettingsPanelContainer, WikiPanelsContainer } from "./AppShellPanels";
 
 export function FeatureRoutesView() {
   const runtime = useAppShellRuntime();
@@ -19,7 +19,6 @@ export function FeatureRoutesView() {
     <DesktopFeatureRoutes
       windowMode={app.routing.windowMode}
       isStageHostWindow={app.routing.desktopHostMode === "stage"}
-      stageView={<StageViewContainer />}
       agentWorkspaceProps={{ api: connection.connection.api }}
       chatWindowProps={{
         input: app.controlInput,
@@ -38,6 +37,8 @@ export function FeatureRoutesView() {
         onOpenMemory: () => app.routing.setWindowMode("memory"),
         onOpenWiki: (path) => activity.openArtifact("world", path),
         onOpenReport: (path) => activity.openArtifact("memory", path),
+        onDismissContinuitySignal: (messageId, proposalId) =>
+          void runtime.continuity.dismissSignal(messageId, proposalId),
         pendingCheckpoints: activity.pendingCheckpoints,
         decidingCheckpointIds: activity.decidingCheckpointIds,
         onDecideCheckpoint: (checkpoint, decision) => void activity.decideCheckpoint(checkpoint, decision),

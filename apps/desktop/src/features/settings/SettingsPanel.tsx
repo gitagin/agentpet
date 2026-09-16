@@ -205,6 +205,7 @@ export function SettingsPanel({ model }: SettingsPanelProps) {
         saveStatus={embeddingSaveStatus}
         testStatus={embeddingTestStatus}
         testResult={embeddingTestResult}
+        localPrivacyMode={automationSettingsDraft.local_privacy_mode}
         onUpdateDraft={onUpdateEmbeddingDraft}
         onSave={onSaveEmbedding}
         onTest={onTestEmbedding}

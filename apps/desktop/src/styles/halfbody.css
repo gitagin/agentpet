@@ -1,0 +1,47 @@
+/* Halfbody pet portrait base layers.
+ *
+ * The layered portrait (base / blink / viseme images inside a breathing frame)
+ * is shared by the home stage and the pet window. These rules are the base
+ * geometry: every layer is absolutely stacked over the frame so the viseme
+ * and blink overlays line up with the base artwork. Sizing and per-surface
+ * tweaks live with their surfaces (dashboard/desktop-polish layers). */
+.halfbody-pet-portrait-frame,
+.halfbody-pet-portrait-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.halfbody-pet-portrait-frame {
+  transform-origin: 50% 58%;
+}
+
+.halfbody-pet-portrait-frame.is-breathing {
+  animation: halfbody-pet-breathe var(--halfbody-breathe-duration, 3200ms) ease-in-out infinite alternate;
+}
+
+.halfbody-pet-portrait-layer {
+  display: block;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.halfbody-pet-portrait-overlay {
+  z-index: 2;
+}
+
+.halfbody-pet-portrait-viseme {
+  z-index: 3;
+}
+
+@keyframes halfbody-pet-breathe {
+  from {
+    transform: translateY(var(--halfbody-breathe-y-from, 0px)) scale(var(--halfbody-breathe-scale-from, 1));
+  }
+
+  to {
+    transform: translateY(var(--halfbody-breathe-y-to, -2px)) scale(var(--halfbody-breathe-scale-to, 1.006));
+  }
+}

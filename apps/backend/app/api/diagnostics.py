@@ -1,4 +1,5 @@
 import json
+import logging
 from collections import Counter
 from fastapi import APIRouter, Depends, Request, status
 
@@ -8,16 +9,20 @@ from ..errors import AppError
 from .idempotency import IdempotencyKeyHeader
 from ..scheduler import ReminderSchedulerProtocol
 from ..services.diagnostics import DiagnosticsExporter
+from ..services.memory_maintenance import schedule_memory_maintenance
 from ..services.local_state_reset import (
     MEMORY_RESET_CONFIRMATION_TEXT,
     RESET_CONFIRMATION_TEXT,
     LocalStateResetService,
     MemoryStateResetService,
 )
+from ..services.retrieval_factory import close_vector_index
 from .wiring import active_vault_root, cached_active_vault_id, clear_cached_active_vault_id, database, production_action_lifecycle
 from .wiring import refresh_retrieval_vector_index, reminder_scheduler, reset_chat_runs
 
 router = APIRouter(prefix="/diagnostics", tags=["diagnostics"])
+
+logger = logging.getLogger(__name__)
 
 
 @router.post("/memory-graph/rebuild", response_model=MemoryGraphRebuildResponse)
@@ -160,12 +165,18 @@ async def reset_local_state(
     if scheduler_available:
         scheduler.pause()
     try:
+        # 先释放本地 Qdrant 客户端持有的 vector-index 锁，否则 Windows 上
+        # 删除运行时目录会因 .lock 被占用而失败。
+        _close_active_vector_index(request)
         service = LocalStateResetService(database(request), get_settings().data_dir)
         result = service.reset()
         clear_cached_active_vault_id(request)
         reset_chat_runs(request)
         if scheduler_available:
             scheduler.clear()
+            # scheduler.clear() 会连任务清单一起清空（APScheduler jobstore），
+            # 必须重新注册周期维护任务，否则重置后直到重启都没有自动衰减。
+            schedule_memory_maintenance(scheduler, database(request).path)
         refresh_retrieval_vector_index(request)
     finally:
         if scheduler_available:
@@ -189,14 +200,23 @@ async def reset_memory_state(request: Request, reset_request: LocalStateResetReq
         vault_root = active_vault_root(request)
     except AppError:
         vault_root = None
+    # 与 reset-local-state 对齐：先释放 Qdrant 本地锁，再删除 vector-index 目录，
+    # 最后重建一个干净的向量索引实例，避免"重置记忆"后残留旧向量/旧缓存。
+    _close_active_vector_index(request)
     service = MemoryStateResetService(database(request), get_settings().data_dir, vault_root=vault_root)
     result = service.reset()
     reset_chat_runs(request)
+    refresh_retrieval_vector_index(request)
     return LocalStateResetResponse(
         status=result.status,
         cleared_tables=result.cleared_tables,
         removed_paths=result.removed_paths,
     )
+
+
+def _close_active_vector_index(request: Request) -> None:
+    retrieval = getattr(request.app.state, "retrieval_service", None)
+    close_vector_index(getattr(retrieval, "vector_index", None))
 
 
 def _load_metadata(value: object) -> dict[str, object]:

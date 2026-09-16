@@ -19,7 +19,9 @@ from app.utils.time import utc_now_iso
 def _sqlite_write_transaction(conn: sqlite3.Connection) -> Iterator[None]:
     owns_transaction = not conn.in_transaction
     if owns_transaction:
-        conn.execute("BEGIN")
+        # 见 memory_entity_graph.atomic:WAL 下 deferred 事务先读后写会被并发提交
+        # 变成立即失败的快照冲突,写事务要一开始就拿写锁。
+        conn.execute("BEGIN IMMEDIATE")
     try:
         yield
     except BaseException:

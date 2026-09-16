@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { CalendarDays, Home, MessageCircle, Settings, Star } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -13,15 +13,12 @@ const bottomNavIcons: Record<PrimaryNavigationTab, LucideIcon> = {
   设置: Settings,
 };
 
-let hasBottomNavPosition = false;
-let lastBottomNavActiveIndex = 0;
-
 export function BottomNav({ activeTab, visible = true }: { activeTab?: PrimaryNavigationTab | null; visible?: boolean }) {
   const activeIndex = activeTab ? primaryNavigationTabs.indexOf(activeTab) : -1;
   const hasActiveTab = activeIndex >= 0;
-  const [indicatorIndex, setIndicatorIndex] = useState(() => (
-    hasBottomNavPosition ? lastBottomNavActiveIndex : Math.max(0, activeIndex)
-  ));
+  // Initialise from the current page so a remounted nav never paints the
+  // previous page's active item for a frame during route transitions.
+  const [indicatorIndex, setIndicatorIndex] = useState(() => Math.max(0, activeIndex));
   const characterImageSrc = useVersionedPublicAsset("/images/character.png");
   const buttonRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const trackRef = useRef<HTMLDivElement | null>(null);
@@ -55,22 +52,8 @@ export function BottomNav({ activeTab, visible = true }: { activeTab?: PrimaryNa
       return;
     }
 
-    if (!hasBottomNavPosition) {
-      hasBottomNavPosition = true;
-      lastBottomNavActiveIndex = activeIndex;
-      setIndicatorIndex(activeIndex);
-      return;
-    }
-
-    setIndicatorIndex(lastBottomNavActiveIndex);
-
-    const animationFrame = window.requestAnimationFrame(() => {
-      setIndicatorIndex(activeIndex);
-      lastBottomNavActiveIndex = activeIndex;
-      updateIndicatorMetrics(activeIndex);
-    });
-
-    return () => window.cancelAnimationFrame(animationFrame);
+    setIndicatorIndex(activeIndex);
+    updateIndicatorMetrics(activeIndex);
   }, [activeIndex, hasActiveTab, updateIndicatorMetrics, visible]);
 
   useLayoutEffect(() => {
@@ -89,21 +72,6 @@ export function BottomNav({ activeTab, visible = true }: { activeTab?: PrimaryNa
     resizeObserver.observe(track);
     return () => resizeObserver.disconnect();
   }, [activeIndex, hasActiveTab, updateIndicatorMetrics, visible]);
-
-  useEffect(() => {
-    if (!hasActiveTab) {
-      return;
-    }
-    const activeButton = buttonRefs.current[activeIndex];
-    if (!activeButton?.scrollIntoView) {
-      return;
-    }
-    activeButton.scrollIntoView({
-      behavior: "smooth",
-      block: "nearest",
-      inline: "center",
-    });
-  }, [activeIndex, hasActiveTab]);
 
   const navStyle = {
     "--bottom-nav-active-index": indicatorIndex,

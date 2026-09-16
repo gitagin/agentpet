@@ -1,8 +1,41 @@
 from __future__ import annotations
 
+import hashlib
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+
+REFLECTION_ACTION_TYPES = {
+    "daily_diary": "chat.daily_archive",
+    "structured_memory": "diary.structured_memory",
+    "long_term_memory": "memory.consolidation.candidate",
+    "wiki_summary": "wiki.answer_summary.write",
+}
+WIKI_SUMMARY_PREFIX = "Wiki/Companion/Summaries/"
+
+
+def reflection_wiki_summary_target(content: str) -> str:
+    normalized = " ".join(content.split()).casefold()
+    digest = hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:20]
+    return f"{WIKI_SUMMARY_PREFIX}Reflection-{digest}.md"
+
+
+def reflection_contract_error(
+    *,
+    proposal_kind: str,
+    action_type: str,
+    target_ref: str | None,
+    content: str,
+) -> str | None:
+    expected_action = REFLECTION_ACTION_TYPES.get(proposal_kind)
+    if expected_action is None:
+        return "reflection_proposal_kind_invalid"
+    if action_type != expected_action:
+        return "reflection_proposal_action_mismatch"
+    if proposal_kind == "wiki_summary" and target_ref != reflection_wiki_summary_target(content):
+        return "reflection_wiki_summary_target_mismatch"
+    return None
 
 
 class _ContractModel(BaseModel):
@@ -50,6 +83,7 @@ class PolicyDecision(_ContractModel):
         "confirmation_required",
         "unknown_action_type",
         "unsafe_target",
+        "wiki_summary_target_invalid",
         "sensitive_content",
         "invalid_proposal",
     ]
@@ -145,6 +179,18 @@ class ReflectionProposal(_ContractModel):
     def _content_has_no_runtime_secrets(cls, value: str) -> str:
         _reject_forbidden_keys({"content": value})
         return value
+
+    @model_validator(mode="after")
+    def _kind_action_target_contract_matches(self) -> "ReflectionProposal":
+        error = reflection_contract_error(
+            proposal_kind=self.proposal_kind,
+            action_type=self.action_type,
+            target_ref=self.target_ref,
+            content=self.content,
+        )
+        if error is not None:
+            raise ValueError(error)
+        return self
 
 
 class ReflectionProposalBatch(_ContractModel):

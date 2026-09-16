@@ -17,6 +17,68 @@ MemoryScope = Literal[
 MemoryAnswerStyle = Literal["casual", "concise", "grounded", "clarifying"]
 
 
+_EXPLICIT_READ_SCOPE_MARKERS: dict[MemoryScope, tuple[str, ...]] = {
+    "knowledge_base": (
+        "knowledge base",
+        "knowledge-base",
+        "知识库",
+        "资料库",
+        "wiki",
+    ),
+    "personal_memory": (
+        "personal memory",
+        "long-term memory",
+        "long term memory",
+        "长期记忆",
+        "记忆本",
+    ),
+    "daily_chat": (
+        "daily chat",
+        "chat diary",
+        "聊天日记",
+        "聊天记录",
+        "每日聊天",
+    ),
+}
+_READ_REQUEST_MARKERS = (
+    "?",
+    "？",
+    "what",
+    "which",
+    "find",
+    "search",
+    "show",
+    "list",
+    "lookup",
+    "什么",
+    "哪些",
+    "有没有",
+    "有多少",
+    "中有",
+    "里有",
+    "查",
+    "搜",
+    "找",
+    "列出",
+    "看看",
+)
+_MUTATION_REQUEST_MARKERS = (
+    "add to",
+    "archive to",
+    "create",
+    "save to",
+    "update",
+    "write to",
+    "保存到",
+    "写入",
+    "创建",
+    "归档到",
+    "整理到",
+    "更新",
+    "添加到",
+)
+
+
 class MemoryRoute(BaseModel):
     primary_scopes: tuple[MemoryScope, ...] = Field(default_factory=tuple)
     fallback_scopes: tuple[MemoryScope, ...] = Field(default_factory=tuple)
@@ -84,6 +146,17 @@ class MemoryRouter:
                 retrieval_top_k=12,
             )
 
+        explicit_scope = explicit_memory_read_scope(query)
+        if explicit_scope is not None:
+            return MemoryRoute(
+                primary_scopes=(explicit_scope,),
+                fallback_scopes=("none",),
+                query=query,
+                answer_style="grounded",
+                confidence=0.96,
+                reason=f"explicit_{explicit_scope}_scope",
+            )
+
         if _is_long_term_preference_query(query, normalized):
             return MemoryRoute(
                 primary_scopes=("graph_facts", "personal_memory"),
@@ -136,6 +209,20 @@ class MemoryRouter:
 
 def route_memory(message: str) -> MemoryRoute:
     return MemoryRouter().route(message)
+
+
+def explicit_memory_read_scope(message: str) -> MemoryScope | None:
+    normalized = _clean_query(message).casefold()
+    if not normalized or any(marker in normalized for marker in _MUTATION_REQUEST_MARKERS):
+        return None
+    if not any(marker in normalized for marker in _READ_REQUEST_MARKERS):
+        return None
+    matches = tuple(
+        scope
+        for scope, markers in _EXPLICIT_READ_SCOPE_MARKERS.items()
+        if any(marker in normalized for marker in markers)
+    )
+    return matches[0] if len(matches) == 1 else None
 
 
 def _clean_query(message: str) -> str:

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sqlite3
+
 import pytest
 
 from apps.backend.tests._schema import migrate_db_with_vault
@@ -48,6 +50,81 @@ def memory_object(
         status=status,
         type=memory_type,
     )
+
+
+def test_diary_memory_store_transaction_commits_and_nests_in_a_caller_transaction(tmp_path):
+    # 整批写入用 SAVEPOINT 而不是 BEGIN:调用方可能已经开着事务,
+    # BEGIN 会直接报 "cannot start a transaction within a transaction"。
+    db_path = migrate_db_with_vault(tmp_path / "state.sqlite3")
+    store = DiaryMemoryStore(db_path)
+    source = DiaryMemoryObjectSource(object_id="", source_type="chat_exchange", source_id="run-tx")
+
+    def count_from_fresh_connection() -> int:
+        # 只有另开连接才看得出数据是否真的提交:同连接里的未提交写入本来就可见。
+        with sqlite3.connect(db_path) as conn:
+            return conn.execute("SELECT COUNT(*) FROM diary_memory_objects").fetchone()[0]
+
+    with store.transaction():
+        store.insert_object(
+            vault_id="vault-1",
+            extracted=memory_object(summary="User is worried about changing jobs."),
+            occurred_at="2026-05-13T10:30:00+08:00",
+            timezone="Asia/Shanghai",
+            source=source,
+            commit=False,
+        )
+    assert count_from_fresh_connection() == 1
+
+    # 嵌套在外层事务里:不崩,而且外层回滚后这批写入也必须消失。
+    store.conn.execute("BEGIN")
+    with store.transaction():
+        store.insert_object(
+            vault_id="vault-1",
+            extracted=memory_object(summary="User planned a weekend trip with Alice."),
+            occurred_at="2026-05-14T10:30:00+08:00",
+            timezone="Asia/Shanghai",
+            source=source,
+            commit=False,
+        )
+    assert count_from_fresh_connection() == 1
+    store.conn.execute("ROLLBACK")
+    assert count_from_fresh_connection() == 1
+    store.close()
+
+
+def test_diary_memory_store_transaction_rolls_back_the_whole_batch_on_failure(tmp_path):
+    db_path = migrate_db_with_vault(tmp_path / "state.sqlite3")
+    store = DiaryMemoryStore(db_path)
+    source = DiaryMemoryObjectSource(object_id="", source_type="chat_exchange", source_id="run-rollback")
+    calls = 0
+    original_insert = store.insert_object
+
+    def failing_insert(**kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise RuntimeError("crash_after_first_object")
+        return original_insert(**kwargs)
+
+    store.insert_object = failing_insert
+
+    with pytest.raises(RuntimeError):
+        with store.transaction():
+            for index in range(2):
+                store.insert_object(
+                    vault_id="vault-1",
+                    extracted=memory_object(summary=f"object {index}", keywords=(f"k{index}",)),
+                    occurred_at="2026-05-13T10:30:00+08:00",
+                    timezone="Asia/Shanghai",
+                    source=source,
+                    commit=False,
+                )
+
+    with sqlite3.connect(db_path) as conn:
+        # 第一条也不能留下:半套记忆正是这套校验要排除的状态。
+        assert conn.execute("SELECT COUNT(*) FROM diary_memory_objects").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM diary_memory_object_sources").fetchone()[0] == 0
+    store.close()
 
 
 @pytest.mark.asyncio
@@ -235,3 +312,92 @@ def test_diary_memory_search_filters_and_returns_synthetic_memory_results(tmp_pa
     assert results[0].source_scope == "diary_objects"
     assert results[0].retrieval_mode == "diary_object"
     store.close()
+
+
+def test_diary_memory_search_hits_mixed_script_substring(tmp_path):
+    store = DiaryMemoryStore(migrate_db_with_vault(tmp_path / "state.sqlite3"))
+    store.insert_object(
+        vault_id="vault-1",
+        extracted=memory_object(
+            summary="User studied python教程 and wrote asyncio examples.",
+            keywords=("tutorial",),
+        ),
+        occurred_at="2026-05-12T23:00:00+08:00",
+        timezone="Asia/Shanghai",
+        source=DiaryMemoryObjectSource(object_id="", source_type="chat_exchange", source_id="run-1"),
+    )
+
+    records = store.search(DiaryMemorySearch(query="教程", top_k=5), vault_id="vault-1")
+
+    assert len(records) == 1
+    assert records[0].summary == "User studied python教程 and wrote asyncio examples."
+    store.close()
+
+
+def test_diary_memory_search_hits_single_cjk_char_via_like_fallback(tmp_path):
+    store = DiaryMemoryStore(migrate_db_with_vault(tmp_path / "state.sqlite3"))
+    store.insert_object(
+        vault_id="vault-1",
+        extracted=memory_object(
+            summary="User talked about 奶牛 farms over the weekend.",
+            keywords=("cattle",),
+        ),
+        occurred_at="2026-05-12T23:00:00+08:00",
+        timezone="Asia/Shanghai",
+        source=DiaryMemoryObjectSource(object_id="", source_type="chat_exchange", source_id="run-1"),
+    )
+
+    records = store.search(DiaryMemorySearch(query="牛", top_k=5), vault_id="vault-1")
+
+    assert len(records) == 1
+    assert records[0].summary == "User talked about 奶牛 farms over the weekend."
+    store.close()
+
+
+def test_diary_memory_search_tolerates_fts_metacharacters_and_returns_empty(tmp_path):
+    store = DiaryMemoryStore(migrate_db_with_vault(tmp_path / "state.sqlite3"))
+    store.insert_object(
+        vault_id="vault-1",
+        extracted=memory_object(summary="User felt pressure at work and considered resigning."),
+        occurred_at="2026-05-12T23:00:00+08:00",
+        timezone="Asia/Shanghai",
+        source=DiaryMemoryObjectSource(object_id="", source_type="chat_exchange", source_id="run-1"),
+    )
+
+    for query in ('he said "hi"', "a^2 NEAR (b) -c", "!!!", "教程*mixed"):
+        records = store.search(DiaryMemorySearch(query=query, top_k=5), vault_id="vault-1")
+        assert isinstance(records, list)
+    store.close()
+
+
+def test_diary_memory_batch_takes_the_write_lock_before_deduping(tmp_path):
+    """批次写事务必须先拿写锁,再按内容去重(读),最后才插入。
+
+    一批日记记忆的写入形态是先按内容哈希查重、再逐条插入,所以事务里一定是"先读后写"。
+    WAL 下 deferred 事务的读快照在第一次读时固定:期间任何别的连接提交,后面的插入会
+    **立即**报 database is locked(SQLITE_BUSY_SNAPSHOT,busy_timeout 按设计不参与),
+    整批记忆以一个没有异常码的失败收场。SAVEPOINT 只是加入调用方的事务,挡不住并发写者,
+    因此无调用方事务时必须用 BEGIN IMMEDIATE。
+    """
+    db_path = migrate_db_with_vault(tmp_path / "state.sqlite3")
+    store = DiaryMemoryStore(db_path)
+    other = sqlite3.connect(db_path, timeout=0.2)
+    try:
+        store.conn.execute(
+            "CREATE TABLE IF NOT EXISTS lock_probe(id INTEGER PRIMARY KEY, value TEXT)"
+        )
+        store.conn.commit()
+
+        with store.transaction():
+            # 查重读必须落在真实表上:常量 SELECT 不会开读事务,也就定不下快照,
+            # 那样这个测试即使在 SAVEPOINT 实现下也会假绿。
+            store.conn.execute("SELECT COUNT(*) FROM lock_probe")
+            with pytest.raises(sqlite3.OperationalError, match="database is locked"):
+                other.execute("INSERT INTO lock_probe(id, value) VALUES (1, 'concurrent')")
+            store.conn.execute("INSERT INTO lock_probe(id, value) VALUES (2, 'within')")
+    finally:
+        other.close()
+        store.close()
+
+    with sqlite3.connect(db_path) as verify:
+        assert sorted(row[0] for row in verify.execute("SELECT id FROM lock_probe")) == [2]

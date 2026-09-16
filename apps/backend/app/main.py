@@ -2,6 +2,8 @@ from contextlib import asynccontextmanager
 import asyncio
 import logging
 import threading
+from pathlib import Path
+from time import perf_counter
 from uuid import uuid4
 
 from fastapi import FastAPI, Request
@@ -17,7 +19,7 @@ from .errors import register_error_handlers
 from .scheduler import APSchedulerReminderScheduler, ReminderSchedulerProtocol
 from .services.health import component_health_from_vector_index
 from .services.retrieval import RetrievalService
-from .services.retrieval_factory import build_vector_index
+from .services.retrieval_factory import build_vector_index, close_vector_index
 from .services.reranking_local import build_local_reranker
 from .services.reminder_delivery import ReminderDeliveryService
 from .services.settings import initialize_settings_store
@@ -60,6 +62,7 @@ def create_app() -> FastAPI:
         scheduler = app.state.reminder_scheduler
         if isinstance(scheduler, ReminderSchedulerProtocol):
             scheduler.start(paused=True)
+        _schedule_memory_maintenance(scheduler, database.path)
         store = TaskStore(database.path)
         try:
             delivery = ReminderDeliveryService(database.path)
@@ -97,6 +100,10 @@ def create_app() -> FastAPI:
             expire_chat_runs(AppContext(app), force=True)
             if isinstance(scheduler, ReminderSchedulerProtocol):
                 scheduler.shutdown()
+            # 向量索引最后关闭:上面的后台任务可能还在写索引。本地 Qdrant 持有
+            # 运行目录里的 .lock 与文件句柄,不释放会让后续删除/重建运行目录失败。
+            retrieval_service = getattr(app.state, "retrieval_service", None)
+            close_vector_index(getattr(retrieval_service, "vector_index", None))
 
     app = FastAPI(title=settings.app_name, version=settings.app_version, lifespan=lifespan)
     app.add_middleware(
@@ -140,6 +147,17 @@ def create_app() -> FastAPI:
     return app
 
 
+def _schedule_memory_maintenance(scheduler: ReminderSchedulerProtocol, db_path: Path) -> None:
+    """Register the periodic memory maintenance job on the shared APScheduler.
+
+    Delegates to the service module so reset-local-state can re-register it
+    after scheduler.clear(); test doubles without an APScheduler are skipped.
+    """
+    from app.services.memory_maintenance import schedule_memory_maintenance
+
+    schedule_memory_maintenance(scheduler, db_path)
+
+
 async def _cleanup_expired_chat_runs(app: FastAPI) -> None:
     while True:
         await asyncio.sleep(_CHAT_RUN_CLEANUP_INTERVAL_SECONDS)
@@ -158,23 +176,33 @@ def ensure_app_services(app: FastAPI) -> None:
             return
         settings = get_settings()
         database = app.state.database
+        started = perf_counter()
+
+        def phase(name: str) -> None:
+            logger.info("startup phase %s took %.2fs", name, perf_counter() - started)
+
         ensure_schema = getattr(app.state, "ensure_schema", None)
         if ensure_schema is None:
             MigrationRunner(database).apply()
         else:
             ensure_schema(database)
+        phase("migrations")
         initialize_settings_store(database)
         ensure_bigram_fts(database)
+        phase("settings-and-bigram-backfill")
         try:
             app.state.wiki_reconcile_reports = reconcile_all_vaults(database.path)
         except Exception:
             logger.warning("Wiki binding reconciliation failed; derived graph reads stay on SQLite", exc_info=True)
             app.state.wiki_reconcile_reports = ()
+        phase("wiki-reconcile")
         recover_interrupted_chat_runs(database)
         vector_index = build_vector_index(database.path, settings)
+        phase("vector-index-build")
         reranker = build_local_reranker(
-            model_dir=settings.data_dir / "models" / "reranker",
+            model_dir=settings.local_reranker_dir,
         )
+        phase("reranker-build")
         retrieval_service = RetrievalService(database, vector_index=vector_index, reranker=reranker)
         app.state.retrieval_service = retrieval_service
         app.state.component_health["vector_index"] = component_health_from_vector_index(vector_index)

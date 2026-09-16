@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import socket
 import sys
 from collections.abc import Sequence
+from pathlib import Path
 
 
 RUNTIME_LINE_PREFIX = "AGENT_PET_SIDECAR_RUNTIME "
@@ -42,11 +44,112 @@ def build_parser() -> argparse.ArgumentParser:
         default=int(os.environ.get("AGENT_PET_BACKEND_PORT", "8765")),
     )
     parser.add_argument("--port-search-range", type=int, default=20)
+    parser.add_argument(
+        "--self-test",
+        action="store_true",
+        help="Load packaged native/local-vector dependencies and run a read-only inference smoke test.",
+    )
     return parser
+
+
+def _bundle_root() -> Path:
+    frozen_root = getattr(sys, "_MEIPASS", None)
+    if frozen_root:
+        return Path(str(frozen_root))
+    return Path(__file__).resolve().parents[1]
+
+
+def _self_test() -> int:
+    """Exercise the same imports and native runtimes used by retrieval.
+
+    This deliberately does not open the database, bind a port, or write files.
+    A frozen distribution can therefore be checked immediately after build and
+    before it is launched by Electron.
+    """
+    try:
+        import langchain_qdrant  # noqa: F401
+        import numpy as np
+        import onnxruntime  # noqa: F401
+        import qdrant_client  # noqa: F401
+        import tokenizers  # noqa: F401
+        from app.services.embeddings import LocalOnnxEmbeddings
+        from app.services.retrieval_fusion import FusedCandidate
+        from app.services.reranking_local import LocalCrossEncoderReranker
+    except Exception as exc:
+        print(
+            control_line(
+                ERROR_LINE_PREFIX,
+                {"code": "SELF_TEST_IMPORT_FAILED", "message": str(exc)},
+            ),
+            file=sys.stderr,
+            flush=True,
+        )
+        return 3
+
+    root = _bundle_root()
+    embedding_dir = root / "models" / "embedding"
+    reranker_dir = root / "models" / "reranker"
+    require_models = os.environ.get("AGENT_PET_REQUIRE_LOCAL_VECTOR", "") == "1"
+    try:
+        if not embedding_dir.is_dir() or not reranker_dir.is_dir():
+            if require_models:
+                raise RuntimeError("packaged local-vector model directories are missing")
+            print(
+                control_line(
+                    RUNTIME_LINE_PREFIX,
+                    {"self_test": "ok", "local_vector": "skipped_models_missing"},
+                ),
+                flush=True,
+            )
+            return 0
+
+        embedder = LocalOnnxEmbeddings(embedding_dir)
+        vector = embedder.embed_query("sidecar self-test")
+        if len(vector) != 512 or not all(math.isfinite(float(value)) for value in vector):
+            raise RuntimeError("local embedding returned an invalid vector")
+
+        reranker = LocalCrossEncoderReranker(model_dir=reranker_dir)
+        candidate = FusedCandidate(
+            stable_id="self-test",
+            content_hash="self-test",
+            source_scope="personal_memory",
+            payload={"title": "self-test", "content": "local reranker"},
+            score=0.0,
+            best_rank=1,
+            contributions=(),
+        )
+        response = reranker.rerank(
+            query="sidecar self-test",
+            candidates=(candidate,),
+            timeout_seconds=10.0,
+        )
+        if response.ordered_ids != ("self-test",):
+            raise RuntimeError("local reranker returned an invalid ordering")
+    except Exception as exc:
+        print(
+            control_line(
+                ERROR_LINE_PREFIX,
+                {"code": "SELF_TEST_RUNTIME_FAILED", "message": str(exc)},
+            ),
+            file=sys.stderr,
+            flush=True,
+        )
+        return 4
+
+    print(
+        control_line(
+            RUNTIME_LINE_PREFIX,
+            {"self_test": "ok", "local_vector": "ready", "embedding_dimensions": len(vector)},
+        ),
+        flush=True,
+    )
+    return 0
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.self_test:
+        return _self_test()
     try:
         listener, selected_port = bind_available_socket(
             args.host,

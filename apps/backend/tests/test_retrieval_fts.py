@@ -4,10 +4,60 @@ from pathlib import Path
 import pytest
 
 from app.repositories.storage import NoteRepository, VaultRepository
-from app.services.retrieval import RetrievalService
+from app.services.retrieval import RetrievalService, _retrieval_cache_key
 from app.services.vector_index import LangChainQdrantVectorIndex, VectorIndexConfig
 from app.storage.database import Database, MigrationRunner
 from app.storage.markdown import parse_markdown
+from apps.backend.tests._schema import migrated_connection
+
+
+def test_retrieval_cache_key_invalidates_on_tuning_changes(monkeypatch: pytest.MonkeyPatch) -> None:
+    conn = migrated_connection()
+    try:
+        base = _retrieval_cache_key(
+            conn,
+            vault_id="vault-1",
+            query="黑色修士",
+            mode="hybrid",
+            source_scope="all",
+            top_k=5,
+            now=None,
+            local_privacy=False,
+            vector_generation="gen-1",
+        )
+        monkeypatch.setenv("AGENT_PET_TUNING_RRF_K", "90")
+        from app.config import get_settings
+
+        get_settings.cache_clear()
+        changed_rrf = _retrieval_cache_key(
+            conn,
+            vault_id="vault-1",
+            query="黑色修士",
+            mode="hybrid",
+            source_scope="all",
+            top_k=5,
+            now=None,
+            local_privacy=False,
+            vector_generation="gen-1",
+        )
+        monkeypatch.setenv("AGENT_PET_TUNING_DAILY_ECHO_WEIGHT", "0.3")
+        get_settings.cache_clear()
+        changed_echo = _retrieval_cache_key(
+            conn,
+            vault_id="vault-1",
+            query="黑色修士",
+            mode="hybrid",
+            source_scope="all",
+            top_k=5,
+            now=None,
+            local_privacy=False,
+            vector_generation="gen-1",
+        )
+    finally:
+        conn.close()
+
+    assert base != changed_rrf
+    assert changed_rrf != changed_echo
 
 
 def test_rebuild_index_and_search_returns_citation_fields(tmp_path: Path) -> None:
@@ -96,6 +146,56 @@ def test_search_treats_punctuation_as_user_text(tmp_path: Path) -> None:
     response = service.search(vault_id=vault_id, query='alpha )*"', top_k=5)
 
     assert response.results
+
+
+def test_search_merges_exact_and_relaxed_fts_legs_without_echo_crowding(tmp_path: Path) -> None:
+    # 日记块逐字回放整句提问时，精确腿命中会短路返回，旧逻辑因此把
+    # 真正含答案的知识块挤出候选集；合并语义必须让两者同时出现。
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / "Memories" / "Daily").mkdir(parents=True)
+    (vault / "Memories" / "Daily" / "diary.md").write_text(
+        "用户问题：给我黑色修士酒馆卡的访问链接 - 回答：暂时没找到",
+        encoding="utf-8",
+    )
+    (vault / "Cards.md").write_text(
+        "1. [性斗学院](https://a.example)\n6. [黑色修士](https://b.example)",
+        encoding="utf-8",
+    )
+    db = Database(tmp_path / "app.db")
+    service = RetrievalService(db)
+    service.initialize()
+    vault_id = service.bind_vault(str(vault))
+    service.rebuild_index(vault_id)
+
+    response = service.search(vault_id=vault_id, query="给我黑色修士酒馆卡的访问链接", top_k=5)
+
+    paths = [result.relative_path for result in response.results]
+    assert "Memories/Daily/diary.md" in paths
+    assert "Cards.md" in paths
+
+
+def test_search_snippet_centers_on_matched_bigram_when_query_not_verbatim(tmp_path: Path) -> None:
+    # 改写/合并后的查询不会逐字出现在原文里；摘要必须按最小命中词居中，
+    # 否则回退到块头截断，模型看不到真正命中的条目。
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    (vault / "Cards.md").write_text(
+        "5. [清纯美女校花的堕落之路](https://c.example)\n6. [黑色修士](https://d.example)\n7. [精液货币化的世界](https://e.example)",
+        encoding="utf-8",
+    )
+    db = Database(tmp_path / "app.db")
+    service = RetrievalService(db)
+    service.initialize()
+    vault_id = service.bind_vault(str(vault))
+    service.rebuild_index(vault_id)
+
+    response = service.search(vault_id=vault_id, query="黑色修士酒馆卡", top_k=5)
+
+    assert response.results
+    snippet = response.results[0].snippet
+    assert "[黑色]修士" in snippet
+    assert "d.example" in snippet
 
 
 def test_search_requires_query_identifiers_in_authoritative_evidence(tmp_path: Path) -> None:

@@ -368,6 +368,44 @@ export type ContinuityProposalActionResponse = {
   status: ContinuityProposalStatus;
 };
 
+export type ReflectionProposalKind =
+  | "daily_diary"
+  | "structured_memory"
+  | "long_term_memory"
+  | "wiki_summary";
+
+export type ReflectionProposalStatus = "pending" | "applying" | "applied" | "rejected" | "denied" | "failed";
+
+export type ReflectionProposal = {
+  proposal_id: string;
+  proposal_kind: ReflectionProposalKind;
+  action_type: string;
+  content: string;
+  confidence: number;
+  reversible: boolean;
+  status: ReflectionProposalStatus;
+  target_ref?: string | null;
+  rejected_reason?: string | null;
+  error?: string | null;
+  applied_ref?: string | null;
+  source_conversation_id?: string | null;
+  source_message_id?: string | null;
+  agent_run_id?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ReflectionProposalListResponse = {
+  proposals: ReflectionProposal[];
+};
+
+export type ReflectionProposalActionResponse = {
+  proposal_id: string;
+  status: ReflectionProposalStatus;
+  action_id?: string | null;
+  memory_proposal_id?: string | null;
+};
+
 export type ChatContinuitySignal = {
   kind: "open_thread" | "mood_energy" | "relationship" | string;
   title: string;
@@ -375,6 +413,7 @@ export type ChatContinuitySignal = {
   intensity: "medium" | "high" | string;
   display_hint: string;
   source_state_keys: string[];
+  source_proposal_id?: string | null;
 };
 
 export type ContinuityStateItem = {

@@ -9,6 +9,7 @@ import {
   X,
 } from "lucide-react";
 import type { FormEvent, RefObject } from "react";
+import { useStreamingElapsed } from "../../hooks/useStreamingElapsed";
 import type { PetBubbleState } from "./chatTypes";
 import { PetReplyBubble } from "./PetReplyBubble";
 import type { PetInputMode, PetInputModeOption } from "./petInputModes";
@@ -69,6 +70,7 @@ export function PetChatOverlay({
   onStopStreaming,
 }: PetChatOverlayProps) {
   const activeMode = modes.find((option) => option.id === mode) ?? modes[0];
+  const streamingElapsed = useStreamingElapsed(streaming);
 
   return (
     <>
@@ -105,8 +107,10 @@ export function PetChatOverlay({
               </button>
             ))}
           </div>
-          <div className="pet-input-row">
-            <input
+          {streaming && streamingElapsed !== null && streamingElapsed >= 1 ? (
+            <p className="pet-streaming-elapsed">思考中 {streamingElapsed}s</p>
+          ) : null}
+          <div className="pet-input-row">            <input
               ref={inputRef}
               value={input}
               onChange={(event) => onInputChange(event.target.value)}

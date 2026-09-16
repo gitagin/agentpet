@@ -58,6 +58,16 @@ class FakeStreamingModel:
             yield FakeAIMessage(chunk)
 
 
+class PacedStreamingModel:
+    def __init__(self, delays):
+        self.delays = delays
+
+    async def astream(self, messages):
+        for delay in self.delays:
+            await asyncio.sleep(delay)
+            yield FakeAIMessage("字")
+
+
 def test_langchain_graph_client_uses_create_agent_boundary() -> None:
     captured = {}
     fake_agent = FakeAgent(
@@ -329,6 +339,68 @@ def test_chat_model_error_redacts_secret_like_details() -> None:
     assert "[REDACTED]" in error.detail
 
 
+class FlakyThenSuccessAgent:
+    """第一次抛限流，第二次成功——验证通用退避重试。"""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def ainvoke(self, payload):
+        self.calls += 1
+        if self.calls == 1:
+            class RateLimitError(Exception):
+                status_code = 429
+
+            raise RateLimitError("rate limit reached")
+        return {"messages": [FakeAIMessage("recovered answer")]}
+
+
+def test_langchain_graph_client_retries_rate_limited_once() -> None:
+    fake_agent = FlakyThenSuccessAgent()
+    client = LangChainGraphChatClient(
+        api_key="sk-test",
+        base_url="https://example.test/v1",
+        model="demo-model",
+        model_factory=lambda _client: "fake-model",
+        agent_factory=lambda _model, _prompt, _tools: fake_agent,
+    )
+
+    text = asyncio.run(async_complete(client, user_message="你好"))
+
+    assert text == "recovered answer"
+    assert fake_agent.calls == 2
+
+
+class AlwaysRateLimitedAgent:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def ainvoke(self, payload):
+        self.calls += 1
+
+        class RateLimitError(Exception):
+            status_code = 429
+
+        raise RateLimitError("rate limit reached")
+
+
+def test_langchain_graph_client_gives_up_after_retry_budget() -> None:
+    fake_agent = AlwaysRateLimitedAgent()
+    client = LangChainGraphChatClient(
+        api_key="sk-test",
+        base_url="https://example.test/v1",
+        model="demo-model",
+        model_factory=lambda _client: "fake-model",
+        agent_factory=lambda _model, _prompt, _tools: fake_agent,
+    )
+
+    with pytest.raises(ChatModelError, match="限流"):
+        asyncio.run(async_complete(client, user_message="你好"))
+
+    # 默认 tuning_chat_retry_attempts=1：首次调用 + 1 次重试。
+    assert fake_agent.calls == 2
+
+
 def test_langchain_graph_client_rejects_empty_response() -> None:
     fake_agent = FakeAgent({"messages": [FakeAIMessage("   ")]})
     client = LangChainGraphChatClient(
@@ -350,6 +422,40 @@ async def async_complete(
     system_prompt: str | None = None,
 ) -> str:
     return await client.complete(user_message=user_message, system_prompt=system_prompt)
+
+
+def test_langchain_graph_client_stream_uses_inactivity_budget_not_total_duration() -> None:
+    # 每个 token 间隔 0.02s，总时长 0.10s 超过 timeout 0.05s：
+    # 旧的全流截止逻辑会在 0.05s 处掐断，新的间隔预算应收全 5 个 token。
+    model = PacedStreamingModel([0.02] * 5)
+    client = LangChainGraphChatClient(
+        api_key="sk-test",
+        base_url="https://example.test/v1",
+        model="demo-model",
+        timeout_seconds=0.05,
+        model_factory=lambda _client: model,
+    )
+
+    chunks = asyncio.run(async_collect_stream(client, user_message="hello"))
+
+    assert chunks == ["字"] * 5
+
+
+def test_langchain_graph_client_stream_times_out_when_tokens_stall() -> None:
+    # 第一个 token 到达后停顿 0.12s > timeout 0.05s：按不活动预算报超时。
+    model = PacedStreamingModel([0.01, 0.12])
+    client = LangChainGraphChatClient(
+        api_key="sk-test",
+        base_url="https://example.test/v1",
+        model="demo-model",
+        timeout_seconds=0.05,
+        model_factory=lambda _client: model,
+    )
+
+    with pytest.raises(ChatModelError) as exc_info:
+        asyncio.run(async_collect_stream(client, user_message="hello"))
+
+    assert exc_info.value.code == "provider_timeout"
 
 
 async def async_collect_stream(

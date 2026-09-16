@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 
 from app.agents.events import AgentDoneEvent, AgentErrorEvent, AgentStatusEvent, AgentTokenEvent
 from app.models.enums import AgentIntent, AgentRunStatus, MessageStatus
+from app.services.memory import content_hash_bytes
 from app.services.memory_entity_graph import MemoryEntityGraphStore
 from app.storage.markdown import read_markdown
 from tests.conftest import auth_headers, parse_sse_events
@@ -865,6 +866,40 @@ def test_wiki_page_api_writes_under_wiki_and_lists_pages(client: TestClient, tmp
     listed = client.get("/api/wiki/pages", headers=auth())
     assert listed.status_code == 200
     assert listed.json()["pages"][0]["relative_path"] == "Wiki/Runtime-Architecture.md"
+
+
+def test_wiki_page_api_returns_conflict_when_target_edited_after_preview(client: TestClient, tmp_path: Path) -> None:
+    vault = tmp_path / "Vault"
+    client.post(
+        "/api/vaults/init",
+        headers=auth(),
+        json={"path": str(vault), "create_if_missing": True, "confirmed": True},
+    )
+    written = client.post(
+        "/api/wiki/pages",
+        headers=auth(),
+        json={"title": "Runtime Architecture", "content": "First revision."},
+    )
+    assert written.status_code == 200
+    target = vault / "Wiki" / "Runtime-Architecture.md"
+    preview_hash = content_hash_bytes(target.read_bytes())
+
+    target.write_text("external edit\n", encoding="utf-8")
+
+    conflicted = client.post(
+        "/api/wiki/pages",
+        headers=auth(),
+        json={
+            "title": "Runtime Architecture",
+            "content": "Second revision.",
+            "target_content_hash": preview_hash,
+        },
+    )
+
+    assert conflicted.status_code == 409
+    assert conflicted.json()["error"]["code"] == "wiki_page_conflict"
+    assert conflicted.json()["error"]["details"]["current_hash"] == content_hash_bytes(target.read_bytes())
+    assert target.read_text(encoding="utf-8") == "external edit\n"
 
 
 def test_memory_graph_entity_and_claim_actions_are_wired(client: TestClient, tmp_path: Path) -> None:

@@ -128,8 +128,8 @@ def test_langgraph_runtime_preserves_core_search_event_contract() -> None:
     retrieval, events = asyncio.run(run_case())
 
     assert retrieval.calls == [
-        ("Ada", 5, "fts", "personal_memory"),
-        ("Ada", 5, "fts", "knowledge_base"),
+        ("Ada", 5, "hybrid", "personal_memory"),
+        ("Ada", 5, "hybrid", "knowledge_base"),
     ]
     assert events[0].event == "status"
     retrieval_statuses = [event for event in events if event.event == "status" and event.stage in {"personal_memory_retrieval", "knowledge_base_retrieval"}]
@@ -181,7 +181,7 @@ def test_langgraph_semantic_agent_drives_memory_retrieval_before_chat() -> None:
 
     assert semantic_model.calls[0][0] == "Can you use the earlier context?"
     assert retrieval_model.calls[0][2] == ["search_memory"]
-    assert retrieval.calls == [("用户喜欢什么水果", 5, "fts", "personal_memory")]
+    assert retrieval.calls == [("用户喜欢什么水果", 5, "hybrid", "personal_memory")]
     assert action_model.calls == []
     assert "用户喜欢苹果" in chat_model.calls[-1][0]
     assert "Memories/Preferences.md" in chat_model.calls[-1][0]
@@ -224,9 +224,50 @@ def test_langgraph_semantic_agent_drives_knowledge_retrieval_before_chat() -> No
     retrieval, retrieval_model, chat_model, events = asyncio.run(run_case())
 
     assert retrieval_model.calls[0][2] == ["search_memory"]
-    assert retrieval.calls == [("runtime docs", 5, "fts", "knowledge_base")]
+    assert retrieval.calls == [("runtime docs", 5, "hybrid", "knowledge_base")]
     assert "Wiki/Runtime.md" in chat_model.calls[-1][0]
     assert_langgraph_events(events, ["citation", "token", "done"])
+
+
+def test_explicit_knowledge_base_scope_cannot_be_overridden_by_semantic_model() -> None:
+    async def run_case():
+        retrieval = FakeScopedRetrieval()
+        semantic_model = FakeSemanticModel(
+            {
+                "intent": "need_retrieval",
+                "retrieval_scope": "personal_memory",
+                "retrieval_query": "错误的记忆查询",
+                "confidence": 0.93,
+                "reason": "misclassified personal memory",
+            }
+        )
+        retrieval_model = FakeRegistryChatModel(None, "knowledge checked")
+        chat_model = FakeRegistryChatModel(None, "知识库内容已按限定范围检索。")
+        state = make_state("我知识库中有什么？")
+        runtime = LangGraphAgentRuntime(
+            AgentRuntimeServices(
+                retrieval=retrieval,
+                model_registry=AgentModelRegistry(
+                    {
+                        AgentId.SEMANTIC_ANALYSIS_AGENT: semantic_model,
+                        AgentId.RETRIEVAL_AGENT: retrieval_model,
+                        AgentId.CHAT_AGENT: chat_model,
+                    }
+                ),
+                automation_settings=SimpleNamespace(use_negotiation=False),
+            )
+        )
+
+        events = [event async for event in runtime.run(state)]
+        return retrieval, state, events
+
+    retrieval, state, events = asyncio.run(run_case())
+
+    assert retrieval.calls == [("我知识库中有什么？", 5, "hybrid", "knowledge_base")]
+    assert state.semantic_analysis is not None
+    assert state.semantic_analysis.source_scope == "knowledge_base"
+    assert all(event.citation.source_scope == "knowledge_base" for event in events if event.event == "citation")
+    assert not any(getattr(event, "stage", None) == "daily_chat_fallback" for event in events)
 
 
 def test_langgraph_falls_back_to_daily_chat_as_weak_evidence_when_personal_memory_empty() -> None:
@@ -264,8 +305,8 @@ def test_langgraph_falls_back_to_daily_chat_as_weak_evidence_when_personal_memor
     retrieval, chat_model, events = asyncio.run(run_case())
 
     assert retrieval.calls == [
-        ("用户喜欢什么水果", 5, "fts", "personal_memory"),
-        ("用户喜欢什么水果", 5, "fts", "daily_chat"),
+        ("用户喜欢什么水果", 5, "hybrid", "personal_memory"),
+        ("用户喜欢什么水果", 5, "hybrid", "daily_chat"),
     ]
     assert "上下文范围：daily_chat" in chat_model.calls[-1][0]
     assert "还没沉淀为长期记忆" in chat_model.calls[-1][0]
@@ -310,7 +351,7 @@ def test_langgraph_forces_date_recall_to_daily_chat_even_when_semantic_model_mis
 
     retrieval, chat_model, events = asyncio.run(run_case())
 
-    assert retrieval.calls == [("我在5月4号说了什么事情吗？", 20, "fts", "daily_chat")]
+    assert retrieval.calls == [("我在5月4号说了什么事情吗？", 20, "hybrid", "daily_chat")]
     assert "上下文范围：daily_chat" in chat_model.calls[-1][0]
     assert "用户说自己喜欢苹果" in chat_model.calls[-1][0]
     assert "用户说自己喜欢旅游" in chat_model.calls[-1][0]
@@ -340,7 +381,7 @@ def test_langgraph_routes_relative_date_recall_to_daily_chat_without_semantic_ag
 
     retrieval, chat_model, events = asyncio.run(run_case())
 
-    assert retrieval.calls == [("我昨天和你聊了什么", 20, "fts", "daily_chat")]
+    assert retrieval.calls == [("我昨天和你聊了什么", 20, "hybrid", "daily_chat")]
     assert "用户说自己喜欢苹果" in chat_model.calls[-1][0]
     assert "用户说自己喜欢旅游" in chat_model.calls[-1][0]
     assert first_event(events, "citation").citation.source_scope == "daily_chat"
@@ -375,9 +416,9 @@ def test_langgraph_aggregates_and_compresses_companion_memory_route_scopes() -> 
     retrieval, chat_model, reports, events = asyncio.run(run_case())
 
     assert retrieval.calls == [
-        ("What do you remember about my coding style?", 5, "fts", "personal_memory"),
-        ("What do you remember about my coding style?", 5, "fts", "diary_objects"),
-        ("What do you remember about my coding style?", 5, "fts", "daily_chat"),
+        ("What do you remember about my coding style?", 5, "hybrid", "personal_memory"),
+        ("What do you remember about my coding style?", 5, "hybrid", "diary_objects"),
+        ("What do you remember about my coding style?", 5, "hybrid", "daily_chat"),
     ]
     multi_source_status = next(event for event in events if getattr(event, "stage", None) == "multi_source_memory_retrieval")
     assert multi_source_status.source_scopes == ["personal_memory", "diary_objects", "daily_chat"]
@@ -425,9 +466,9 @@ def test_langgraph_splits_recalled_memory_by_permissions_and_records_usage() -> 
     retrieval, recorder, chat_model, events = asyncio.run(run_case())
 
     assert retrieval.calls == [
-        ("What do you remember about my coding style?", 5, "fts", "personal_memory"),
-        ("What do you remember about my coding style?", 5, "fts", "diary_objects"),
-        ("What do you remember about my coding style?", 5, "fts", "daily_chat"),
+        ("What do you remember about my coding style?", 5, "hybrid", "personal_memory"),
+        ("What do you remember about my coding style?", 5, "hybrid", "diary_objects"),
+        ("What do you remember about my coding style?", 5, "hybrid", "daily_chat"),
     ]
     prompt = chat_model.calls[-1][0]
     assert "Style memory (tone only; do not mention as facts):" in prompt

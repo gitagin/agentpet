@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import logging
 import re
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -11,6 +10,23 @@ from app.services.memory_policy import evaluate_memory_content
 
 
 MAX_DIARY_MEMORY_OBJECTS = 5
+MIN_DIARY_MEMORY_CONFIDENCE = 0.4
+EXTRACTION_FAILED_CODE = "diary_memory_extraction_failed"
+
+
+class DiaryMemoryExtractionError(RuntimeError):
+    """模型这一轮没能给出可用的抽取结果。
+
+    与"这轮对话没有值得记住的内容"是两件事:前者要让动作失败、交给重试与
+    可见的失败状态,后者是合法的零效果。把两者都收敛成空列表,等于把可重试
+    的失败变成静默的数据丢失——调用方再也分不出"没抽到"和"没抽成"。
+    """
+
+    def __init__(self) -> None:
+        super().__init__(EXTRACTION_FAILED_CODE)
+        self.code = EXTRACTION_FAILED_CODE
+
+
 MIN_DIARY_MEMORY_CONFIDENCE = 0.4
 QUARANTINE_CONFIDENCE_MAX = 0.6
 DEFAULT_DIARY_MEMORY_TYPE = "event"
@@ -85,9 +101,6 @@ _MOOD_WORD_PATTERN = re.compile(
 )
 
 
-logger = logging.getLogger(__name__)
-
-
 class DiaryExtractionModelProtocol(Protocol):
     async def complete(self, *, user_message: str, system_prompt: str | None = None) -> Any: ...
 
@@ -129,13 +142,8 @@ class DiaryMemoryExtractor:
                 system_prompt=DIARY_EXTRACTION_SYSTEM_PROMPT,
             )
             payload = _parse_json_payload(str(response))
-        except Exception:
-            logger.warning(
-                "Diary memory extraction failed; skipping durable memories",
-                exc_info=True,
-                extra={"memory_date": memory_date, "source_path": source_path},
-            )
-            return []
+        except Exception as exc:
+            raise DiaryMemoryExtractionError() from exc
 
         raw_objects = _extract_object_list(payload)
         extracted: list[DiaryMemoryObject] = []

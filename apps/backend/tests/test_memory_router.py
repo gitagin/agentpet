@@ -18,6 +18,15 @@ def test_technical_knowledge_question_prefers_knowledge_base_and_avoids_diary() 
     assert route.retrieval_top_k == 5
 
 
+def test_explicit_knowledge_base_inventory_request_has_no_memory_or_diary_fallback() -> None:
+    route = route_memory("我知识库中有什么？")
+
+    assert route.primary_scopes == ("knowledge_base",)
+    assert route.fallback_scopes == ("none",)
+    assert route.reason == "explicit_knowledge_base_scope"
+    assert route.legacy_source_scope == "knowledge_base"
+
+
 def test_personal_emotional_continuity_prefers_diary_then_daily_chat() -> None:
     route = route_memory("Remember when I felt anxious about the presentation?")
 

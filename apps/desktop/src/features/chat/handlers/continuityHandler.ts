@@ -1,9 +1,5 @@
 import type { StreamHandlerInput } from "../streamDispatcher";
 
-function formatContinueTopicKind(kind: string) {
-  return kind === "open_thread" ? "下次接着聊" : "陪伴状态";
-}
-
 function formatContinueTopicSummary(kind: string, summary: string) {
   return kind === "open_thread" ? `要让我下次记得继续这个话题吗：${summary}` : summary;
 }
@@ -20,11 +16,14 @@ export function continuitySignalHandler({ messageId, payload, context }: StreamH
   if (signal) {
     petChat.latestContinuitySignalRef.current = signal;
     setLatestContinuitySignal(signal);
+    // 提示块本身携带标题/摘要/脚注与「不再继续」按钮,
+    // 不再重复追加一条工具事件,避免同一话题出现两个块。
     upsertChatContinuitySignal(messageId, signal);
+    return;
   }
   appendChatEvent(messageId, {
     label: "下次接着聊",
-    detail: signal ? `${formatContinueTopicKind(signal.kind)}：${signal.summary}` : "已收到可继续的话题提示。",
+    detail: "已收到可继续的话题提示。",
     tone: "success",
   });
 }

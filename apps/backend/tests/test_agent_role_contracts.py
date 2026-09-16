@@ -21,7 +21,7 @@ import pytest
 from pydantic import BaseModel
 
 import app.agents.contracts as contracts
-from app.agents.roles import reflection_agent, verifier_agent
+from app.agents.roles import verifier_agent
 
 
 def test_all_surviving_contract_models_are_frozen_and_extra_forbidden() -> None:
@@ -36,29 +36,6 @@ def test_all_surviving_contract_models_are_frozen_and_extra_forbidden() -> None:
         assert config.get("extra") == "forbid", f"{cls.__name__} must forbid extra fields"
         checked += 1
     assert checked >= 5, "contract module unexpectedly empty - surgery went too far"
-
-
-def test_reflection_builder_rejects_tools() -> None:
-    with pytest.raises(ValueError):
-        reflection_agent.build_role_agent(model=object(), tools=(object(),))
-
-
-def test_reflection_builder_returns_structured_agent_bound_to_proposal_batch() -> None:
-    class _StructuredModel:
-        def __init__(self) -> None:
-            self.schemas: list[type] = []
-
-        def with_structured_output(self, schema):
-            self.schemas.append(schema)
-            return self
-
-        async def ainvoke(self, messages):  # pragma: no cover - construction only
-            raise AssertionError("construction tests do not invoke the provider")
-
-    model = _StructuredModel()
-    agent = reflection_agent.build_role_agent(model=model)
-    assert agent is not None
-    assert model.schemas == [contracts.ReflectionProposalBatch]
 
 
 def test_verifier_module_exposes_receipt_verification_only() -> None:

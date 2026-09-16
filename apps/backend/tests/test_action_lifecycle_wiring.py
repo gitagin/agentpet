@@ -11,7 +11,7 @@ from app.agents.nodes.executor import ActionLifecycleCoordinator
 from app.agents.nodes.policy_guard import evaluate_action_proposal
 from app.agents.services import AgentRuntimeServices
 from app.agents.state import ActionPlan, AgentRoute, AgentState
-from app.api.services.adapters import agent_runtime
+from app.api.services.adapters import _execute_registered_action, agent_runtime
 from app.api.services.factory import AppContext
 from app.models.api import MemoryProposalCreateRequest, TaskCreateRequest, WikiPageWriteRequest
 from app.models.enums import AgentIntent, MemoryProposalType
@@ -153,6 +153,82 @@ def test_production_runtime_shares_one_lifecycle_registry_across_write_adapters(
         assert set(lifecycle.readers) == set(lifecycle.adapters)
 
 
+def test_wiki_summary_executor_and_reader_require_the_declared_effects(
+    client_factory,
+    tmp_path: Path,
+) -> None:
+    with client_factory(data_dir=tmp_path / "data") as client:
+        _bind_vault(client, tmp_path)
+        runtime = agent_runtime(AppContext(app=client.app, request_id="wiki-summary-contract"))  # type: ignore[arg-type]
+        target_path = "Wiki/Companion/Summaries/2026-09-14-answer.md"
+        proposal = ActionProposal(
+            proposal_id="proposal-wiki-summary-contract",
+            explicit_intent_ref="intent:wiki-summary-contract",
+            action_type="wiki.answer_summary.write",
+            target_ref=target_path,
+            parameters={
+                "title": "Answer summary",
+                "target_path": target_path,
+                "content": "Use the local evidence before making a claim.",
+            },
+            expected_effect="写入 Wiki 摘要页面。",
+            source_message_id="message-wiki-summary-contract",
+        )
+        policy = evaluate_action_proposal(proposal)
+        assert policy.decision == "approved"
+
+        outcome = asyncio.run(
+            runtime.services.action_lifecycle.execute(
+                proposal,
+                policy,
+                source_run_id="run-wiki-summary-contract",
+            )
+        )
+        actual_path = tmp_path / "Vault" / target_path
+        assert actual_path.exists(), {
+            "actual_path": str(actual_path),
+            "result": outcome.receipt.result,
+        }
+        assert outcome.receipt.result["action_marker"] in actual_path.read_text(encoding="utf-8")
+        index_text = (tmp_path / "Vault" / "Wiki" / "index.md").read_text(encoding="utf-8")
+        log_text = (tmp_path / "Vault" / "Wiki" / "log.md").read_text(encoding="utf-8")
+        assert target_path in index_text, index_text
+        assert outcome.receipt.result["action_marker"] in log_text, log_text
+        assert outcome.receipt.result["expected_state"]["target_path"] == target_path
+        from app.api.services.adapters import _wiki_summary_section_content
+        assert _wiki_summary_section_content(
+            actual_path.read_text(encoding="utf-8"),
+            outcome.receipt.result["action_marker"],
+        ) == "Use the local evidence before making a claim."
+        reader = runtime.services.action_lifecycle.readers["wiki.answer_summary.write"]
+        assert reader(outcome.receipt) is not None
+        assert outcome.receipt.status == "verified"
+        assert reader(outcome.receipt) is not None
+
+        vault_root = tmp_path / "Vault"
+        (vault_root / "Wiki" / "index.md").unlink()
+        assert reader(outcome.receipt) is None
+
+
+def test_wiki_summary_policy_rejects_non_summary_targets() -> None:
+    proposal = ActionProposal(
+        proposal_id="proposal-wiki-summary-invalid-target",
+        explicit_intent_ref="intent:wiki-summary-invalid-target",
+        action_type="wiki.answer_summary.write",
+        target_ref="Wiki/Notes/not-a-summary.md",
+        parameters={
+            "target_path": "Wiki/Notes/not-a-summary.md",
+            "content": "Do not write this outside the summary area.",
+        },
+        expected_effect="写入 Wiki 摘要页面。",
+    )
+
+    policy = evaluate_action_proposal(proposal)
+
+    assert policy.decision == "denied"
+    assert policy.reason_code == "wiki_summary_target_invalid"
+
+
 def test_runtime_write_adapters_persist_verified_receipts_before_returning(
     client_factory,
     tmp_path: Path,
@@ -213,3 +289,74 @@ def test_runtime_write_adapters_persist_verified_receipts_before_returning(
             assert metadata["control_state"] == "completed"
             assert metadata["execution_receipt"]["status"] == "verified"
             assert metadata["verification_result"]["status"] == "verified"
+
+
+def test_a_failed_apply_reruns_only_under_a_new_attempt_identity(
+    client_factory,
+    tmp_path: Path,
+) -> None:
+    # 失败回执在账本里是终局的:同键重跑只会把它原样回放(适配器不再执行),所以
+    # "重试"必须换尝试身份,否则用户点的是一个什么都不做的按钮。
+    with client_factory(data_dir=tmp_path / "data") as client:
+        _bind_vault(client, tmp_path)
+        context = AppContext(app=client.app, request_id="retry-identity")
+        lifecycle = agent_runtime(context).services.action_lifecycle
+        attempted_keys: list[str] = []
+        original = lifecycle.adapters["task.create"]
+
+        async def flaky_task_adapter(proposal, policy, claim):
+            attempted_keys.append(claim.idempotency_key)
+            if len(attempted_keys) == 1:
+                raise RuntimeError("transient_provider_failure")
+            return await original(proposal, policy, claim)
+
+        lifecycle.adapters["task.create"] = flaky_task_adapter
+
+        def run(*, attempt: int):
+            return asyncio.run(
+                _execute_registered_action(
+                    context,
+                    action_lifecycle=lifecycle,
+                    action_type="task.create",
+                    target_ref="task:retry-identity",
+                    parameters={"title": "Retry identity probe"},
+                    expected_effect="Create one local task.",
+                    source_message_id="message-retry-identity",
+                    reversible=True,
+                    attempt=attempt,
+                )
+            )
+
+        first = run(attempt=1)
+        assert first.receipt.status != "verified"
+
+        replayed = run(attempt=1)
+        assert replayed.duplicate is True
+        assert replayed.receipt.status != "verified"
+        assert len(attempted_keys) == 1
+
+        retried = run(attempt=2)
+        assert retried.receipt.status == "verified"
+        assert len(attempted_keys) == 2
+        assert attempted_keys[0] != attempted_keys[1]
+
+
+def test_unknown_adapter_failures_are_classified_for_diagnosis() -> None:
+    # 存储故障、参数校验失败和未知 bug 曾经一律报 action_failed:线上遇到的间歇
+    # 失败因此无法归因。领域异常自带的安全码保持不变。
+    from pydantic import ValidationError
+
+    from app.agents.nodes.executor import _safe_exception_code
+
+    class DomainFailure(Exception):
+        code = "wiki_workflow_failed"
+
+    assert _safe_exception_code(DomainFailure()) == "wiki_workflow_failed"
+    assert _safe_exception_code(sqlite3.OperationalError("database is locked")) == "storage_unavailable"
+    assert (
+        _safe_exception_code(
+            ValidationError.from_exception_data("X", [{"type": "missing", "loc": ("a",), "input": None}])
+        )
+        == "invalid_action_parameters"
+    )
+    assert _safe_exception_code(RuntimeError("mystery")) is None

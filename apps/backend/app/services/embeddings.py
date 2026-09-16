@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
@@ -106,6 +107,9 @@ class LocalOnnxEmbeddings:
             self._tokenizer = Tokenizer.from_file(str(tokenizer_path))
             self._tokenizer.enable_truncation(max_length=_LOCAL_EMBEDDING_MAX_TOKENS)
             self._tokenizer.enable_padding(pad_id=0, pad_type_id=0)
+            # 共享实例可能被多线程并发使用（线程池检索 + 设置页探测），
+            # 串行化 tokenizer/session 调用，兼容旧版 tokenizers 的非线程安全绑定。
+            self._lock = threading.Lock()
         except Exception as exc:
             raise LocalEmbeddingUnavailableError(
                 f"local embedding model failed to load under {model_dir}: {exc}"
@@ -122,16 +126,27 @@ class LocalOnnxEmbeddings:
     def _embed(self, texts: list[str]) -> list[list[float]]:
         import numpy as np
 
-        encoded = [self._tokenizer.encode(text) for text in texts]
-        batch = {
-            "input_ids": np.asarray([item.ids for item in encoded], dtype=np.int64),
-            "attention_mask": np.asarray([item.attention_mask for item in encoded], dtype=np.int64),
-            "token_type_ids": np.asarray([item.type_ids for item in encoded], dtype=np.int64),
-        }
-        hidden = self._session.run(["last_hidden_state"], batch)[0]
-        cls = np.asarray(hidden)[:, 0, :].astype(np.float32)
-        norms = np.linalg.norm(cls, axis=1, keepdims=True)
-        normalized = cls / np.maximum(norms, 1e-12)
+        with self._lock:
+            encoded = [self._tokenizer.encode(text) for text in texts]
+            length = max(len(item.ids) for item in encoded)
+            batch = {
+                key: np.asarray(
+                    [
+                        list(getattr(item, field)) + [0] * (length - len(getattr(item, field)))
+                        for item in encoded
+                    ],
+                    dtype=np.int64,
+                )
+                for key, field in (
+                    ("input_ids", "ids"),
+                    ("attention_mask", "attention_mask"),
+                    ("token_type_ids", "type_ids"),
+                )
+            }
+            hidden = self._session.run(["last_hidden_state"], batch)[0]
+            cls = np.asarray(hidden)[:, 0, :].astype(np.float32)
+            norms = np.linalg.norm(cls, axis=1, keepdims=True)
+            normalized = cls / np.maximum(norms, 1e-12)
         return [row.tolist() for row in normalized]
 
 

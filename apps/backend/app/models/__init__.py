@@ -127,6 +127,11 @@ from .metrics import (
     RecallFeedbackRequest,
     RecallFeedbackResponse,
 )
+from .reflection import (
+    ReflectionProposalActionResponse,
+    ReflectionProposalListResponse,
+    ReflectionProposalResponse,
+)
 from .retrospectives import (
     RetrospectiveDiarySummary,
     RetrospectiveMemoryItem,

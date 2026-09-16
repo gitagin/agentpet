@@ -93,11 +93,3 @@ def _task_confirmation_prompt(state: AgentState) -> str:
     else:
         parts.append("提醒状态：只创建了任务")
     return "\n".join(parts)
-
-
-def _knowledge_not_found_chat_prompt() -> str:
-    return (
-        _chat_system_prompt()
-        + " The required retrieval context is empty. Tell the user briefly in Chinese that no relevant local record was found. "
-        "Do not invent memories. Offer to continue from general context if useful."
-    )

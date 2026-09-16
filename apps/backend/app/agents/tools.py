@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import datetime
 from inspect import Parameter, signature
 from typing import Literal
 
@@ -58,6 +60,8 @@ from .services import (
 )
 
 
+logger = logging.getLogger(__name__)
+
 DEFAULT_MEMORY_TARGET_PATH = "Inbox/Pending Memories.md"
 
 TOOL_TIMEOUTS = {
@@ -69,6 +73,7 @@ TOOL_TIMEOUTS = {
     "plan_wiki_lint": 20,
     "manage_wiki_page": 10,
     "create_task": 10,
+    "get_current_time": 2,
 }
 
 
@@ -81,6 +86,33 @@ class AgentToolName(StrEnum):
     PLAN_WIKI_LINT = "plan_wiki_lint"
     MANAGE_WIKI = "manage_wiki_page"
     CREATE_TASK = "create_task"
+    GET_CURRENT_TIME = "get_current_time"
+
+
+class CurrentTimeResponse(BaseModel):
+    """get_current_time 工具的返回载荷：本机实时本地时间。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    local_time: str = Field(description="人类可读的本机本地时间，含星期")
+    iso: str = Field(description="ISO 8601 时间串，含本机时区偏移")
+    timezone: str = Field(description="本机时区名称")
+
+
+_WEEKDAY_NAMES = ("一", "二", "三", "四", "五", "六", "日")
+
+
+def _system_local_time_payload(now: datetime | None = None) -> CurrentTimeResponse:
+    local = (now or datetime.now()).astimezone()
+    weekday = _WEEKDAY_NAMES[local.weekday()]
+    return CurrentTimeResponse(
+        local_time=(
+            f"{local.year}年{local.month}月{local.day}日"
+            f"（星期{weekday}）{local.hour:02d}:{local.minute:02d}:{local.second:02d}"
+        ),
+        iso=local.isoformat(),
+        timezone=str(local.tzinfo),
+    )
 
 
 class AgentToolUnavailableError(Exception):
@@ -121,6 +153,7 @@ class AgentToolResult:
         | WikiQueryArchiveProposal
         | WikiSynthesisProposal
         | WikiLintProposal
+        | CurrentTimeResponse
     )
 
 
@@ -139,7 +172,7 @@ class SearchMemoryInput(AgentToolInput):
         "knowledge_base",
     ] = Field(
         default="all",
-        description="检索范围：none、personal_memory、daily_chat、knowledge_base 或 all",
+        description="检索范围：personal_memory、daily_chat、knowledge_base 或 all",
     )
 
 
@@ -340,6 +373,16 @@ class AgentToolSet:
             args_schema=PlanWikiLintInput,
         )
 
+    def get_current_time_tool(self) -> StructuredTool:
+        return StructuredTool.from_function(
+            func=self.get_current_time,
+            name="get_current_time",
+            description=(
+                "读取电脑系统时钟，返回此刻的本地日期、星期和时间。"
+                "用户问“现在几点”“今天几号”“今天星期几”或需要实时时间时必须使用。"
+            ),
+        )
+
     def all_tools(self) -> list[StructuredTool]:
         return [
             self.search_memory_tool(),
@@ -350,6 +393,7 @@ class AgentToolSet:
             self.plan_wiki_lint_tool(),
             self.manage_wiki_page_tool(),
             self.create_task_tool(),
+            self.get_current_time_tool(),
         ]
 
     def allowed_tools(self, names: tuple[AgentToolName, ...]) -> list[StructuredTool]:
@@ -362,8 +406,14 @@ class AgentToolSet:
             AgentToolName.PLAN_WIKI_LINT: self.plan_wiki_lint_tool,
             AgentToolName.MANAGE_WIKI: self.manage_wiki_page_tool,
             AgentToolName.CREATE_TASK: self.create_task_tool,
+            AgentToolName.GET_CURRENT_TIME: self.get_current_time_tool,
         }
         return [tools_by_name[name]() for name in names]
+
+    def get_current_time(self) -> CurrentTimeResponse:
+        response = _system_local_time_payload()
+        self._notify("get_current_time", response)
+        return response
 
     async def search_memory(
         self,
@@ -374,7 +424,9 @@ class AgentToolSet:
         if self.retrieval is None:
             raise AgentToolUnavailableError("search_memory")
         search = self.retrieval.search
-        search_kwargs: dict[str, object] = {"top_k": top_k, "mode": "fts"}
+        # 方法 E：聊天主链路也走 分词FTS + 本地向量 + RRF 融合（本地向量为默认），
+        # 索引未建好/向量腿不可用时自动回落到 FTS。
+        search_kwargs: dict[str, object] = {"top_k": top_k, "mode": "hybrid"}
         if _accepts_keyword_argument(search, "source_scope"):
             search_kwargs["source_scope"] = source_scope
         value = await self._run_with_timeout(
@@ -501,12 +553,18 @@ class AgentToolSet:
                 ),
             )
         )
-        review = _coerce_wiki_ingest_review(
-            await self._run_with_timeout(
-                "plan_wiki_ingest",
-                self.wiki_workflow.review_ingest(WikiIngestReviewRequest(run_id=preview.run_id)),
+        try:
+            review = _coerce_wiki_ingest_review(
+                await self._run_with_timeout(
+                    "plan_wiki_ingest",
+                    self.wiki_workflow.review_ingest(WikiIngestReviewRequest(run_id=preview.run_id)),
+                )
             )
-        )
+        except Exception:
+            # preview 只进内存缓存、confirm 才落库：未确认阶段 review 查不到
+            # run 属预期，提案仍以 preview 为准返回，review 留空。
+            logger.warning("Wiki ingest review unavailable before confirm", exc_info=True)
+            review = None
         proposal = WikiIngestProposal.from_preview_review(
             title=title,
             preview=preview,
@@ -629,6 +687,7 @@ class AgentToolSet:
             | WikiQueryArchiveProposal
             | WikiSynthesisProposal
             | WikiLintProposal
+            | CurrentTimeResponse
         ),
     ) -> None:
         if self.observer is not None:

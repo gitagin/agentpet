@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
-from collections.abc import Mapping
+import re
+from collections.abc import Mapping, Sequence
 from datetime import datetime, timezone
 from typing import Any
 
@@ -11,7 +13,13 @@ from fastapi import Request
 from app.config import get_settings
 from app.agents import AgentRuntimeServices, LangGraphAgentRuntime
 from app.agents.checkpointer import SQLiteCheckpointStore
-from app.agents.contracts import ActionProposal, ExecutionClaim, ExecutionReceipt, PolicyDecision
+from app.agents.contracts import (
+    ActionProposal,
+    ExecutionClaim,
+    ExecutionReceipt,
+    PolicyDecision,
+    reflection_contract_error,
+)
 from app.agents.nodes.executor import (
     ActionLifecycleCoordinator,
     ActionLifecycleOutcome,
@@ -29,6 +37,7 @@ from app.models.api import (
     QueryArchiveLintResponse,
     QueryArchiveRequest,
     QueryArchiveResponse,
+    ReflectionProposalActionResponse,
     RetrospectiveReportRequest,
     RetrospectiveReportResponse,
     TaskCreateRequest,
@@ -77,6 +86,10 @@ from app.services.memory_hygiene_suggestions import (
     MemoryHygieneSuggestionExpired,
     MemoryHygieneSuggestionService,
 )
+from app.services.reflection_proposals import (
+    PENDING as REFLECTION_PENDING,
+    ReflectionProposalStateError,
+)
 from app.services.reminder_delivery import (
     DeliveryAttempt,
     ReminderDeliveryNotFound,
@@ -120,6 +133,7 @@ from .factory import (
     memory_service,
     prompt_profile_provider,
     record_agent_action,
+    reflection_proposal_service,
     retrospective_service,
     retrieval_service,
     settings_store,
@@ -142,24 +156,28 @@ class RuntimeRetrievalAdapter:
         mode: str = "fts",
         source_scope: str = "all",
     ) -> Any:
-        return UnifiedMemorySearchService(
-            (
-                RetrievalMemorySourceAdapter(
-                    retrieval_service(self.request),
-                    vault_id=active_vault_id(self.request),
-                ),
-                GraphMemorySourceAdapter(
-                    lambda: memory_entity_graph_store(self.request),
-                    answerable_only=True,
-                    vault_id=active_vault_id(self.request),
-                ),
-                DiaryMemorySourceAdapter(lambda: diary_memory_service(self.request)),
+        # 同步检索（SQLite FTS + 本地 ONNX 向量 + 重排）放到线程池执行，
+        # 避免阻塞事件循环里的并发会话与 SSE 心跳。
+        return await asyncio.to_thread(
+            lambda: UnifiedMemorySearchService(
+                (
+                    RetrievalMemorySourceAdapter(
+                        retrieval_service(self.request),
+                        vault_id=active_vault_id(self.request),
+                    ),
+                    GraphMemorySourceAdapter(
+                        lambda: memory_entity_graph_store(self.request),
+                        answerable_only=True,
+                        vault_id=active_vault_id(self.request),
+                    ),
+                    DiaryMemorySourceAdapter(lambda: diary_memory_service(self.request)),
+                )
+            ).search(
+                query=query,
+                top_k=top_k,
+                mode=mode,
+                source_scope=source_scope,
             )
-        ).search(
-            query=query,
-            top_k=top_k,
-            mode=mode,
-            source_scope=source_scope,
         )
 
 
@@ -733,6 +751,15 @@ class RuntimeContinuityAdapter:
             service.close()
         if proposal.status == PENDING:
             return proposal
+        # 「下次接着聊」的 open_thread 会被自动确认(见 api/chat.py):
+        # 用户对它点「不再继续」= 撤销接续,拒绝已确认的该线程是合法操作,
+        # 服务层会同步把话题从在场状态中移除。
+        if (
+            allowed_terminal_status == REJECTED
+            and proposal.status == CONFIRMED
+            and proposal.kind == "open_thread"
+        ):
+            return proposal
         if proposal.status != allowed_terminal_status:
             raise ContinuityProposalStateError(f"proposal {proposal_id} is {proposal.status}")
         if allowed_terminal_status == REJECTED and proposal.rejected_reason != rejected_reason:
@@ -762,6 +789,139 @@ async def execute_continuity_activation(
         source_run_id=source_run_id,
         source_conversation_id=source_conversation_id,
     )
+
+
+class RuntimeReflectionAdapter:
+    """Review-queue actions for background reflection proposals.
+
+    Memory suggestions run the registered memory proposal lifecycle. Wiki
+    summaries run their dedicated writer and reader. Both paths validate the
+    stored kind/action/target contract before producing any external effect.
+    """
+
+    def __init__(self, request: Request, action_lifecycle: ActionLifecycleCoordinator | None = None):
+        self.request = request
+        self.action_lifecycle = action_lifecycle
+
+    def list_proposals(self, *, statuses: Sequence[str] | None = None, limit: int = 50) -> list[Any]:
+        service = reflection_proposal_service(self.request)
+        try:
+            return service.list_proposals(statuses=statuses, limit=limit)
+        finally:
+            service.close()
+
+    async def confirm_proposal(self, proposal_id: str) -> ReflectionProposalActionResponse:
+        proposal = self._claim(proposal_id)
+        # 尝试次数进动作身份:账本会按原键回放已存的失败回执,重试若不换身份就是个
+        # 什么都不做的按钮(见 services/reflection_proposals.claim_for_apply)。
+        attempt = proposal.apply_attempts
+        try:
+            contract_error = reflection_contract_error(
+                proposal_kind=proposal.proposal_kind,
+                action_type=proposal.action_type,
+                target_ref=proposal.target_ref,
+                content=proposal.content,
+            )
+            if contract_error is not None:
+                raise ReflectionProposalStateError(contract_error)
+            if proposal.proposal_kind == "wiki_summary":
+                outcome = await _execute_registered_action(
+                    self.request,
+                    action_lifecycle=self.action_lifecycle,
+                    action_type="wiki.answer_summary.write",
+                    target_ref=str(proposal.target_ref),
+                    parameters={
+                        "content": proposal.content,
+                        "proposal_kind": proposal.proposal_kind,
+                        "target_path": proposal.target_ref,
+                    },
+                    expected_effect="将反思建议写入 Wiki 摘要页面。",
+                    source_message_id=proposal.source_message_id,
+                    reversible=proposal.reversible,
+                    explicit_confirmation=True,
+                    source_run_id=proposal.agent_run_id,
+                    source_conversation_id=proposal.source_conversation_id,
+                    attempt=attempt,
+                )
+                result = _verified_result(outcome)
+                applied = self._mark(proposal.id, applied_ref=str(result.get("target_path") or proposal.target_ref or proposal.id))
+                return ReflectionProposalActionResponse(proposal_id=applied.id, status=applied.status, action_id=outcome.action.action_id)
+            created = await _execute_registered_action(
+                self.request,
+                action_lifecycle=self.action_lifecycle,
+                action_type="memory.proposal",
+                target_ref=f"intent:reflection-proposal:{proposal.id}",
+                parameters={"content": proposal.content, "type": _reflection_memory_proposal_type(proposal.proposal_kind), "proposal_kind": proposal.proposal_kind},
+                expected_effect="将一条反思建议登记为已确认记忆。",
+                source_message_id=proposal.source_message_id,
+                reversible=True,
+                source_run_id=proposal.agent_run_id,
+                source_conversation_id=proposal.source_conversation_id,
+                attempt=attempt,
+            )
+            created_result = _verified_result(created)
+            memory_proposal_id = str(created_result.get("proposal_id") or "")
+            if not memory_proposal_id:
+                raise RuntimeError("reflection_memory_proposal_missing")
+            await _execute_registered_action(
+                self.request,
+                action_lifecycle=self.action_lifecycle,
+                action_type="memory.proposal.confirm",
+                target_ref=f"intent:reflection-proposal-confirm:{proposal.id}",
+                parameters={"proposal_id": memory_proposal_id},
+                expected_effect="确认该建议生成的记忆提案，写入本地 Markdown。",
+                source_message_id=proposal.source_message_id,
+                reversible=False,
+                explicit_confirmation=True,
+                source_run_id=proposal.agent_run_id,
+                source_conversation_id=proposal.source_conversation_id,
+                attempt=attempt,
+            )
+            applied = self._mark(proposal.id, applied_ref=memory_proposal_id)
+            return ReflectionProposalActionResponse(proposal_id=applied.id, status=applied.status, action_id=created.action.action_id, memory_proposal_id=memory_proposal_id)
+        except Exception as exc:
+            self._fail(proposal.id, error=str(exc))
+            raise
+    async def reject_proposal(self, proposal_id: str, reason: str) -> ReflectionProposalActionResponse:
+        service = reflection_proposal_service(self.request)
+        try:
+            rejected = service.reject(proposal_id, reason)
+        finally:
+            service.close()
+        return ReflectionProposalActionResponse(
+            proposal_id=rejected.id,
+            status=rejected.status,
+        )
+
+    def _claim(self, proposal_id: str):
+        service = reflection_proposal_service(self.request)
+        try:
+            proposal = service.claim_for_apply(proposal_id)
+        finally:
+            service.close()
+        if proposal.status != "applying":
+            # 已处理过的建议不会因为重复点击而再次落地。
+            raise ReflectionProposalStateError(f"proposal {proposal_id} is {proposal.status}")
+        return proposal
+
+    def _mark(self, proposal_id: str, *, applied_ref: str):
+        service = reflection_proposal_service(self.request)
+        try:
+            return service.mark_applied(proposal_id, applied_ref=applied_ref)
+        finally:
+            service.close()
+
+    def _fail(self, proposal_id: str, *, error: str):
+        service = reflection_proposal_service(self.request)
+        try:
+            return service.mark_failed(proposal_id, error=error)
+        finally:
+            service.close()
+
+
+def _reflection_memory_proposal_type(proposal_kind: str) -> str:
+    """记忆提案类型:日记观察偏"事件",其余按"事实"登记。"""
+    return MemoryProposalType.EVENT.value if proposal_kind == "daily_diary" else MemoryProposalType.FACT.value
 
 
 class RuntimeWikiAdapter:
@@ -946,14 +1106,21 @@ async def _execute_registered_action(
     explicit_confirmation: bool = False,
     source_run_id: str | None = None,
     source_conversation_id: str | None = None,
+    attempt: int = 1,
 ):
+    seed_payload: dict[str, object] = {
+        "action_type": action_type,
+        "target_ref": target_ref,
+        "parameters": parameters,
+        "source_message_id": source_message_id or "",
+    }
+    if attempt > 1:
+        # 第一次尝试保持原身份:否则升级后已存在的动作会被当成新动作重复执行。
+        # 重试必须是新身份,因为账本按原幂等键回放已存的失败回执
+        # (ActionLifecycleCoordinator._terminal_outcome),同键重试不会重跑适配器。
+        seed_payload["apply_attempt"] = attempt
     canonical_seed = json.dumps(
-        {
-            "action_type": action_type,
-            "target_ref": target_ref,
-            "parameters": parameters,
-            "source_message_id": source_message_id or "",
-        },
+        seed_payload,
         ensure_ascii=True,
         sort_keys=True,
         separators=(",", ":"),
@@ -2709,11 +2876,31 @@ def _wiki_query_archive_adapter(request: Request | AppContext):
         marker = _workflow_action_marker(claim.idempotency_key)
         paths = [plan.target_path, WIKI_INDEX_PATH, WIKI_LOG_PATH]
         before = markdown_snapshot(service.wiki.writer, paths)
-        response = service.archive_query(
-            archive_request,
-            archive_id=_stable_effect_id("wiki-archive", claim.idempotency_key),
-            action_marker=marker,
-        )
+        archive_id = _stable_effect_id("wiki-archive", claim.idempotency_key)
+        try:
+            response = service.archive_query(
+                archive_request,
+                archive_id=archive_id,
+                action_marker=marker,
+            )
+        except Exception:
+            # Retry only when the first pass left an observable stage behind.
+            # Replaying a clean failure can duplicate external work or hide a
+            # permanent validation error; a marker/row proves this is a
+            # recoverable partial workflow and the stable IDs make the replay
+            # idempotent.
+            if not _wiki_query_archive_has_partial_effect(
+                service,
+                archive_id=archive_id,
+                target_path=plan.target_path,
+                marker=marker,
+            ):
+                raise
+            response = service.archive_query(
+                archive_request,
+                archive_id=archive_id,
+                action_marker=marker,
+            )
         after = markdown_snapshot(service.wiki.writer, paths)
         state = {
             "archive_id": response.archive_id,
@@ -2732,6 +2919,31 @@ def _wiki_query_archive_adapter(request: Request | AppContext):
         )
 
     return execute
+
+
+def _wiki_query_archive_has_partial_effect(
+    service: Any,
+    *,
+    archive_id: str,
+    target_path: str,
+    marker: str,
+) -> bool:
+    """Detect a durable stage before attempting a workflow resume."""
+    try:
+        path = service.wiki.writer.resolve_markdown_path(target_path)
+        if path.exists() and marker in path.read_text(encoding="utf-8"):
+            return True
+    except (OSError, UnicodeDecodeError):
+        pass
+    try:
+        with service.database.session() as conn:
+            row = conn.execute(
+                "SELECT 1 FROM wiki_query_archives WHERE id = ?",
+                (archive_id,),
+            ).fetchone()
+    except Exception:
+        return False
+    return row is not None
 
 
 def _wiki_query_archive_reader(request: Request | AppContext):
@@ -3055,6 +3267,147 @@ def _wiki_action_target(policy: PolicyDecision) -> tuple[str, str, str]:
     return title, target_path, content
 
 
+def _wiki_answer_summary_target(policy: PolicyDecision) -> tuple[str, str, str]:
+    params = policy.canonical_parameters
+    raw_target = _optional_string(params.get("target_path")) or _optional_string(params.get("target_ref"))
+    if not raw_target:
+        raise ValueError("wiki_summary_target_missing")
+    target_path = raw_target.replace("\\", "/")
+    if not target_path.startswith("Wiki/Companion/Summaries/") or not target_path.endswith(".md"):
+        raise ValueError("wiki_summary_target_invalid")
+    title = str(params.get("title") or target_path.rsplit("/", 1)[-1][:-3]).strip()
+    content = str(params.get("content") or "").strip()
+    if not content:
+        raise ValueError("wiki_summary_content_missing")
+    return title, target_path, content
+
+
+def _wiki_answer_summary_adapter(request: Request | AppContext):
+    async def execute(
+        proposal: ActionProposal,
+        policy: PolicyDecision,
+        claim: ExecutionClaim,
+    ) -> AdapterExecutionResult:
+        title, target_path, content = _wiki_answer_summary_target(policy)
+        marker = _workflow_action_marker(claim.idempotency_key)
+        service = wiki_service(request)
+        paths = [target_path, WIKI_INDEX_PATH, WIKI_LOG_PATH]
+        before = markdown_snapshot(service.writer, paths)
+        response = service.write_page(
+            WikiPageWriteRequest.model_validate(
+                {
+                    "title": title,
+                    "content": f"{marker}\n{content}",
+                    "operation": "replace_section",
+                    "target_path": target_path,
+                    "section": "来源摘要",
+                    "tags": _string_values(policy.canonical_parameters.get("tags"))
+                    or ["companion-summary", "auto-wiki", "chat-distilled"],
+                    "links": _string_values(policy.canonical_parameters.get("links")),
+                    "source_message_id": proposal.source_message_id,
+                    "type": "source",
+                    "confidence": "medium",
+                    "authors": _string_values(policy.canonical_parameters.get("authors"))
+                    or ["chat_answer_wiki_summary_agent"],
+                    "sources": _string_values(policy.canonical_parameters.get("sources")),
+                }
+            ),
+            action_marker=marker,
+        )
+        service.refresh_index()
+        service.append_log(
+            "auto-summary",
+            title,
+            str(policy.canonical_parameters.get("log_details") or f"- Page: `{target_path}`"),
+            dedupe_marker=marker,
+        )
+        after = markdown_snapshot(service.writer, paths)
+        state = {
+            "target_path": response.relative_path,
+            "title": response.title,
+            "action_marker": marker,
+            "content_hash": hashlib.sha256(content.encode("utf-8")).hexdigest(),
+            "index_updated": True,
+            "log_appended": True,
+            "target_ref": response.relative_path,
+        }
+        return AdapterExecutionResult(
+            result={"expected_state": state, **state, "response": response.model_dump(mode="json")},
+            before_snapshot=before,
+            after_snapshot=after,
+            target_paths=(response.relative_path,),
+        )
+
+    return execute
+
+
+def _wiki_answer_summary_reader(request: Request | AppContext):
+    def read(receipt: ExecutionReceipt) -> dict[str, object] | None:
+        params = _receipt_canonical_parameters(receipt)
+        expected = _receipt_expected_state(receipt)
+        if params is not None:
+            target_path = _optional_string(params.get("target_path")) or _optional_string(params.get("target_ref"))
+            content = str(params.get("content") or "").strip()
+        else:
+            target_path = expected.get("target_path")
+            content = ""
+        marker = _workflow_action_marker(receipt.idempotency_key)
+        if not isinstance(target_path, str) or not target_path.startswith("Wiki/Companion/Summaries/") or not target_path.endswith(".md"):
+            return None
+        service = wiki_service(request)
+        if not _wiki_marked_effect_exists(service, target_path=target_path, marker=marker, require_index=True, require_log=True):
+            return None
+        path = service.writer.resolve_markdown_path(target_path)
+        try:
+            page = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            return None
+        if content and content not in page:
+            return None
+        expected_hash = _optional_string(expected.get("content_hash"))
+        observed_content = content or _wiki_summary_section_content(page, marker)
+        if observed_content is None:
+            return None
+        if expected_hash and hashlib.sha256(observed_content.encode("utf-8")).hexdigest() != expected_hash:
+            return None
+        return {
+            "target_path": target_path,
+            "target_ref": target_path,
+            "action_marker": marker,
+            "title": str(expected.get("title") or target_path.rsplit("/", 1)[-1][:-3]),
+            "index_updated": True,
+            "log_appended": True,
+            "content_hash": expected_hash or (hashlib.sha256(content.encode("utf-8")).hexdigest() if content else None),
+        }
+
+    return read
+
+
+def _wiki_summary_section_content(page: str, marker: str) -> str | None:
+    """Extract the content written under the summary section for recovery.
+
+    Normal receipts retain canonical parameters, but a process can be
+    interrupted after the adapter writes and before its receipt is durable.
+    Recovery then has only the expected hash, so parse the known section and
+    remove the metadata block that ``WikiService`` appends after the content.
+    """
+    match = re.search(
+        r"^##\s+来源摘要\s*$\n(.*?)(?=^##\s+|\Z)",
+        page,
+        flags=re.MULTILINE | re.DOTALL,
+    )
+    if match is None:
+        return None
+    body = match.group(1).strip()
+    if not body.startswith(marker):
+        return None
+    content = body[len(marker):].strip()
+    metadata = re.search(r"\n(?:Tags|Links):\s", content)
+    if metadata is not None:
+        content = content[: metadata.start()].rstrip()
+    return content or None
+
+
 def _wiki_action_adapter(request: Request | AppContext):
     async def execute(
         proposal: ActionProposal,
@@ -3155,6 +3508,7 @@ def _wiki_page_write_request(
             "entity_ids": _string_values(params.get("entity_ids")),
             "fact_ids": _string_values(params.get("fact_ids")),
             "inference": bool(params.get("inference")),
+            "target_content_hash": _optional_string(params.get("target_content_hash")),
         }
     )
 
@@ -3593,14 +3947,6 @@ def _post_reply_structured_adapter(request: Request | AppContext):
     ) -> AdapterExecutionResult:
         params = policy.canonical_parameters
         agent_run_id = str(params.get("agent_run_id") or claim.source_run_id)
-        expected_count = _expected_effect_count(
-            params,
-            {},
-            key="expected_object_count",
-            fallback_key="objects_seen",
-        )
-        if expected_count is None:
-            raise _LifecycleAdapterError("structured_diary_expected_count_missing")
         service = _post_reply_stage_service(request, "structured")
         try:
             result = await service.archive_chat_exchange(
@@ -3613,20 +3959,25 @@ def _post_reply_structured_adapter(request: Request | AppContext):
                 occurred_at=str(params.get("occurred_at") or utc_now_iso()),
                 markdown_path=_optional_string(params.get("markdown_path")),
             )
-            if int(result.objects_seen) != expected_count:
-                raise _LifecycleAdapterError("structured_diary_effect_count_mismatch")
+            # 效果校验只看这次 run 是否真的拥有日记对象。抽取由模型完成,两次
+            # 调用的条数本来就不稳定:拿"预估条数"当期望值,既会把正常偏差误判成
+            # structured_diary_effect_count_mismatch,也会让幂等键(含参数哈希)
+            # 随预估条数漂移,重试时变成另一个动作而重复写入。
+            objects_seen = int(result.objects_seen)
             state = _post_reply_structured_state(
                 service,
                 agent_run_id=agent_run_id,
-                expected_count=expected_count,
+                # 这次抽取一条都没有 => "完成但零效果"是一个合法的已验证结果。
+                # reader 用回执里的同一个数字复现这个判断,两边必须一致。
+                allow_empty=objects_seen <= 0,
             )
             if state is None:
                 raise _LifecycleAdapterError("structured_diary_effect_incomplete")
-            object_ids = list(state["object_ids"])
             return AdapterExecutionResult(
                 result={
                     "expected_state": state,
-                    "action_metadata": {"object_ids": object_ids},
+                    "objects_seen": result.objects_seen,
+                    "objects_written": result.objects_written,
                     **state,
                 },
                 after_snapshot=state,
@@ -3642,20 +3993,18 @@ def _post_reply_structured_reader(request: Request | AppContext):
         params = _receipt_canonical_parameters(receipt) or {}
         expected = _receipt_expected_state(receipt)
         agent_run_id = str(params.get("agent_run_id") or expected.get("agent_run_id") or "")
-        expected_count = _expected_effect_count(
-            params,
-            expected,
-            key="expected_object_count",
-            fallback_key="objects_seen",
-        )
-        if not agent_run_id or expected_count is None:
+        if not agent_run_id:
             return None
+        # 只有回执明确声明"这次抽取一条都没抽到"时,空集才算合法结果。
+        # 崩溃留下的回执没有这个数字:那时库里真有对象就恢复成功(写入是原子的),
+        # 库里没有对象就必须保持未验证,让幂等重试有机会补上。
+        allow_empty = _receipt_count(receipt.result.get("objects_seen")) == 0
         service = _post_reply_stage_service(request, "structured")
         try:
             return _post_reply_structured_state(
                 service,
                 agent_run_id=agent_run_id,
-                expected_count=expected_count,
+                allow_empty=allow_empty,
             )
         finally:
             service.close()
@@ -3747,8 +4096,24 @@ def _post_reply_structured_state(
     service: Any,
     *,
     agent_run_id: str,
-    expected_count: int,
+    allow_empty: bool,
 ) -> dict[str, object] | None:
+    """Authoritative post-effect state for one structured-diary action.
+
+    Used by both the executor and the recovery reader, so the predicate has to
+    be knowable from the database plus the receipt: a verified effect means this
+    agent run owns the diary objects that this call accounted for.
+
+    ``allow_empty`` carries the one case the database cannot distinguish on its
+    own: an extraction that legitimately produced nothing is a completed action
+    with zero effects, whereas a crash *before* the first write must stay
+    unverified -- otherwise the idempotent retry would be suppressed and the
+    memory lost for good.  Only a receipt that declares ``objects_seen == 0``
+    grants it, and the executor passes the same flag from its own extraction, so
+    both sides always agree.  A crash that landed the effect needs no flag at
+    all: the rows are there and the atomic write guarantees they are the whole
+    set.
+    """
     rows = service.store.conn.execute(
         """
         SELECT DISTINCT o.id
@@ -3760,14 +4125,11 @@ def _post_reply_structured_state(
         (service.vault_id, agent_run_id),
     ).fetchall()
     object_ids = [str(row[0]) for row in rows]
-    if len(object_ids) != expected_count:
+    if not object_ids and not allow_empty:
         return None
     return {
         "agent_run_id": agent_run_id,
-        "expected_object_count": expected_count,
         "object_ids": object_ids,
-        "objects_seen": expected_count,
-        "objects_written": expected_count,
         "state_ref": f"diary-memory:{agent_run_id}",
         "action_metadata": {"object_ids": object_ids},
     }
@@ -3861,6 +4223,21 @@ def _post_reply_consolidation_state(
     return state, action_metadata
 
 
+def _receipt_count(raw: object) -> int | None:
+    """Read a non-negative count from a receipt result.
+
+    0 is a legitimate value here ("the action completed with zero effects"), and
+    it is the flag the reader needs to reproduce the executor's own judgement.
+    """
+    if raw is None or isinstance(raw, bool):
+        return None
+    try:
+        count = int(raw)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    return count if count >= 0 else None
+
+
 def _expected_effect_count(
     params: Mapping[str, object],
     expected: Mapping[str, object],
@@ -3925,6 +4302,8 @@ def production_action_lifecycle(request: Request | AppContext) -> ActionLifecycl
     )
     wiki_adapter = _wiki_action_adapter(request)
     wiki_reader = _wiki_action_reader(request)
+    wiki_answer_summary_adapter = _wiki_answer_summary_adapter(request)
+    wiki_answer_summary_reader = _wiki_answer_summary_reader(request)
     wiki_plan_adapter = _wiki_plan_action_adapter(request)
     wiki_plan_reader = _wiki_plan_action_reader(request)
     task_mutation_adapter = _task_mutation_adapter(request)
@@ -3982,7 +4361,8 @@ def production_action_lifecycle(request: Request | AppContext) -> ActionLifecycl
         **{action_type: memory_graph_adapter for action_type in memory_graph_types},
         "memory.graph.rebuild": memory_graph_rebuild_adapter,
         **{action_type: task_mutation_adapter for action_type in task_mutation_types},
-        **{action_type: wiki_adapter for action_type in wiki_write_types},
+        **{action_type: wiki_adapter for action_type in wiki_write_types if action_type != "wiki.answer_summary.write"},
+        "wiki.answer_summary.write": wiki_answer_summary_adapter,
         **{action_type: wiki_plan_adapter for action_type in wiki_plan_types},
         **retrospective_report_adapters,
         **post_reply_adapters,
@@ -4011,7 +4391,8 @@ def production_action_lifecycle(request: Request | AppContext) -> ActionLifecycl
         **{action_type: memory_graph_reader for action_type in memory_graph_types},
         "memory.graph.rebuild": memory_graph_rebuild_reader,
         **{action_type: task_mutation_reader for action_type in task_mutation_types},
-        **{action_type: wiki_reader for action_type in wiki_write_types},
+        **{action_type: wiki_reader for action_type in wiki_write_types if action_type != "wiki.answer_summary.write"},
+        "wiki.answer_summary.write": wiki_answer_summary_reader,
         **{action_type: wiki_plan_reader for action_type in wiki_plan_types},
         **retrospective_report_readers,
         **post_reply_readers,

@@ -11,6 +11,7 @@ import {
 } from "../../services/agentModelDrafts";
 import type { DesktopApi } from "../../services/desktopApi";
 import { formatTaskStatus } from "../tasks/taskReducer";
+import { hasUnsavedEmbeddingDraft, hasUnsavedGlobalModelDraft } from "./settingsDrafts";
 import { formatVaultStatus } from "./settingsFormatters";
 import { createInitialSettingsState, settingsReducer } from "./settingsReducer";
 import { broadcastTtsSettingsSaved } from "./settingsSync";
@@ -119,6 +120,7 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
         await api.saveModelKey(config.provider, draft.api_key.trim());
       }
       const health = await api.getModelHealth();
+      await loadSettingsStatus({ silent: true });
       dispatch({ type: "saveGlobalModelSuccess", config });
       onNotice({
         tone: "success",
@@ -128,16 +130,11 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
       dispatch({ type: "setGlobalModelSaveStatus", status: "error" });
       onNotice({ tone: "error", message: describeError(error, "默认对话能力保存失败") });
     }
-  }, [api, onNotice, state.globalModelDraft]);
+  }, [api, loadSettingsStatus, onNotice, state.globalModelDraft]);
 
   const testGlobalModelConnection = useCallback(async () => {
     const draft = state.globalModelDraft;
-    if (
-      draft.provider.trim() !== draft.saved_provider ||
-      draft.base_url.trim() !== draft.saved_base_url ||
-      draft.model.trim() !== draft.saved_model ||
-      draft.api_key.trim()
-    ) {
+    if (hasUnsavedGlobalModelDraft(draft)) {
       onNotice({ tone: "error", message: "默认对话能力有未保存的配置，请先保存后再测试连接。" });
       return;
     }
@@ -180,24 +177,23 @@ export function useSettings({ api, isElectronRuntime, onNotice, onSettingsStatus
         model: draft.model.trim(),
       });
       const trimmedKey = draft.api_key.trim();
-      if (trimmedKey) {
-        await api.setEmbeddingKey({ provider: config.provider, api_key: trimmedKey });
-      }
-      dispatch({ type: "saveEmbeddingSuccess", config });
+      // setEmbeddingKey 的响应才包含写入密钥后的 configured/masked；
+      // 首次配置时必须用它回填，否则界面会错误地显示"未配置外部接口"。
+      const keyConfig = trimmedKey
+        ? await api.setEmbeddingKey({ provider: config.provider, api_key: trimmedKey })
+        : null;
+      await loadSettingsStatus({ silent: true });
+      dispatch({ type: "saveEmbeddingSuccess", config: keyConfig ?? config });
       onNotice({ tone: "success", message: "Embedding 配置已保存，向量索引会在后台重建。" });
     } catch (error) {
       dispatch({ type: "setEmbeddingSaveStatus", status: "error" });
       onNotice({ tone: "error", message: describeError(error, "Embedding 配置保存失败") });
     }
-  }, [api, onNotice, state.embeddingDraft]);
+  }, [api, loadSettingsStatus, onNotice, state.embeddingDraft]);
 
   const testEmbeddingConnection = useCallback(async () => {
     const draft = state.embeddingDraft;
-    if (
-      draft.base_url.trim() !== draft.saved_base_url ||
-      draft.model.trim() !== draft.saved_model ||
-      draft.api_key.trim()
-    ) {
+    if (hasUnsavedEmbeddingDraft(draft)) {
       onNotice({ tone: "error", message: "Embedding 有未保存的配置，请先保存后再测试连接。" });
       return;
     }

@@ -319,7 +319,179 @@ async def test_structured_diary_partial_object_set_is_not_verified_as_complete(
         assert len(rows) == 1
         assert rows[0]["status"] == "failed_recovery"
         with sqlite3.connect(client.app.state.database.path) as conn:
-            assert conn.execute("SELECT COUNT(*) FROM diary_memory_objects").fetchone()[0] == 1
+            # 整批写入现在是一个事务:第 2 条插入失败会连同第 1 条一起回滚,因此
+            # 不会留下"半套"记忆。此前这里会残留 1 条,而完整性只能靠比对一次
+            # 模型预估条数来判断 —— 那正是线上误报 effect_count_mismatch 的来源。
+            assert conn.execute("SELECT COUNT(*) FROM diary_memory_objects").fetchone()[0] == 0
+
+
+class _DriftingDiaryExtractor:
+    """每次调用返回不同条数,模拟两次独立模型抽取的天然波动。"""
+
+    def __init__(self, counts: tuple[int, ...]) -> None:
+        self._counts = counts
+        self.calls = 0
+
+    async def extract(self, diary_text: str, *, memory_date=None, source_path=None):
+        index = min(self.calls, len(self._counts) - 1)
+        self.calls += 1
+        return [
+            DiaryMemoryObject(
+                summary=f"Drifting memory object {position}.",
+                topic="drift",
+                emotion="focused",
+                people=(),
+                keywords=("drift", str(position)),
+                source_text=f"Drifting memory object {position}.",
+                importance=0.7,
+                confidence=0.8,
+                status=MemoryFactStatus.ACTIVE,
+                type="event",
+            )
+            for position in range(self._counts[index])
+        ]
+
+
+@pytest.mark.asyncio
+async def test_structured_diary_survives_drifting_extraction_counts(
+    client_factory,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # 线上失败形态:重试时模型重新抽取,两次的条数不一致(2 vs 3)。此前条数会进动作
+    # 参数,幂等键(含参数哈希)随条数漂移,重试变成另一个动作并重复写入。
+    with client_factory() as client:
+        _init_vault(client, tmp_path / "drifting-vault")
+        with sqlite3.connect(client.app.state.database.path) as conn:
+            vault_id = str(conn.execute("SELECT id FROM vaults LIMIT 1").fetchone()[0])
+        import app.services.chat_pipeline.diary_memory as stage
+
+        extractor = _DriftingDiaryExtractor((2, 3, 3))
+
+        def factory(_context):
+            return DiaryMemoryService(
+                DiaryMemoryStore(client.app.state.database.path),
+                vault_id=vault_id,
+                extractor=extractor,
+                extraction_model="drifting-test",
+            )
+
+        monkeypatch.setattr(stage, "diary_memory_service", factory)
+        kwargs = {
+            "context": AppContext(app=client.app),
+            "state": _state("structured-drifting-run"),
+            "assistant_message_id": "assistant-structured-drifting",
+            "assistant_answer": "The checkpoint and release risk are recorded.",
+            "daily_result": None,
+            "automation": _automation(structured=True),
+            "policy": object(),
+            "raise_errors": True,
+        }
+
+        first_ids, first_actions = await stage.archive_structured_diary_memory(**kwargs)
+        second_ids, second_actions = await stage.archive_structured_diary_memory(**kwargs)
+
+        # 第二次抽取虽然给出了不同条数,幂等键不含条数,因此命中同一次动作、回放同一份
+        # 回执:返回的对象集合与首次一致,库里不会多写。
+        assert len(first_ids) == 2
+        assert first_ids == second_ids
+        assert first_actions[0].action_id == second_actions[0].action_id
+        assert len(_action_rows(client, "diary.structured_memory")) == 1
+        with sqlite3.connect(client.app.state.database.path) as conn:
+            assert conn.execute("SELECT COUNT(*) FROM diary_memory_objects").fetchone()[0] == 2
+
+
+@pytest.mark.asyncio
+async def test_structured_diary_that_extracts_nothing_skips_instead_of_failing(
+    client_factory,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # 这一轮真的没有可归档的对象。这是"零效果",不是失败:动作以零效果收尾并验证通过,
+    # 阶段按跳过处理,而不是把流水线标红。
+    with client_factory() as client:
+        _init_vault(client, tmp_path / "no-objects-vault")
+        with sqlite3.connect(client.app.state.database.path) as conn:
+            vault_id = str(conn.execute("SELECT id FROM vaults LIMIT 1").fetchone()[0])
+        import app.services.chat_pipeline.diary_memory as stage
+
+        extractor = _DriftingDiaryExtractor((0,))
+
+        def factory(_context):
+            return DiaryMemoryService(
+                DiaryMemoryStore(client.app.state.database.path),
+                vault_id=vault_id,
+                extractor=extractor,
+                extraction_model="drifting-test",
+            )
+
+        monkeypatch.setattr(stage, "diary_memory_service", factory)
+
+        object_ids, actions = await stage.archive_structured_diary_memory(
+            context=AppContext(app=client.app),
+            state=_state("structured-empty-run"),
+            assistant_message_id="assistant-structured-empty",
+            assistant_answer="Nothing durable in this exchange.",
+            daily_result=None,
+            automation=_automation(structured=True),
+            policy=object(),
+            raise_errors=True,
+        )
+
+        assert object_ids == ()
+        assert actions == []
+        rows = _action_rows(client, "diary.structured_memory")
+        assert len(rows) == 1
+        # 动作正常收尾(零效果已验证),而不是 failed_recovery。
+        assert rows[0]["status"] != "failed_recovery"
+        with sqlite3.connect(client.app.state.database.path) as conn:
+            assert conn.execute("SELECT COUNT(*) FROM diary_memory_objects").fetchone()[0] == 0
+
+
+@pytest.mark.asyncio
+async def test_structured_diary_extracts_exactly_once_from_the_shared_text(
+    client_factory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # 抽取只做一次,并且用的是归档自己那份文本构造器。此前存在"先抽一次判断要不要做,
+    # 归档时再抽一次"的两次独立调用:多一份成本,而且门控那次说"不做"就会静默丢掉
+    # 本该记住的内容。
+    with client_factory() as client:
+        import app.services.chat_pipeline.diary_memory as stage
+        from app.services.diary_memory import DiaryMemoryService, DiaryMemoryStore, chat_exchange_diary_text
+
+        captured: list[str] = []
+
+        class RecordingExtractor:
+            async def extract(self, diary_text, *, memory_date=None, source_path=None):
+                captured.append(diary_text)
+                return []
+
+        def factory(_context):
+            return DiaryMemoryService(
+                DiaryMemoryStore(client.app.state.database.path),
+                vault_id="vault-1",
+                extractor=RecordingExtractor(),
+                extraction_model="recording-test",
+            )
+
+        monkeypatch.setattr(stage, "diary_memory_service", factory)
+        state = _state("structured-gate-text")
+
+        object_ids, actions = await stage.archive_structured_diary_memory(
+            context=AppContext(app=client.app),
+            state=state,
+            assistant_message_id="assistant-structured-gate-text",
+            assistant_answer="The checkpoint is recorded.",
+            daily_result=None,
+            automation=_automation(structured=True),
+            policy=object(),
+            raise_errors=True,
+        )
+
+        assert object_ids == ()
+        assert actions == []
+        assert captured == [chat_exchange_diary_text(state.user_message, "The checkpoint is recorded.")]
 
 
 @pytest.mark.asyncio

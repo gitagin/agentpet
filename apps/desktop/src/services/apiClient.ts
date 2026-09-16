@@ -113,13 +113,38 @@ export class ApiClient {
 
     const bridge = window.agentDesktop?.apiRequest;
     if (bridge) {
-      const response = await bridge(path, {
+      // Electron IPC 无法序列化 AbortSignal：渲染进程侧用 race 实现中止语义，
+      // 中止后丢弃仍在主进程执行的请求结果。
+      const bridgePromise = bridge(path, {
         method: init.method,
         headers: Object.fromEntries(headers.entries()),
         body: typeof init.body === "string" ? init.body : undefined,
         auth: init.auth,
       });
-      return parseDesktopApiResponse<T>(response);
+      if (!init.signal) {
+        return parseDesktopApiResponse<T>(await bridgePromise);
+      }
+      const signal = init.signal;
+      return await new Promise<T>((resolve, reject) => {
+        const onAbort = () => reject(new DOMException("请求已取消", "AbortError"));
+        // 先给 bridgePromise 挂上处理:signal 已经 aborted 时下面会立刻返回,
+        // 那时若还没有处理器,主进程侧失败就成了未处理的 rejection(而且无人看见)。
+        bridgePromise.then(
+          (response) => {
+            signal.removeEventListener("abort", onAbort);
+            resolve(parseDesktopApiResponse<T>(response));
+          },
+          (error) => {
+            signal.removeEventListener("abort", onAbort);
+            reject(error);
+          },
+        );
+        if (signal.aborted) {
+          onAbort();
+          return;
+        }
+        signal.addEventListener("abort", onAbort, { once: true });
+      });
     }
 
     const response = await fetch(this.toUrl(path), {

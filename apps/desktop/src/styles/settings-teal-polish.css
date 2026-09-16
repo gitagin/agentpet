@@ -1,0 +1,453 @@
+/* Settings route color contract: graphite surfaces, teal actions, semantic states. */
+body[data-window-mode="settings"] {
+  --settings-ink: #f2f4f3;
+  --settings-soft: #b2bebc;
+  --settings-muted: #7e8e8b;
+  --settings-line: rgba(226, 240, 237, 0.11);
+  --settings-line-strong: rgba(226, 240, 237, 0.19);
+  --settings-surface: rgba(17, 20, 22, 0.86);
+  --settings-surface-strong: rgba(21, 25, 27, 0.95);
+  --settings-teal: #68b8ad;
+  --settings-teal-strong: #8ed6cc;
+  --settings-teal-soft: rgba(104, 184, 173, 0.12);
+  --settings-blue: #7cafe0;
+  --settings-amber: #d4a56b;
+  --settings-green: #72c49c;
+  --settings-red: #de6b76;
+  background: #0d0f10;
+  color: var(--settings-ink);
+}
+
+body[data-window-mode="settings"] .feature-shell {
+  --feature-ink: var(--settings-ink);
+  --feature-soft: var(--settings-soft);
+  --feature-muted: var(--settings-muted);
+  --brand: var(--settings-teal);
+  --brand-strong: var(--settings-teal-strong);
+  --brand-soft: var(--settings-teal-soft);
+  --focus-ring: rgba(104, 184, 173, 0.54);
+  background: #0d0f10 !important;
+}
+
+body[data-window-mode="settings"] .feature-shell::before {
+  background:
+    linear-gradient(90deg, rgba(7, 9, 10, 0.94), rgba(7, 9, 10, 0.76) 48%, rgba(7, 9, 10, 0.9)),
+    linear-gradient(180deg, rgba(7, 9, 10, 0.2), rgba(7, 9, 10, 0.9)) !important;
+}
+
+body[data-window-mode="settings"] .feature-shell-backdrop {
+  background: linear-gradient(180deg, rgba(8, 10, 11, 0.16), rgba(8, 10, 11, 0.7)) !important;
+}
+
+body[data-window-mode="settings"] .feature-window-copy .eyebrow,
+body[data-window-mode="settings"] .feature-window-brand small,
+body[data-window-mode="settings"] .settings-intro .eyebrow {
+  color: var(--settings-teal-strong) !important;
+}
+
+body[data-window-mode="settings"] .feature-window-copy h1,
+body[data-window-mode="settings"] .feature-window-brand strong,
+body[data-window-mode="settings"] #settings-panel .section-heading strong,
+body[data-window-mode="settings"] #settings-panel .settings-intro h3 {
+  color: var(--settings-ink) !important;
+}
+
+body[data-window-mode="settings"] .feature-window-copy p:last-child,
+body[data-window-mode="settings"] #settings-panel .section-heading span,
+body[data-window-mode="settings"] #settings-panel .field-note,
+body[data-window-mode="settings"] .settings-intro-description {
+  color: var(--settings-soft) !important;
+}
+
+body[data-window-mode="settings"] .feature-window-brand {
+  border-color: rgba(104, 184, 173, 0.22) !important;
+  background: rgba(17, 20, 22, 0.84) !important;
+}
+
+body[data-window-mode="settings"] .feature-window-brand-icon {
+  border-color: rgba(104, 184, 173, 0.46) !important;
+  background: var(--settings-teal-soft) !important;
+  color: var(--settings-teal-strong) !important;
+  box-shadow: 0 0 20px rgba(104, 184, 173, 0.13) !important;
+}
+
+body[data-window-mode="settings"] #settings-panel {
+  scrollbar-color: rgba(104, 184, 173, 0.4) transparent !important;
+}
+
+body[data-window-mode="settings"] #settings-panel::-webkit-scrollbar-thumb,
+body[data-window-mode="settings"] .feature-window-content::-webkit-scrollbar-thumb {
+  border-color: rgba(6, 10, 10, 0.44) !important;
+  background: rgba(104, 184, 173, 0.4) !important;
+}
+
+body[data-window-mode="settings"] #settings-panel::-webkit-scrollbar-thumb:hover,
+body[data-window-mode="settings"] .feature-window-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(142, 214, 204, 0.62) !important;
+}
+
+body[data-window-mode="settings"] #settings-panel > .settings-intro,
+body[data-window-mode="settings"] #settings-panel > .settings-card,
+body[data-window-mode="settings"] #settings-panel > .advanced-agent-model-settings {
+  border-color: var(--settings-line) !important;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.034), transparent 30%),
+    var(--settings-surface) !important;
+  color: var(--settings-soft) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.035),
+    0 14px 34px rgba(0, 0, 0, 0.18) !important;
+}
+
+body[data-window-mode="settings"] #settings-panel > .settings-intro {
+  border-color: rgba(104, 184, 173, 0.18) !important;
+  background:
+    linear-gradient(90deg, rgba(104, 184, 173, 0.075), transparent 43%),
+    var(--settings-surface) !important;
+}
+
+body[data-window-mode="settings"] .settings-scroll-note {
+  border-color: rgba(104, 184, 173, 0.18) !important;
+  background: rgba(104, 184, 173, 0.07) !important;
+  color: var(--settings-soft) !important;
+}
+
+body[data-window-mode="settings"] .settings-scroll-note svg {
+  color: var(--settings-teal-strong) !important;
+}
+
+body[data-window-mode="settings"] .settings-purpose-card {
+  border-color: var(--settings-line) !important;
+  background: rgba(8, 11, 12, 0.46) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025) !important;
+}
+
+body[data-window-mode="settings"] .settings-purpose-card:hover {
+  border-color: rgba(104, 184, 173, 0.24) !important;
+  background: rgba(104, 184, 173, 0.055) !important;
+}
+
+body[data-window-mode="settings"] .settings-purpose-card strong {
+  color: var(--settings-ink) !important;
+}
+
+body[data-window-mode="settings"] .settings-purpose-card small {
+  color: var(--settings-soft) !important;
+}
+
+body[data-window-mode="settings"] .settings-purpose-icon {
+  border: 1px solid rgba(104, 184, 173, 0.26);
+  background: var(--settings-teal-soft) !important;
+  color: var(--settings-teal-strong) !important;
+  box-shadow: none !important;
+}
+
+body[data-window-mode="settings"] .settings-purpose-card:nth-child(2) .settings-purpose-icon {
+  border-color: rgba(124, 175, 224, 0.27);
+  background: rgba(124, 175, 224, 0.11) !important;
+  color: var(--settings-blue) !important;
+}
+
+body[data-window-mode="settings"] .settings-purpose-card:nth-child(3) .settings-purpose-icon {
+  border-color: rgba(114, 196, 156, 0.27);
+  background: rgba(114, 196, 156, 0.11) !important;
+  color: var(--settings-green) !important;
+}
+
+body[data-window-mode="settings"] .settings-purpose-card:nth-child(4) .settings-purpose-icon {
+  border-color: rgba(212, 165, 107, 0.28);
+  background: rgba(212, 165, 107, 0.11) !important;
+  color: var(--settings-amber) !important;
+}
+
+body[data-window-mode="settings"] #settings-panel :where(input, textarea, select) {
+  border-color: var(--settings-line-strong) !important;
+  background: rgba(8, 11, 12, 0.74) !important;
+  color: var(--settings-ink) !important;
+  color-scheme: dark;
+}
+
+body[data-window-mode="settings"] #settings-panel :where(input, textarea)::placeholder {
+  color: var(--settings-muted) !important;
+}
+
+body[data-window-mode="settings"] #settings-panel :where(input, textarea, select):focus {
+  border-color: rgba(104, 184, 173, 0.66) !important;
+  background: rgba(12, 17, 18, 0.92) !important;
+  box-shadow: 0 0 0 3px rgba(104, 184, 173, 0.12) !important;
+}
+
+body[data-window-mode="settings"] #settings-panel label > span,
+body[data-window-mode="settings"] .tts-control-grid label,
+body[data-window-mode="settings"] .tts-custom-grid label,
+body[data-window-mode="settings"] .tts-slider-grid label {
+  color: var(--settings-soft) !important;
+}
+
+body[data-window-mode="settings"] #settings-panel input[type="checkbox"],
+body[data-window-mode="settings"] #settings-panel input[type="radio"],
+body[data-window-mode="settings"] #settings-panel input[type="range"] {
+  accent-color: var(--settings-teal) !important;
+}
+
+body[data-window-mode="settings"] #settings-panel button:not(.secondary):not(.danger) {
+  border-color: rgba(104, 184, 173, 0.64) !important;
+  background: linear-gradient(180deg, #68b8ad, #478f87) !important;
+  color: #081513 !important;
+  box-shadow: 0 7px 18px rgba(104, 184, 173, 0.14) !important;
+}
+
+body[data-window-mode="settings"] #settings-panel button:not(.secondary):not(.danger):hover:not(:disabled) {
+  border-color: var(--settings-teal-strong) !important;
+  background: linear-gradient(180deg, #8ed6cc, #68b8ad) !important;
+}
+
+body[data-window-mode="settings"] #settings-panel button.secondary,
+body[data-window-mode="settings"] .settings-memory-reset-dialog button.secondary {
+  border-color: var(--settings-line-strong) !important;
+  background: rgba(255, 255, 255, 0.045) !important;
+  color: var(--settings-soft) !important;
+  box-shadow: none !important;
+}
+
+body[data-window-mode="settings"] #settings-panel button.secondary:hover:not(:disabled),
+body[data-window-mode="settings"] .settings-memory-reset-dialog button.secondary:hover:not(:disabled) {
+  border-color: rgba(104, 184, 173, 0.44) !important;
+  background: var(--settings-teal-soft) !important;
+  color: var(--settings-teal-strong) !important;
+}
+
+body[data-window-mode="settings"] #settings-panel button:disabled {
+  filter: saturate(0.45);
+  opacity: 0.5;
+}
+
+body[data-window-mode="settings"] #settings-panel button:focus-visible,
+body[data-window-mode="settings"] #settings-panel :where(input, textarea, select, summary):focus-visible,
+body[data-window-mode="settings"] .settings-memory-reset-dialog button:focus-visible {
+  outline: 2px solid var(--settings-teal-strong) !important;
+  outline-offset: 2px;
+}
+
+body[data-window-mode="settings"] :where(.automation-toggle-row, .automation-frequency-field, .tts-toggle-row, .tts-custom-grid) {
+  border-color: var(--settings-line) !important;
+  background: rgba(8, 11, 12, 0.48) !important;
+  color: var(--settings-soft) !important;
+}
+
+body[data-window-mode="settings"] :where(.automation-toggle-row, .tts-toggle-row):has(input:checked) {
+  border-color: rgba(104, 184, 173, 0.31) !important;
+  background: rgba(104, 184, 173, 0.075) !important;
+}
+
+body[data-window-mode="settings"] .tts-toggle-row-primary {
+  border-color: rgba(104, 184, 173, 0.34) !important;
+  background: rgba(104, 184, 173, 0.09) !important;
+}
+
+body[data-window-mode="settings"] :where(.automation-toggle-row strong, .automation-frequency-field strong, .tts-toggle-row strong) {
+  color: var(--settings-ink) !important;
+}
+
+body[data-window-mode="settings"] :where(.automation-toggle-row small, .automation-frequency-field small, .tts-toggle-row small, .tts-slider-grid b) {
+  color: var(--settings-soft) !important;
+}
+
+body[data-window-mode="settings"] .automation-frequency-option span {
+  border-color: var(--settings-line-strong) !important;
+  background: rgba(255, 255, 255, 0.045) !important;
+  color: var(--settings-soft) !important;
+}
+
+body[data-window-mode="settings"] .automation-frequency-option input:checked + span {
+  border-color: rgba(104, 184, 173, 0.5) !important;
+  background: rgba(104, 184, 173, 0.15) !important;
+  color: #dcfffa !important;
+}
+
+body[data-window-mode="settings"] .automation-locked-row {
+  border-color: rgba(114, 196, 156, 0.28) !important;
+  background: rgba(114, 196, 156, 0.075) !important;
+}
+
+body[data-window-mode="settings"] .automation-locked-row svg {
+  color: var(--settings-green) !important;
+}
+
+body[data-window-mode="settings"] .automation-locked-row b {
+  background: rgba(114, 196, 156, 0.14) !important;
+  color: #c9f4dd !important;
+}
+
+body[data-window-mode="settings"] .settings-load-state {
+  border-color: rgba(212, 165, 107, 0.27) !important;
+  background: rgba(212, 165, 107, 0.08) !important;
+  color: #e8c48f !important;
+}
+
+body[data-window-mode="settings"] .settings-load-state[role="alert"],
+body[data-window-mode="settings"] .field-note.error {
+  border-color: rgba(222, 107, 118, 0.34) !important;
+  background: rgba(222, 107, 118, 0.075) !important;
+  color: #eda0a8 !important;
+}
+
+body[data-window-mode="settings"] #settings-panel > .model-health-banner {
+  border-color: rgba(124, 175, 224, 0.28) !important;
+  background: rgba(124, 175, 224, 0.09) !important;
+  color: #bcd8f1 !important;
+}
+
+body[data-window-mode="settings"] #settings-panel > .model-health-banner.success {
+  border-color: rgba(114, 196, 156, 0.3) !important;
+  background: rgba(114, 196, 156, 0.09) !important;
+  color: #c9f4dd !important;
+}
+
+body[data-window-mode="settings"] #settings-panel > .model-health-banner.warning {
+  border-color: rgba(212, 165, 107, 0.32) !important;
+  background: rgba(212, 165, 107, 0.09) !important;
+  color: #efd0a2 !important;
+}
+
+body[data-window-mode="settings"] .advanced-agent-model-settings > summary,
+body[data-window-mode="settings"] .settings-advanced-actions > summary {
+  color: var(--settings-ink) !important;
+}
+
+body[data-window-mode="settings"] .advanced-agent-model-settings > summary::marker,
+body[data-window-mode="settings"] .settings-advanced-actions > summary::marker {
+  color: var(--settings-teal);
+}
+
+body[data-window-mode="settings"] .advanced-agent-model-settings[open] > summary,
+body[data-window-mode="settings"] .settings-advanced-actions[open] > summary {
+  color: var(--settings-teal-strong) !important;
+}
+
+body[data-window-mode="settings"] :where(.agent-model-row, .agent-model-status > div, .details > div) {
+  border-color: var(--settings-line) !important;
+  background: rgba(8, 11, 12, 0.46) !important;
+  color: var(--settings-soft) !important;
+}
+
+body[data-window-mode="settings"] :where(.agent-model-title strong, .agent-model-status strong, .details dd) {
+  color: var(--settings-ink) !important;
+}
+
+body[data-window-mode="settings"] :where(.agent-model-title span, .agent-model-inherited, .details dt) {
+  color: var(--settings-muted) !important;
+}
+
+body[data-window-mode="settings"] .vault-summary-panel {
+  border-color: rgba(124, 175, 224, 0.18) !important;
+  background: rgba(8, 11, 12, 0.54) !important;
+  color: var(--settings-soft) !important;
+}
+
+body[data-window-mode="settings"] .vault-summary-grid > div {
+  border-color: var(--settings-line) !important;
+  background: rgba(255, 255, 255, 0.035) !important;
+}
+
+body[data-window-mode="settings"] .vault-summary-grid dt {
+  color: var(--settings-blue) !important;
+}
+
+body[data-window-mode="settings"] .vault-summary-grid dd,
+body[data-window-mode="settings"] .vault-backup-preview strong {
+  color: var(--settings-ink) !important;
+}
+
+body[data-window-mode="settings"] .vault-backup-preview,
+body[data-window-mode="settings"] .vault-backup-preview p {
+  color: var(--settings-soft) !important;
+}
+
+body[data-window-mode="settings"] #settings-panel > .settings-memory-reset-card {
+  border-color: rgba(222, 107, 118, 0.32) !important;
+  background:
+    linear-gradient(90deg, rgba(222, 107, 118, 0.09), transparent 46%),
+    var(--settings-surface) !important;
+}
+
+body[data-window-mode="settings"] #settings-panel button.danger,
+body[data-window-mode="settings"] .settings-memory-reset-dialog button.danger {
+  border-color: rgba(222, 107, 118, 0.5) !important;
+  background: rgba(222, 107, 118, 0.13) !important;
+  color: #f2a3aa !important;
+  box-shadow: none !important;
+}
+
+body[data-window-mode="settings"] #settings-panel button.danger:hover:not(:disabled),
+body[data-window-mode="settings"] .settings-memory-reset-dialog button.danger:hover:not(:disabled) {
+  border-color: rgba(242, 163, 170, 0.72) !important;
+  background: rgba(222, 107, 118, 0.22) !important;
+  color: #ffd7db !important;
+}
+
+body[data-window-mode="settings"] .settings-memory-reset-backdrop {
+  background: rgba(3, 5, 6, 0.82) !important;
+}
+
+body[data-window-mode="settings"] .settings-memory-reset-dialog {
+  border-color: rgba(222, 107, 118, 0.38) !important;
+  background: var(--settings-surface-strong) !important;
+  color: var(--settings-ink) !important;
+}
+
+body[data-window-mode="settings"] .settings-memory-reset-dialog-icon {
+  border-color: rgba(222, 107, 118, 0.34) !important;
+  background: rgba(222, 107, 118, 0.12) !important;
+  color: var(--settings-red) !important;
+}
+
+body[data-window-mode="settings"] .settings-memory-reset-dialog-head p,
+body[data-window-mode="settings"] .settings-memory-reset-impact dd {
+  color: var(--settings-soft) !important;
+}
+
+body[data-window-mode="settings"] .settings-memory-reset-impact dt {
+  color: var(--settings-red) !important;
+}
+
+body[data-window-mode="settings"] .settings-memory-reset-impact .safe dt {
+  color: var(--settings-green) !important;
+}
+
+body[data-window-mode="settings"] .feature-shell .bottom-nav-track {
+  border-color: var(--settings-line-strong) !important;
+  background: rgba(15, 18, 19, 0.9) !important;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.3) !important;
+}
+
+body[data-window-mode="settings"] .feature-shell .bottom-nav-indicator {
+  background: var(--settings-teal) !important;
+  box-shadow:
+    0 0 0 1px rgba(104, 184, 173, 0.32),
+    0 0 18px rgba(104, 184, 173, 0.2) !important;
+}
+
+body[data-window-mode="settings"] .feature-shell .bottom-nav-button {
+  color: var(--settings-muted) !important;
+}
+
+body[data-window-mode="settings"] .feature-shell .bottom-nav-button.active {
+  color: #0a1715 !important;
+}
+
+body[data-window-mode="settings"] .feature-shell .bottom-nav-button.active .bottom-nav-icon,
+body[data-window-mode="settings"] .feature-shell .bottom-nav-button.active .bottom-nav-label {
+  color: #0a1715 !important;
+}
+
+body[data-window-mode="settings"] .feature-shell .bottom-nav-button:hover:not(.active) {
+  color: var(--settings-teal-strong) !important;
+}
+
+body[data-window-mode="settings"] .feature-shell .bottom-nav-center-avatar img {
+  border-color: rgba(104, 184, 173, 0.92) !important;
+  box-shadow:
+    0 0 0 6px rgba(104, 184, 173, 0.12),
+    0 0 30px rgba(104, 184, 173, 0.26) !important;
+}

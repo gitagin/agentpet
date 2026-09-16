@@ -12,6 +12,7 @@ from app.services.memory_permissions import (
 )
 from app.services.prompt_memory_assembler import (
     PromptMemoryAssembler,
+    PromptMemoryAssembly,
     PromptMemoryAssemblyInput,
     format_recall_prompt_sections,
 )
@@ -25,7 +26,11 @@ from ..retrieval.compression import (
     unsupported_exact_values,
 )
 from ..retrieval.router import _chat_agent_tool_names
-from ..retrieval.scoping import _guard_search_memory_tools, _source_scope_label
+from ..retrieval.scoping import (
+    _enforceable_source_scope,
+    _guard_search_memory_tools,
+    _source_scope_label,
+)
 from ..runtime_helpers import (
     _chat_system_prompt,
     _chunk_text,
@@ -34,10 +39,16 @@ from ..runtime_helpers import (
     _continuity_signal_event,
 )
 from ..services import AgentRuntimeServices, ToolCallingChatModelProtocol
-from ..tools import ModelInvocationFailedError
+from ..tools import CurrentTimeResponse, ModelInvocationFailedError
 from ..semantic import _parse_text_search_tool_call
 from ..state import AgentState
-from ..tools import AgentToolResult, AgentToolSet, AgentToolUnavailableError, SensitiveMemoryRejectedError
+from ..tools import (
+    AgentToolName,
+    AgentToolResult,
+    AgentToolSet,
+    AgentToolUnavailableError,
+    SensitiveMemoryRejectedError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -71,9 +82,15 @@ async def _chat_node(
                 chat_model = None
             else:
                 raise exc
+        tool_results: list[AgentToolResult] = []
+        grounding_results: tuple[MemorySearchResult, ...] | None = None
         if chat_model is not None:
             if state.citations:
-                response = await _answer_with_chat_model(services, state)
+                response, citation_tool_results, grounding_results = await _answer_with_chat_model(
+                    services,
+                    state,
+                )
+                tool_results.extend(citation_tool_results)
             else:
                 response, tool_results = await _run_model_chat_with_tools(services, state)
                 text_tool_fallback = await _fallback_text_search_tool_call(services, state, response)
@@ -81,7 +98,7 @@ async def _chat_node(
                     response, fallback_tool_results = text_tool_fallback
                     tool_results.extend(fallback_tool_results)
                 _emit_tool_results(graph_state, tool_results)
-                if has_empty_search_result(tool_results):
+                if has_empty_search_result(tool_results) and _semantic_requires_context(state):
                     response = _local_knowledge_not_found_response()
             if state.semantic_analysis and state.semantic_analysis.needs_context and not state.citations:
                 response = _local_knowledge_not_found_response()
@@ -92,7 +109,17 @@ async def _chat_node(
         else:
             response = state.response_text or "我在呀。你先丢给我一句想法，我陪你慢慢整理。"
 
-        return _emit_response(graph_state, state, _validated_model_response(graph_state, state, response))
+        return _emit_response(
+            graph_state,
+            state,
+            _validated_model_response(
+                graph_state,
+                state,
+                response,
+                supported_values=_tool_fact_values(tool_results),
+                grounding_results=grounding_results,
+            ),
+        )
     except (AgentToolUnavailableError, SensitiveMemoryRejectedError) as exc:
         return _record_node_error(graph_state, exc)
     except Exception as exc:
@@ -117,7 +144,13 @@ async def _run_model_chat_with_tools(
     chat_model = _model_for_chat(services, AgentId.CHAT_AGENT)
     if isinstance(chat_model, ToolCallingChatModelProtocol):
         tool_names = _chat_agent_tool_names(state, services)
-        guarded_tools = _guard_search_memory_tools(observed_toolset.allowed_tools(tool_names))
+        # 本轮已经决定过的检索范围同样约束聊天路径的工具调用:模型可以决定"要不要查",
+        # 但不能把范围悄悄放大(此前这条路径既无强制、也无告警)。
+        semantic = state.semantic_analysis
+        guarded_tools = _guard_search_memory_tools(
+            observed_toolset.allowed_tools(tool_names),
+            forced_source_scope=_enforceable_source_scope(semantic.source_scope if semantic else None),
+        )
         result = await chat_model.complete_with_tools(
             user_message=_message_with_runtime_context(services, state),
             system_prompt=_chat_system_prompt_with_evidence_boundary(),
@@ -157,22 +190,28 @@ async def _answer_with_chat_model(
     services: AgentRuntimeServices,
     state: AgentState,
     system_prompt: str | None = None,
-) -> str:
+) -> tuple[str, list[AgentToolResult], tuple[MemorySearchResult, ...]]:
     chat_model = _model_for_chat(services, AgentId.CHAT_AGENT)
     if chat_model is None:
-        return _local_knowledge_not_found_response()
+        return _local_knowledge_not_found_response(), [], ()
+    assembly = _assemble_runtime_context(services, state)
+    grounding_results = _prompt_answer_evidence_results(assembly)
     if isinstance(chat_model, ToolCallingChatModelProtocol):
+        # citations 路径同样恒带时间工具：模型引用证据回答时若涉及
+        # 当前时间，应调工具取实时值而不是复述证据里的旧日期。
+        tool_results: list[AgentToolResult] = []
+        observed_toolset = AgentToolSet(observer=tool_results.append)
         result = await chat_model.complete_with_tools(
-            user_message=_message_with_runtime_context(services, state),
+            user_message=assembly.prompt_text,
             system_prompt=_chat_system_prompt_with_evidence_boundary(system_prompt),
-            tools=(),
+            tools=observed_toolset.allowed_tools((AgentToolName.GET_CURRENT_TIME,)),
         )
-        return result.text
+        return result.text, tool_results, grounding_results
     response = await chat_model.complete(
-        user_message=_message_with_runtime_context(services, state),
+        user_message=assembly.prompt_text,
         system_prompt=_chat_system_prompt_with_evidence_boundary(system_prompt),
     )
-    return response
+    return response, [], grounding_results
 
 
 async def _fallback_grounded_search(
@@ -194,6 +233,13 @@ async def _fallback_grounded_search(
 
 
 def _message_with_runtime_context(services: AgentRuntimeServices, state: AgentState) -> str:
+    return _assemble_runtime_context(services, state).prompt_text
+
+
+def _assemble_runtime_context(
+    services: AgentRuntimeServices,
+    state: AgentState,
+) -> PromptMemoryAssembly:
     assembly = PromptMemoryAssembler().assemble(
         PromptMemoryAssemblyInput(
             user_message=state.user_message,
@@ -217,7 +263,20 @@ def _message_with_runtime_context(services: AgentRuntimeServices, state: AgentSt
             message_id=state.message_id,
             agent_run_id=state.agent_run_id,
         )
-    return assembly.prompt_text
+    return assembly
+
+
+def _prompt_answer_evidence_results(
+    assembly: PromptMemoryAssembly,
+) -> tuple[MemorySearchResult, ...]:
+    sections = assembly.recall_sections
+    if sections is None:
+        return ()
+    return tuple(
+        usage.result
+        for usage in sections.usages
+        if usage.used_for_answer_context
+    )
 
 
 def _stable_profile_items(services: AgentRuntimeServices, state: AgentState) -> tuple[object, ...]:
@@ -275,6 +334,9 @@ def _validated_model_response(
     graph_state: dict[str, Any],
     state: AgentState,
     response: str,
+    *,
+    supported_values: tuple[str, ...] = (),
+    grounding_results: tuple[MemorySearchResult, ...] | None = None,
 ) -> str:
     state.grounding_validation = (
         "passed"
@@ -290,7 +352,24 @@ def _validated_model_response(
             "reason": "fabricated_citation_id",
         }
         return _invalid_citation_response()
-    unsupported_values = unsupported_exact_values(response, state.citations)
+    unsupported_values: tuple[str, ...] = ()
+    # 证据集合必须与门控谓词一致：只用"可用作答案上下文"的引用，
+    # 被拒引用的片段不能反过来"支持"回答里的精确值。
+    validation_results = state.citations if grounding_results is None else grounding_results
+    usable_citations = [
+        item for item in validation_results if _can_use_result_as_answer_context(item)
+    ]
+    has_evidence = (
+        bool(usable_citations)
+        or bool(supported_values)
+        or grounding_results is not None
+    )
+    if has_evidence:
+        unsupported_values = unsupported_exact_values(
+            response,
+            usable_citations,
+            supported_values=supported_values,
+        )
     if unsupported_values:
         state.grounding_validation = "failed"
         graph_state["grounding_review"] = {
@@ -300,6 +379,28 @@ def _validated_model_response(
         }
         return _unsupported_exact_value_response()
     return response
+
+
+def _semantic_requires_context(state: AgentState) -> bool:
+    return bool(
+        state.semantic_analysis is not None
+        and state.semantic_analysis.needs_context
+        and state.semantic_analysis.source_scope != "none"
+    )
+
+
+def _tool_fact_values(tool_results: list[AgentToolResult]) -> tuple[str, ...]:
+    values: list[str] = []
+    for result in tool_results:
+        if result.name == "get_current_time" and isinstance(result.value, CurrentTimeResponse):
+            values.extend(
+                (
+                    result.value.local_time,
+                    result.value.iso,
+                    result.value.timezone,
+                )
+            )
+    return tuple(values)
 
 
 def _chat_system_prompt_with_evidence_boundary(system_prompt: str | None = None) -> str:

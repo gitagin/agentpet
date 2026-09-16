@@ -11,10 +11,10 @@ from app.models.common import new_id
 from app.services.memory import SafeMarkdownWriter
 from app.storage.database import open_database_connection
 from app.utils.hash import sha256_hex
-from app.utils.time import utc_now_iso
+from app.utils.time import local_timezone_name, utc_now_iso
 
 
-DEFAULT_CHAT_MEMORY_TIMEZONE = "Asia/Shanghai"
+DEFAULT_CHAT_MEMORY_TIMEZONE = local_timezone_name()
 WEEKDAY_NAMES = ("星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日")
 
 

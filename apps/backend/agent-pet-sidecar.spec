@@ -26,6 +26,13 @@ for distribution in (
     datas += copy_metadata(distribution)
 
 hiddenimports = [
+    # The local-vector path imports these lazily at runtime; keep them in the
+    # frozen archive so --self-test exercises the same code as retrieval.
+    "langchain_qdrant",
+    "qdrant_client",
+    "onnxruntime",
+    "tokenizers",
+    "numpy",
     "sqlalchemy.dialects.sqlite",
     "uvicorn.lifespan.on",
     "uvicorn.logging",
@@ -52,15 +59,12 @@ a = Analysis(
         "kuzu",
         "langchain_classic",
         "langchain_community",
-        "langchain_qdrant",
         "matplotlib",
         "numba",
-        "numpy",
         "pandas",
         "pyarrow",
         "pytest",
         "pytest_asyncio",
-        "qdrant_client",
         "scipy",
         "sklearn",
         "torch",

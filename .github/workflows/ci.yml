@@ -19,13 +19,13 @@ jobs:
           cache: pip
 
       - name: Install backend
-        run: python -m pip install -e "apps/backend"
+        run: python -m pip install -e "apps/backend[vector,local-vector]"
 
       - name: Install test tooling
-        run: python -m pip install pytest ruff
+        run: python -m pip install pytest pytest-asyncio ruff
 
       - name: Lint backend
-        run: ruff check apps/backend/app --select A001
+        run: ruff check apps/backend/app
 
       - name: Download local embedding model
         run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/download-embedding-model.ps1

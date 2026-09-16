@@ -3,11 +3,19 @@ import sqlite3
 from pathlib import Path
 from datetime import datetime, timezone
 
+import pytest
+
 from apps.backend.tests._schema import migrate_db
 from app.models.enums import MemoryFactStatus
 from app.services.long_term_memory import LongTermMemoryService
 from app.services.memory import SafeMarkdownWriter
-from app.services.memory_graph import MemoryFactCandidate, MemoryGraphStore, facts_to_context_lines
+from app.services.memory_entity_graph import MemoryEntityGraphStore
+from app.services.memory_graph import (
+    MemoryFactCandidate,
+    MemoryGraphStore,
+    _sqlite_write_transaction,
+    facts_to_context_lines,
+)
 from app.storage.database import Database, MigrationRunner
 
 
@@ -269,10 +277,12 @@ def test_long_term_memory_writes_structured_graph_fact(tmp_path):
     assert result.written is True
     assert result.graph_fact_id
     assert result.graph_status == "active"
+    # 偏好类事实的契约：主语固定为「自己」、谓词为「偏好」，
+    # 避免把关系类型名当成实体落库（「我喜欢吃苹果」≠「偏好 is 吃苹果」）。
     facts = service.graph_store.search_active("fruit")
     assert len(facts) == 1
-    assert facts[0].subject == "fruit"
-    assert facts[0].predicate == "is"
+    assert facts[0].subject == "自己"
+    assert facts[0].predicate == "偏好"
     assert facts[0].object == "apple"
     service.close()
 
@@ -296,3 +306,44 @@ def test_memory_graph_write_does_not_create_a_transactional_kuzu_projection(tmp_
         assert not (tmp_path / "graph").exists()
     finally:
         store.close()
+
+
+def test_graph_write_transactions_take_the_write_lock_before_reading(tmp_path: Path) -> None:
+    """先读后写的写事务必须用 BEGIN IMMEDIATE。
+
+    WAL 下 deferred 事务的读快照在第一次读时固定:期间任何别的连接提交,随后的写会
+    **立即**报 database is locked(SQLITE_BUSY_SNAPSHOT,busy_timeout 按设计不参与)。
+    线上表现是 wiki 摄取落地偶发 400 action_failed,且只在长会话里出现。
+    """
+    db_path = graph_db(tmp_path)
+    graph_store = MemoryGraphStore(db_path)
+    entity_store = MemoryEntityGraphStore(db_path)
+    other = Database(db_path).connect()
+    other.execute("PRAGMA busy_timeout = 200")
+    try:
+        graph_store.conn.execute(
+            "CREATE TABLE IF NOT EXISTS lock_probe(id INTEGER PRIMARY KEY, value TEXT)"
+        )
+        graph_store.conn.commit()
+
+        # 两个 store 都走"进入写事务 → 先读 → 再写"的形态:并发写者必须被挡在门外,
+        # 而不是在我们读完之后插进来把快照顶旧。读的是真实表:常量 SELECT 不会开读
+        # 事务,定不下快照,那样这个测试在 deferred 实现下也会假绿。
+        with _sqlite_write_transaction(graph_store.conn):
+            graph_store.conn.execute("SELECT COUNT(*) FROM lock_probe")
+            with pytest.raises(sqlite3.OperationalError, match="database is locked"):
+                other.execute("INSERT INTO lock_probe(id, value) VALUES (1, 'concurrent')")
+            graph_store.conn.execute("INSERT INTO lock_probe(id, value) VALUES (2, 'within')")
+
+        with entity_store.atomic():
+            entity_store.conn.execute("SELECT COUNT(*) FROM lock_probe")
+            with pytest.raises(sqlite3.OperationalError, match="database is locked"):
+                other.execute("INSERT INTO lock_probe(id, value) VALUES (3, 'concurrent')")
+            entity_store.conn.execute("INSERT INTO lock_probe(id, value) VALUES (4, 'within')")
+    finally:
+        other.close()
+        entity_store.close()
+        graph_store.close()
+
+    with sqlite3.connect(db_path) as verify:
+        assert sorted(row[0] for row in verify.execute("SELECT id FROM lock_probe")) == [2, 4]

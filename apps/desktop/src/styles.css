@@ -14,10 +14,15 @@
 @import "./styles/shared-results.css";
 @import "./styles/responsive.css";
 @import "./styles/layout-hardening.css";
-@import "./styles/stage-restore.css";
+@import "./styles/halfbody.css";
 @import "./styles/desktop-polish.css";
 @import "./styles/demo-scope.css";
 @import "./styles/llmwiki-memory.css";
+@import "./styles/chat-teal-polish.css";
+@import "./styles/home-teal-polish.css";
+@import "./styles/plan-teal-polish.css";
+@import "./styles/settings-teal-polish.css";
+@import "./styles/navigation-unified.css";
 .checkpoint-confirmation-list {
   display: grid;
   gap: 10px;

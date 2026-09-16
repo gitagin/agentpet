@@ -15,6 +15,11 @@ import {
   mergeAgentModelStatus,
   type AgentModelDraft,
 } from "../../services/agentModelDrafts";
+import {
+  keepUnsavedDraft,
+  mergeEmbeddingDraft,
+  mergeGlobalModelDraft,
+} from "./settingsDrafts";
 import type {
   AsyncStatus,
   AutomationSettingsDraft,
@@ -263,19 +268,39 @@ export function settingsReducer(state: SettingsState, action: SettingsAction): S
         ...state,
         settingsStatus: action.response,
         settingsStatusLoadState: "ready",
-        globalModelDraft: globalModelDraftFromStatus(action.response),
+        // 刷新服务端状态时保留用户未保存的草稿:早先这里无条件重建四张卡的草稿,
+        // 于是"保存 A 卡"会把 B 卡里刚输入的配置(含密钥)静默清掉。
+        globalModelDraft: mergeGlobalModelDraft(
+          state.globalModelDraft,
+          globalModelDraftFromStatus(action.response),
+        ),
         globalModelSaveStatus: "idle",
         globalModelTestStatus: "idle",
         globalModelTestResult: undefined,
-        embeddingDraft: embeddingDraftFromStatus(action.response),
+        embeddingDraft: mergeEmbeddingDraft(
+          state.embeddingDraft,
+          embeddingDraftFromStatus(action.response),
+        ),
         embeddingSaveStatus: "idle",
         embeddingTestStatus: "idle",
         embeddingTestResult: undefined,
-        automationSettingsDraft: automationSettingsDraftFromStatus(action.response),
+        automationSettingsDraft: keepUnsavedDraft(
+          state.automationSettingsDraft,
+          state.settingsStatus ? automationSettingsDraftFromStatus(state.settingsStatus) : null,
+          automationSettingsDraftFromStatus(action.response),
+        ),
         automationSettingsSaveStatus: "idle",
-        ttsSettingsDraft: ttsSettingsDraftFromStatus(action.response),
+        ttsSettingsDraft: keepUnsavedDraft(
+          state.ttsSettingsDraft,
+          state.settingsStatus ? ttsSettingsDraftFromStatus(state.settingsStatus) : null,
+          ttsSettingsDraftFromStatus(action.response),
+        ),
         ttsSettingsSaveStatus: "idle",
-        negotiationSettingsDraft: negotiationSettingsDraftFromStatus(action.response),
+        negotiationSettingsDraft: keepUnsavedDraft(
+          state.negotiationSettingsDraft,
+          state.settingsStatus ? negotiationSettingsDraftFromStatus(state.settingsStatus) : null,
+          negotiationSettingsDraftFromStatus(action.response),
+        ),
         negotiationSettingsSaveStatus: "idle",
         agentModelDrafts: mergeAgentModelStatus(state.agentModelDrafts, action.response.agent_models),
       };
@@ -316,7 +341,7 @@ export function settingsReducer(state: SettingsState, action: SettingsAction): S
           saved_provider: action.config.provider,
           saved_base_url: action.config.base_url,
           saved_model: action.config.model,
-          configured: true,
+          configured: state.settingsStatus?.model_configured ?? true,
         },
         globalModelSaveStatus: "success",
         globalModelTestStatus: "idle",
@@ -327,7 +352,7 @@ export function settingsReducer(state: SettingsState, action: SettingsAction): S
               model_provider: action.config.provider,
               model_base_url: action.config.base_url,
               chat_model: action.config.model,
-              model_configured: true,
+              model_configured: state.settingsStatus?.model_configured ?? true,
             }
           : state.settingsStatus,
       };

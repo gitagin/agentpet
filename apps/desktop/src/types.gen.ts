@@ -841,6 +841,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/reflection/proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Reflection Proposals */
+        get: operations["list_reflection_proposals_api_reflection_proposals_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reflection/proposals/{proposal_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Confirm Reflection Proposal */
+        post: operations["confirm_reflection_proposal_api_reflection_proposals__proposal_id__confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/reflection/proposals/{proposal_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject Reflection Proposal */
+        post: operations["reject_reflection_proposal_api_reflection_proposals__proposal_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/settings": {
         parameters: {
             query?: never;
@@ -971,7 +1022,15 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Test Embedding Connection */
+        /**
+         * Test Embedding Connection
+         * @description Probe whichever embedding backend the factory would actually select.
+         *
+         *     Mirrors build_vector_index precedence: a configured remote key wins
+         *     unless local privacy mode forces the bundled model.  Without a remote
+         *     key the bundled ONNX model is the default, so the probe runs locally
+         *     and never transmits the test string.
+         */
         post: operations["test_embedding_connection_api_settings_embedding_test_post"];
         delete?: never;
         options?: never;
@@ -3581,7 +3640,7 @@ export interface components {
         MemorySearchRequest: {
             /**
              * Mode
-             * @default fts
+             * @default hybrid
              * @enum {string}
              */
             mode: "fts" | "vector" | "hybrid";
@@ -3995,6 +4054,57 @@ export interface components {
              * @enum {string}
              */
             status: "recorded" | "replayed";
+        };
+        /** ReflectionProposalActionResponse */
+        ReflectionProposalActionResponse: {
+            /** Action Id */
+            action_id?: string | null;
+            /** Memory Proposal Id */
+            memory_proposal_id?: string | null;
+            /** Proposal Id */
+            proposal_id: string;
+            /** Status */
+            status: string;
+        };
+        /** ReflectionProposalListResponse */
+        ReflectionProposalListResponse: {
+            /** Proposals */
+            proposals?: components["schemas"]["ReflectionProposalResponse"][];
+        };
+        /** ReflectionProposalResponse */
+        ReflectionProposalResponse: {
+            /** Action Type */
+            action_type: string;
+            /** Agent Run Id */
+            agent_run_id?: string | null;
+            /** Applied Ref */
+            applied_ref?: string | null;
+            /** Confidence */
+            confidence: number;
+            /** Content */
+            content: string;
+            /** Created At */
+            created_at: string;
+            /** Error */
+            error?: string | null;
+            /** Proposal Id */
+            proposal_id: string;
+            /** Proposal Kind */
+            proposal_kind: string;
+            /** Rejected Reason */
+            rejected_reason?: string | null;
+            /** Reversible */
+            reversible: boolean;
+            /** Source Conversation Id */
+            source_conversation_id?: string | null;
+            /** Source Message Id */
+            source_message_id?: string | null;
+            /** Status */
+            status: string;
+            /** Target Ref */
+            target_ref?: string | null;
+            /** Updated At */
+            updated_at: string;
         };
         /** RejectProposalRequest */
         RejectProposalRequest: {
@@ -5443,6 +5553,8 @@ export interface components {
             sources?: string[];
             /** Tags */
             tags?: string[];
+            /** Target Content Hash */
+            target_content_hash?: string | null;
             /** Target Path */
             target_path?: string | null;
             /** Title */
@@ -7083,6 +7195,104 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SidecarRecoveryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_reflection_proposals_api_reflection_proposals_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReflectionProposalListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_reflection_proposal_api_reflection_proposals__proposal_id__confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReflectionProposalActionResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_reflection_proposal_api_reflection_proposals__proposal_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RejectProposalRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReflectionProposalActionResponse"];
                 };
             };
             /** @description Validation Error */

@@ -9,6 +9,7 @@ the lifecycle service and an explicit policy decision.
 from __future__ import annotations
 
 import json
+import logging
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -28,6 +29,8 @@ from app.services.memory_graph import MemoryGraphFact
 from app.services.memory_policy import evaluate_memory_content
 from app.services.memory_taxonomy import LOW_CONFIDENCE_THRESHOLD
 from app.utils.hash import sha256_hex
+
+logger = logging.getLogger(__name__)
 
 
 ExtractionSchemaVersion = Literal["llmwiki.entity-extraction.v1"]
@@ -209,6 +212,14 @@ def parse_extraction_output(raw: object, source_text: str) -> ExtractionBatch:
             raise ExtractionValidationError("extraction_json_invalid") from exc
     if not isinstance(payload, dict):
         raise ExtractionValidationError("extraction_payload_not_object")
+    payload, dropped = _prune_dangling_references(payload)
+    if dropped:
+        # 悬空引用是可局部修复的模型笔误;整批拒绝会连带丢掉本轮所有实体与事实,
+        # 所以只剔除出错的那几条并留下可观测的记录(线上正是靠这行日志定位)。
+        logger.warning(
+            "Entity extraction dropped %d item(s) with dangling references; the rest of the batch was kept",
+            dropped,
+        )
     try:
         batch = ExtractionBatch.model_validate(payload)
     except ValidationError as exc:
@@ -223,6 +234,80 @@ def parse_extraction_output(raw: object, source_text: str) -> ExtractionBatch:
         if evidence.end > text_length:
             raise ExtractionValidationError("extraction_evidence_out_of_bounds")
     return batch
+
+
+def _prune_dangling_references(payload: dict[str, object]) -> tuple[dict[str, object], int]:
+    """Remove batch items whose references point outside the same batch.
+
+    A relation endpoint or a claim subject that names a ref the model never
+    declared is a *referential* slip: the item is otherwise well formed, it
+    just cannot be attached to the graph.  Dropping that one item keeps the
+    rest of the exchange, whereas rejecting the whole batch loses every
+    entity and fact alongside it.
+
+    Structural violations are deliberately still fatal: unknown relation
+    types, malformed fields, duplicate refs, wrong types and out-of-bounds
+    evidence mean the model ignored the contract, so the batch is not
+    trustworthy.  This function repairs references only, never shapes.
+    """
+    entity_refs = _declared_refs(payload.get("entities"), "entity_ref")
+    raw_claims = payload.get("claims")
+    kept_claims: list[object] = []
+    dropped = 0
+    for claim in raw_claims if isinstance(raw_claims, list) else ():
+        subject = claim.get("subject_entity_ref") if isinstance(claim, dict) else None
+        if isinstance(subject, str) and subject not in entity_refs:
+            dropped += 1
+            continue
+        kept_claims.append(claim)
+    claim_refs = _declared_refs(kept_claims, "claim_ref")
+    raw_relations = payload.get("relations")
+    kept_relations: list[object] = []
+    for relation in raw_relations if isinstance(raw_relations, list) else ():
+        if isinstance(relation, dict) and (
+            _endpoint_is_dangling(relation.get("subject"), entity_refs, claim_refs)
+            or _endpoint_is_dangling(relation.get("object"), entity_refs, claim_refs)
+        ):
+            dropped += 1
+            continue
+        kept_relations.append(relation)
+    if not dropped:
+        return payload, 0
+    pruned = dict(payload)
+    if isinstance(raw_claims, list):
+        pruned["claims"] = kept_claims
+    if isinstance(raw_relations, list):
+        pruned["relations"] = kept_relations
+    return pruned, dropped
+
+
+def _declared_refs(entries: object, key: str) -> set[str]:
+    if not isinstance(entries, list):
+        return set()
+    return {
+        entry[key]
+        for entry in entries
+        if isinstance(entry, dict) and isinstance(entry.get(key), str)
+    }
+
+
+def _endpoint_is_dangling(endpoint: object, entity_refs: set[str], claim_refs: set[str]) -> bool:
+    """True only when the endpoint is readable and its ref is undeclared.
+
+    An unreadable endpoint returns False so the strict batch validator rejects
+    it: malformed structure stays fatal.
+    """
+    if not isinstance(endpoint, dict):
+        return False
+    ref = endpoint.get("ref")
+    if not isinstance(ref, str):
+        return False
+    kind = endpoint.get("kind")
+    if kind == "entity":
+        return ref not in entity_refs
+    if kind == "claim":
+        return ref not in claim_refs
+    return False
 
 
 def extract_with_policy(source_text: str, invoke_model: Callable[[str], object]) -> ExtractionBatch:

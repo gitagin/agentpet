@@ -1,6 +1,7 @@
 import { Bot, Loader2, ShieldCheck } from "lucide-react";
 import type { ModelTestResponse } from "../../types";
 import { isSupportedProviderDraft } from "../../services/agentModelDrafts";
+import { hasUnsavedGlobalModelDraft } from "./settingsDrafts";
 import { formatModelTestResult } from "./settingsFormatters";
 import type { AsyncStatus, GlobalModelDraft } from "./settingsTypes";
 
@@ -13,15 +14,6 @@ type GlobalModelCardProps = {
   onSave: () => void;
   onTest: () => void;
 };
-
-function hasUnsavedGlobalModelDraft(draft: GlobalModelDraft): boolean {
-  return (
-    draft.provider.trim() !== draft.saved_provider ||
-    draft.base_url.trim() !== draft.saved_base_url ||
-    draft.model.trim() !== draft.saved_model ||
-    Boolean(draft.api_key.trim())
-  );
-}
 
 export function GlobalModelCard({
   draft,

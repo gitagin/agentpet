@@ -23,6 +23,7 @@ import type { AgentActivityDomain } from "./useAgentActivityDomain";
 import type { TaskDomain } from "./useTaskDomain";
 import type { MemoryDomain } from "./useMemoryDomain";
 import type { ContinuityDomain } from "./useContinuityDomain";
+import type { ReflectionDomain } from "./useReflectionDomain";
 import type { PetDomain } from "./usePetDomain";
 import {
   chatMessageFromDailyHistory,
@@ -40,6 +41,7 @@ type UseChatStreamingDomainOptions = {
   tasks: TaskDomain;
   memory: MemoryDomain;
   continuity: ContinuityDomain;
+  reflection: ReflectionDomain;
   wiki: WikiDomain;
   pet: PetDomain;
 };
@@ -51,6 +53,7 @@ export function useChatStreamingDomain({
   tasks,
   memory,
   continuity,
+  reflection,
   wiki,
   pet,
 }: UseChatStreamingDomainOptions) {
@@ -184,6 +187,9 @@ export function useChatStreamingDomain({
             app.streamingRef.current = false;
             app.setStreaming(false);
             void activity.load({ silent: true });
+            // 回复刚结束,后台反思任务才刚被调度;这里拉一次是为了覆盖它已经跑完的
+            // 情况,任务晚一步完成则由 useReflectionDomain 的轮询兜住。
+            void reflection.load({ silent: true });
             void activity.loadMemoryReceipts(assistantId, accepted.agent_run_id, abort.signal);
           }
         },
@@ -213,6 +219,12 @@ export function useChatStreamingDomain({
       }
       pet.chat.clearStreamWatchdogTimer();
       pet.tts.waitingCue.stop("send_failed");
+      if (pet.chat.streamFailedRef.current) {
+        // 终局已经有人接手:用户点了停止,或者看门狗已把它判成失败。这里再改状态
+        // 会把"超时失败"写成"用户取消",并抹掉 hasStreamTerminalState 的兜底
+        // (排队中的超时回调还会再弹一次错误气泡)。
+        return false;
+      }
       pet.chat.streamFailedRef.current = true;
       const failureMessage = describeError(error, "消息发送失败");
       app.setMessages((current) => current.map((message) =>
@@ -220,11 +232,9 @@ export function useChatStreamingDomain({
           ? { ...message, status: "failed", content: message.content || failureMessage }
           : message,
       ));
-      if (!(error instanceof DOMException && error.name === "AbortError")) {
-        pet.chat.showBubble({ title: "交互失败", message: failureMessage, tone: "error" });
-        pet.chat.scheduleHide(PET_BUBBLE_ERROR_HIDE_DELAY_MS);
-        app.setNotice({ tone: "error", message: failureMessage });
-      }
+      pet.chat.showBubble({ title: "交互失败", message: failureMessage, tone: "error" });
+      pet.chat.scheduleHide(PET_BUBBLE_ERROR_HIDE_DELAY_MS);
+      app.setNotice({ tone: "error", message: failureMessage });
       return false;
     } finally {
       if (app.activeChatRequestIdRef.current === requestId) {

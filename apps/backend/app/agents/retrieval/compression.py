@@ -166,8 +166,24 @@ def invalid_rendered_citation_ids(
 def unsupported_exact_values(
     text: str,
     accepted_results: Iterable[MemorySearchResult],
+    *,
+    supported_values: Iterable[str] = (),
 ) -> tuple[str, ...]:
-    evidence_text = "\n".join(result.snippet for result in accepted_results)
+    evidence_text = "\n".join(
+        [
+            *(
+                value
+                for result in accepted_results
+                for value in (
+                    result.snippet,
+                    _normalized_relative_path(result.relative_path),
+                    result.heading,
+                )
+                if value
+            ),
+            *supported_values,
+        ]
+    )
     protected_values: list[str] = []
     for pattern in _EXACT_VALUE_PATTERNS:
         protected_values.extend(match.group(0) for match in pattern.finditer(text))

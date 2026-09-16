@@ -50,6 +50,8 @@ import type {
   ModelConfigResponse,
   ModelHealthResponse,
   ModelTestResponse,
+  ReflectionProposalActionResponse,
+  ReflectionProposalListResponse,
   RetrospectiveReportPeriod,
   RetrospectiveReportResponse,
   RetrospectiveResponse,
@@ -398,6 +400,37 @@ export class DesktopApi {
   ): Promise<ContinuityProposalActionResponse> {
     return this.client.post<ContinuityProposalActionResponse>(
       `/api/continuity/proposals/${encodeURIComponent(proposalId)}/reject`,
+      { reason },
+      signal,
+    );
+  }
+
+  listReflectionProposals(
+    status?: string,
+    signal?: AbortSignal,
+  ): Promise<ReflectionProposalListResponse> {
+    const query = status ? `?status=${encodeURIComponent(status)}` : "";
+    return this.client.get<ReflectionProposalListResponse>(`/api/reflection/proposals${query}`, signal);
+  }
+
+  confirmReflectionProposal(
+    proposalId: string,
+    signal?: AbortSignal,
+  ): Promise<ReflectionProposalActionResponse> {
+    return this.client.post<ReflectionProposalActionResponse>(
+      `/api/reflection/proposals/${encodeURIComponent(proposalId)}/confirm`,
+      {},
+      signal,
+    );
+  }
+
+  rejectReflectionProposal(
+    proposalId: string,
+    reason: string,
+    signal?: AbortSignal,
+  ): Promise<ReflectionProposalActionResponse> {
+    return this.client.post<ReflectionProposalActionResponse>(
+      `/api/reflection/proposals/${encodeURIComponent(proposalId)}/reject`,
       { reason },
       signal,
     );

@@ -4778,7 +4778,7 @@
       "MemorySearchRequest": {
         "properties": {
           "mode": {
-            "default": "fts",
+            "default": "hybrid",
             "enum": [
               "fts",
               "vector",
@@ -5977,6 +5977,189 @@
           "signal"
         ],
         "title": "RecallFeedbackResponse",
+        "type": "object"
+      },
+      "ReflectionProposalActionResponse": {
+        "properties": {
+          "action_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action Id"
+          },
+          "memory_proposal_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Memory Proposal Id"
+          },
+          "proposal_id": {
+            "title": "Proposal Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "proposal_id",
+          "status"
+        ],
+        "title": "ReflectionProposalActionResponse",
+        "type": "object"
+      },
+      "ReflectionProposalListResponse": {
+        "properties": {
+          "proposals": {
+            "items": {
+              "$ref": "#/components/schemas/ReflectionProposalResponse"
+            },
+            "title": "Proposals",
+            "type": "array"
+          }
+        },
+        "title": "ReflectionProposalListResponse",
+        "type": "object"
+      },
+      "ReflectionProposalResponse": {
+        "properties": {
+          "action_type": {
+            "title": "Action Type",
+            "type": "string"
+          },
+          "agent_run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Run Id"
+          },
+          "applied_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applied Ref"
+          },
+          "confidence": {
+            "title": "Confidence",
+            "type": "number"
+          },
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "proposal_id": {
+            "title": "Proposal Id",
+            "type": "string"
+          },
+          "proposal_kind": {
+            "title": "Proposal Kind",
+            "type": "string"
+          },
+          "rejected_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejected Reason"
+          },
+          "reversible": {
+            "title": "Reversible",
+            "type": "boolean"
+          },
+          "source_conversation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Conversation Id"
+          },
+          "source_message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Message Id"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "target_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Ref"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "proposal_id",
+          "proposal_kind",
+          "action_type",
+          "content",
+          "confidence",
+          "reversible",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ReflectionProposalResponse",
         "type": "object"
       },
       "RejectProposalRequest": {
@@ -9557,6 +9740,17 @@
             "title": "Tags",
             "type": "array"
           },
+          "target_content_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Content Hash"
+          },
           "target_path": {
             "anyOf": [
               {
@@ -12120,6 +12314,162 @@
         ]
       }
     },
+    "/api/reflection/proposals": {
+      "get": {
+        "operationId": "list_reflection_proposals_api_reflection_proposals_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "pending",
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReflectionProposalListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Reflection Proposals",
+        "tags": [
+          "reflection"
+        ]
+      }
+    },
+    "/api/reflection/proposals/{proposal_id}/confirm": {
+      "post": {
+        "operationId": "confirm_reflection_proposal_api_reflection_proposals__proposal_id__confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReflectionProposalActionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Confirm Reflection Proposal",
+        "tags": [
+          "reflection"
+        ]
+      }
+    },
+    "/api/reflection/proposals/{proposal_id}/reject": {
+      "post": {
+        "operationId": "reject_reflection_proposal_api_reflection_proposals__proposal_id__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "title": "Proposal Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectProposalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReflectionProposalActionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reject Reflection Proposal",
+        "tags": [
+          "reflection"
+        ]
+      }
+    },
     "/api/settings": {
       "get": {
         "operationId": "get_settings_status_api_settings_get",
@@ -12449,6 +12799,7 @@
     },
     "/api/settings/embedding-test": {
       "post": {
+        "description": "Probe whichever embedding backend the factory would actually select.\n\nMirrors build_vector_index precedence: a configured remote key wins\nunless local privacy mode forces the bundled model.  Without a remote\nkey the bundled ONNX model is the default, so the probe runs locally\nand never transmits the test string.",
         "operationId": "test_embedding_connection_api_settings_embedding_test_post",
         "responses": {
           "200": {

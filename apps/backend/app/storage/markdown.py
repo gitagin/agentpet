@@ -99,7 +99,16 @@ def sha256_text(text: str) -> str:
     return sha256_hex(text)
 
 
+MAX_MARKDOWN_BYTES = 8 * 1024 * 1024
+
+
 def read_markdown(path: Path) -> ParsedMarkdown:
+    # 单个笔记超过 8 MiB 视为异常资产，拒绝索引，避免把整个文件读进内存。
+    size = path.stat().st_size
+    if size > MAX_MARKDOWN_BYTES:
+        raise ValueError(
+            f"Markdown 文件过大，跳过索引：{path.name}（{size} bytes > {MAX_MARKDOWN_BYTES}）"
+        )
     text = path.read_text(encoding="utf-8-sig")
     return parse_markdown(text, fallback_title=path.stem)
 
