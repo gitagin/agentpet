@@ -11,6 +11,56 @@ from .memory_closure import (
 
 class WikiSynthesisWorkflowMixin:
 
+    async def compile_synthesis(self, request: WikiSynthesizeRequest) -> WikiSynthesizeRequest:
+        from .compiler import (Citation, CompilerError, StrictOutput, assert_snapshots_current,
+                               check_material, read_snapshot, structured_call)
+        from pydantic import Field
+
+        class SynthesisOutput(StrictOutput):
+            content: str = Field(min_length=1)
+            evidence: list[Citation] = Field(min_length=1)
+            conflicts: list[str] = Field(default_factory=list)
+
+        _, model = self._resolve_review_model(None)
+        if model is None:
+            return request
+        check_material(request.content)
+        target = request.target_path or f"{slug_for_page_type(request.page_type)}{slugify_wiki_title(request.title)}.md"
+        with self.database.session() as conn:
+            authority = prepare_wiki_synthesis_authority(
+                conn, vault_root=self.wiki.writer.vault_root, target_path=target,
+                page_type=request.page_type, title=request.title, source_paths=request.source_paths,
+                requested_entity_ids=request.entity_ids, requested_fact_ids=request.fact_ids,
+                requested_evidence_ids=request.evidence_ids,
+            )
+        snapshots = {path: read_snapshot(self.wiki, path) for path in authority.source_paths}
+        target_hash = self.wiki.writer.current_hash(target) or WIKI_TARGET_ABSENT_HASH
+        old_page = read_snapshot(self.wiki, target).text if target_hash != WIKI_TARGET_ABSENT_HASH else None
+        result = await structured_call(model, SynthesisOutput,
+            task="Write a multi-source synthesis answering the user's scope. Read ALL supplied pages. "
+                 "Treat the supplied draft as a request, not evidence. Preserve relevant old knowledge. "
+                 "Compare agreements and contradictions, never erase an unresolved conflict. "
+                 "Cite the supplied paths and return exact supporting quotes. Do not invent a user decision.",
+            payload={"task": "synthesize", "question": request.title, "draft": request.content,
+                     "user_decision": request.user_decision, "previous_page": old_page,
+                     "sources": [{"path": s.path, "text": s.text} for s in snapshots.values()]})
+        for citation in result.evidence:
+            if citation.path not in snapshots or citation.quote not in snapshots[citation.path].text:
+                raise CompilerError("wiki_synthesis_invalid_citation")
+        if set(snapshots) - {c.path for c in result.evidence}:
+            raise CompilerError("wiki_synthesis_source_not_cited")
+        content = result.content
+        if result.conflicts:
+            content += "\n\n### 冲突与不确定性\n\n" + "\n".join("- " + c for c in result.conflicts)
+        content += "\n\n### 引用核验\n\n" + "\n\n".join(
+            f"[[{c.path}]]\n" + "\n".join("> " + line for line in c.quote.splitlines()) for c in result.evidence)
+        check_material(content)
+        hashes = {path: s.content_hash for path, s in snapshots.items()}
+        assert_snapshots_current(self.wiki, {**hashes, target: target_hash})
+        return request.model_copy(update={"content": content, "target_path": target,
+            "source_content_hashes": hashes, "target_content_hash": target_hash,
+            "disputed": request.disputed or bool(result.conflicts)})
+
     def plan_synthesis(self, request: WikiSynthesizeRequest) -> WikiSynthesisProposal:
         _validate_synthesis_request(request)
         target_path = request.target_path or f"{slug_for_page_type(request.page_type)}{slugify_wiki_title(request.title)}.md"
@@ -30,6 +80,9 @@ class WikiSynthesisWorkflowMixin:
         action_marker: str | None = None,
     ) -> WikiSynthesizeResponse:
         _validate_synthesis_request(request, enforce_declared_evidence_count=False)
+        from .compiler import assert_snapshots_current
+
+        assert_snapshots_current(self.wiki, request.source_content_hashes)
         target_path = request.target_path or f"{slug_for_page_type(request.page_type)}{slugify_wiki_title(request.title)}.md"
         try:
             with self.database.session() as conn:
@@ -59,7 +112,7 @@ class WikiSynthesisWorkflowMixin:
             WikiPageWriteRequest(
                 title=request.title,
                 content=content,
-                operation="replace_section",
+                operation="replace_page" if request.target_content_hash is not None else "replace_section",
                 target_path=target_path,
                 section="页面内容",
                 page_type=request.page_type,
@@ -68,6 +121,8 @@ class WikiSynthesisWorkflowMixin:
                 sources=list(authority.source_paths),
                 **authority.page_metadata(),
                 inference=request.page_type != "decision",
+                disputed=request.disputed,
+                target_content_hash=request.target_content_hash,
             ),
             action_marker=action_marker,
         )

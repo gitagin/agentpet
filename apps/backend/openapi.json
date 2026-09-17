@@ -8884,7 +8884,8 @@
             "enum": [
               "create",
               "append",
-              "replace_section"
+              "replace_section",
+              "replace_page"
             ],
             "title": "Operation",
             "type": "string"
@@ -8906,6 +8907,17 @@
             },
             "title": "Tags",
             "type": "array"
+          },
+          "target_content_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Content Hash"
           },
           "target_path": {
             "title": "Target Path",
@@ -9693,7 +9705,8 @@
             "enum": [
               "create",
               "append",
-              "replace_section"
+              "replace_section",
+              "replace_page"
             ],
             "title": "Operation",
             "type": "string"
@@ -9988,6 +10001,11 @@
             "title": "Content",
             "type": "string"
           },
+          "disputed": {
+            "default": false,
+            "title": "Disputed",
+            "type": "boolean"
+          },
           "entity_ids": {
             "items": {
               "type": "string"
@@ -10027,6 +10045,13 @@
             "title": "Page Type",
             "type": "string"
           },
+          "source_content_hashes": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Source Content Hashes",
+            "type": "object"
+          },
           "source_paths": {
             "items": {
               "type": "string"
@@ -10040,6 +10065,17 @@
             },
             "title": "Tags",
             "type": "array"
+          },
+          "target_content_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Content Hash"
           },
           "target_path": {
             "anyOf": [

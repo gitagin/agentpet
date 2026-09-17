@@ -960,7 +960,7 @@ class RuntimeWikiWorkflowAdapter:
         self.action_lifecycle = action_lifecycle
 
     async def preview_ingest(self, ingest_request: WikiIngestPreviewRequest) -> WikiIngestPreviewResponse:
-        return wiki_workflow_service(self.request).preview_ingest(ingest_request)
+        return await wiki_workflow_service(self.request).compile_ingest(ingest_request)
 
     async def confirm_ingest(self, confirm_request: WikiIngestConfirmRequest) -> WikiIngestPreviewResponse:
         if not confirm_request.user_confirmed:
@@ -1051,7 +1051,8 @@ class RuntimeWikiWorkflowAdapter:
         if not lint_request.write_report:
             lint_service = wiki_lint_service(self.request)
             try:
-                return lint_service.run(lint_request)
+                _, model = wiki_workflow_service(self.request)._resolve_review_model(None)
+                return await lint_service.run_with_model(lint_request, model=model)
             finally:
                 lint_service.close()
         outcome = await _execute_workflow_action(
@@ -2999,6 +3000,7 @@ def _wiki_synthesis_adapter(request: Request | AppContext):
     ) -> AdapterExecutionResult:
         synthesize_request = WikiSynthesizeRequest.model_validate(policy.canonical_parameters)
         service = wiki_workflow_service(request)
+        synthesize_request = await service.compile_synthesis(synthesize_request)
         plan = service.plan_synthesis(synthesize_request)
         marker = _workflow_action_marker(claim.idempotency_key)
         paths = [plan.target_path, WIKI_INDEX_PATH, WIKI_LOG_PATH]
@@ -3077,7 +3079,8 @@ def _wiki_lint_report_adapter(request: Request | AppContext):
         lint_service = wiki_lint_service(request)
         try:
             before = markdown_snapshot(lint_service.wiki.writer, [WIKI_INDEX_PATH, WIKI_LOG_PATH])
-            response = lint_service.run(lint_request, action_marker=marker)
+            _, model = wiki_workflow_service(request)._resolve_review_model(None)
+            response = await lint_service.run_with_model(lint_request, model=model, action_marker=marker)
             if response.report_page is None:
                 raise RuntimeError("wiki_lint_report_missing")
             lint_service.wiki.refresh_index()
@@ -3482,7 +3485,7 @@ def _wiki_page_write_request(
     params = policy.canonical_parameters
     title, target_path, _ = _wiki_action_target(policy)
     operation = str(params.get("operation") or "replace_section")
-    if operation not in {"create", "append", "replace_section"}:
+    if operation not in {"create", "append", "replace_section", "replace_page"}:
         raise ValueError("wiki_operation_invalid")
     section = _optional_string(params.get("section"))
     if operation == "replace_section" and section is None:

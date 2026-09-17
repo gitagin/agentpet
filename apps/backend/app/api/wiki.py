@@ -230,7 +230,7 @@ async def preview_wiki_ingest(
     service: WikiWorkflowService = Depends(wiki_workflow_service_dependency),
 ) -> WikiIngestPreviewResponse:
     try:
-        response = service.preview_ingest(ingest_request)
+        response = await service.compile_ingest(ingest_request)
     except (WikiWorkflowError, RuntimeError) as exc:
         record_audit(
             request,
@@ -255,7 +255,7 @@ async def preview_wiki_import(
     service: WikiWorkflowService = Depends(wiki_workflow_service_dependency),
 ) -> WikiIngestPreviewResponse:
     try:
-        response = service.preview_import(import_request)
+        response = await service.compile_import(import_request)
     except WikiSourceImportRejectedError as exc:
         record_audit(
             request,
@@ -497,7 +497,7 @@ async def run_wiki_lint(
             request,
             production_action_lifecycle(request),
         ).run_lint(lint_request)
-    except (MarkdownWriteError, WikiWriteError, RuntimeError) as exc:
+    except (MarkdownWriteError, WikiWriteError, WikiWorkflowError, RuntimeError) as exc:
         record_audit(
             request,
             action="wiki.lint.run",

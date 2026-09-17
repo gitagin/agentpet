@@ -164,7 +164,14 @@ class WikiService:
         metadata = _metadata_block(tags=request.tags, links=request.links)
 
         try:
-            if request.operation == "replace_section":
+            if request.operation == "replace_page":
+                if request.target_content_hash is None:
+                    raise WikiConflictError(relative_path, self.writer.current_hash(relative_path))
+                markdown = f"{_frontmatter_markdown(frontmatter)}\n\n# {request.title}\n\n{request.content.strip()}\n"
+                if metadata:
+                    markdown += f"\n{metadata}\n"
+                self.writer.write(relative_path, markdown)
+            elif request.operation == "replace_section":
                 section = (request.section or request.title).strip()
                 markdown = _replace_section(
                     _read_text(target),

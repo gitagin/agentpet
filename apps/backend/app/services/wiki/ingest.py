@@ -23,20 +23,47 @@ from .ingest_storage import WikiIngestStorageMixin
 
 class WikiIngestWorkflowMixin(WikiIngestReviewMixin, WikiIngestStorageMixin):
 
+    async def compile_ingest(self, request: WikiIngestPreviewRequest) -> WikiIngestPreviewResponse:
+        from .compiler import COMPILER_KEY, compile_source
+
+        _, model = self._resolve_review_model(None)
+        if model is None:
+            return self.preview_ingest(request.model_copy(update={"source_metadata": {
+                **request.source_metadata, "compilation_status": "model_not_configured",
+            }}))
+        clean_metadata = {k: v for k, v in request.source_metadata.items() if k != COMPILER_KEY}
+        request = request.model_copy(update={"source_metadata": clean_metadata})
+        plans, summary, metadata = await compile_source(self.wiki, model, request)
+        metadata["compilation_status"] = "compiled"
+        return self._preview_with_plans(request.model_copy(update={"source_metadata": metadata}), plans, summary)
+
+    async def compile_import(self, request: WikiSourceImportPreviewRequest) -> WikiIngestPreviewResponse:
+        return await self.compile_ingest(_import_preview_request(request))
+
     def preview_ingest(self, request: WikiIngestPreviewRequest) -> WikiIngestPreviewResponse:
+        from .compiler import COMPILER_KEY
+
+        request = request.model_copy(update={"source_metadata": {
+            k: v for k, v in request.source_metadata.items() if k != COMPILER_KEY
+        }})
+        return self._preview_with_plans(
+            request, _build_ingest_page_plans(request, _source_hash(request.content)),
+            _summary_from_source(request.content),
+        )
+
+    def _preview_with_plans(self, request, plans, summary) -> WikiIngestPreviewResponse:
         self.wiki.ensure_core_files()
         source_hash = _source_hash(request.content)
         source_id = self._existing_source_id(source_hash) or new_id()
         run_id = new_id()
         preview_token = new_id()
-        plans = _build_ingest_page_plans(request, source_hash)
         response = WikiIngestPreviewResponse(
             run_id=run_id,
             source_id=source_id,
             source_hash=source_hash,
             status="preview",
             page_plans=plans,
-            summary=_summary_from_source(request.content),
+            summary=summary,
             source_metadata=request.source_metadata,
             preview_token=preview_token,
         )
@@ -87,6 +114,11 @@ class WikiIngestWorkflowMixin(WikiIngestReviewMixin, WikiIngestStorageMixin):
         now = utc_now_iso()
         ingest_request = cached.request
         preview = cached.response
+        from .compiler import COMPILER_KEY, assert_snapshots_current
+
+        compilation = ingest_request.source_metadata.get(COMPILER_KEY, {})
+        if compilation:
+            assert_snapshots_current(self.wiki, compilation["context_hashes"])
         with self.database.session() as conn:
             existing = conn.execute(
                 "SELECT id FROM wiki_sources WHERE source_hash = ?",
@@ -205,7 +237,7 @@ class WikiIngestWorkflowMixin(WikiIngestReviewMixin, WikiIngestStorageMixin):
                         _dumps_list(plan.tags),
                         _dumps_list(plan.links),
                         "planned",
-                        self.wiki.writer.current_hash(plan.target_path) or WIKI_TARGET_ABSENT_HASH,
+                        plan.target_content_hash or self.wiki.writer.current_hash(plan.target_path) or WIKI_TARGET_ABSENT_HASH,
                         now,
                         now,
                     ),
@@ -272,12 +304,29 @@ class WikiIngestWorkflowMixin(WikiIngestReviewMixin, WikiIngestStorageMixin):
                 source_row["raw_content"] or source_row["content_preview"] or ""
             ) if source_row is not None else ""
             try:
-                source_metadata = json.loads(str(source_row["metadata_json"] or "{}")) if source_row is not None else {}
+                run_request = json.loads(str(run["request_json"] or "{}"))
+                source_metadata = run_request.get("source_metadata", {})
+                source_title = run_request.get("title", source_title)
             except json.JSONDecodeError:
                 source_metadata = {}
 
         if source_row is None or not run["source_id"] or not source_hash:
             raise WikiWorkflowError("Wiki ingest source record is missing")
+        from .compiler import COMPILER_KEY, CompilerError, assert_snapshots_current
+
+        compilation = source_metadata.get(COMPILER_KEY, {})
+        if compilation:
+            source_path = compilation["source_path"]
+            if source_path not in approved:
+                raise CompilerError("wiki_compilation_source_must_be_approved")
+            # Written targets use their persisted post-write hash on retry; other read dependencies
+            # must still match the snapshot used to generate the proposal.
+            expected_hashes = dict(compilation["context_hashes"])
+            for row in rows:
+                if row["status"] == "written":
+                    expected_hashes[str(row["target_path"])] = str(row["target_content_hash"])
+            assert_snapshots_current(self.wiki, expected_hashes)
+            plans.sort(key=lambda plan: plan.target_path != source_path)
         try:
             with self.database.session() as conn:
                 closure = prepare_wiki_memory_closure(
@@ -314,6 +363,10 @@ class WikiIngestWorkflowMixin(WikiIngestReviewMixin, WikiIngestStorageMixin):
                 if action_marker:
                     content = f"{action_marker}\n{content}"
                 page_type = page_type_for_path(plan.target_path)
+                compiled_meta = compilation.get("pages", {}).get(plan.target_path, {})
+                metadata = closure.page_metadata()
+                for key in ("entity_ids", "fact_ids", "evidence_ids"):
+                    metadata[key] = _unique([*compiled_meta.get(key, []), *metadata[key]])
                 page = self.wiki.write_page(
                     WikiPageWriteRequest(
                         title=plan.title,
@@ -325,8 +378,14 @@ class WikiIngestWorkflowMixin(WikiIngestReviewMixin, WikiIngestStorageMixin):
                         links=plan.links,
                         page_type=page_type,
                         confidence="medium",
-                        sources=[source_path],
-                        **closure.page_metadata(),
+                        sources=compiled_meta.get("sources", [source_path]),
+                        disputed=compiled_meta.get("disputed", False),
+                        aliases=compiled_meta.get("aliases", []),
+                        authors=compiled_meta.get("authors", []),
+                        contributors=compiled_meta.get("contributors", []),
+                        expiry=compiled_meta.get("expiry"),
+                        wiki_id=compiled_meta.get("wiki_id"),
+                        **metadata,
                         inference=page_type != "source",
                         source_message_id=request.run_id,
                         target_content_hash=plan.target_content_hash,
@@ -357,6 +416,8 @@ class WikiIngestWorkflowMixin(WikiIngestReviewMixin, WikiIngestStorageMixin):
                 )
                 self._update_page_result(plan.id, status="failed", index_job_id=None, error=str(exc))
             results.append(result)
+            if compilation and plan.target_path == source_path and result.status == "failed":
+                break
 
         pages_written = sum(1 for result in results if result.status in {"created", "updated"})
         run_status = "applied" if pages_written == len(results) else "partial" if pages_written else "failed"

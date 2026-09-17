@@ -452,8 +452,10 @@ export function useWiki({
       const response = await api.previewWikiIngest(request);
       dispatch({ type: "previewIngestSuccess", preview: response });
       onNotice({
-        tone: "success",
-        message: `资料库写入预览 ${formatTaskStatus(response.status)}：计划更新 ${response.page_plans.length} 个页面。`,
+        tone: response.source_metadata?.compilation_status === "model_not_configured" ? "info" : "success",
+        message: response.source_metadata?.compilation_status === "model_not_configured"
+          ? `模型未配置：当前为摘录预览，尚未进行知识融合。计划保存 ${response.page_plans.length} 个页面。`
+          : `知识融合预览已生成：计划更新 ${response.page_plans.length} 个页面，等待审查。`,
       });
     } catch (error) {
       onNotice({ tone: "error", message: describeError(error, "资料库写入预览失败") });
@@ -662,7 +664,7 @@ export function useWiki({
       void loadCoreStatus({ silent: true });
       onNotice({
         tone: response.issues.length > 0 ? "info" : "success",
-        message: `资料库检查完成：${response.summary.pages ?? 0} 个页面，${response.issues.length} 个问题。`,
+        message: `资料库检查完成：${response.summary.pages ?? 0} 个页面，${response.issues.length} 个问题；语义检查覆盖 ${response.summary.semantic_pages_checked ?? 0} 个页面。`,
       });
       onAgentActionsRefresh();
     } catch (error) {

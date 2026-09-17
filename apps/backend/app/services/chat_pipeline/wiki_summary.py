@@ -43,7 +43,10 @@ async def archive_wiki_answer_summary(
         return actions
     try:
         summary_service = ChatAnswerWikiSummaryService()
-        plan = summary_service.plan(
+        from app.api.services.factory import chat_model_client
+
+        plan = await summary_service.plan_with_model(
+            model=chat_model_client(context),
             conversation_id=state.conversation_id,
             user_message_id=state.message_id,
             assistant_message_id=assistant_message_id,

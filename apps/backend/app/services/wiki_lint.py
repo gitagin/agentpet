@@ -63,18 +63,29 @@ class WikiLintService:
         if self._owns_connection:
             self.conn.close()
 
+    async def run_with_model(self, request=None, *, model=None, action_marker=None):
+        from app.services.wiki.semantic_lint import semantic_issues
+
+        extra_issues, checked = ([], 0)
+        if model is not None and self.wiki is not None:
+            extra_issues, checked = await semantic_issues(self.wiki, model)
+        return self.run(request, action_marker=action_marker, semantic_findings=extra_issues,
+                        semantic_pages_checked=checked)
+
     def run(
         self,
         request: WikiLintRequest | None = None,
         *,
         action_marker: str | None = None,
+        semantic_findings: list[WikiLintIssue] | None = None,
+        semantic_pages_checked: int = 0,
     ) -> WikiLintReportResponse:
         lint_request = request or WikiLintRequest()
         if self.wiki is not None:
             self.wiki.ensure_core_files()
         generated_at = utc_now_iso()
         pages = self._load_pages()
-        issues: list[WikiLintIssue] = []
+        issues: list[WikiLintIssue] = list(semantic_findings or [])
         issues.extend(self._core_file_issues(pages))
         issues.extend(_schema_frontmatter_issues(pages))
         issues.extend(_duplicate_title_issues(pages))
@@ -96,6 +107,7 @@ class WikiLintService:
         research_questions = _research_questions(issues)
         repair_proposals = _repair_proposals(issues, pages)
         summary = _summary(pages, issues, research_questions, repair_proposals)
+        summary["semantic_pages_checked"] = semantic_pages_checked
         report_page = None
         if lint_request.write_report and self.wiki is not None:
             report_page = self._write_report(

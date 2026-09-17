@@ -8,6 +8,7 @@ Agent Pet 是面向 Windows 单用户的本地个人 LLM Wiki 与记忆图谱桌
 - FastAPI 本地 sidecar
 - SQLite 权威状态与中文 bigram 全文检索
 - Markdown Vault 与 Wiki
+- LLM 来源编译、旧页融合、带引用的多来源综合与语义体检（[流程与边界](docs/wiki-compilation.md)）
 - 本地语义检索：内置 bge-small-zh-v1.5 向量模型 + bge-reranker-base 重排（数据不出本机）
 - 混合检索：FTS + 向量 RRF 融合，向量索引默认走嵌入式本地 Qdrant，另可选 Kuzu 图投影层
 - 带来源的记忆召回、纠正和忘记

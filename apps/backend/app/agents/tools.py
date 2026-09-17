@@ -67,7 +67,7 @@ DEFAULT_MEMORY_TARGET_PATH = "Inbox/Pending Memories.md"
 TOOL_TIMEOUTS = {
     "search_memory": 5,
     "propose_memory": 10,
-    "plan_wiki_ingest": 15,
+    "plan_wiki_ingest": 300,
     "plan_wiki_query_archive": 10,
     "plan_wiki_synthesis": 15,
     "plan_wiki_lint": 20,

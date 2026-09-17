@@ -5239,11 +5239,13 @@ export interface components {
              * @default replace_section
              * @enum {string}
              */
-            operation: "create" | "append" | "replace_section";
+            operation: "create" | "append" | "replace_section" | "replace_page";
             /** Section */
             section?: string | null;
             /** Tags */
             tags?: string[];
+            /** Target Content Hash */
+            target_content_hash?: string | null;
             /** Target Path */
             target_path: string;
             /** Title */
@@ -5539,7 +5541,7 @@ export interface components {
              * @default append
              * @enum {string}
              */
-            operation: "create" | "append" | "replace_section";
+            operation: "create" | "append" | "replace_section" | "replace_page";
             /**
              * Revision
              * @default 1
@@ -5630,6 +5632,11 @@ export interface components {
         WikiSynthesizeRequest: {
             /** Content */
             content: string;
+            /**
+             * Disputed
+             * @default false
+             */
+            disputed: boolean;
             /** Entity Ids */
             entity_ids?: string[];
             /** Evidence Ids */
@@ -5644,10 +5651,16 @@ export interface components {
              * @enum {string}
              */
             page_type: "synthesis" | "comparison" | "decision" | "report";
+            /** Source Content Hashes */
+            source_content_hashes?: {
+                [key: string]: string;
+            };
             /** Source Paths */
             source_paths?: string[];
             /** Tags */
             tags?: string[];
+            /** Target Content Hash */
+            target_content_hash?: string | null;
             /** Target Path */
             target_path?: string | null;
             /** Title */

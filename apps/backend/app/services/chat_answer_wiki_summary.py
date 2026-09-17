@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from app.services.memory_policy import evaluate_memory_content
 from app.services.wiki import slugify_wiki_title
@@ -56,6 +56,25 @@ class ChatAnswerWikiSummaryPlan:
 
 class ChatAnswerWikiSummaryService:
     """Distill useful completed chat answers into auditable Wiki pages."""
+
+    async def plan_with_model(self, *, model=None, **kwargs) -> ChatAnswerWikiSummaryPlan | None:
+        plan = self.plan(**kwargs)
+        if plan is None or model is None:
+            return plan
+        from app.services.wiki.compiler import read_source
+
+        notes = await read_source(model, kwargs["assistant_answer"])
+        if not notes:
+            return None
+        content = _summary_markdown(
+            title=plan.title, question=kwargs["user_question"], answer=kwargs["assistant_answer"],
+            conversation_id=kwargs["conversation_id"], user_message_id=kwargs["user_message_id"],
+            assistant_message_id=kwargs["assistant_message_id"], agent_run_id=kwargs["agent_run_id"],
+            diary_markdown_path=kwargs.get("diary_markdown_path"),
+            diary_object_ids=kwargs.get("diary_object_ids", ()), source_paths=plan.source_paths,
+            key_points=[note["statement"] for note in notes],
+        )
+        return replace(plan, content=content)
 
     def plan(
         self,
@@ -172,8 +191,9 @@ def _summary_markdown(
     diary_markdown_path: str | None,
     diary_object_ids: tuple[str, ...],
     source_paths: tuple[str, ...],
+    key_points: list[str] | None = None,
 ) -> str:
-    key_points = _key_points(answer)
+    key_points = _key_points(answer) if key_points is None else key_points
     lines = [
         "## 来源摘要",
         "",
