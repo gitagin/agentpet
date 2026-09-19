@@ -411,6 +411,34 @@
   gap: 10px;
 }
 
+.wiki-shadow-summary {
+  min-width: 0;
+  padding-block: 12px;
+  border-top: 1px solid currentColor;
+}
+
+.wiki-shadow-summary dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 12px 20px;
+  margin: 12px 0 0;
+}
+
+.wiki-shadow-summary dl > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.wiki-shadow-summary dt {
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+.wiki-shadow-summary dd {
+  margin: 4px 0 0;
+  font-variant-numeric: tabular-nums;
+}
+
 .automation-toggle-row,
 .automation-locked-row {
   display: grid;

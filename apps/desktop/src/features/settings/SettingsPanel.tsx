@@ -36,6 +36,7 @@ export type SettingsPanelModel = {
   onTestEmbedding: () => void;
   automationSettingsDraft: AutomationSettingsDraft;
   automationSettingsSaveStatus: AsyncStatus;
+  shadowMetrics?: import("../../types").SettingsStatusResponse["wiki_shadow_metrics"];
   ttsDraft: TtsSettingsDraft;
   ttsSaveStatus: AsyncStatus;
   ttsStatus: TtsSettingsResponse | null;
@@ -88,6 +89,7 @@ export function SettingsPanel({ model }: SettingsPanelProps) {
   onTestEmbedding,
   automationSettingsDraft,
   automationSettingsSaveStatus,
+  shadowMetrics,
   ttsDraft,
   ttsSaveStatus,
   ttsStatus,
@@ -211,6 +213,7 @@ export function SettingsPanel({ model }: SettingsPanelProps) {
         onTest={onTestEmbedding}
       />
       <AutomationSettingsCard
+        shadowMetrics={shadowMetrics}
         draft={automationSettingsDraft}
         saveStatus={automationSettingsSaveStatus}
         settingsStatusLoadState={settingsStatusLoadState}

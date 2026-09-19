@@ -1670,6 +1670,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/wiki/pages/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Read Wiki Page */
+        post: operations["read_wiki_page_api_wiki_pages_read_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/wiki/query-archives": {
         parameters: {
             query?: never;
@@ -1971,6 +1988,11 @@ export interface components {
              * @default false
              */
             use_negotiation: boolean;
+            /**
+             * Wiki Shadow Enabled
+             * @default false
+             */
+            wiki_shadow_enabled: boolean;
         };
         /** AutomationSettingsResponse */
         AutomationSettingsResponse: {
@@ -2022,6 +2044,11 @@ export interface components {
              * @default false
              */
             use_negotiation: boolean;
+            /**
+             * Wiki Shadow Enabled
+             * @default false
+             */
+            wiki_shadow_enabled: boolean;
         };
         /** ChatAcceptedResponse */
         ChatAcceptedResponse: {
@@ -2038,6 +2065,12 @@ export interface components {
         ChatDailyHistoryMessage: {
             /** Agent Run Id */
             agent_run_id?: string | null;
+            /**
+             * Answer Basis
+             * @default not_assessed
+             * @enum {string}
+             */
+            answer_basis: "not_assessed" | "general_unverified" | "local_evidence_context" | "insufficient_local_evidence" | "validation_failed";
             /** Content */
             content: string;
             /** Conversation Id */
@@ -3730,6 +3763,14 @@ export interface components {
             source_scope: string;
             /** Title */
             title: string;
+            /** Wiki End Line */
+            wiki_end_line?: number | null;
+            /** Wiki Generation */
+            wiki_generation?: string | null;
+            /** Wiki Section */
+            wiki_section?: string | null;
+            /** Wiki Start Line */
+            wiki_start_line?: number | null;
         };
         /** MetricValueResponse */
         MetricValueResponse: {
@@ -4382,6 +4423,7 @@ export interface components {
              * @default false
              */
             vault_configured: boolean;
+            wiki_shadow_metrics?: components["schemas"]["WikiShadowSummary"];
         };
         /** SidecarRecoveryRequest */
         SidecarRecoveryRequest: {
@@ -5480,6 +5522,49 @@ export interface components {
             /** Pages */
             pages?: components["schemas"]["WikiPageSummary"][];
         };
+        /** WikiPageReadRequest */
+        WikiPageReadRequest: {
+            /** Expected Version */
+            expected_version?: string | null;
+            /** Generation */
+            generation?: string | null;
+            /**
+             * Max Chars
+             * @default 12000
+             */
+            max_chars: number;
+            /** Relative Path */
+            relative_path: string;
+            /** Section */
+            section?: string | null;
+        };
+        /** WikiPageReadResponse */
+        WikiPageReadResponse: {
+            /** Backlinks */
+            backlinks: string[];
+            /** Content */
+            content: string;
+            /** Content Hash */
+            content_hash: string;
+            /** End Line */
+            end_line: number;
+            /** Generation */
+            generation: string;
+            /**
+             * Line Basis
+             * @default markdown_body
+             * @constant
+             */
+            line_basis: "markdown_body";
+            /** Links */
+            links: string[];
+            /** Relative Path */
+            relative_path: string;
+            /** Start Line */
+            start_line: number;
+            /** Title */
+            title: string;
+        };
         /** WikiPageResponse */
         WikiPageResponse: {
             /** Action Id */
@@ -5593,6 +5678,91 @@ export interface components {
             path: string;
             /** Updated At */
             updated_at?: string | null;
+        };
+        /** WikiShadowSummary */
+        WikiShadowSummary: {
+            /**
+             * Assessment Calls
+             * @default 0
+             */
+            assessment_calls: number;
+            /**
+             * Authority Denied
+             * @default 0
+             */
+            authority_denied: number;
+            /**
+             * Available
+             * @default true
+             */
+            available: boolean;
+            /**
+             * Budget Exhausted
+             * @default 0
+             */
+            budget_exhausted: number;
+            /**
+             * Completed
+             * @default 0
+             */
+            completed: number;
+            /**
+             * Coverage Complete
+             * @default 0
+             */
+            coverage_complete: number;
+            /**
+             * Disputed
+             * @default 0
+             */
+            disputed: number;
+            /**
+             * Evidence Chars
+             * @default 0
+             */
+            evidence_chars: number;
+            /**
+             * Failed
+             * @default 0
+             */
+            failed: number;
+            /**
+             * Interrupted
+             * @default 0
+             */
+            interrupted: number;
+            /**
+             * Invalid Records
+             * @default 0
+             */
+            invalid_records: number;
+            /** Mean Latency Ms */
+            mean_latency_ms?: number | null;
+            /**
+             * Note Fallbacks
+             * @default 0
+             */
+            note_fallbacks: number;
+            /**
+             * Samples
+             * @default 0
+             */
+            samples: number;
+            /**
+             * Today Samples
+             * @default 0
+             */
+            today_samples: number;
+            /**
+             * Unfinished
+             * @default 0
+             */
+            unfinished: number;
+            /**
+             * Wiki Hits
+             * @default 0
+             */
+            wiki_hits: number;
         };
         /** WikiSourceImportPreviewRequest */
         WikiSourceImportPreviewRequest: {
@@ -8762,6 +8932,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WikiPageResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_wiki_page_api_wiki_pages_read_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WikiPageReadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WikiPageReadResponse"];
                 };
             };
             /** @description Validation Error */

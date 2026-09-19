@@ -80,6 +80,7 @@ Thumbs.db
 
 # Local agent and project config
 AGENTS.md
+!/apps/backend/app/resources/wiki/AGENTS.md
 CHANGELOG.md
 CLAUDE.md
 progress.md

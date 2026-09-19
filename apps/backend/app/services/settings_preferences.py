@@ -15,6 +15,7 @@ from app.utils.time import utc_now_iso
 from .settings_types import (
     CredentialStore,
     LOCAL_PRIVACY_MODE_STATE_KEY,
+    WIKI_SHADOW_ENABLED_STATE_KEY,
     ModelKeyStatus,
     PROACTIVE_TRIGGER_FREQUENCY_STATE_KEY,
     TTS_CREDENTIAL_SLOT,
@@ -50,10 +51,12 @@ class SettingsPreferencesMixin:
     def get_automation_settings(self) -> AutomationSettingsResponse:
         row = self.conn.execute("SELECT * FROM automation_settings WHERE id = 1").fetchone()
         local_privacy_mode = self._get_bool_state(LOCAL_PRIVACY_MODE_STATE_KEY)
+        wiki_shadow_enabled = self._get_bool_state(WIKI_SHADOW_ENABLED_STATE_KEY, strict=True)
         proactive_trigger_frequency = self._get_proactive_trigger_frequency()
         if row is None:
             return AutomationSettingsResponse(
                 local_privacy_mode=local_privacy_mode,
+                wiki_shadow_enabled=wiki_shadow_enabled,
                 proactive_trigger_frequency=proactive_trigger_frequency,
             )
         return AutomationSettingsResponse(
@@ -61,6 +64,7 @@ class SettingsPreferencesMixin:
             auto_structured_memory=bool(row["auto_structured_memory"]),
             auto_long_term_memory=bool(row["auto_long_term_memory"]),
             auto_wiki_organize=bool(row["auto_wiki_organize"]),
+            wiki_shadow_enabled=wiki_shadow_enabled,
             local_privacy_mode=local_privacy_mode,
             proactive_trigger_frequency=proactive_trigger_frequency,
             use_negotiation=bool(row["use_negotiation"]),
@@ -109,6 +113,13 @@ class SettingsPreferencesMixin:
                 bool(settings.local_privacy_mode),
                 now,
             )
+            # Older clients do not own the new opt-in setting.
+            if "wiki_shadow_enabled" in settings.model_fields_set:
+                self._set_app_state(
+                    WIKI_SHADOW_ENABLED_STATE_KEY,
+                    settings.wiki_shadow_enabled,
+                    now,
+                )
             self._set_app_state(
                 PROACTIVE_TRIGGER_FREQUENCY_STATE_KEY,
                 normalize_proactive_trigger_frequency(settings.proactive_trigger_frequency),
@@ -129,7 +140,7 @@ class SettingsPreferencesMixin:
             value = str(row["value"])
         return normalize_proactive_trigger_frequency(value)
 
-    def _get_bool_state(self, key: str, default: bool = False) -> bool:
+    def _get_bool_state(self, key: str, default: bool = False, *, strict: bool = False) -> bool:
         row = self.conn.execute("SELECT value FROM app_state WHERE key = ?", (key,)).fetchone()
         if row is None:
             return default
@@ -139,6 +150,8 @@ class SettingsPreferencesMixin:
             value = str(row["value"]).strip().lower()
         if isinstance(value, bool):
             return value
+        if strict:
+            return default
         if isinstance(value, (int, float)):
             return bool(value)
         if isinstance(value, str):

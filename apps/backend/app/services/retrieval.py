@@ -10,6 +10,9 @@ from datetime import date, datetime
 from time import perf_counter_ns
 
 from app.config import get_settings
+from app.services.evidence_policy import wiki_page_rejection_reason
+from app.services.evidence_policy import inactive_evidence_status
+from app.services.memory import SafeMarkdownWriter, MarkdownWriteError
 from app.models.api import MemorySearchResponse, MemorySearchResult
 from app.models.enums import IndexJobStatus, IndexJobType, NoteStatus
 from app.repositories.storage import IndexJobRepository, NoteRepository, SearchResult, VaultRepository
@@ -104,11 +107,12 @@ def _corpus_stamp(conn, *, vault_id: str) -> str:
             (SELECT COALESCE(MAX(indexed_at), '') FROM notes WHERE vault_id = ?),
             (SELECT COALESCE(MAX(updated_at), '') FROM memory_graph_facts),
             (SELECT COALESCE(MAX(updated_at), '') FROM diary_memory_objects),
-            (SELECT COALESCE(MAX(rowid), 0) FROM index_jobs WHERE vault_id = ?)
+            (SELECT COALESCE(MAX(rowid), 0) FROM index_jobs WHERE vault_id = ?),
+            (SELECT revision FROM graph_source_state WHERE id = 1)
         """,
         (vault_id, vault_id),
     ).fetchone()
-    return f"{row[0]}\x1f{row[1]}\x1f{row[2]}\x1f{row[3]}"
+    return "\x1f".join(str(value) for value in row)
 
 
 def candidate_pool_size(top_k: int) -> int:
@@ -225,10 +229,13 @@ class RetrievalService:
         # explicit opt-ins because their availability depends on local services.
         mode: str = "fts",
         now: date | datetime | None = None,
+        vault_notes_only: bool = False,
     ) -> MemorySearchResponse:
         if mode not in _VALID_RETRIEVAL_MODES:
             raise InvalidRetrievalModeError()
         if source_scope not in _VALID_SOURCE_SCOPES:
+            raise InvalidRetrievalSourceScopeError()
+        if vault_notes_only and source_scope != "knowledge_base":
             raise InvalidRetrievalSourceScopeError()
 
         total_started = perf_counter_ns()
@@ -239,7 +246,7 @@ class RetrievalService:
             requested_channels = route_retrieval_channels(_channels_for_mode(mode), query)
             plan = build_retrieval_plan(
                 query,
-                approved_source_scopes=_plan_source_scopes(source_scope),
+                approved_source_scopes=("vault_note",) if vault_notes_only else _plan_source_scopes(source_scope),
                 requested_channels=requested_channels,
                 # 本地向量不出本机，隐私模式不构成禁用它传输的理由；
                 # sensitive 仍保守禁用（缓存/日志面上不做语义召回）。
@@ -261,12 +268,23 @@ class RetrievalService:
                 local_privacy=local_privacy,
                 vector_generation=vector_health.get("active_generation"),
             )
+            if vault_notes_only:
+                cache_key += ":vault_notes_only"
             cached = self._cache_peek(cache_key)
             if cached is not None:
                 metadata = cached.metadata
                 metadata = dict(metadata)
                 metadata["cache_status"] = "hit"
-                return cached.model_copy(update={"metadata": metadata}, deep=True)
+                permitted = [
+                    item for item in cached.results
+                    if wiki_page_rejection_reason(
+                        conn, vault_id=vault_id, relative_path=item.relative_path,
+                    ) is None
+                ]
+                metadata["authority_rejected_count"] = len(cached.results) - len(permitted)
+                if isinstance(metadata.get("fusion"), dict):
+                    metadata["fusion"] = {**metadata["fusion"], "selected_count": len(permitted)}
+                return cached.model_copy(update={"metadata": metadata, "results": permitted}, deep=True)
             fallback_reason: str | None = None
             if "vector" in requested_channels and local_privacy and not vector_transport_local:
                 fallback_reason = "local_privacy_mode"
@@ -578,6 +596,91 @@ class RetrievalService:
         self._cache_store(cache_key, response)
         return response
 
+    def restore_citations(
+        self, *, vault_id: str, citations: Sequence[MemorySearchResult],
+        vault_notes_only: bool = False,
+    ) -> tuple[list[MemorySearchResult], list[str]]:
+        """Restore indexed document citations without trusting client authority fields."""
+        restored: list[MemorySearchResult] = []
+        errors: list[str] = []
+        with self.database.session() as conn:
+            vault = VaultRepository(conn).get(vault_id)
+            writer = SafeMarkdownWriter(vault["root_path"])
+            for index, citation in enumerate(citations):
+                def reject(reason: str) -> None:
+                    errors.append(f"archive_citation_{index}_{reason}")
+
+                if citation.wiki_generation or citation.retrieval_mode == "wiki_snapshot":
+                    reject("snapshot_archive_not_supported")
+                    continue
+                if not citation.content_hash:
+                    reject("version_required")
+                    continue
+                row = conn.execute(
+                    """SELECT c.content_hash, n.content_hash AS page_hash
+                       FROM note_chunks c JOIN notes n
+                         ON n.id = c.note_id AND n.vault_id = c.vault_id
+                        AND n.relative_path = c.relative_path
+                       WHERE c.id = ? AND c.note_id = ? AND c.vault_id = ?
+                         AND c.relative_path = ? AND n.status = 'indexed'""",
+                    (citation.chunk_id, citation.note_id, vault_id, citation.relative_path),
+                ).fetchone()
+                if row is None or row["content_hash"] != citation.content_hash:
+                    reject("not_current")
+                    continue
+                scope = _classify_source_scope(citation.relative_path)
+                if vault_notes_only and (
+                    scope != "knowledge_base"
+                    or citation.relative_path.replace("\\", "/").split("/")[0].casefold() == "wiki"
+                ):
+                    reject("vault_note_required")
+                    continue
+                if scope not in {"knowledge_base", "daily_chat", "personal_memory"} or scope != citation.source_scope:
+                    reject("scope_mismatch")
+                    continue
+                try:
+                    parsed = read_markdown(writer.resolve_markdown_path(citation.relative_path))
+                except (OSError, ValueError, RuntimeError, MarkdownWriteError):
+                    reject("source_unavailable")
+                    continue
+                if parsed.content_hash != row["page_hash"]:
+                    reject("source_changed")
+                    continue
+                if vault_notes_only:
+                    from app.services.evidence_policy import derived_document_source_type
+
+                    if derived_document_source_type(citation.relative_path, parsed.frontmatter):
+                        reject("derived_document")
+                        continue
+                lifecycle = _note_lifecycle_status(citation.relative_path)
+                if inactive_evidence_status(lifecycle, parsed.body) or inactive_evidence_status(
+                    str(parsed.frontmatter.get("status") or ""),
+                ):
+                    reject("inactive")
+                    continue
+                if detect_sensitive_reason(parsed.body):
+                    reject("sensitive")
+                    continue
+                candidates = _authoritative_fts_results(
+                    conn,
+                    [SearchResult(note_id=citation.note_id, chunk_id=citation.chunk_id,
+                        relative_path=citation.relative_path, title="", heading=None,
+                        snippet="", score=1.0)],
+                    vault_id=vault_id,
+                )
+                if not candidates or not _candidate_policy_allows(candidates[0], self.candidate_filter):
+                    reject("not_authorized")
+                    continue
+                candidate = candidates[0]
+                restored.append(MemorySearchResult(
+                    note_id=candidate.note_id, chunk_id=candidate.chunk_id,
+                    relative_path=candidate.relative_path, title=parsed.title,
+                    heading=candidate.heading, snippet=candidate.content or "",
+                    score=1.0, content_hash=candidate.content_hash,
+                    source_scope=scope, retrieval_mode="authority_restore", lifecycle_status=lifecycle,
+                ))
+        return restored, errors
+
     def _cache_peek(self, cache_key: str) -> MemorySearchResponse | None:
         with self._cache_lock:
             return self._cache.get(cache_key)
@@ -744,6 +847,8 @@ def _authoritative_vector_results(
             continue
         if candidate_vault_id != vault_id or generation != active_generation:
             continue
+        if wiki_page_rejection_reason(conn, vault_id=vault_id, relative_path=relative_path):
+            continue
         row = conn.execute(
             """
             SELECT
@@ -809,6 +914,8 @@ def _authoritative_fts_results(
 ) -> list[SearchResult]:
     accepted: list[SearchResult] = []
     for candidate in candidates:
+        if wiki_page_rejection_reason(conn, vault_id=vault_id, relative_path=candidate.relative_path):
+            continue
         row = conn.execute(
             """
             SELECT

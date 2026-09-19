@@ -78,6 +78,7 @@ export function SettingsPanelContainer() {
         onTestEmbedding: () => void settings.testEmbeddingConnection(),
         automationSettingsDraft: settings.automationSettingsDraft,
         automationSettingsSaveStatus: settings.automationSettingsSaveStatus,
+        shadowMetrics: settings.settingsStatus?.wiki_shadow_metrics,
         ttsDraft: settings.ttsSettingsDraft,
         ttsSaveStatus: settings.ttsSettingsSaveStatus,
         ttsStatus: settings.settingsStatus?.tts_settings ?? null,

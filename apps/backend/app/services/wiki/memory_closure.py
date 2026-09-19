@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from app.repositories.storage import VaultRepository
+from app.services.memory import MarkdownWriteError, SafeMarkdownWriter
 from app.services.memory_candidates import (
     MemoryCandidateCreate,
     MemoryCandidateStore,
@@ -38,9 +39,17 @@ from app.services.memory_entity_graph import (
 from app.services.memory_lifecycle import MemoryLifecycleService
 from app.services.memory_taxonomy import MemoryKind, MemoryScope, RiskTier, SourceTrack
 from app.services.wiki_reconciler import bind_authoritative_wiki_page
+from app.services.evidence_policy import (
+    independent_source_rejection_reason,
+    source_provenance_kind,
+    wiki_document_rejection_reason,
+)
 from app.storage.markdown import read_markdown
 from app.utils.hash import sha256_hex
 from app.utils.time import utc_now_iso
+
+from .common import WikiWorkflowError
+from .ingest_identity import assert_ingest_source_scope
 
 
 WIKI_EXTRACTION_METADATA_KEY = "memory_extraction"
@@ -134,6 +143,7 @@ class _ResolvedWikiSource:
     source_entity_ids: tuple[str, ...]
     fact_ids: tuple[str, ...]
     evidence_ids: tuple[str, ...]
+    page_hashes: tuple[tuple[str, str], ...] = ()
 
 
 def prepare_wiki_memory_closure(
@@ -157,6 +167,22 @@ def prepare_wiki_memory_closure(
     actual_hash = sha256_hex(raw_content)
     if actual_hash != source_hash:
         raise WikiMemoryClosureError("source_hash_mismatch")
+    source_row = conn.execute(
+        "SELECT * FROM wiki_sources WHERE id = ?", (source_id,)
+    ).fetchone()
+    try:
+        assert_ingest_source_scope(conn, source_row, Path(vault_root))
+    except WikiWorkflowError as exc:
+        raise WikiMemoryClosureError(str(exc)) from exc
+    if (
+        source_row["source_hash"] != source_hash
+        or source_row["raw_content"] != raw_content
+        or source_row["source_type"] != source_type
+    ):
+        raise WikiMemoryClosureError("source_identity_mismatch")
+    rejection = independent_source_rejection_reason(source_type)
+    if rejection:
+        raise WikiMemoryClosureError(rejection)
     vault_id = _ensure_vault(conn, vault_root)
     graph = MemoryEntityGraphStore(conn)
     candidates = MemoryCandidateStore(conn)
@@ -204,6 +230,7 @@ def prepare_wiki_memory_closure(
                 source_hash=source_hash,
                 source_id=source_id,
                 provenance=provenance,
+                evidence_ids=resolved.evidence_ids,
             )
             _bind_source_provenance_edges(
                 graph,
@@ -224,7 +251,7 @@ def prepare_wiki_memory_closure(
             if resolved is not None
             else ()
         )
-        extraction_evidence_ids = _fact_evidence_ids(graph.conn, extraction_fact_ids)
+        extraction_evidence_ids = resolved.evidence_ids if resolved is not None else ()
         return WikiMemoryClosurePreparation(
             vault_id=vault_id,
             source_id=source_id,
@@ -255,11 +282,11 @@ def finalize_wiki_memory_closure(
     """Activate eligible facts and bind them to authoritative Wiki artifacts."""
     if not written_paths:
         return WikiMemoryClosureFinalization()
-    if sha256_hex(_read_source_content(conn, preparation.source_id)) != preparation.source_hash:
-        raise WikiMemoryClosureError("source_hash_changed_before_finalize")
     vault_id = _ensure_vault(conn, vault_root)
     if vault_id != preparation.vault_id:
         raise WikiMemoryClosureError("vault_identity_changed_before_finalize")
+    if sha256_hex(_read_source_content(conn, preparation.source_id, vault_id)) != preparation.source_hash:
+        raise WikiMemoryClosureError("source_hash_changed_before_finalize")
 
     lifecycle = MemoryLifecycleService(conn)
     graph = lifecycle.entity_graph
@@ -271,6 +298,15 @@ def finalize_wiki_memory_closure(
     try:
         with graph.atomic():
             source_entity = graph.get_entity(preparation.source_entity_id)
+            if (
+                source_entity.metadata.get("source_id") != preparation.source_id
+                or source_entity.metadata.get("source_hash") != preparation.source_hash
+            ):
+                raise WikiMemoryClosureError("source_entity_identity_mismatch")
+            _validate_source_candidate(
+                MemoryCandidateStore(conn).get_candidate(preparation.source_candidate_id),
+                preparation.source_id, preparation.source_hash, source_type,
+            )
             if source_entity.status == "candidate":
                 source_entity = graph.activate_entity_candidate(
                     source_entity.id,
@@ -311,7 +347,9 @@ def finalize_wiki_memory_closure(
                 dict.fromkeys(
                     fact_id
                     for fact_id in active_facts
-                    if _fact_is_active_and_grounded(graph.conn, fact_id, preparation.source_hash)
+                    if _fact_is_active_and_grounded(
+                        graph.conn, fact_id, preparation.source_hash, preparation.source_id,
+                    )
                 )
             )
 
@@ -357,6 +395,7 @@ def finalize_wiki_memory_closure(
                     source_hash=preparation.source_hash,
                     source_id=preparation.source_id,
                     provenance="wiki_binding",
+                    evidence_ids=(page_evidence_id,),
                 )
 
                 for entity_id in preparation.extraction_entity_ids if preparation.extraction else ():
@@ -387,6 +426,9 @@ def finalize_wiki_memory_closure(
                         source_hash=preparation.source_hash,
                         source_id=preparation.source_id,
                         provenance="wiki_binding",
+                        evidence_ids=(_entity_page_evidence_id(
+                            preparation.source_hash, entity.id, relative_path,
+                        ),),
                     )
 
                 for fact_id in active_facts:
@@ -427,6 +469,9 @@ def finalize_wiki_memory_closure(
                         source_hash=preparation.source_hash,
                         source_id=preparation.source_id,
                         provenance="wiki_binding",
+                        evidence_ids=(_fact_page_evidence_id(
+                            preparation.source_hash, fact_id, relative_path,
+                        ),),
                     )
 
             return WikiMemoryClosureFinalization(
@@ -466,7 +511,6 @@ def prepare_wiki_synthesis_authority(
             resolved_sources.append(
                 _resolve_authoritative_wiki_source(
                     conn,
-                    graph,
                     vault_root=Path(vault_root),
                     vault_id=vault_id,
                     source_path=source_path,
@@ -710,11 +754,13 @@ def _safe_wiki_source_path(value: object) -> str:
     return normalized
 
 
-def _direct_source_hash_for_page(
+def _direct_source_for_page(
     conn: sqlite3.Connection,
     parsed,
     source_path: str,
-) -> str | None:
+    vault_id: str,
+    page_entity_id: str,
+) -> sqlite3.Row | None:
     page_type = str(parsed.frontmatter.get("page_type") or parsed.frontmatter.get("type") or "").strip()
     if page_type != "source" or not source_path.startswith("Wiki/Sources/"):
         return None
@@ -722,26 +768,83 @@ def _direct_source_hash_for_page(
     hashes = tuple(dict.fromkeys(raw_hashes))
     if len(hashes) > 1:
         raise WikiMemoryClosureError("synthesis_source_hash_ambiguous")
-    if hashes:
-        row = conn.execute(
-            "SELECT raw_content, content_preview FROM wiki_sources WHERE source_hash = ?",
-            (hashes[0],),
-        ).fetchone()
-        if row is None or sha256_hex(str(row["raw_content"] or row["content_preview"] or "")) != hashes[0]:
-            raise WikiMemoryClosureError("synthesis_source_hash_not_authoritative")
-        return hashes[0]
-    return None
+    rows = conn.execute(
+        """SELECT DISTINCT input.*, source.id AS source_entity_id,
+                  source.status AS entity_status,
+                  json_extract(source.metadata_json, '$.source_hash') AS entity_hash
+           FROM memory_graph_facts relation
+           JOIN memory_entities source ON source.id = relation.subject_entity_id
+           JOIN wiki_sources input
+             ON input.id = json_extract(source.metadata_json, '$.source_id')
+           WHERE relation.statement_kind = 'relation'
+             AND relation.relation_type = 'documented_in'
+             AND relation.object_entity_id = ? AND relation.status = 'active'
+             AND source.entity_type = 'source' AND input.vault_id = ?""",
+        (page_entity_id, vault_id),
+    ).fetchall()
+    if not rows:
+        raise WikiMemoryClosureError("synthesis_source_hash_not_authoritative")
+    if len(rows) != 1:
+        raise WikiMemoryClosureError("synthesis_source_identity_ambiguous")
+    row = rows[0]
+    if row["entity_status"] != "active":
+        raise WikiMemoryClosureError("synthesis_source_entity_not_active")
+    if (
+        not row["raw_content"]
+        or sha256_hex(row["raw_content"]) != row["source_hash"]
+        or row["entity_hash"] != row["source_hash"]
+        or (hashes and hashes[0] != row["source_hash"])
+    ):
+        raise WikiMemoryClosureError("synthesis_source_hash_not_authoritative")
+    rejection = independent_source_rejection_reason(row["source_type"])
+    if rejection:
+        raise WikiMemoryClosureError(rejection)
+    candidates = conn.execute(
+        """SELECT id FROM memory_candidates
+           WHERE json_extract(metadata_json, '$.source_id') = ?
+             AND json_extract(metadata_json, '$.candidate_role') = 'wiki_source_provenance'""",
+        (row["id"],),
+    ).fetchall()
+    if len(candidates) != 1:
+        raise WikiMemoryClosureError("source_candidate_identity_ambiguous")
+    _validate_source_candidate(
+        MemoryCandidateStore(conn).get_candidate(candidates[0]["id"]),
+        row["id"], row["source_hash"], row["source_type"],
+    )
+    return row
+
+
+def validate_wiki_page_roots(
+    conn: sqlite3.Connection,
+    *,
+    vault_root: Path,
+    vault_id: str,
+    source_path: str,
+    expected_content_hash: str,
+) -> _ResolvedWikiSource:
+    """Validate current roots without creating graph state or activating sources."""
+    vault = conn.execute(
+        "SELECT root_path FROM vaults WHERE id = ?", (vault_id,),
+    ).fetchone()
+    if vault is None or Path(vault["root_path"]).resolve() != vault_root.resolve():
+        raise WikiMemoryClosureError("synthesis_source_vault_mismatch")
+    return _resolve_authoritative_wiki_source(
+        conn, vault_root=vault_root, vault_id=vault_id,
+        source_path=_safe_wiki_source_path(source_path), resolving=(), cache={},
+        expected_content_hash=expected_content_hash, collect_facts=False,
+    )
 
 
 def _resolve_authoritative_wiki_source(
     conn: sqlite3.Connection,
-    graph: MemoryEntityGraphStore,
     *,
     vault_root: Path,
     vault_id: str,
     source_path: str,
     resolving: tuple[str, ...],
     cache: dict[str, _ResolvedWikiSource],
+    expected_content_hash: str | None = None,
+    collect_facts: bool = True,
 ) -> _ResolvedWikiSource:
     cached = cache.get(source_path)
     if cached is not None:
@@ -749,27 +852,42 @@ def _resolve_authoritative_wiki_source(
     if source_path in resolving:
         raise WikiMemoryClosureError("synthesis_source_cycle")
 
-    page_path = vault_root / Path(*source_path.split("/"))
+    try:
+        page_path = SafeMarkdownWriter(vault_root).resolve_markdown_path(source_path)
+    except MarkdownWriteError as exc:
+        raise WikiMemoryClosureError("synthesis_source_path_invalid") from exc
     if not page_path.is_file():
         raise WikiMemoryClosureError("synthesis_source_page_missing")
     parsed = read_markdown(page_path)
-    binding = graph.get_wiki_binding(vault_id=vault_id, wiki_relative_path=source_path)
+    if expected_content_hash is not None and parsed.content_hash != expected_content_hash:
+        raise WikiMemoryClosureError("synthesis_source_binding_hash_mismatch")
+    binding = conn.execute(
+        "SELECT * FROM wiki_page_bindings WHERE vault_id = ? AND wiki_relative_path = ?",
+        (vault_id, source_path),
+    ).fetchone()
     if binding is None:
         raise WikiMemoryClosureError("synthesis_source_binding_missing")
     if str(binding["status"] or "") != "active":
         raise WikiMemoryClosureError("synthesis_source_binding_not_active")
     if str(binding["content_hash"] or "") != parsed.content_hash:
         raise WikiMemoryClosureError("synthesis_source_binding_hash_mismatch")
+    rejection = wiki_document_rejection_reason(source_path, parsed.frontmatter)
+    if rejection:
+        raise WikiMemoryClosureError(rejection)
 
     page_entity_id = str(binding["page_entity_id"])
-    page_fact_ids = _active_facts_for_page(conn, page_entity_id, vault_id=vault_id)
-    direct_hash = _direct_source_hash_for_page(conn, parsed, source_path)
-    if direct_hash is not None:
+    page_fact_ids = (
+        _active_facts_for_page(conn, page_entity_id, vault_id=vault_id)
+        if collect_facts else ()
+    )
+    direct_source = _direct_source_for_page(conn, parsed, source_path, vault_id, page_entity_id)
+    if direct_source is not None:
         resolved = _ResolvedWikiSource(
-            source_hashes=(direct_hash,),
-            source_entity_ids=_source_entities_for_page(conn, page_entity_id, direct_hash),
+            source_hashes=(str(direct_source["source_hash"]),),
+            source_entity_ids=(str(direct_source["source_entity_id"]),),
             fact_ids=page_fact_ids,
-            evidence_ids=_evidence_ids_for_hash(conn, direct_hash),
+            evidence_ids=_evidence_ids_for_source(conn, str(direct_source["id"]), vault_id),
+            page_hashes=((source_path, parsed.content_hash),),
         )
         cache[source_path] = resolved
         return resolved
@@ -778,6 +896,7 @@ def _resolve_authoritative_wiki_source(
         dict.fromkeys(
             _safe_wiki_source_path(path)
             for path in _frontmatter_list(parsed.frontmatter, "sources")
+            if not path.startswith("message:")
         )
     )
     if not parent_paths:
@@ -785,16 +904,19 @@ def _resolve_authoritative_wiki_source(
     parents = tuple(
         _resolve_authoritative_wiki_source(
             conn,
-            graph,
             vault_root=vault_root,
             vault_id=vault_id,
             source_path=parent_path,
             resolving=(*resolving, source_path),
             cache=cache,
+            collect_facts=collect_facts,
         )
         for parent_path in parent_paths
     )
     resolved = _ResolvedWikiSource(
+        page_hashes=tuple(dict.fromkeys(
+            [(source_path, parsed.content_hash), *(item for parent in parents for item in parent.page_hashes)]
+        )),
         source_hashes=tuple(
             dict.fromkeys(source_hash for parent in parents for source_hash in parent.source_hashes)
         ),
@@ -812,37 +934,6 @@ def _resolve_authoritative_wiki_source(
     )
     cache[source_path] = resolved
     return resolved
-
-
-def _source_entities_for_page(
-    conn: sqlite3.Connection,
-    page_entity_id: str,
-    source_hash: str,
-) -> tuple[str, ...]:
-    params: list[object] = [page_entity_id]
-    hash_clause = ""
-    if not source_hash.startswith("page:"):
-        hash_clause = "AND json_extract(source.metadata_json, '$.source_hash') = ?"
-        params.append(source_hash)
-    rows = conn.execute(
-        f"""
-        SELECT DISTINCT source.id
-        FROM memory_graph_facts relation
-        JOIN memory_entities source ON source.id = relation.subject_entity_id
-        WHERE relation.statement_kind = 'relation'
-          AND relation.relation_type = 'documented_in'
-          AND relation.object_entity_id = ?
-          AND relation.status = 'active'
-          AND source.entity_type = 'source'
-          AND source.status = 'active'
-          {hash_clause}
-        ORDER BY source.id
-        """,
-        tuple(params),
-    ).fetchall()
-    if not rows:
-        raise WikiMemoryClosureError("synthesis_source_entity_missing")
-    return tuple(str(row["id"]) for row in rows)
 
 
 def _active_facts_for_page(
@@ -876,18 +967,25 @@ def _active_facts_for_page(
         graph.close()
 
 
-def _evidence_ids_for_hash(conn: sqlite3.Connection, source_hash: str) -> tuple[str, ...]:
-    if source_hash.startswith("page:"):
-        return ()
+def _evidence_ids_for_source(
+    conn: sqlite3.Connection, source_id: str, vault_id: str
+) -> tuple[str, ...]:
     rows = conn.execute(
         """
-        SELECT id
-        FROM memory_evidence
-        WHERE source_text_hash = ?
-           OR json_extract(metadata_json, '$.source_hash') = ?
-        ORDER BY created_at, id
+        SELECT evidence.id
+        FROM memory_evidence evidence
+        LEFT JOIN memory_candidates candidate ON candidate.id = evidence.candidate_id
+        JOIN wiki_sources input ON input.id = COALESCE(
+            json_extract(evidence.metadata_json, '$.source_id'),
+            json_extract(candidate.metadata_json, '$.source_id')
+        )
+        WHERE input.vault_id = ? AND input.id = ?
+          AND (candidate.id IS NULL OR candidate.status IN ('candidate', 'active'))
+          AND (evidence.source_text_hash = input.source_hash
+               OR json_extract(evidence.metadata_json, '$.source_hash') = input.source_hash)
+        ORDER BY evidence.created_at, evidence.id
         """,
-        (source_hash, source_hash),
+        (vault_id, source_id),
     ).fetchall()
     return tuple(str(row["id"]) for row in rows)
 
@@ -1001,26 +1099,38 @@ def _ensure_source_entity(
     source_id: str,
     source_title: str,
 ) -> MemoryEntity:
-    entity_key = f"wiki-source:{source_hash}"
-    row = graph.conn.execute(
-        "SELECT id FROM memory_entities WHERE entity_key = ?",
-        (entity_key,),
-    ).fetchone()
-    if row is not None:
-        return graph.get_entity(str(row["id"]))
-    return graph.create_entity(
-        entity_type="source",
-        canonical_name=source_title,
-        entity_key=entity_key,
-        status="candidate",
-        risk_tier="low",
-        confidence=1.0,
-        metadata={
-            "source_hash": source_hash,
-            "source_id": source_id,
-            "source_type": "wiki",
-        },
-    )
+    entity_key = f"wiki-source-id:{source_id}"
+    with graph.atomic():
+        rows = graph.conn.execute(
+            "SELECT id FROM memory_entities WHERE entity_key IN (?, ?)",
+            (entity_key, f"wiki-source:{source_hash}"),
+        ).fetchall()
+        if len(rows) > 1:
+            raise WikiMemoryClosureError("source_entity_identity_ambiguous")
+        if rows:
+            entity = graph.get_entity(str(rows[0]["id"]))
+            if (
+                entity.entity_type != "source"
+                or entity.metadata.get("source_id") != source_id
+                or entity.metadata.get("source_hash") != source_hash
+            ):
+                raise WikiMemoryClosureError("source_entity_identity_mismatch")
+            if entity.status not in {"candidate", "active"}:
+                raise WikiMemoryClosureError("source_entity_not_activatable")
+            return entity
+        return graph.create_entity(
+            entity_type="source",
+            canonical_name=source_title,
+            entity_key=entity_key,
+            status="candidate",
+            risk_tier="low",
+            confidence=1.0,
+            metadata={
+                "source_hash": source_hash,
+                "source_id": source_id,
+                "source_type": "wiki",
+            },
+        )
 
 
 def _ensure_source_provenance_candidate(
@@ -1033,25 +1143,40 @@ def _ensure_source_provenance_candidate(
     source_type: str,
     raw_content: str,
 ):
+    legacy = graph.conn.execute(
+        """SELECT id FROM memory_candidates
+           WHERE normalized_value = ? AND summary = 'Wiki source provenance'""",
+        (source_hash,),
+    ).fetchall()
+    if len(legacy) > 1:
+        raise WikiMemoryClosureError("source_candidate_identity_ambiguous")
+    normalized_value = f"wiki-source-id:{source_id}"
+    if legacy:
+        stored = candidates.get_candidate(str(legacy[0]["id"]))
+        _validate_source_candidate(stored, source_id, source_hash, source_type)
+        normalized_value = stored.normalized_value
     candidate = candidates.create_candidate(
         MemoryCandidateCreate(
             memory_kind=MemoryKind.FACT,
             memory_scope=MemoryScope.TOPIC,
             summary="Wiki source provenance",
-            normalized_value=source_hash,
+            normalized_value=normalized_value,
             source_text=raw_content,
             source_track=SourceTrack.MODEL_EXTRACTED,
             risk_tier=RiskTier.LOW,
             confidence=1.0,
+            allow_reactivation=False,
             metadata={
                 "source_hash": source_hash,
                 "source_id": source_id,
                 "source_type": source_type,
                 "source_title": source_title,
+                "provenance_kind": source_provenance_kind(source_type),
                 "candidate_role": "wiki_source_provenance",
             },
         )
     )
+    _validate_source_candidate(candidate, source_id, source_hash, source_type)
     row = graph.conn.execute(
         "SELECT id FROM memory_evidence WHERE candidate_id = ? ORDER BY created_at, id LIMIT 1",
         (candidate.id,),
@@ -1059,6 +1184,19 @@ def _ensure_source_provenance_candidate(
     if row is None:
         raise WikiMemoryClosureError("source_evidence_missing")
     return candidate, str(row["id"])
+
+
+def _validate_source_candidate(candidate, source_id: str, source_hash: str, source_type: str) -> None:
+    if (
+        candidate.metadata.get("source_id") != source_id
+        or candidate.metadata.get("source_hash") != source_hash
+        or candidate.metadata.get("source_type") != source_type
+        or candidate.metadata.get("candidate_role") != "wiki_source_provenance"
+        or candidate.source_text_hash != source_hash
+    ):
+        raise WikiMemoryClosureError("source_candidate_identity_mismatch")
+    if candidate.status.value not in {"candidate", "active"}:
+        raise WikiMemoryClosureError("source_candidate_not_activatable")
 
 
 def _bind_source_provenance_edges(
@@ -1103,6 +1241,7 @@ def _annotate_fact_provenance(
     source_hash: str,
     source_id: str,
     provenance: str,
+    evidence_ids: tuple[str, ...],
 ) -> None:
     with graph.atomic():
         with graph._write_scope():
@@ -1120,22 +1259,39 @@ def _annotate_fact_provenance(
                     metadata = {}
                 if not isinstance(metadata, dict):
                     metadata = {}
-                metadata.update(
-                    {
-                        "source_hash": source_hash,
-                        "source_id": source_id,
-                        "wiki_extraction_provenance": provenance,
-                    }
-                )
+                existing_source = metadata.get("source_id")
+                attribution = {
+                    "source_hash": source_hash,
+                    "source_id": source_id,
+                    "wiki_extraction_provenance": provenance,
+                }
+                if existing_source in {None, source_id}:
+                    metadata.update(attribution)
                 serialized = json.dumps(metadata, ensure_ascii=True, sort_keys=True)
                 conn.execute(
                     "UPDATE memory_graph_facts SET metadata_json = ?, updated_at = ? WHERE id = ?",
                     (serialized, utc_now_iso(), fact_id),
                 )
-                conn.execute(
-                    "UPDATE memory_evidence SET metadata_json = ? WHERE fact_id = ?",
-                    (serialized, fact_id),
-                )
+                for evidence_id in evidence_ids:
+                    evidence = conn.execute(
+                        "SELECT metadata_json FROM memory_evidence WHERE id = ? AND fact_id = ?",
+                        (evidence_id, fact_id),
+                    ).fetchone()
+                    if evidence is None:
+                        continue
+                    try:
+                        evidence_metadata = json.loads(evidence["metadata_json"] or "{}")
+                    except (ValueError, TypeError) as exc:
+                        raise WikiMemoryClosureError("source_evidence_metadata_invalid") from exc
+                    if not isinstance(evidence_metadata, dict):
+                        raise WikiMemoryClosureError("source_evidence_metadata_invalid")
+                    if evidence_metadata.get("source_id") not in {None, source_id}:
+                        raise WikiMemoryClosureError("source_evidence_identity_mismatch")
+                    evidence_metadata.update(attribution)
+                    conn.execute(
+                        "UPDATE memory_evidence SET metadata_json = ? WHERE id = ?",
+                        (json.dumps(evidence_metadata, ensure_ascii=True, sort_keys=True), evidence_id),
+                    )
 
 
 def _ensure_wiki_page_entity(
@@ -1164,41 +1320,36 @@ def _ensure_wiki_page_entity(
     )
 
 
-def _fact_evidence_ids(conn: sqlite3.Connection, fact_ids: tuple[str, ...]) -> tuple[str, ...]:
-    result: list[str] = []
-    for fact_id in fact_ids:
-        rows = conn.execute(
-            "SELECT id FROM memory_evidence WHERE fact_id = ? ORDER BY created_at, id",
-            (fact_id,),
-        ).fetchall()
-        result.extend(str(row["id"]) for row in rows)
-    return tuple(dict.fromkeys(result))
-
-
-def _fact_is_active_and_grounded(conn: sqlite3.Connection, fact_id: str, source_hash: str) -> bool:
+def _fact_is_active_and_grounded(
+    conn: sqlite3.Connection, fact_id: str, source_hash: str, source_id: str,
+) -> bool:
     row = conn.execute(
-        "SELECT status, metadata_json FROM memory_graph_facts WHERE id = ?",
+        "SELECT status FROM memory_graph_facts WHERE id = ?",
         (fact_id,),
     ).fetchone()
     if row is None or str(row["status"] or "") != "active":
         return False
-    try:
-        metadata = json.loads(str(row["metadata_json"] or "{}"))
-    except json.JSONDecodeError:
-        metadata = {}
-    if isinstance(metadata, dict) and str(metadata.get("source_hash") or "") == source_hash:
-        return True
     return conn.execute(
-        "SELECT 1 FROM memory_evidence WHERE fact_id = ? AND source_text_hash = ? LIMIT 1",
-        (fact_id, source_hash),
+        """SELECT 1 FROM memory_evidence
+           WHERE fact_id = ?
+             AND json_valid(metadata_json)
+             AND json_extract(metadata_json, '$.source_id') = ?
+             AND json_extract(metadata_json, '$.source_hash') = ? LIMIT 1""",
+        (fact_id, source_id, source_hash),
     ).fetchone() is not None
 
 
-def _read_source_content(conn: sqlite3.Connection, source_id: str) -> str:
-    row = conn.execute("SELECT raw_content, content_preview FROM wiki_sources WHERE id = ?", (source_id,)).fetchone()
+def _read_source_content(conn: sqlite3.Connection, source_id: str, vault_id: str) -> str:
+    row = conn.execute(
+        "SELECT raw_content, source_type FROM wiki_sources WHERE id = ? AND vault_id = ?",
+        (source_id, vault_id),
+    ).fetchone()
     if row is None:
         raise WikiMemoryClosureError("source_not_found_before_finalize")
-    return str(row["raw_content"] or row["content_preview"] or "")
+    rejection = independent_source_rejection_reason(row["source_type"])
+    if rejection:
+        raise WikiMemoryClosureError(rejection)
+    return str(row["raw_content"] or "")
 
 
 def _frontmatter_revision(frontmatter: Mapping[str, object]) -> int:

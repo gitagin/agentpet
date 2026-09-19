@@ -1,4 +1,5 @@
 from pydantic import BaseModel, Field
+from .answer_basis import AnswerBasis
 
 
 class ChatRequest(BaseModel):
@@ -27,6 +28,7 @@ class ChatDailyHistoryMessage(BaseModel):
     created_at: str
     updated_at: str
     agent_run_id: str | None = None
+    answer_basis: AnswerBasis = "not_assessed"
 
 
 class ChatDailyHistoryResponse(BaseModel):

@@ -14,7 +14,10 @@ $executablePath = Join-Path $distPath "agent-pet-sidecar\agent-pet-sidecar.exe"
 $internalPath = Join-Path $distPath "agent-pet-sidecar\_internal"
 
 if ([string]::IsNullOrWhiteSpace($Python)) {
-    $Python = "python"
+    $Python = Join-Path $backendRoot ".venv\Scripts\python.exe"
+    if (-not (Test-Path -LiteralPath $Python -PathType Leaf)) {
+        throw "Backend virtual environment is missing. Follow the locked environment setup in README.md."
+    }
 }
 
 Push-Location $backendRoot

@@ -2,13 +2,35 @@ from .common import *
 from .common import _CachedIngestPreview, _INGEST_PREVIEW_CACHE, _PREVIEW_TOKEN_TTL_SECONDS, _StoredIngestRun
 from .mapping import _map_ingest_review, _map_plan
 from .utility import _dumps_list
+from .ingest_identity import assert_ingest_source_matches, assert_ingest_source_scope
 
 
 class WikiIngestStorageMixin:
 
+    def _validated_ingest_request(self, conn, request_json, source_row) -> WikiIngestPreviewRequest:
+        assert_ingest_source_scope(conn, source_row, self.wiki.writer.vault_root)
+        try:
+            payload = json.loads(request_json)
+            if not isinstance(payload, dict) or not {
+                "source_type", "source_uri", "source_metadata"
+            }.issubset(payload):
+                raise ValueError("source identity fields missing")
+            request = WikiIngestPreviewRequest.model_validate(payload)
+        except (TypeError, ValueError) as exc:
+            raise WikiWorkflowError("wiki_ingest_request_invalid") from exc
+        assert_ingest_source_matches(source_row, request)
+        return request
+
     def _existing_source_id(self, source_hash: str) -> str | None:
         with self.database.session() as conn:
-            row = conn.execute("SELECT id FROM wiki_sources WHERE source_hash = ?", (source_hash,)).fetchone()
+            row = conn.execute(
+                """
+                SELECT s.id FROM wiki_sources s
+                JOIN vaults v ON v.id = s.vault_id
+                WHERE s.source_hash = ? AND v.root_path = ?
+                """,
+                (source_hash, str(self.wiki.writer.vault_root.resolve())),
+            ).fetchone()
         return str(row["id"]) if row is not None else None
 
     def _cache_ingest_preview(
@@ -79,15 +101,18 @@ class WikiIngestStorageMixin:
         with self.database.session() as conn:
             run = conn.execute(
                 """
-                SELECT r.id, r.source_id, s.title, s.source_type, s.source_uri, s.raw_content, s.content_preview
+                SELECT r.id, r.source_id, r.request_json
                 FROM wiki_workflow_runs r
-                LEFT JOIN wiki_sources s ON s.id = r.source_id
                 WHERE r.id = ? AND r.workflow_type = ?
                 """,
                 (run_id, "ingest"),
             ).fetchone()
             if run is None:
                 raise WikiWorkflowError(f"Wiki ingest run not found: {run_id}")
+            source_row = conn.execute(
+                "SELECT * FROM wiki_sources WHERE id = ?", (run["source_id"],)
+            ).fetchone()
+            request = self._validated_ingest_request(conn, run["request_json"], source_row)
             rows = conn.execute(
                 """
                 SELECT *
@@ -100,10 +125,10 @@ class WikiIngestStorageMixin:
         return _StoredIngestRun(
             id=str(run["id"]),
             source_id=str(run["source_id"]) if run["source_id"] is not None else None,
-            source_title=str(run["title"] or "未命名来源"),
-            source_type=str(run["source_type"] or "manual"),
-            source_uri=str(run["source_uri"]) if run["source_uri"] is not None else None,
-            raw_content=str(run["raw_content"] or run["content_preview"] or ""),
+            source_title=request.title,
+            source_type=request.source_type,
+            source_uri=request.source_uri,
+            raw_content=request.content,
             page_plans=[_map_plan(row) for row in rows],
         )
 
@@ -113,6 +138,7 @@ class WikiIngestStorageMixin:
         *,
         reviewer_agent_id: AgentId | None = None,
     ) -> WikiIngestReviewResponse | None:
+        self._load_ingest_run(run_id)
         params: tuple[str, ...]
         reviewer_clause = ""
         if reviewer_agent_id is None:
@@ -140,6 +166,8 @@ class WikiIngestStorageMixin:
                 "SELECT * FROM wiki_ingest_reviews WHERE id = ?",
                 (review_id,),
             ).fetchone()
+        if row is not None:
+            self._load_ingest_run(str(row["run_id"]))
         return _map_ingest_review(row) if row is not None else None
 
     def _insert_review(
@@ -150,7 +178,14 @@ class WikiIngestStorageMixin:
     ) -> WikiIngestReviewResponse:
         now = utc_now_iso()
         review_id = review_id or response.review_id or new_id()
+        source_id = self._source_id_for_run(response.run_id)
         with self.database.session() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            existing = conn.execute(
+                "SELECT run_id FROM wiki_ingest_reviews WHERE id = ?", (review_id,)
+            ).fetchone()
+            if existing is not None and str(existing["run_id"]) != response.run_id:
+                raise WikiWorkflowError("wiki_ingest_review_identity_conflict")
             conn.execute(
                 """
                 INSERT INTO wiki_ingest_reviews(
@@ -172,7 +207,7 @@ class WikiIngestStorageMixin:
                 (
                     review_id,
                     response.run_id,
-                    self._source_id_for_run(response.run_id),
+                    source_id,
                     response.reviewer_agent_id,
                     response.status,
                     response.summary,
@@ -188,9 +223,16 @@ class WikiIngestStorageMixin:
         return _map_ingest_review(row)
 
     def _source_id_for_run(self, run_id: str) -> str | None:
-        with self.database.session() as conn:
-            row = conn.execute("SELECT source_id FROM wiki_workflow_runs WHERE id = ?", (run_id,)).fetchone()
-        return str(row["source_id"]) if row is not None and row["source_id"] is not None else None
+        return self._load_ingest_run(run_id).source_id
+
+    def validate_ingest_run(self, run_id: str) -> None:
+        self._load_ingest_run(run_id)
+
+    def validate_ingest_application(self, run_id: str) -> None:
+        from .ingest_identity import assert_independent_ingest_source
+
+        run = self._load_ingest_run(run_id)
+        assert_independent_ingest_source(run.source_type)
 
     def _resolve_review_model(
         self,

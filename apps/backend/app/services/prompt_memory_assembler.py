@@ -7,6 +7,7 @@ from app.agents.immediate_understanding import ImmediateUnderstanding, immediate
 from app.agents.retrieval.scoping import _source_scope_label
 from app.agents.state import ActionPlan, SemanticAnalysisResult
 from app.models.api import MemoryRecallPermissions, MemorySearchResult
+from app.services.evidence_policy import inactive_evidence_status
 from app.services.memory_permissions import (
     MemoryPromptSections,
     MemoryPromptUsage,
@@ -633,20 +634,9 @@ def _prompt_exclusion_reason(result: MemorySearchResult) -> str | None:
         return "sensitive_memory"
     if filtered_reason == "expired_recent_state":
         return "expired_recent_state"
-    inactive_statuses = {
-        "forgotten",
-        "rejected",
-        "superseded",
-        "sensitive_blocked",
-        "wrong",
-        "reverted",
-    }
-    if status in inactive_statuses:
-        return f"{status}_memory"
-    snippet = result.snippet.casefold()
-    for inactive in inactive_statuses:
-        if f"status={inactive}" in snippet:
-            return f"{inactive}_memory"
+    inactive = inactive_evidence_status(status, result.snippet)
+    if inactive is not None:
+        return f"{inactive}_memory"
     return None
 
 

@@ -10,13 +10,16 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from app.models.wiki import WikiIngestPagePlan, WikiIngestPreviewRequest
 from app.services.memory_entity_extraction import detect_prompt_injection, parse_extraction_output
 from app.services.memory_policy import evaluate_memory_content
+from app.services.evidence_policy import wiki_document_rejection_reason, wiki_page_rejection_reason
 from app.services.wiki import WIKI_TARGET_ABSENT_HASH, WikiService, slugify_wiki_title
 from app.storage.markdown import parse_markdown
+from app.storage.database import Database
 from app.utils.hash import sha256_hex, sha256_bytes_hex
 
 from .common import WikiReviewModelProtocol, WikiWorkflowError
 from .contracts import PAGE_TYPE_CONTRACTS, PAGE_TYPE_ROOTS
 from .review import _complete_model, _json_object_from_text, _wiki_schema_markdown
+from .ingest_identity import assert_independent_ingest_source
 
 COMPILER_KEY = "wiki_compilation"
 CHUNK_CHARS = 12000
@@ -112,17 +115,53 @@ async def structured_call(model: WikiReviewModelProtocol, output_type, *, task: 
 def read_snapshot(wiki: WikiService, path: str) -> PageSnapshot:
     target = wiki.writer.resolve_markdown_path(path)
     raw = target.read_bytes()
-    text = raw.decode("utf-8")
+    text = raw.decode("utf-8-sig").replace("\r\n", "\n").replace("\r", "\n")
     check_material(text)
     parsed = parse_markdown(text, fallback_title=target.stem)
     return PageSnapshot(path, parsed.title, text, sha256_bytes_hex(raw), parsed.frontmatter)
 
 
-def assert_snapshots_current(wiki: WikiService, hashes: dict[str, str]) -> None:
+def read_evidence_snapshot(wiki: WikiService, path: str, *, database: Database) -> PageSnapshot:
+    from .memory_closure import WikiMemoryClosureError, validate_wiki_page_roots
+
+    snapshot = read_snapshot(wiki, path)
+    rejection = wiki_document_rejection_reason(path, snapshot.frontmatter)
+    if rejection:
+        raise CompilerError(rejection)
+    with database.session() as conn:
+        vault = conn.execute(
+            "SELECT id FROM vaults WHERE root_path = ?",
+            (str(wiki.writer.vault_root.resolve()),),
+        ).fetchone()
+        if vault is None or not path.startswith("Wiki/"):
+            raise CompilerError("unverified_wiki_page")
+        rejection = wiki_page_rejection_reason(
+            conn, vault_id=vault["id"], relative_path=path, require_index=False,
+            expected_content_hash=sha256_hex(snapshot.text),
+        )
+        if rejection:
+            raise CompilerError(rejection)
+        try:
+            validate_wiki_page_roots(
+                conn, vault_root=wiki.writer.vault_root, vault_id=vault["id"],
+                source_path=path, expected_content_hash=sha256_hex(snapshot.text),
+            )
+        except WikiMemoryClosureError as exc:
+            raise CompilerError(exc.reason) from exc
+    return snapshot
+
+
+def assert_snapshots_current(
+    wiki: WikiService, hashes: dict[str, str], *, database: Database | None = None,
+) -> None:
     for path, expected in hashes.items():
         actual = wiki.writer.current_hash(path) or WIKI_TARGET_ABSENT_HASH
         if actual != expected:
             raise CompilerError("wiki_compilation_stale_context: " + path)
+        if database is not None and expected != WIKI_TARGET_ABSENT_HASH:
+            snapshot = read_evidence_snapshot(wiki, path, database=database)
+            if snapshot.content_hash != expected:
+                raise CompilerError("wiki_compilation_stale_context: " + path)
 
 
 async def read_source(model: WikiReviewModelProtocol, content: str) -> list[dict]:
@@ -151,17 +190,35 @@ async def read_source(model: WikiReviewModelProtocol, content: str) -> list[dict
     return notes
 
 
-async def related_pages(wiki: WikiService, model: WikiReviewModelProtocol, notes: list[dict]) -> dict[str, PageSnapshot]:
-    catalog = wiki.list_pages()
-    index = {entry.relative_path: entry for entry in wiki.get_index().entries}
+async def related_pages(
+    wiki: WikiService, model: WikiReviewModelProtocol, notes: list[dict], *, database: Database,
+) -> dict[str, PageSnapshot]:
+    with database.session() as conn:
+        catalog = [row["wiki_relative_path"] for row in conn.execute(
+            """SELECT b.wiki_relative_path FROM wiki_page_bindings b
+               JOIN vaults v ON v.id = b.vault_id
+               WHERE v.root_path = ? AND b.status = 'active'
+               ORDER BY b.wiki_relative_path""",
+            (str(wiki.writer.vault_root.resolve()),),
+        )]
     selected: set[str] = set()
     # Every catalog entry is considered. Large catalogs are paged, never silently truncated.
     for offset in range(0, len(catalog), 60):
         batch = catalog[offset:offset + 60]
-        entries = [{"path": page.relative_path, "title": page.title,
-                    "summary": index[page.relative_path].summary if page.relative_path in index else "",
-                    "aliases": index[page.relative_path].aliases if page.relative_path in index else []}
-                   for page in batch]
+        snapshots = []
+        for path in batch:
+            try:
+                snapshots.append(read_evidence_snapshot(wiki, path, database=database))
+            except (CompilerError, OSError, ValueError):
+                continue
+        entries = [{"path": page.path, "title": page.title,
+                    "summary": str(page.frontmatter.get("summary", "")),
+                    "aliases": metadata_list(page.frontmatter, "aliases")}
+                   for page in snapshots]
+        if not entries:
+            continue
+        batch_hashes = {page.path: page.content_hash for page in snapshots}
+        assert_snapshots_current(wiki, batch_hashes, database=database)
         result = await structured_call(
             model, PageSelection,
             task="Select existing pages affected by these notes, including aliases, related domains, "
@@ -170,22 +227,30 @@ async def related_pages(wiki: WikiService, model: WikiReviewModelProtocol, notes
         )
         if set(result.paths) - {entry["path"] for entry in entries}:
             raise CompilerError("wiki_compilation_unknown_page")
+        assert_snapshots_current(wiki, batch_hashes, database=database)
         selected.update(result.paths)
     if len(selected) > MAX_RELATED_PAGES:
         raise CompilerError("wiki_compilation_related_page_limit")
-    return {path: read_snapshot(wiki, path) for path in sorted(selected)}
+    return {path: read_evidence_snapshot(wiki, path, database=database) for path in sorted(selected)}
 
 
-async def compile_source(wiki: WikiService, model: WikiReviewModelProtocol, request: WikiIngestPreviewRequest):
+async def compile_source(
+    wiki: WikiService, model: WikiReviewModelProtocol, request: WikiIngestPreviewRequest,
+    *, database: Database,
+):
+    assert_independent_ingest_source(request.source_type)
     source_hash = sha256_hex(request.content)
     source_path = f"Wiki/Sources/{slugify_wiki_title(request.title)}-{source_hash[:12]}.md"
     notes = await read_source(model, request.content)
     if not notes:
         raise CompilerError("wiki_compilation_no_useful_content")
-    snapshots = await related_pages(wiki, model, notes)
+    snapshots = await related_pages(wiki, model, notes, database=database)
     source_file = wiki.writer.resolve_markdown_path(source_path)
     if source_file.exists() and source_path not in snapshots:
-        snapshots[source_path] = read_snapshot(wiki, source_path)
+        snapshots[source_path] = read_evidence_snapshot(wiki, source_path, database=database)
+    assert_snapshots_current(
+        wiki, {path: s.content_hash for path, s in snapshots.items()}, database=database,
+    )
     result = await structured_call(
         model, Compilation,
         task="Compile these grounded notes into a source page plus useful entity/concept pages. "
@@ -260,7 +325,7 @@ async def compile_source(wiki: WikiService, model: WikiReviewModelProtocol, requ
         raise CompilerError("wiki_compilation_source_page_required")
     # Apply requires the new source artifact before any dependent pages.
     plans.sort(key=lambda plan: plan.target_path != source_path)
-    assert_snapshots_current(wiki, hashes)
+    assert_snapshots_current(wiki, hashes, database=database)
     metadata = {**request.source_metadata, COMPILER_KEY: {
         "version": 1, "source_path": source_path, "context_hashes": hashes,
         "pages": page_metadata, "segments_read": (len(request.content) + CHUNK_CHARS - 1) // CHUNK_CHARS,

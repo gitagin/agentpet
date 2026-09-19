@@ -501,8 +501,10 @@ function createSidecarManager({
       };
     }
 
-    const pythonCommand =
-      process.env.AGENT_PET_PYTHON || (platform === "win32" ? "python" : "python3");
+    const environmentPython = platform === "win32"
+      ? path.join(backendDirectory, ".venv", "Scripts", "python.exe")
+      : path.join(backendDirectory, ".venv", "bin", "python");
+    const pythonCommand = process.env.AGENT_PET_PYTHON || environmentPython;
     return {
       command: pythonCommand,
       args: ["-m", "app.sidecar_entry", ...commonArgs],

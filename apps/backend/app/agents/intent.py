@@ -89,7 +89,7 @@ def route_intent(message: str) -> AgentRoute:
             reason="high-risk local mutation requires confirmation",
         )
 
-    if _matches_any(_WIKI_MANAGEMENT_PATTERNS, normalized):
+    if _matches_any(_WIKI_MANAGEMENT_PATTERNS, normalized) and not is_wiki_write_discussion(message):
         return AgentRoute(
             intent=AgentIntent.MANAGE_WIKI,
             confidence=0.94,
@@ -103,18 +103,18 @@ def route_intent(message: str) -> AgentRoute:
             reason="explicit task or reminder command",
         )
 
-    if _matches_any(_PROPOSE_MEMORY_PATTERNS, normalized):
-        return AgentRoute(
-            intent=AgentIntent.PROPOSE_MEMORY,
-            confidence=0.95,
-            reason="explicit memory proposal command",
-        )
-
     if explicit_memory_read_scope(message) is not None:
         return AgentRoute(
             intent=AgentIntent.SEARCH_MEMORY,
             confidence=0.96,
             reason="explicit memory source read request",
+        )
+
+    if _matches_any(_PROPOSE_MEMORY_PATTERNS, normalized):
+        return AgentRoute(
+            intent=AgentIntent.PROPOSE_MEMORY,
+            confidence=0.95,
+            reason="explicit memory proposal command",
         )
 
     if _is_daily_chat_recall_query(message) or _is_memory_recall_query(message) or _is_recent_chat_recall_query(message):
@@ -148,6 +148,22 @@ def route_intent(message: str) -> AgentRoute:
 
 def _matches_any(patterns: tuple[str, ...], message: str) -> bool:
     return any(re.search(pattern, message, re.IGNORECASE) for pattern in patterns)
+
+
+def is_wiki_write_discussion(message: str) -> bool:
+    normalized = " ".join(message.casefold().split())
+    if not any(word in normalized for word in ("wiki", "知识库")):
+        return False
+    if re.search(
+        r"(?:不要|不许|禁止|无需|不必|别)\s*(?:写|更新|修改|创建|保存|删除|归档|整理)"
+        r"|\b(?:do not|don't|never)\s+(?:write|update|create|save|delete|archive|modify)\b",
+        normalized,
+    ):
+        return True
+    return bool(
+        _matches_any(_WIKI_MANAGEMENT_PATTERNS, normalized)
+        and re.search(r"(?:如何|怎么|怎样)|\bhow\s+(?:do|does|can|to|would|should)\b", normalized)
+    )
 
 
 def is_high_risk_mutation_request(message: str) -> bool:

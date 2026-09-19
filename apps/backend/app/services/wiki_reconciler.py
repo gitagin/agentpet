@@ -74,29 +74,20 @@ def reconcile_wiki_vault(
     try:
         graph = MemoryEntityGraphStore(conn)
         before = graph.source_revision()
-        root = Path(vault_root).resolve(strict=False) / "Wiki"
-        if not root.exists():
-            graph.close()
-            return WikiReconcileReport(
-                vault_id=vault_id,
-                scanned=0,
-                created=0,
-                changed=0,
-                deleted=0,
-                quarantined=0,
-                revision_before=before,
-                revision_after=before,
-            )
-        if not root.is_dir():
+        vault_path = Path(vault_root).resolve(strict=False)
+        root = vault_path / "Wiki"
+        if root.exists() and not root.is_dir():
             raise NotADirectoryError(str(root))
         files: dict[str, tuple[Path, ParsedMarkdown]] = {}
         for path in sorted(root.rglob("*.md")):
-            relative = path.relative_to(Path(vault_root).resolve(strict=False)).as_posix()
+            relative = path.relative_to(vault_path).as_posix()
             if relative in {"Wiki/AGENTS.md", "Wiki/index.md", "Wiki/log.md"}:
                 continue
             try:
+                if not path.resolve().is_relative_to(vault_path):
+                    continue
                 parsed = read_markdown(path)
-            except (OSError, UnicodeDecodeError, ValueError):
+            except (OSError, UnicodeDecodeError, ValueError, RuntimeError):
                 continue
             files[relative] = (path, parsed)
 
@@ -107,10 +98,8 @@ def reconcile_wiki_vault(
         created = changed = deleted = quarantined = 0
         for relative, (_path, parsed) in files.items():
             current_hash = str(getattr(parsed, "content_hash", "") or "")
-            frontmatter = getattr(parsed, "frontmatter", {}) or {}
-            sources = frontmatter.get("sources")
-            has_sources = bool(sources) and (not isinstance(sources, list) or any(str(item).strip() for item in sources))
-            status = "active" if has_sources else "quarantined"
+            # External frontmatter is not an authorization or evidence receipt.
+            status = "quarantined"
             row = existing.get(relative)
             if row is None:
                 bind_authoritative_wiki_page(
@@ -125,11 +114,13 @@ def reconcile_wiki_vault(
                 continue
             old_hash = str(row["content_hash"] or "")
             old_status = str(row["status"] or "")
+            if old_status == "forgotten":
+                continue
             if old_hash != current_hash:
                 graph.update_wiki_binding(
                     str(row["id"]),
                     content_hash=current_hash,
-                    status="stale" if old_status == "active" else status,
+                    status="stale" if old_status in {"active", "stale"} else status,
                     revision=int(row["revision"] or 0) + 1,
                 )
                 changed += 1

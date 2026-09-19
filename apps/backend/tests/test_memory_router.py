@@ -4,17 +4,17 @@ from app.agents.memory_router import MemoryRoute, MemoryRouter, route_memory
 from app.agents.state import AgentState
 
 
-def test_technical_knowledge_question_prefers_knowledge_base_and_avoids_diary() -> None:
+def test_general_technical_question_does_not_require_local_evidence() -> None:
     route = route_memory("How do I implement a FastAPI migration for SQLite?")
 
-    assert route.primary_scopes == ("knowledge_base",)
+    assert route.primary_scopes == ()
     assert route.fallback_scopes == ("none",)
     assert "diary_objects" not in route.all_scopes
     assert "daily_chat" not in route.all_scopes
     assert route.answer_style == "concise"
-    assert route.confidence >= 0.8
-    assert route.reason == "technical_knowledge"
-    assert route.legacy_source_scope == "knowledge_base"
+    assert route.semantic_fallback
+    assert route.reason == "general_technical_question"
+    assert route.legacy_source_scope == "none"
     assert route.retrieval_top_k == 5
 
 

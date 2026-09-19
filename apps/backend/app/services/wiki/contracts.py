@@ -71,7 +71,7 @@ def page_type_for_path(relative_path: str, default: str = "page") -> str:
         if normalized.startswith(prefix):
             return page_type
     if normalized.startswith("Wiki/Companion/Summaries/"):
-        return "source"
+        return "report"
     if normalized.startswith("Wiki/Companion/Reports/"):
         return "report"
     return default
@@ -124,8 +124,6 @@ def validate_page_type(
 
 def path_matches_page_type(relative_path: str, page_type: str) -> bool:
     expected = page_type_for_path(relative_path, default=page_type)
-    if page_type == "source" and relative_path.startswith("Wiki/Companion/Summaries/"):
-        return True
     return expected == page_type
 
 

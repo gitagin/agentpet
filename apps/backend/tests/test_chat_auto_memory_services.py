@@ -180,8 +180,10 @@ def test_chat_answer_wiki_summary_plans_single_source_page_with_evidence_links(t
     text = plan.content
     assert "## 来源摘要" in text
     assert "## 问题" in text
-    assert "## 结论" in text
-    assert "## 证据状态" in text
+    assert "## 范围" in text
+    assert "## 结果" in text
+    assert "## 证据" in text
+    assert "不自动证明回答中的事实" in text
     assert "## 来源" in text
     assert "## 更新记录" in text
     assert "经典案例" not in text

@@ -33,6 +33,17 @@ from app.models.api import (
 from app.services.chat_model import AgentModelRegistry, ChatModelRunResult
 from app.agents.checkpointer import SQLiteCheckpointStore
 from app.agents.contracts import ActionProposal, PolicyDecision
+from app.models.wiki import WikiPageReadRequest, WikiPageReadResponse
+
+
+class WikiReadServiceProtocol(Protocol):
+    async def search_pages(self, query: str, top_k: int = 8) -> dict: ...
+    async def read_page(self, request: WikiPageReadRequest) -> WikiPageReadResponse: ...
+
+
+@runtime_checkable
+class WikiSourceWatermarkProtocol(Protocol):
+    async def check_source_watermark(self, generation: str, paths: Sequence[str]) -> dict: ...
 
 class RetrievalServiceProtocol(Protocol):
     async def search(
@@ -42,6 +53,12 @@ class RetrievalServiceProtocol(Protocol):
         mode: str = "fts",
         source_scope: str = "all",
     ) -> MemorySearchResponse: ...
+
+
+@runtime_checkable
+class WikiFallbackServiceProtocol(Protocol):
+    async def search_vault_notes(self, query: str, top_k: int = 8) -> MemorySearchResponse: ...
+    async def restore_vault_notes(self, citations: Sequence[Any]) -> list[Any]: ...
 
 
 class MemoryProposalServiceProtocol(Protocol):
@@ -191,6 +208,7 @@ class AgentRuntimeServices:
     checkpoint_store: SQLiteCheckpointStore | None = None
     action_lifecycle: ActionLifecycleCoordinatorProtocol | None = None
     allow_ephemeral_lifecycle: bool = False
+    wiki_reader: WikiReadServiceProtocol | None = None
 
 
 class AgentServices(Protocol):

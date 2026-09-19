@@ -85,6 +85,7 @@ function defaultAutomationSettingsDraft(): AutomationSettingsDraft {
     auto_structured_memory: false,
     auto_long_term_memory: false,
     auto_wiki_organize: false,
+    wiki_shadow_enabled: false,
     local_privacy_mode: false,
     proactive_trigger_frequency: "low",
     use_negotiation: null,

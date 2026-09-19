@@ -12,6 +12,7 @@ import { AssistantMessageContent } from "./AssistantMessageContent";
 import { stripAssistantActionDirectivesFromMarkdown } from "./assistantActionDirectives";
 import { ChatAgentActionSummary } from "./ChatAgentActionSummary";
 import { ChatCitationSummary } from "./ChatCitationSummary";
+import { answerBasisLabel } from "./answerBasis";
 import { formatMessageRole, formatRunStatus } from "./chatFormatters";
 
 type ChatMessageListProps = {
@@ -274,7 +275,8 @@ function renderAssistantTrace(
   onDismissContinuitySignal?: (messageId: string, proposalId: string) => void,
 ) {
   const hasCitationTrace =
-    (message.citations?.length || 0) > 0 || Boolean(message.retrieval_attempted && message.status !== "partial");
+    (message.citations?.length || 0) > 0 || Boolean(message.retrieval_attempted && message.status !== "partial")
+    || Boolean(message.answer_basis && message.status === "completed");
   const hasEvents = Boolean(message.events?.length);
   const hasNegotiation = Boolean(message.negotiation_steps?.length);
   const hasContinuity = Boolean(message.continuity_signal);
@@ -325,6 +327,7 @@ function renderAssistantTrace(
 
 function traceSummary(message: ChatMessage): string {
   const parts = [
+    message.answer_basis && message.status === "completed" ? answerBasisLabel(message.answer_basis) : "",
     message.citations?.length ? `${message.citations.length} 条引用` : "",
     message.events?.length ? `${message.events.length} 条工具事件` : "",
     message.negotiation_steps?.length ? `${message.negotiation_steps.length} 步证据复核` : "",

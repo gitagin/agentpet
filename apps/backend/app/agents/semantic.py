@@ -7,6 +7,7 @@ from html import unescape
 from app.models.enums import AgentIntent
 
 from .memory_router import explicit_memory_read_scope
+from .intent import is_wiki_write_discussion
 from .runtime_helpers import _strip_search_command
 from .state import AgentState, ClassifierResult, SemanticAnalysisResult
 
@@ -33,6 +34,11 @@ def _parse_classifier_analysis(text: str, user_message: str) -> tuple[Classifier
         return _classifier_from_semantic(semantic), semantic
 
     classifier = ClassifierResult.model_validate(data)
+    if classifier.intent == "action" and classifier.action_type == "wiki" and is_wiki_write_discussion(user_message):
+        classifier = ClassifierResult(
+            intent="chat", reason="wiki_write_discussion_not_authorization",
+            confidence=classifier.confidence,
+        )
     semantic = _semantic_from_classifier(classifier, user_message)
     forced_scope = _forced_source_scope(user_message)
     if forced_scope is not None:
@@ -184,8 +190,6 @@ def _fallback_source_scope(message: str) -> str:
     normalized = message.casefold()
     if re.search(r"\d{1,2}\s*月\s*\d{1,2}\s*(号|日)?", message) or "之前" in message or "回忆" in message:
         return "daily_chat"
-    if "知识库" in message or "文档" in message or "笔记" in message or "docs" in normalized:
-        return "knowledge_base"
     if any(marker in message for marker in ("你记得我", "记得我")):
         return "personal_memory"
     # 「我喜欢X / 我偏好X」是"告知偏好"的陈述句，不是检索请求；

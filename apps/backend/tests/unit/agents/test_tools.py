@@ -257,6 +257,21 @@ async def test_tool_method_returns_empty_result(case: ToolCase) -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("claimed_type", ["manual", "file", "user_message", "agent_chat"])
+async def test_ingest_tool_cannot_assign_itself_root_provenance(claimed_type) -> None:
+    case = next(item for item in _tool_cases() if item.name == "plan_wiki_ingest")
+    toolset = _toolset_for(case, case.service_result)
+
+    await toolset.plan_wiki_ingest(
+        title="Agent text", content="An assistant claim.", source_type=claimed_type,
+        source_uri="source:claimed-original", source_message_id="claimed-user-message",
+    )
+
+    request = toolset.wiki_workflow.preview_ingest.call_args.args[0]
+    assert request.source_type == "assistant_output"
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("case", _tool_cases(), ids=lambda case: case.name)
 async def test_tool_method_when_service_is_none(case: ToolCase) -> None:
     toolset = AgentToolSet()

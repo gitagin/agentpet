@@ -11,6 +11,7 @@ import { petEntryHintStorageKey } from "../features/pet/usePetWindowController";
 import { wikiArchiveCandidateStorageKey } from "../features/wiki/wikiConstants";
 import { writeRendererUiState } from "../services/rendererUiState";
 import { getPetInputModeOption, type PetInputMode } from "../features/chat/petInputModes";
+import { normalizeAnswerBasis } from "../features/chat/answerBasis";
 
 const FALLBACK_DAILY_HISTORY_TIME_ZONE = "Asia/Shanghai";
 
@@ -44,6 +45,8 @@ export function chatMessageFromDailyHistory(message: ChatDailyHistoryMessage): C
     content: message.content,
     status,
     agent_run_id: message.agent_run_id ?? undefined,
+    answer_basis: message.role === "assistant" && status === "completed"
+      ? normalizeAnswerBasis(message.answer_basis) : "not_assessed",
   };
 }
 

@@ -24,6 +24,10 @@ _EXPLICIT_READ_SCOPE_MARKERS: dict[MemoryScope, tuple[str, ...]] = {
         "知识库",
         "资料库",
         "wiki",
+        "文档",
+        "笔记",
+        "docs",
+        "notes",
     ),
     "personal_memory": (
         "personal memory",
@@ -61,6 +65,9 @@ _READ_REQUEST_MARKERS = (
     "找",
     "列出",
     "看看",
+    "如何",
+    "怎么",
+    "为什么",
 )
 _MUTATION_REQUEST_MARKERS = (
     "add to",
@@ -149,7 +156,7 @@ class MemoryRouter:
         explicit_scope = explicit_memory_read_scope(query)
         if explicit_scope is not None:
             return MemoryRoute(
-                primary_scopes=(explicit_scope,),
+                primary_scopes=explicit_memory_read_scopes(query),
                 fallback_scopes=("none",),
                 query=query,
                 answer_style="grounded",
@@ -179,12 +186,13 @@ class MemoryRouter:
 
         if _is_technical_knowledge_query(query, normalized):
             return MemoryRoute(
-                primary_scopes=("knowledge_base",),
+                primary_scopes=(),
                 fallback_scopes=("none",),
                 query=query,
                 answer_style="concise",
-                confidence=0.86,
-                reason="technical_knowledge",
+                confidence=0.6,
+                reason="general_technical_question",
+                semantic_fallback=True,
             )
 
         if _is_ambiguous_memory_request(query, normalized):
@@ -211,18 +219,57 @@ def route_memory(message: str) -> MemoryRoute:
     return MemoryRouter().route(message)
 
 
-def explicit_memory_read_scope(message: str) -> MemoryScope | None:
+def explicit_memory_read_scope(message: str) -> Literal["knowledge_base", "personal_memory", "daily_chat", "all"] | None:
+    scopes = explicit_memory_read_scopes(message)
+    return ("all" if len(scopes) > 1 else scopes[0]) if scopes else None
+
+
+def explicit_memory_read_scopes(message: str) -> tuple[MemoryScope, ...]:
     normalized = _clean_query(message).casefold()
     if not normalized or any(marker in normalized for marker in _MUTATION_REQUEST_MARKERS):
-        return None
+        return ()
     if not any(marker in normalized for marker in _READ_REQUEST_MARKERS):
-        return None
+        return ()
     matches = tuple(
         scope
         for scope, markers in _EXPLICIT_READ_SCOPE_MARKERS.items()
-        if any(marker in normalized for marker in markers)
+        if any(_has_scope_marker(normalized, marker) for marker in markers)
+        and (scope != "knowledge_base" or _has_knowledge_source_constraint(normalized))
     )
-    return matches[0] if len(matches) == 1 else None
+    if _is_local_project_query(normalized) and "knowledge_base" not in matches:
+        matches = ("knowledge_base", *matches)
+    return matches
+
+
+def _has_scope_marker(message: str, marker: str) -> bool:
+    if marker.isascii():
+        return re.search(r"(?<![a-z0-9_])" + re.escape(marker) + r"(?![a-z0-9_])", message) is not None
+    return marker in message
+
+
+def _has_knowledge_source_constraint(message: str) -> bool:
+    for marker in _EXPLICIT_READ_SCOPE_MARKERS["knowledge_base"]:
+        escaped = re.escape(marker)
+        if re.search(escaped + r"\s*(?:里|中|内)", message):
+            return True
+        if re.search(r"(?:我的|我们的|本地|当前|这个)\s*" + escaped, message):
+            return True
+        if re.search(r"(?:查找|搜索|检索|查一下|搜一下|根据|依据|从)\s*" + escaped, message):
+            return True
+        if marker.isascii() and re.search(
+            r"\b(?:in|from|within|search|query|consult)\s+(?:(?:my|our|the|local)\s+)?"
+            + escaped + r"\b", message,
+        ):
+            return True
+    return False
+
+
+def _is_local_project_query(message: str) -> bool:
+    return re.search(
+        r"(?:我(?:的)?|我们(?:的)?|本地|当前|这个)\s*(?:项目|代码库|仓库)"
+        r"|\b(?:my|our|this|current|local)\s+(?:project|repository|repo|codebase)\b",
+        message,
+    ) is not None
 
 
 def _clean_query(message: str) -> str:

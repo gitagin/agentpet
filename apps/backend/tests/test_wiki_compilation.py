@@ -75,6 +75,18 @@ def test_successive_sources_merge_preserve_provenance_and_mark_conflicts(tmp_pat
     path = tmp_path / "Vault/Wiki/Concepts/Product-P.md"
     text = path.read_text(encoding="utf-8").replace("tags:\n", "aliases:\n  - Product alias\nauthors:\n  - Original author\ntags:\n  - original-tag\n", 1)
     path.write_text(text, encoding="utf-8")
+    from app.services.wiki_reconciler import bind_authoritative_wiki_page
+    from app.services.memory_entity_graph import MemoryEntityGraphStore
+    with service.database.session() as conn:
+        vault_id = conn.execute("SELECT id FROM vaults").fetchone()["id"]
+        graph = MemoryEntityGraphStore(conn)
+        try:
+            bind_authoritative_wiki_page(
+                graph, vault_id=vault_id, relative_path="Wiki/Concepts/Product-P.md",
+                parsed=read_markdown(path),
+            )
+        finally:
+            graph.close()
     model.claim = "Supplier A operates in region R."
     second = compile_preview(service, model.claim)
     assert apply_preview(service, second).status == "applied"
@@ -164,6 +176,111 @@ def test_crlf_page_snapshot_uses_exact_file_hash(tmp_path):
     assert apply_preview(service, compile_preview(service, model.claim)).status == "applied"
 
 
+@pytest.mark.parametrize("status", ["forgotten", "stale", "quarantined"])
+def test_compiler_rejects_inactive_existing_page(tmp_path, status):
+    from app.services.wiki.compiler import read_evidence_snapshot
+
+    model = CompilerModel()
+    service = service_for(tmp_path, model)
+    assert apply_preview(service, compile_preview(service, model.claim)).status == "applied"
+    with service.database.session() as conn:
+        conn.execute("UPDATE wiki_page_bindings SET status = ?", (status,))
+    with pytest.raises(CompilerError, match="inactive_wiki_" + status):
+        read_evidence_snapshot(service.wiki, "Wiki/Concepts/Product-P.md", database=service.database)
+
+
+def test_compiler_catalog_never_sends_unreviewed_metadata(tmp_path):
+    from app.services.wiki.compiler import related_pages, read_evidence_snapshot
+
+    model = CompilerModel()
+    service = service_for(tmp_path, model)
+    assert apply_preview(service, compile_preview(service, model.claim)).status == "applied"
+    root = service.wiki.writer.vault_root
+    path = root / "Wiki/Concepts/Product-P.md"
+    path.write_text("---\ntitle: PRIVATE_UNREVIEWED_TITLE\n---\nEdited.", encoding="utf-8")
+    (root / "Wiki/Concepts/New.md").write_text("# PRIVATE_NEW_TITLE\nNew.", encoding="utf-8")
+    (root / "Wiki/index.md").write_text("# PRIVATE_INDEX_SUMMARY", encoding="utf-8")
+    with pytest.raises(CompilerError, match="unverified_wiki_edit"):
+        read_evidence_snapshot(service.wiki, "Wiki/Concepts/Product-P.md", database=service.database)
+    calls = []
+
+    class CatalogModel:
+        async def complete(self, *, user_message, system_prompt):
+            calls.append(user_message)
+            assert "PRIVATE_" not in user_message
+            assert all(entry["path"].startswith("Wiki/Sources/")
+                       for entry in json.loads(user_message)["catalog"])
+            return '{"paths": []}'
+
+    assert asyncio.run(related_pages(service.wiki, CatalogModel(), [], database=service.database)) == {}
+    assert calls
+
+
+def test_compiler_direct_read_does_not_require_search_index(tmp_path):
+    from app.services.wiki.compiler import read_evidence_snapshot
+    from app.utils.hash import sha256_bytes_hex
+
+    model = CompilerModel()
+    service = service_for(tmp_path, model)
+    assert apply_preview(service, compile_preview(service, model.claim)).status == "applied"
+    with service.database.session() as conn:
+        conn.execute("DELETE FROM notes")
+    path = service.wiki.writer.vault_root / "Wiki/Concepts/Product-P.md"
+    raw = b"\xef\xbb\xbf" + path.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
+    path.write_bytes(raw)
+    snapshot = read_evidence_snapshot(service.wiki, "Wiki/Concepts/Product-P.md", database=service.database)
+    assert snapshot.content_hash == sha256_bytes_hex(raw)
+    assert snapshot.frontmatter["page_type"] == "concept"
+
+
+@pytest.mark.parametrize("stage", ["select_pages", "compile_pages", "confirm", "apply"])
+def test_compiler_rechecks_revocation_without_a_body_change(tmp_path, stage):
+    model = CompilerModel()
+    service = service_for(tmp_path, model)
+    assert apply_preview(service, compile_preview(service, model.claim)).status == "applied"
+    path = service.wiki.writer.vault_root / "Wiki/Concepts/Product-P.md"
+    original = path.read_bytes()
+
+    def revoke():
+        with service.database.session() as conn:
+            conn.execute(
+                "UPDATE wiki_page_bindings SET status = 'forgotten' WHERE wiki_relative_path = ?",
+                ("Wiki/Concepts/Product-P.md",),
+            )
+
+    model.claim = "Supplier A operates in region R."
+    if stage in {"select_pages", "compile_pages"}:
+        complete = model.complete
+
+        async def revoking_complete(*, user_message, system_prompt):
+            response = await complete(user_message=user_message, system_prompt=system_prompt)
+            if json.loads(user_message).get("task") == stage:
+                revoke()
+            return response
+
+        model.complete = revoking_complete
+        with pytest.raises(CompilerError, match="inactive_wiki_forgotten"):
+            compile_preview(service, model.claim)
+    else:
+        preview = compile_preview(service, model.claim)
+        if stage == "confirm":
+            revoke()
+            with pytest.raises(CompilerError, match="inactive_wiki_forgotten"):
+                apply_preview(service, preview)
+        else:
+            confirmed = service.confirm_ingest(WikiIngestConfirmRequest(
+                preview_token=preview.preview_token, user_confirmed=True,
+            ))
+            review = asyncio.run(service.review_ingest(WikiIngestReviewRequest(run_id=confirmed.run_id)))
+            revoke()
+            with pytest.raises(CompilerError, match="inactive_wiki_forgotten"):
+                service.apply_ingest(WikiIngestApplyRequest(
+                    run_id=confirmed.run_id, approved_targets=[p.target_path for p in confirmed.page_plans],
+                    review_id=review.review_id, review_acknowledged=True,
+                ))
+    assert path.read_bytes() == original
+
+
 def test_synthesis_reads_sources_and_rejects_stale_evidence(tmp_path):
     from tests.test_wiki_workflows import _ingest_source_page
     from app.models.wiki import WikiSynthesizeRequest
@@ -193,6 +310,27 @@ def test_synthesis_reads_sources_and_rejects_stale_evidence(tmp_path):
     path.write_text(path.read_text(encoding="utf-8") + "\nChanged.\n", encoding="utf-8")
     with pytest.raises(CompilerError, match="stale_context"):
         service.synthesize(compiled)
+
+
+def test_synthesis_cannot_rewrite_forgotten_target(tmp_path):
+    from tests.test_wiki_workflows import _ingest_source_page
+    from app.models.wiki import WikiSynthesizeRequest
+
+    service = service_for(tmp_path, None)
+    sources = [_ingest_source_page(service, title=title) for title in ("Alpha", "Beta")]
+    request = WikiSynthesizeRequest(title="Comparison", content="Compare scopes", source_paths=sources)
+    response = service.synthesize(request)
+    relative_path = response.page.relative_path
+    path = service.wiki.writer.vault_root / relative_path
+    original = path.read_bytes()
+    with service.database.session() as conn:
+        conn.execute(
+            "UPDATE wiki_page_bindings SET status = 'forgotten' WHERE wiki_relative_path = ?",
+            (relative_path,),
+        )
+    with pytest.raises(CompilerError, match="inactive_wiki_forgotten"):
+        service.synthesize(request.model_copy(update={"target_path": relative_path}))
+    assert path.read_bytes() == original
 
 
 def test_semantic_lint_detects_conflict_without_marker_words(tmp_path):

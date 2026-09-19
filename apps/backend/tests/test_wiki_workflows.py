@@ -680,8 +680,8 @@ def test_query_archive_lint_rejects_mixed_sources_by_default(tmp_path: Path) -> 
             question="What does the wiki say?",
             answer="It says ingest, query, and lint are core operations.",
             citations=[
-                _citation("Wiki/Workflow.md", "knowledge_base"),
-                _citation("Memories/Daily/2026-05-09.md", "daily_chat"),
+                _citation(service, "Wiki/Workflow.md"),
+                _citation(service, "Memories/Daily/2026/05/第2周_05-04至05-10/星期六/2026-05-09.md"),
             ],
         )
     )
@@ -700,7 +700,7 @@ def test_query_archive_proposal_previews_without_writing_markdown(tmp_path: Path
         QueryArchiveRequest(
             question="What are the core wiki operations?",
             answer="Ingest, query archive, synthesize, and lint.",
-            citations=[_citation("Wiki/Workflow.md")],
+            citations=[_citation(service, "Wiki/Workflow.md")],
             title="Wiki Workflow Proposal",
             target_path="Wiki/Reports/Wiki-Workflow-Proposal.md",
             agent_run_id="run-123",
@@ -841,13 +841,13 @@ def test_synthesis_rejects_report_derived_from_same_source_as_independent_eviden
         QueryArchiveRequest(
             question="What does the authority say?",
             answer="It supplies one underlying piece of evidence.",
-            citations=[_citation(source_path)],
+            citations=[_citation(service, source_path)],
             title="Authority Report",
             target_path="Wiki/Reports/Authority-Report.md",
         )
     )
 
-    with pytest.raises(WikiWorkflowError, match="synthesis_sources_not_independent"):
+    with pytest.raises(WikiWorkflowError, match="synthesis_source_binding_not_active"):
         service.synthesize(
             WikiSynthesizeRequest(
                 title="Duplicate evidence",
@@ -968,7 +968,7 @@ def test_lint_proposal_does_not_write_report(tmp_path: Path) -> None:
 def test_query_archive_writes_page_with_normalized_citations(tmp_path: Path) -> None:
     database = Database(tmp_path / "state.sqlite3")
     service = _workflow_service(database, tmp_path / "Vault")
-    citation = _citation("Wiki/Workflow.md", "knowledge_base")
+    citation = _citation(service, "Wiki/Workflow.md")
 
     response = service.archive_query(
         QueryArchiveRequest(
@@ -1022,7 +1022,7 @@ def test_query_archive_history_list_orders_newest_first_and_excludes_non_archive
         QueryArchiveRequest(
             question="Older question?",
             answer="Older answer.",
-            citations=[_citation("Wiki/Older.md")],
+            citations=[_citation(service, "Wiki/Older.md")],
             title="Older Archive",
             target_path="Wiki/Reports/Older-Archive.md",
         )
@@ -1031,7 +1031,7 @@ def test_query_archive_history_list_orders_newest_first_and_excludes_non_archive
         QueryArchiveRequest(
             question="Newer question?",
             answer="Newer answer.",
-            citations=[_citation("Wiki/Newer.md")],
+            citations=[_citation(service, "Wiki/Newer.md")],
             title="Newer Archive",
             target_path="Wiki/Reports/Newer-Archive.md",
             tags=["review"],
@@ -1433,13 +1433,16 @@ def test_wiki_workflow_api_writes_and_audits(api_client: tuple[TestClient, Path]
     assert second_apply.status_code == 200
     assert second_apply.json()["pages_written"] == 1
 
+    from tests.wiki_fixtures import indexed_citation
+
+    archive_citation = indexed_citation(Database(db_path), vault_root, "Wiki/Sources/API-Source.md").model_dump()
     lint = client.post(
         "/api/wiki/query-archives/lint",
         headers=AUTH_HEADERS,
         json={
             "question": "What did API Source say?",
             "answer": "API content.",
-            "citations": [_citation_payload("Wiki/Sources/API-Source.md")],
+            "citations": [archive_citation],
         },
     )
     assert lint.status_code == 200
@@ -1451,11 +1454,11 @@ def test_wiki_workflow_api_writes_and_audits(api_client: tuple[TestClient, Path]
         json={
             "question": "What did API Source say?",
             "answer": "API content.",
-            "citations": [_citation_payload("Wiki/Sources/API-Source.md")],
+            "citations": [archive_citation],
             "target_path": "Wiki/Reports/API-Answer.md",
         },
     )
-    assert archive.status_code == 200
+    assert archive.status_code == 200, archive.text
     archive_payload = archive.json()
     assert archive_payload["archive_id"]
     assert archive_payload["page"]["relative_path"] == "Wiki/Reports/API-Answer.md"
@@ -1672,19 +1675,7 @@ def _workflow_service(
     return WikiWorkflowService(database, wiki, review_model=review_model, review_model_resolver=review_model_resolver)
 
 
-def _citation(relative_path: str, source_scope: str = "knowledge_base") -> MemorySearchResult:
-    return MemorySearchResult(
-        note_id=f"note-{relative_path}",
-        chunk_id=f"chunk-{relative_path}",
-        relative_path=relative_path,
-        title=Path(relative_path).stem,
-        heading="Summary",
-        snippet="Relevant snippet.",
-        score=1.0,
-        source_scope=source_scope,
-        retrieval_mode="fts",
-    )
+def _citation(service: WikiWorkflowService, relative_path: str) -> MemorySearchResult:
+    from tests.wiki_fixtures import indexed_citation
 
-
-def _citation_payload(relative_path: str) -> dict[str, object]:
-    return _citation(relative_path).model_dump()
+    return indexed_citation(service.database, service.wiki.writer.vault_root, relative_path)

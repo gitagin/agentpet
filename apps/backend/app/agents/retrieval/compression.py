@@ -7,6 +7,7 @@ from pathlib import PurePosixPath
 from typing import Iterable
 
 from app.models.api import MemorySearchResponse, MemorySearchResult
+from app.services.evidence_policy import inactive_evidence_status
 
 
 EVIDENCE_CONTRACT_VERSION = "evidence-envelope.v1"
@@ -20,22 +21,6 @@ UNTRUSTED_EVIDENCE_SYSTEM_POLICY = (
     "when the accepted evidence is incomplete or ambiguous, qualify the answer or ask for clarification."
 )
 
-_INACTIVE_LIFECYCLE_STATUSES = frozenset(
-    {
-        "candidate",
-        "pending",
-        "quarantined",
-        "rejected",
-        "archived",
-        "forgotten",
-        "sensitive_blocked",
-        "wrong",
-        "superseded",
-        "reverted",
-        "deleted",
-        "inactive",
-    }
-)
 _SENSITIVE_VALUES = frozenset({"high", "sensitive", "sensitive_blocked", "credential", "secret"})
 _ALLOWED_SOURCE_SCOPES = frozenset(
     {
@@ -201,8 +186,8 @@ def evidence_rejection_reason(result: MemorySearchResult) -> str | None:
         return "inaccessible_source_path"
     if result.filtered_reason:
         return _normalized_reason(result.filtered_reason)
-    lifecycle = (result.lifecycle_status or "").casefold()
-    if lifecycle in _INACTIVE_LIFECYCLE_STATUSES:
+    lifecycle = inactive_evidence_status(result.lifecycle_status)
+    if lifecycle is not None:
         return f"inactive_lifecycle_{lifecycle}"
     if (result.memory_scope or "").casefold() in _SENSITIVE_VALUES:
         return "sensitive_memory_scope"
@@ -222,10 +207,9 @@ def evidence_rejection_reason(result: MemorySearchResult) -> str | None:
         )
     ):
         return "permission_gate_no_prompt_use"
-    snippet = result.snippet.casefold()
-    for status in _INACTIVE_LIFECYCLE_STATUSES:
-        if f"status={status}" in snippet:
-            return f"inactive_excerpt_{status}"
+    excerpt_status = inactive_evidence_status(None, result.snippet)
+    if excerpt_status is not None:
+        return f"inactive_excerpt_{excerpt_status}"
     return None
 
 

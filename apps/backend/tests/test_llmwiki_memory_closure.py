@@ -129,7 +129,7 @@ def test_wiki_ingest_without_extraction_persists_source_provenance_only(tmp_path
         assert source_entity is not None
         source_candidate = conn.execute(
             "SELECT id, status FROM memory_candidates WHERE normalized_value = ?",
-            (confirmed.source_hash,),
+            (f"wiki-source-id:{confirmed.source_id}",),
         ).fetchone()
         assert source_candidate is not None
         source_evidence = conn.execute(

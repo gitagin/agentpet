@@ -3,7 +3,7 @@
   "source": {
     "openapiVersion": "3.1.0",
     "apiVersion": "0.0.1-alpha",
-    "sha256": "b45b4cf4f4ce8f1a38f9079086ff76a8f9f434ffe24e59c22c1169efe24468f8"
+    "sha256": "3b711842db92896eda3720d6359f36681c7ea3733e4643d2e99cc651aaf6433c"
   },
   "routes": [
     {
@@ -585,6 +585,12 @@
       "path": "/api/wiki/pages",
       "methods": [
         "GET",
+        "POST"
+      ]
+    },
+    {
+      "path": "/api/wiki/pages/read",
+      "methods": [
         "POST"
       ]
     },

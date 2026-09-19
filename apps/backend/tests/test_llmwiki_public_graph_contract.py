@@ -8,6 +8,7 @@ import pytest
 
 from app.api.memory import graph as graph_api
 from app.services.memory_entity_graph import MemoryEntityGraphStore
+from app.storage.markdown import read_markdown
 from tests.conftest import auth_headers
 
 
@@ -145,11 +146,14 @@ def test_claim_and_edge_details_expose_wiki_versions_and_safe_relative_evidence(
             person = store.create_entity(entity_type="person", canonical_name="Ada")
             project = store.create_entity(entity_type="project", canonical_name="Atlas")
             page = store.create_entity(entity_type="wiki_page", canonical_name="Atlas record")
+            page_path = tmp_path / "Vault" / "Wiki" / "Projects" / "Atlas.md"
+            page_path.parent.mkdir(parents=True, exist_ok=True)
+            page_path.write_text("# Atlas record\n\nAtlas project evidence.\n", encoding="utf-8")
             store.bind_wiki_page(
                 vault_id=vault_id,
                 page_entity_id=page.id,
                 wiki_relative_path="Wiki/Projects/Atlas.md",
-                content_hash="content-hash",
+                content_hash=read_markdown(page_path).content_hash,
                 revision=2,
             )
             claim = store.create_claim(

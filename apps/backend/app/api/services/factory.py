@@ -485,11 +485,57 @@ def wiki_workflow_service(request: Request | AppContext) -> WikiWorkflowService:
         wiki_service(request),
         review_agent_id=AgentId.ACTION_AGENT,
         review_model_resolver=lambda agent_id: chat_model_client(request, agent_id.value),
+        retrieval=retrieval_service(request),
     )
 
 
 async def wiki_workflow_service_dependency(request: Request) -> AsyncIterator[WikiWorkflowService]:
     yield wiki_workflow_service(request)
+
+
+def wiki_snapshot_reader_dependency(request: Request):
+    from app.repositories.storage import SearchResult
+    from app.services.retrieval import _candidate_policy_allows
+    from app.services.wiki.compiler import read_evidence_snapshot
+    from app.services.wiki.snapshot_reader import WikiSnapshotReader
+    from app.storage.markdown import parse_markdown
+
+    db = database(request)
+    wiki = wiki_service(request)
+
+    def authorize(vault_id: str, relative_path: str) -> bool:
+        if vault_id != active_vault_id(request):
+            return False
+        snapshot = read_evidence_snapshot(wiki, relative_path, database=db)
+        predicate = retrieval_service(request).candidate_filter
+        if predicate is None:
+            return True
+        parsed = parse_markdown(snapshot.text)
+        with db.session(read_only=True) as conn:
+            note = conn.execute(
+                """SELECT id, content_hash, status FROM notes
+                   WHERE vault_id = ? AND relative_path = ?""", (vault_id, relative_path),
+            ).fetchone()
+            if note is None or note["status"] == "deleted" or note["content_hash"] != parsed.content_hash:
+                return False
+            chunks = conn.execute(
+                "SELECT * FROM note_chunks WHERE note_id = ? ORDER BY chunk_index", (note["id"],),
+            ).fetchall()
+        if len(chunks) != len(parsed.chunks) or not chunks:
+            return False
+        for row, chunk in zip(chunks, parsed.chunks):
+            if row["chunk_index"] != chunk.index or row["content_hash"] != chunk.content_hash:
+                return False
+            candidate = SearchResult(
+                note_id=note["id"], chunk_id=row["id"], relative_path=relative_path,
+                title=row["title"], heading=row["heading"], snippet=chunk.content,
+                content=chunk.content, content_hash=chunk.content_hash, vault_id=vault_id, score=1.0,
+            )
+            if not _candidate_policy_allows(candidate, predicate):
+                return False
+        return True
+
+    return WikiSnapshotReader(db, wiki, authorize=authorize)
 
 
 def wiki_lint_service(request: Request | AppContext) -> WikiLintService:

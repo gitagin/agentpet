@@ -190,6 +190,10 @@ def test_wiki_summary_executor_and_reader_require_the_declared_effects(
             "result": outcome.receipt.result,
         }
         assert outcome.receipt.result["action_marker"] in actual_path.read_text(encoding="utf-8")
+        from app.storage.markdown import read_markdown
+        parsed_summary = read_markdown(actual_path)
+        assert parsed_summary.frontmatter["page_type"] == "report"
+        assert parsed_summary.frontmatter["confidence"] == "unverified"
         index_text = (tmp_path / "Vault" / "Wiki" / "index.md").read_text(encoding="utf-8")
         log_text = (tmp_path / "Vault" / "Wiki" / "log.md").read_text(encoding="utf-8")
         assert target_path in index_text, index_text

@@ -47,6 +47,7 @@ function automationSettingsRequestFromDraft(
     auto_structured_memory: draft.auto_structured_memory,
     auto_long_term_memory: draft.auto_long_term_memory,
     auto_wiki_organize: draft.auto_wiki_organize,
+    wiki_shadow_enabled: draft.wiki_shadow_enabled === true,
     local_privacy_mode: draft.local_privacy_mode,
     proactive_trigger_frequency: draft.proactive_trigger_frequency,
     use_negotiation: draft.use_negotiation,

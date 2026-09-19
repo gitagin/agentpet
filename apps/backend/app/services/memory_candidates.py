@@ -42,6 +42,7 @@ class MemoryCandidateCreate:
     superseded_by: str | None = None
     fact_id: str | None = None
     metadata: Mapping[str, object] | None = None
+    allow_reactivation: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -194,6 +195,7 @@ class MemoryCandidateStore:
                     status = CASE
                         WHEN memory_candidates.status IN ('rejected', 'forgotten', 'archived', 'superseded')
                              AND excluded.status IN ('candidate', 'active')
+                             AND ?
                         THEN excluded.status
                         ELSE memory_candidates.status
                     END,
@@ -220,6 +222,7 @@ class MemoryCandidateStore:
                     metadata_json,
                     now,
                     now,
+                    int(request.allow_reactivation),
                 ),
             )
             row = self.conn.execute(

@@ -5,7 +5,11 @@ from .mapping import _map_plan
 from .utility import _dumps_list, _dumps_object, _preview_text, _source_hash, _unique
 
 from .import_handler import _import_preview_request
-from .ingest_identity import wiki_ingest_intent_key
+from .ingest_identity import (
+    assert_ingest_source_matches,
+    assert_ingest_source_scope,
+    wiki_ingest_intent_key,
+)
 from .markdown import _ingest_log_details, _summary_from_source
 from .planning import _build_ingest_page_plans
 from .memory_closure import (
@@ -20,12 +24,14 @@ from app.storage.markdown import read_markdown
 
 from .ingest_review import WikiIngestReviewMixin
 from .ingest_storage import WikiIngestStorageMixin
+from .ingest_identity import assert_independent_ingest_source
 
 class WikiIngestWorkflowMixin(WikiIngestReviewMixin, WikiIngestStorageMixin):
 
     async def compile_ingest(self, request: WikiIngestPreviewRequest) -> WikiIngestPreviewResponse:
         from .compiler import COMPILER_KEY, compile_source
 
+        assert_independent_ingest_source(request.source_type)
         _, model = self._resolve_review_model(None)
         if model is None:
             return self.preview_ingest(request.model_copy(update={"source_metadata": {
@@ -33,7 +39,7 @@ class WikiIngestWorkflowMixin(WikiIngestReviewMixin, WikiIngestStorageMixin):
             }}))
         clean_metadata = {k: v for k, v in request.source_metadata.items() if k != COMPILER_KEY}
         request = request.model_copy(update={"source_metadata": clean_metadata})
-        plans, summary, metadata = await compile_source(self.wiki, model, request)
+        plans, summary, metadata = await compile_source(self.wiki, model, request, database=self.database)
         metadata["compilation_status"] = "compiled"
         return self._preview_with_plans(request.model_copy(update={"source_metadata": metadata}), plans, summary)
 
@@ -118,43 +124,44 @@ class WikiIngestWorkflowMixin(WikiIngestReviewMixin, WikiIngestStorageMixin):
 
         compilation = ingest_request.source_metadata.get(COMPILER_KEY, {})
         if compilation:
-            assert_snapshots_current(self.wiki, compilation["context_hashes"])
+            assert_snapshots_current(self.wiki, compilation["context_hashes"], database=self.database)
         with self.database.session() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            existing_run = conn.execute(
+                "SELECT * FROM wiki_workflow_runs WHERE id = ?", (run_id or preview.run_id,)
+            ).fetchone()
+            if existing_run is not None:
+                existing_source = conn.execute(
+                    "SELECT * FROM wiki_sources WHERE id = ?", (existing_run["source_id"],)
+                ).fetchone()
+                original_request = self._validated_ingest_request(
+                    conn, existing_run["request_json"], existing_source
+                )
+                if (
+                    existing_run["workflow_type"] != "ingest"
+                    or existing_run["status"] != "planned"
+                    or original_request != ingest_request
+                ):
+                    raise WikiWorkflowError("wiki_ingest_run_identity_conflict")
             existing = conn.execute(
-                "SELECT id FROM wiki_sources WHERE source_hash = ?",
+                "SELECT * FROM wiki_sources WHERE source_hash = ?",
                 (preview.source_hash,),
             ).fetchone()
             source_id = preview.source_id
             if existing is not None:
+                assert_ingest_source_scope(conn, existing, self.wiki.writer.vault_root)
+                assert_ingest_source_matches(existing, ingest_request)
                 source_id = str(existing["id"])
-                conn.execute(
-                    """
-                    UPDATE wiki_sources
-                    SET title = ?, source_type = ?, source_uri = ?, content_preview = ?,
-                        raw_content = ?, tags_json = ?, links_json = ?, metadata_json = ?, updated_at = ?
-                    WHERE id = ?
-                    """,
-                    (
-                        ingest_request.title,
-                        ingest_request.source_type,
-                        ingest_request.source_uri,
-                        _preview_text(ingest_request.content),
-                        ingest_request.content,
-                        _dumps_list(ingest_request.tags),
-                        _dumps_list(ingest_request.links),
-                        _dumps_object(ingest_request.source_metadata),
-                        now,
-                        source_id,
-                    ),
-                )
             else:
+                vault_id = VaultRepository(conn).upsert(self.wiki.writer.vault_root)
                 conn.execute(
                     """
                     INSERT INTO wiki_sources(
                         id, source_hash, title, source_type, source_uri, content_preview,
-                        raw_content, tags_json, links_json, metadata_json, created_at, updated_at
+                        raw_content, tags_json, links_json, metadata_json, created_at, updated_at,
+                        vault_id
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         source_id,
@@ -169,6 +176,7 @@ class WikiIngestWorkflowMixin(WikiIngestReviewMixin, WikiIngestStorageMixin):
                         _dumps_object(ingest_request.source_metadata),
                         now,
                         now,
+                        vault_id,
                     ),
                 )
             confirmed = preview.model_copy(
@@ -296,22 +304,15 @@ class WikiIngestWorkflowMixin(WikiIngestReviewMixin, WikiIngestStorageMixin):
                 if run["source_id"] is not None
                 else None
             )
-            source_title = str(source_row["title"]) if source_row is not None else "来源"
+            ingest_request = self._validated_ingest_request(conn, run["request_json"], source_row)
+            assert_independent_ingest_source(ingest_request.source_type)
+            source_title = ingest_request.title
             source_path = f"Wiki/Sources/{slugify_wiki_title(source_title)}.md"
-            source_hash = str(source_row["source_hash"] or "") if source_row is not None else ""
-            source_type = str(source_row["source_type"] or "manual") if source_row is not None else "manual"
-            raw_content = str(
-                source_row["raw_content"] or source_row["content_preview"] or ""
-            ) if source_row is not None else ""
-            try:
-                run_request = json.loads(str(run["request_json"] or "{}"))
-                source_metadata = run_request.get("source_metadata", {})
-                source_title = run_request.get("title", source_title)
-            except json.JSONDecodeError:
-                source_metadata = {}
+            source_hash = str(source_row["source_hash"])
+            source_type = ingest_request.source_type
+            raw_content = ingest_request.content
+            source_metadata = ingest_request.source_metadata
 
-        if source_row is None or not run["source_id"] or not source_hash:
-            raise WikiWorkflowError("Wiki ingest source record is missing")
         from .compiler import COMPILER_KEY, CompilerError, assert_snapshots_current
 
         compilation = source_metadata.get(COMPILER_KEY, {})
@@ -325,7 +326,7 @@ class WikiIngestWorkflowMixin(WikiIngestReviewMixin, WikiIngestStorageMixin):
             for row in rows:
                 if row["status"] == "written":
                     expected_hashes[str(row["target_path"])] = str(row["target_content_hash"])
-            assert_snapshots_current(self.wiki, expected_hashes)
+            assert_snapshots_current(self.wiki, expected_hashes, database=self.database)
             plans.sort(key=lambda plan: plan.target_path != source_path)
         try:
             with self.database.session() as conn:
@@ -497,6 +498,7 @@ class WikiIngestWorkflowMixin(WikiIngestReviewMixin, WikiIngestStorageMixin):
                             if closure_result is not None
                             else {},
                             "closure_error": closure_error,
+                            "publication": {"status": "pending" if run_status == "applied" else "not_eligible"},
                         },
                         ensure_ascii=True,
                     ),
@@ -505,6 +507,26 @@ class WikiIngestWorkflowMixin(WikiIngestReviewMixin, WikiIngestStorageMixin):
                 ),
             )
             conn.commit()
+        if run_status == "applied":
+            from .publication import WikiPublicationService
+            from .generations import WikiGenerationError
+
+            publication = None
+            try:
+                WikiPublicationService(self.database, self.wiki).publish_ingest(request.run_id)
+            except (WikiGenerationError, WikiWorkflowError, WikiMemoryClosureError) as exc:
+                publication = {"status": "blocked", "reason": str(exc)}
+            except Exception as exc:
+                publication = {"status": "failed", "reason": exc.__class__.__name__}
+            if publication is not None:
+                with self.database.session() as conn:
+                    conn.execute(
+                        """UPDATE wiki_workflow_runs
+                           SET result_json = json_set(result_json, '$.publication', json(?)),
+                               updated_at = ? WHERE id = ?
+                             AND COALESCE(json_extract(result_json, '$.publication.status'), '') != 'published'""",
+                        (json.dumps(publication), utc_now_iso(), request.run_id),
+                    )
         return WikiIngestApplyResponse(
             run_id=request.run_id,
             status=run_status,

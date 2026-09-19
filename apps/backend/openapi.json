@@ -456,6 +456,11 @@
             "default": false,
             "title": "Use Negotiation",
             "type": "boolean"
+          },
+          "wiki_shadow_enabled": {
+            "default": false,
+            "title": "Wiki Shadow Enabled",
+            "type": "boolean"
           }
         },
         "title": "AutomationSettingsRequest",
@@ -526,6 +531,11 @@
             "default": false,
             "title": "Use Negotiation",
             "type": "boolean"
+          },
+          "wiki_shadow_enabled": {
+            "default": false,
+            "title": "Wiki Shadow Enabled",
+            "type": "boolean"
           }
         },
         "title": "AutomationSettingsResponse",
@@ -571,6 +581,18 @@
               }
             ],
             "title": "Agent Run Id"
+          },
+          "answer_basis": {
+            "default": "not_assessed",
+            "enum": [
+              "not_assessed",
+              "general_unverified",
+              "local_evidence_context",
+              "insufficient_local_evidence",
+              "validation_failed"
+            ],
+            "title": "Answer Basis",
+            "type": "string"
           },
           "content": {
             "title": "Content",
@@ -5036,6 +5058,50 @@
           "title": {
             "title": "Title",
             "type": "string"
+          },
+          "wiki_end_line": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wiki End Line"
+          },
+          "wiki_generation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wiki Generation"
+          },
+          "wiki_section": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wiki Section"
+          },
+          "wiki_start_line": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wiki Start Line"
           }
         },
         "required": [
@@ -6903,6 +6969,9 @@
             "default": false,
             "title": "Vault Configured",
             "type": "boolean"
+          },
+          "wiki_shadow_metrics": {
+            "$ref": "#/components/schemas/WikiShadowSummary"
           }
         },
         "title": "SettingsStatusResponse",
@@ -9533,6 +9602,132 @@
         "title": "WikiPageListResponse",
         "type": "object"
       },
+      "WikiPageReadRequest": {
+        "properties": {
+          "expected_version": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Version"
+          },
+          "generation": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generation"
+          },
+          "max_chars": {
+            "default": 12000,
+            "maximum": 32000.0,
+            "minimum": 1.0,
+            "title": "Max Chars",
+            "type": "integer"
+          },
+          "relative_path": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Relative Path",
+            "type": "string"
+          },
+          "section": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section"
+          }
+        },
+        "required": [
+          "relative_path"
+        ],
+        "title": "WikiPageReadRequest",
+        "type": "object"
+      },
+      "WikiPageReadResponse": {
+        "properties": {
+          "backlinks": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Backlinks",
+            "type": "array"
+          },
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "content_hash": {
+            "title": "Content Hash",
+            "type": "string"
+          },
+          "end_line": {
+            "title": "End Line",
+            "type": "integer"
+          },
+          "generation": {
+            "title": "Generation",
+            "type": "string"
+          },
+          "line_basis": {
+            "const": "markdown_body",
+            "default": "markdown_body",
+            "title": "Line Basis",
+            "type": "string"
+          },
+          "links": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Links",
+            "type": "array"
+          },
+          "relative_path": {
+            "title": "Relative Path",
+            "type": "string"
+          },
+          "start_line": {
+            "title": "Start Line",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "generation",
+          "relative_path",
+          "content_hash",
+          "title",
+          "content",
+          "start_line",
+          "end_line",
+          "links",
+          "backlinks"
+        ],
+        "title": "WikiPageReadResponse",
+        "type": "object"
+      },
       "WikiPageResponse": {
         "properties": {
           "action_id": {
@@ -9878,6 +10073,103 @@
           "exists"
         ],
         "title": "WikiSchemaStatus",
+        "type": "object"
+      },
+      "WikiShadowSummary": {
+        "properties": {
+          "assessment_calls": {
+            "default": 0,
+            "title": "Assessment Calls",
+            "type": "integer"
+          },
+          "authority_denied": {
+            "default": 0,
+            "title": "Authority Denied",
+            "type": "integer"
+          },
+          "available": {
+            "default": true,
+            "title": "Available",
+            "type": "boolean"
+          },
+          "budget_exhausted": {
+            "default": 0,
+            "title": "Budget Exhausted",
+            "type": "integer"
+          },
+          "completed": {
+            "default": 0,
+            "title": "Completed",
+            "type": "integer"
+          },
+          "coverage_complete": {
+            "default": 0,
+            "title": "Coverage Complete",
+            "type": "integer"
+          },
+          "disputed": {
+            "default": 0,
+            "title": "Disputed",
+            "type": "integer"
+          },
+          "evidence_chars": {
+            "default": 0,
+            "title": "Evidence Chars",
+            "type": "integer"
+          },
+          "failed": {
+            "default": 0,
+            "title": "Failed",
+            "type": "integer"
+          },
+          "interrupted": {
+            "default": 0,
+            "title": "Interrupted",
+            "type": "integer"
+          },
+          "invalid_records": {
+            "default": 0,
+            "title": "Invalid Records",
+            "type": "integer"
+          },
+          "mean_latency_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mean Latency Ms"
+          },
+          "note_fallbacks": {
+            "default": 0,
+            "title": "Note Fallbacks",
+            "type": "integer"
+          },
+          "samples": {
+            "default": 0,
+            "title": "Samples",
+            "type": "integer"
+          },
+          "today_samples": {
+            "default": 0,
+            "title": "Today Samples",
+            "type": "integer"
+          },
+          "unfinished": {
+            "default": 0,
+            "title": "Unfinished",
+            "type": "integer"
+          },
+          "wiki_hits": {
+            "default": 0,
+            "title": "Wiki Hits",
+            "type": "integer"
+          }
+        },
+        "title": "WikiShadowSummary",
         "type": "object"
       },
       "WikiSourceImportPreviewRequest": {
@@ -14344,6 +14636,47 @@
           }
         },
         "summary": "Write Wiki Page",
+        "tags": [
+          "wiki"
+        ]
+      }
+    },
+    "/api/wiki/pages/read": {
+      "post": {
+        "operationId": "read_wiki_page_api_wiki_pages_read_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WikiPageReadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WikiPageReadResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Wiki Page",
         "tags": [
           "wiki"
         ]

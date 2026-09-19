@@ -7,6 +7,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.api import MemorySearchResult
+from app.models.answer_basis import AnswerBasis
 from app.models.enums import AgentIntent
 from app.models.event_payloads import (
     AgentActionDecisionFields,
@@ -127,12 +128,14 @@ class AgentDoneEvent(AgentEventBase):
     event: Literal["done"] = "done"
     intent: AgentIntent
     text: str = ""
+    answer_basis: AnswerBasis = "not_assessed"
 
 
 class AgentReplyReadyEvent(AgentEventBase):
     event: Literal["reply_ready"] = "reply_ready"
     intent: AgentIntent
     text: str = ""
+    answer_basis: AnswerBasis = "not_assessed"
 
 
 class NegotiationStepEvent(AgentTraceEventBase):

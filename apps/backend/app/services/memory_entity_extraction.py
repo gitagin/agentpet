@@ -188,6 +188,7 @@ class ResolvedExtraction:
     sensitive: tuple[str, ...] = ()
     conflicts: tuple[str, ...] = ()
     uncertainties: tuple[str, ...] = ()
+    evidence_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -410,6 +411,7 @@ def persist_extraction_candidates(
             entity_type=item.entity_type,
             name=item.name,
             source_hash=provenance,
+            source_id=source_id,
         )
         if len(same_source) > 1:
             raise EntityAmbiguityError("entity_candidate_replay_ambiguous")
@@ -419,6 +421,7 @@ def persist_extraction_candidates(
     unresolved = tuple(ref for ref in unresolved if ref in unresolved_set)
     claim_ids: dict[str, str] = {}
     relation_ids: list[str] = []
+    evidence_ids: list[str] = []
     with store.atomic():
         for item in batch.entities:
             entity = resolved.get(item.entity_ref)
@@ -453,6 +456,10 @@ def persist_extraction_candidates(
             subject = resolved.get(claim.subject_entity_ref)
             if subject is None:
                 raise ExtractionValidationError("claim_subject_unresolved")
+            evidence_id = _extraction_evidence_id(
+                store, prefix="extract-evidence", source_hash=provenance,
+                source_id=source_id, reference=claim.claim_ref,
+            )
             fact = store.create_claim(
                 subject_entity_id=subject.id,
                 predicate=claim.predicate,
@@ -461,7 +468,7 @@ def persist_extraction_candidates(
                 source_text=_align_evidence_span(source_text, claim.evidence.start, claim.evidence.end),
                 source_type=source_type,
                 confidence=claim.confidence,
-                evidence_id=f"extract-evidence-{sha256_hex(f'{provenance}:{claim.claim_ref}')[:32]}",
+                evidence_id=evidence_id,
                 metadata={
                     "source_hash": provenance,
                     "source_id": source_id,
@@ -480,13 +487,19 @@ def persist_extraction_candidates(
             # creating a second source-of-truth evidence row.
             store.bind_entity_evidence(
                 entity_id=subject.id,
-                evidence_id=f"extract-evidence-{sha256_hex(f'{provenance}:{claim.claim_ref}')[:32]}",
+                evidence_id=evidence_id,
                 role="describes",
             )
             claim_ids[claim.claim_ref] = fact.id
+            evidence_ids.append(evidence_id)
         for relation in batch.relations:
             subject_entity_id, subject_fact_id = _resolved_endpoint(relation.subject, resolved, claim_ids)
             object_entity_id, object_fact_id = _resolved_endpoint(relation.object, resolved, claim_ids)
+            evidence_id = _extraction_evidence_id(
+                store, prefix="extract-relation-evidence", source_hash=provenance,
+                source_id=source_id,
+                reference=f"{relation.subject.ref}:{relation.object.ref}:{relation.relation}",
+            )
             fact = store.create_relation(
                 relation_type=relation.relation,
                 subject_entity_id=subject_entity_id,
@@ -496,7 +509,7 @@ def persist_extraction_candidates(
                 source_text=_align_evidence_span(source_text, relation.evidence.start, relation.evidence.end),
                 source_type=source_type,
                 confidence=relation.confidence,
-                evidence_id=f"extract-relation-evidence-{sha256_hex(f'{provenance}:{relation.subject.ref}:{relation.object.ref}:{relation.relation}')[:32]}",
+                evidence_id=evidence_id,
             )
             if fact.status.value == "active" and fact.support_count <= 1:
                 fact = store.update_status(fact.id, "candidate", reason="model_extraction_candidate")
@@ -504,13 +517,11 @@ def persist_extraction_candidates(
                 if endpoint_entity_id:
                     store.bind_entity_evidence(
                         entity_id=endpoint_entity_id,
-                        evidence_id=(
-                            f"extract-relation-evidence-"
-                            f"{sha256_hex(f'{provenance}:{relation.subject.ref}:{relation.object.ref}:{relation.relation}')[:32]}"
-                        ),
+                        evidence_id=evidence_id,
                         role="describes",
                     )
             relation_ids.append(fact.id)
+            evidence_ids.append(evidence_id)
     return ResolvedExtraction(
         entities=resolved,
         claim_ids=claim_ids,
@@ -519,7 +530,32 @@ def persist_extraction_candidates(
         sensitive=tuple(batch.sensitive),
         conflicts=tuple(batch.conflicts),
         uncertainties=tuple(batch.uncertainties),
+        evidence_ids=tuple(dict.fromkeys(evidence_ids)),
     )
+
+
+def _extraction_evidence_id(
+    store: MemoryEntityGraphStore, *, prefix: str, source_hash: str,
+    source_id: str | None, reference: str,
+) -> str:
+    legacy_id = f"{prefix}-{sha256_hex(f'{source_hash}:{reference}')[:32]}"
+    if source_id is None:
+        return legacy_id
+    legacy = store.conn.execute(
+        "SELECT metadata_json FROM memory_evidence WHERE id = ?", (legacy_id,),
+    ).fetchone()
+    if legacy is not None:
+        try:
+            metadata = json.loads(legacy["metadata_json"] or "{}")
+        except (ValueError, TypeError) as exc:
+            raise ExtractionValidationError("legacy_evidence_provenance_unverified") from exc
+        if not isinstance(metadata, dict) or not metadata.get("source_id"):
+            raise ExtractionValidationError("legacy_evidence_provenance_unverified")
+        if metadata["source_id"] == source_id:
+            if metadata.get("source_hash") != source_hash:
+                raise ExtractionValidationError("legacy_evidence_provenance_mismatch")
+            return legacy_id
+    return f"{prefix}-{sha256_hex(f'{source_id}:{source_hash}:{reference}')[:32]}"
 
 
 def activate_extraction_candidates(

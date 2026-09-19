@@ -7,6 +7,7 @@ from typing import Iterable, Mapping
 
 from app.models.api import MemoryRecallPermissions, MemorySearchResult
 from app.services.memory_activation import MemoryActivationDecision
+from app.services.evidence_policy import inactive_evidence_status
 from app.services.memory_candidates import MemoryActivationEventCreate, MemoryCandidateStore
 from app.services.memory_taxonomy import LifecycleStatus, MemoryKind, MemoryScope, RecallPermissions, RiskTier
 from app.utils.metric_references import is_public_reference
@@ -292,6 +293,7 @@ def _contextual_permissions(result: MemorySearchResult, *, query: str) -> Memory
     if _is_unconfirmed_or_inactive_result(result):
         return permissions.model_copy(
             update={
+                "can_style_response": False,
                 "can_answer_context": False,
                 "can_proactively_mention": False,
                 "can_suggest_action": False,
@@ -320,22 +322,7 @@ def _contextual_permissions(result: MemorySearchResult, *, query: str) -> Memory
 
 
 def _is_unconfirmed_or_inactive_result(result: MemorySearchResult) -> bool:
-    inactive_statuses = {
-        "candidate",
-        "pending",
-        "quarantined",
-        "rejected",
-        "archived",
-        "forgotten",
-        "sensitive_blocked",
-        "wrong",
-        "superseded",
-        "reverted",
-    }
-    if result.lifecycle_status and result.lifecycle_status.casefold() in inactive_statuses:
-        return True
-    snippet = result.snippet.casefold()
-    return any(f"status={status}" in snippet for status in inactive_statuses)
+    return inactive_evidence_status(result.lifecycle_status, result.snippet) is not None
 
 
 def _source_context_line(result: MemorySearchResult) -> str:

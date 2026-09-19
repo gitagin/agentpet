@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
 from app.config import (
     DEFAULT_CHAT_BASE_URL,
@@ -145,6 +145,7 @@ class AutomationSettingsRequest(BaseModel):
     auto_structured_memory: bool = False
     auto_long_term_memory: bool = False
     auto_wiki_organize: bool = False
+    wiki_shadow_enabled: StrictBool = False
     local_privacy_mode: bool = False
     proactive_trigger_frequency: ProactiveTriggerFrequency = DEFAULT_PROACTIVE_TRIGGER_FREQUENCY
     use_negotiation: bool = False
@@ -266,6 +267,26 @@ class VaultIndexResponse(BaseModel):
     files_indexed: int = 0
 
 
+class WikiShadowSummary(BaseModel):
+    available: bool = True
+    samples: int = 0
+    today_samples: int = 0
+    completed: int = 0
+    failed: int = 0
+    interrupted: int = 0
+    unfinished: int = 0
+    invalid_records: int = 0
+    wiki_hits: int = 0
+    note_fallbacks: int = 0
+    authority_denied: int = 0
+    coverage_complete: int = 0
+    disputed: int = 0
+    budget_exhausted: int = 0
+    assessment_calls: int = 0
+    evidence_chars: int = 0
+    mean_latency_ms: int | None = None
+
+
 class SettingsStatusResponse(BaseModel):
     model_provider: str | None = None
     model_base_url: str | None = None
@@ -279,4 +300,5 @@ class SettingsStatusResponse(BaseModel):
     vault_configured: bool = False
     agent_models: list[AgentModelConfigResponse] = Field(default_factory=list)
     automation: AutomationSettingsResponse = Field(default_factory=AutomationSettingsResponse)
+    wiki_shadow_metrics: WikiShadowSummary = Field(default_factory=WikiShadowSummary)
     tts_settings: TtsSettingsResponse = Field(default_factory=TtsSettingsResponse)

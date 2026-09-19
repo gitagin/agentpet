@@ -24,6 +24,10 @@ class RetrievalContribution(BaseModel):
 
 
 class MemorySearchResult(BaseModel):
+    wiki_generation: str | None = None
+    wiki_section: str | None = None
+    wiki_start_line: int | None = None
+    wiki_end_line: int | None = None
     note_id: str; chunk_id: str; relative_path: str; title: str; heading: str | None = None; snippet: str; score: float; content_hash: str | None = None; source_scope: str = "knowledge_base"; retrieval_mode: str = "fts"; retrieval_channels: list[str] = Field(default_factory=list); channel_ranks: dict[str, int] = Field(default_factory=dict); retrieval_contributions: list[RetrievalContribution] = Field(default_factory=list); recall_permissions: MemoryRecallPermissions = Field(default_factory=MemoryRecallPermissions); activation_score: float | None = None; score_breakdown: dict[str, float] = Field(default_factory=dict); filtered_reason: str | None = None; memory_kind: str | None = None; memory_scope: str | None = None; lifecycle_status: str | None = None; risk_tier: str | None = None; fact_id: str | None = None; candidate_id: str | None = None; entity_refs: list[str] = Field(default_factory=list); evidence_refs: list[str] = Field(default_factory=list); citation_refs: list[str] = Field(default_factory=list)
 
 

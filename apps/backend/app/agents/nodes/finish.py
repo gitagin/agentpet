@@ -20,6 +20,7 @@ async def _finish_node(graph_state: dict[str, Any]) -> dict[str, Any]:
                 agent_run_id=state.agent_run_id,
                 intent=state.route.intent,
                 text=state.response_text,
+                answer_basis=state.answer_basis,
             )
         )
     return graph_state

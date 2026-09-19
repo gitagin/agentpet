@@ -212,9 +212,9 @@ def test_stream_partial_persistence_reuses_one_connection_and_stays_under_twenty
     original_write = persister._write_sync
     original_connect = database.connect
 
-    def tracked_write(content: str, status_value: str) -> None:
+    def tracked_write(content: str, status_value: str, answer_basis="not_assessed") -> None:
         writes.append(status_value)
-        original_write(content, status_value)
+        original_write(content, status_value, answer_basis)
 
     def tracked_connect(*args, **kwargs):
         connection = original_connect(*args, **kwargs)
@@ -260,11 +260,11 @@ async def test_stream_partial_write_does_not_block_event_loop(
     release = threading.Event()
     original_write = persister._write_sync
 
-    def blocked_write(content: str, status_value: str) -> None:
+    def blocked_write(content: str, status_value: str, answer_basis="not_assessed") -> None:
         started.set()
         while not release.is_set():
             time.sleep(0.005)
-        original_write(content, status_value)
+        original_write(content, status_value, answer_basis)
 
     monkeypatch.setattr(persister, "_write_sync", blocked_write)
     pending: asyncio.Task[None] | None = None
@@ -310,11 +310,11 @@ async def test_two_concurrent_stream_persisters_do_not_block_each_other(
     release_first_write = threading.Event()
     original_first_write = first._write_sync
 
-    def blocked_first_write(content: str, status_value: str) -> None:
+    def blocked_first_write(content: str, status_value: str, answer_basis="not_assessed") -> None:
         first_write_started.set()
         while not release_first_write.is_set():
             time.sleep(0.005)
-        original_first_write(content, status_value)
+        original_first_write(content, status_value, answer_basis)
 
     monkeypatch.setattr(first, "_write_sync", blocked_first_write)
     blocked_task: asyncio.Task[None] | None = None

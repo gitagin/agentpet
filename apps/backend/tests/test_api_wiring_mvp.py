@@ -1664,9 +1664,9 @@ async def test_persisting_stream_aclose_after_terminal_event_does_not_repeat_upd
     original_persist_terminal = chat_api._StreamPartialPersister.persist_terminal
     original_update_run = chat_api._update_agent_run
 
-    async def track_persist_terminal(persister, content, status_value):
+    async def track_persist_terminal(persister, content, status_value, answer_basis="not_assessed"):
         assistant_statuses.append(status_value)
-        await original_persist_terminal(persister, content, status_value)
+        await original_persist_terminal(persister, content, status_value, answer_basis)
 
     def track_run_update(
         request,

@@ -43,6 +43,7 @@ from .registry import AgentRegistry, default_agent_registry
 from .retrieval.router import _chat_agent_tool_names, _mentions_time_topic
 from .retrieval.scoping import (
     _force_search_memory_source_scope,
+    _explicit_tool_scopes,
     _retrieval_top_k_for_state,
     _select_retrieval_entry_node,
     _semantic_from_memory_route,
@@ -83,12 +84,14 @@ class LangGraphAgentRuntime:
             tasks=self.services.tasks,
             wiki=self.services.wiki,
             wiki_workflow=self.services.wiki_workflow,
+            wiki_reader=self.services.wiki_reader,
         )
         self.agent_registry = self._build_agent_registry()
         self.graph = self._build_graph()
         self.negotiation_graph = self._build_negotiation_graph()
 
     async def run(self, state: AgentState):
+        self.completed_state = None
         if state.local_privacy_mode and state.local_privacy_sensitive_reason:
             async for event in self._run_local_privacy_mode(state):
                 yield event
@@ -99,6 +102,8 @@ class LangGraphAgentRuntime:
             streaming_graph_state = await self._prepare_streaming_chat_fast_path(state)
             if streaming_graph_state is not None:
                 async for event in self._run_streaming_chat_fast_path(streaming_graph_state):
+                    if isinstance(event, AgentDoneEvent):
+                        self.completed_state = _agent_state(streaming_graph_state)
                     yield event
                 return
 
@@ -113,6 +118,8 @@ class LangGraphAgentRuntime:
             for node_state in update.values():
                 events = node_state.get("events", [])
                 for event in events[yielded:]:
+                    if isinstance(event, AgentDoneEvent):
+                        self.completed_state = node_state.get("agent_state")
                     yield event
                 yielded = len(events)
 
@@ -339,6 +346,7 @@ class LangGraphAgentRuntime:
             agent_run_id=state.agent_run_id,
             intent=AgentIntent.CHAT,
             text=response,
+            answer_basis=state.answer_basis,
         )
 
     async def _prepare_streaming_chat_fast_path(self, state: AgentState) -> dict[str, Any] | None:
@@ -444,6 +452,7 @@ class LangGraphAgentRuntime:
             agent_run_id=state.agent_run_id,
             intent=state.route.intent,
             text=response,
+            answer_basis=state.answer_basis,
         )
 
     def _build_graph(self):
@@ -766,6 +775,7 @@ class LangGraphAgentRuntime:
             tasks=self.services.tasks,
             wiki=self.services.wiki,
             wiki_workflow=self.services.wiki_workflow,
+            wiki_reader=self.services.wiki_reader,
             observer=tool_results.append,
         )
         chat_model = self._model_for(agent_id)
@@ -775,6 +785,7 @@ class LangGraphAgentRuntime:
                 tools_for_agent,
                 system_prompt,
                 forced_source_scope=forced_source_scope,
+                allowed_source_scopes=_explicit_tool_scopes(state),
                 forced_top_k=(
                     _retrieval_top_k_for_state(state)
                     if agent_id == AgentId.RETRIEVAL_AGENT
@@ -1356,4 +1367,3 @@ def _apply_offline_action_route(graph_state: dict[str, Any], state: AgentState) 
         return
     state.semantic_analysis = state.semantic_analysis or _fallback_semantic_analysis(state)
     state.classifier = _fallback_classifier(state)
-

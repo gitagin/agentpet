@@ -160,7 +160,7 @@ def test_langgraph_runtime_uses_independent_registry_models_and_allowed_tools() 
         task_events,
     ) = asyncio.run(run_case())
 
-    assert chat_model.calls[0][2] == ["search_memory", "get_current_time", "manage_wiki_page"]
+    assert chat_model.calls[0][2] == ["search_memory", "get_current_time"]
     assert semantic_model.calls
     assert [call[2] for call in retrieval_model.calls] == [["search_memory"], ["search_memory"]]
     assert retrieval.calls == [

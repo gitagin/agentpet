@@ -1035,6 +1035,7 @@ class MemoryEntityGraphStore:
         entity_type: str,
         name: str,
         source_hash: str,
+        source_id: str | None = None,
     ) -> list[MemoryEntity]:
         """Find an extraction candidate only within the same source payload.
 
@@ -1058,7 +1059,11 @@ class MemoryEntityGraphStore:
                 metadata = json.loads(str(row["metadata_json"] or "{}"))
             except (TypeError, json.JSONDecodeError):
                 metadata = {}
-            if isinstance(metadata, dict) and str(metadata.get("source_hash") or "") == source_hash:
+            if (
+                isinstance(metadata, dict)
+                and str(metadata.get("source_hash") or "") == source_hash
+                and metadata.get("source_id") == source_id
+            ):
                 matches.append(_map_entity(row))
         return matches
 
@@ -1737,6 +1742,13 @@ class MemoryEntityGraphStore:
         path = _safe_wiki_path(wiki_relative_path)
         row_id = new_id()
         with self._write_scope():
+            existing = self.conn.execute(
+                "SELECT 1 FROM wiki_page_bindings WHERE vault_id = ? "
+                "AND (wiki_relative_path = ? OR page_entity_id = ?) AND status = 'forgotten'",
+                (vault_id, path, page_entity_id),
+            ).fetchone()
+            if existing is not None and status != "forgotten":
+                raise EntityGraphError("forgotten_wiki_page_cannot_be_reactivated")
             self.conn.execute(
                 """
                 INSERT INTO wiki_page_bindings (
@@ -1777,20 +1789,22 @@ class MemoryEntityGraphStore:
     ) -> None:
         if status not in {"active", "stale", "quarantined", "forgotten"}:
             raise EntityGraphError("invalid_wiki_binding_status")
-        row = self.conn.execute(
-            "SELECT content_hash, status, revision FROM wiki_page_bindings WHERE id = ?",
-            (binding_id,),
-        ).fetchone()
-        if row is None:
-            raise EntityGraphError("wiki_binding_not_found")
-        next_revision = int(row["revision"] or 0) if revision is None else max(0, int(revision))
-        if (
-            str(row["content_hash"] or "") == str(content_hash or "")
-            and str(row["status"]) == status
-            and int(row["revision"] or 0) == next_revision
-        ):
-            return
         with self._write_scope():
+            row = self.conn.execute(
+                "SELECT content_hash, status, revision FROM wiki_page_bindings WHERE id = ?",
+                (binding_id,),
+            ).fetchone()
+            if row is None:
+                raise EntityGraphError("wiki_binding_not_found")
+            if row["status"] == "forgotten" and status != "forgotten":
+                raise EntityGraphError("forgotten_wiki_page_cannot_be_reactivated")
+            next_revision = int(row["revision"] or 0) if revision is None else max(0, int(revision))
+            if (
+                str(row["content_hash"] or "") == str(content_hash or "")
+                and str(row["status"]) == status
+                and int(row["revision"] or 0) == next_revision
+            ):
+                return
             self.conn.execute(
                 """
                 UPDATE wiki_page_bindings

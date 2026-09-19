@@ -28,6 +28,7 @@ from ..agents.events import sse_stream
 from ..agents.state import AgentState
 from ..agents.intent import route_intent
 from ..models.api import ChatAcceptedResponse, ChatDailyHistoryMessage, ChatDailyHistoryResponse, ChatRequest
+from ..models.answer_basis import normalize_answer_basis
 from ..services.agent_actions import AutomationPolicy
 from ..services.chat_pipeline import agent_action_event, archive_chat_memory, automation_settings
 from ..services.memory_policy import evaluate_memory_content
@@ -154,6 +155,7 @@ async def get_daily_chat_history(
                 messages.role,
                 messages.content,
                 messages.status,
+                messages.answer_basis,
                 messages.created_at,
                 messages.updated_at,
                 agent_runs.id AS agent_run_id
@@ -194,6 +196,11 @@ async def get_daily_chat_history(
                 created_at=str(row["created_at"]),
                 updated_at=str(row["updated_at"]),
                 agent_run_id=str(row["agent_run_id"]) if row["agent_run_id"] is not None else None,
+                answer_basis=(
+                    normalize_answer_basis(row["answer_basis"])
+                    if row["role"] == "assistant" and row["status"] == "completed"
+                    else "not_assessed"
+                ),
             )
             for row in limited_rows
         ],
@@ -506,8 +513,8 @@ class _StreamPartialPersister:
             return
         await self._flush(chunks)
 
-    async def persist_terminal(self, content: str, status_value: str) -> None:
-        await asyncio.to_thread(self._write_sync, content, status_value)
+    async def persist_terminal(self, content: str, status_value: str, answer_basis: str = "not_assessed") -> None:
+        await asyncio.to_thread(self._write_sync, content, status_value, answer_basis)
         self._pending_tokens = 0
 
     async def _flush(self, chunks: list[str]) -> None:
@@ -515,7 +522,7 @@ class _StreamPartialPersister:
         self._pending_tokens = 0
         self._last_flush = monotonic()
 
-    def _write_sync(self, content: str, status_value: str) -> None:
+    def _write_sync(self, content: str, status_value: str, answer_basis: str = "not_assessed") -> None:
         # The connection is deliberately shared for one stream. All accesses
         # happen under a lock because to_thread may use different workers.
         with self._thread_lock:
@@ -525,8 +532,10 @@ class _StreamPartialPersister:
             assert self._conn is not None
             try:
                 self._conn.execute(
-                    "UPDATE messages SET content = ?, status = ?, updated_at = ? WHERE id = ?",
-                    (content, status_value, utc_now_iso(), self._message_id),
+                    "UPDATE messages SET content = ?, status = ?, answer_basis = ?, updated_at = ? WHERE id = ?",
+                    (content, status_value,
+                     normalize_answer_basis(answer_basis) if status_value == "completed" else "not_assessed",
+                     utc_now_iso(), self._message_id),
                 )
                 self._conn.commit()
             except BaseException:
@@ -567,10 +576,15 @@ async def _persisting_stream(request: Request, state: AgentState) -> AsyncIterat
     error_message = None
     terminal_event_seen = False
     final_state_persisted = False
+    shadow = getattr(request.app.state, "wiki_shadow", None)
+    shadow_scope = shadow.foreground_started() if shadow is not None else None
+    shadow_candidate = None
+    shadow_ready = False
 
     try:
         try:
-            async for event in agent_runtime(request).run(state):
+            runtime = agent_runtime(request)
+            async for event in runtime.run(state):
                 if isinstance(event, AgentTokenEvent):
                     token_chunks.append(event.text)
                     await partial_persister.note_token(token_chunks)
@@ -594,13 +608,17 @@ async def _persisting_stream(request: Request, state: AgentState) -> AsyncIterat
                     final_status = AgentRunStatus.SUCCESS.value
                     error_code = None
                     error_message = None
-                    await partial_persister.persist_terminal(final_text, MessageStatus.COMPLETED.value)
+                    await partial_persister.persist_terminal(
+                        final_text, MessageStatus.COMPLETED.value, event.answer_basis,
+                    )
+                    shadow_candidate = getattr(runtime, "completed_state", None)
                     if not _post_reply_work_blocked(state):
                         _schedule_post_reply_work(request, state, assistant_message_id, final_text)
                     yield AgentReplyReadyEvent(
                         agent_run_id=state.agent_run_id,
                         intent=event.intent,
                         text=final_text,
+                        answer_basis=event.answer_basis,
                     )
                     yield event
                     break
@@ -655,6 +673,7 @@ async def _persisting_stream(request: Request, state: AgentState) -> AsyncIterat
             error_message=error_message,
         )
         final_state_persisted = True
+        shadow_ready = True
     except (asyncio.CancelledError, GeneratorExit):
         if not terminal_event_seen:
             final_status = AgentRunStatus.CANCELLED.value
@@ -676,8 +695,15 @@ async def _persisting_stream(request: Request, state: AgentState) -> AsyncIterat
             final_state_persisted = True
         raise
     finally:
-        await partial_persister.close()
-        pop_chat_run(request, state.agent_run_id)
+        try:
+            await partial_persister.close()
+            pop_chat_run(request, state.agent_run_id)
+        finally:
+            if shadow is not None:
+                shadow.foreground_finished(
+                    shadow_candidate if shadow_ready and final_status == AgentRunStatus.SUCCESS.value else None,
+                    shadow_scope,
+                )
 
 
 def _persist_stream_terminal_state(

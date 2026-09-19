@@ -11,6 +11,7 @@ from typing import Any
 from fastapi import Request
 
 from app.config import get_settings
+from app.services.wiki_workflows import QueryArchiveRejectedError
 from app.agents import AgentRuntimeServices, LangGraphAgentRuntime
 from app.agents.checkpointer import SQLiteCheckpointStore
 from app.agents.contracts import (
@@ -114,6 +115,7 @@ from app.services.wiki import (
     WIKI_INDEX_PATH,
     WIKI_LOG_PATH,
     WikiIngestPreviewTokenError,
+    WikiWorkflowError,
     resolve_wiki_path,
 )
 from app.utils.time import utc_now_iso
@@ -145,9 +147,114 @@ from .factory import (
 )
 
 
+class RuntimeWikiReadAdapter:
+    """One request/run owns the pin; caller cannot repin through tool arguments."""
+
+    def __init__(self, request):
+        import threading
+
+        self.request = request
+        self._lock = threading.Lock()
+        self._pin = None
+        self._source_observation = None
+
+    async def check_source_watermark(self, generation, paths):
+        def execute():
+            reader, pin = self._reader_and_pin(generation)
+            observation = reader.source_observation(pin, paths)
+            with self._lock:
+                if self._source_observation is None:
+                    self._source_observation = observation["watermark"]
+                elif observation["watermark"] != self._source_observation:
+                    raise ValueError("wiki_sources_changed_during_query")
+            return {"generation": observation["generation"], "status": observation["status"]}
+
+        return await asyncio.to_thread(execute)
+
+    def _reader_and_pin(self, expected_generation=None):
+        from .factory import wiki_snapshot_reader_dependency
+        from app.services.wiki.generations import WikiGenerationError
+
+        reader = wiki_snapshot_reader_dependency(self.request)
+        with self._lock:
+            if self._pin is None:
+                pin = reader.pin()
+                if expected_generation is not None and expected_generation != pin.generation:
+                    raise WikiGenerationError("wiki_snapshot_version_mismatch")
+                self._pin = pin
+            elif expected_generation is not None and expected_generation != self._pin.generation:
+                raise WikiGenerationError("wiki_snapshot_version_mismatch")
+            return reader, self._pin
+
+    async def search_pages(self, query: str, top_k: int = 8) -> dict:
+        from dataclasses import asdict
+
+        def execute():
+            reader, pin = self._reader_and_pin()
+            return {
+                "generation": pin.generation,
+                "candidates": [asdict(candidate) for candidate in reader.search(pin, query, limit=top_k)],
+            }
+
+        return await asyncio.to_thread(execute)
+
+    async def read_page(self, request):
+        from dataclasses import asdict
+        from app.models.wiki import WikiPageReadResponse
+
+        def execute():
+            reader, pin = self._reader_and_pin(request.generation)
+            result = reader.read(
+                pin, request.relative_path, expected_version=request.expected_version,
+                section=request.section, max_chars=request.max_chars,
+            )
+            return WikiPageReadResponse(**asdict(result))
+
+        return await asyncio.to_thread(execute)
+
+
 class RuntimeRetrievalAdapter:
     def __init__(self, request: Request):
         self.request = request
+        self._wiki_fallback_vault_id: str | None = None
+
+    def _fallback_vault(self):
+        vault_id = active_vault_id(self.request)
+        if self._wiki_fallback_vault_id is None:
+            self._wiki_fallback_vault_id = vault_id
+        if vault_id != self._wiki_fallback_vault_id:
+            raise ValueError("wiki_fallback_vault_changed")
+        return vault_id
+
+    async def search_vault_notes(self, query: str, top_k: int = 8) -> MemorySearchResponse:
+        vault_id = self._fallback_vault()
+        response = await asyncio.to_thread(
+            lambda: retrieval_service(self.request).search(
+                vault_id=vault_id, query=query, top_k=top_k, mode="hybrid",
+                source_scope="knowledge_base", vault_notes_only=True,
+            ),
+        )
+        self._fallback_vault()
+        restored, _ = await asyncio.to_thread(
+            lambda: retrieval_service(self.request).restore_citations(
+                vault_id=vault_id, citations=response.results, vault_notes_only=True,
+            ),
+        )
+        self._fallback_vault()
+        restored = [item.model_copy(update={"retrieval_mode": "wiki_vault_fallback"}) for item in restored]
+        return response.model_copy(update={"results": restored})
+
+    async def restore_vault_notes(self, citations) -> list:
+        vault_id = self._fallback_vault()
+        restored, errors = await asyncio.to_thread(
+            lambda: retrieval_service(self.request).restore_citations(
+                vault_id=vault_id, citations=citations, vault_notes_only=True,
+            ),
+        )
+        self._fallback_vault()
+        if errors:
+            raise ValueError("wiki_fallback_authority_failed")
+        return [item.model_copy(update={"retrieval_mode": "wiki_vault_fallback"}) for item in restored]
 
     async def search(
         self,
@@ -985,9 +1092,12 @@ class RuntimeWikiWorkflowAdapter:
             )
         finally:
             service.discard_ingest_preview(confirm_request.preview_token)
-        return _model_result(outcome, WikiIngestPreviewResponse)
+        response = _model_result(outcome, WikiIngestPreviewResponse)
+        wiki_workflow_service(self.request).validate_ingest_run(response.run_id)
+        return response
 
     async def review_ingest(self, review_request: WikiIngestReviewRequest) -> WikiIngestReviewResponse:
+        wiki_workflow_service(self.request).validate_ingest_run(review_request.run_id)
         outcome = await _execute_workflow_action(
             self.request,
             action_lifecycle=self.action_lifecycle,
@@ -998,12 +1108,18 @@ class RuntimeWikiWorkflowAdapter:
             source_message_id=None,
             reversible=False,
         )
-        return _model_result(outcome, WikiIngestReviewResponse)
+        response = _model_result(outcome, WikiIngestReviewResponse)
+        wiki_workflow_service(self.request).validate_ingest_run(response.run_id)
+        return response
 
     async def lint_query_archive(self, archive_request: QueryArchiveRequest) -> QueryArchiveLintResponse:
         return wiki_workflow_service(self.request).lint_query_archive(archive_request)
 
     async def archive_query(self, archive_request: QueryArchiveRequest) -> QueryArchiveResponse:
+        lint = wiki_workflow_service(self.request).lint_query_archive(archive_request)
+        if not lint.passed:
+            raise QueryArchiveRejectedError(lint.errors)
+        archive_request = archive_request.model_copy(update={"citations": lint.normalized_citations})
         outcome = await _execute_workflow_action(
             self.request,
             action_lifecycle=self.action_lifecycle,
@@ -1080,6 +1196,7 @@ class RuntimeWikiWorkflowAdapter:
         return wiki_workflow_service(self.request).plan_lint(lint_request)
 
     async def apply_ingest(self, apply_request: WikiIngestApplyRequest) -> WikiIngestApplyResponse:
+        wiki_workflow_service(self.request).validate_ingest_application(apply_request.run_id)
         outcome = await _execute_workflow_action(
             self.request,
             action_lifecycle=self.action_lifecycle,
@@ -1091,7 +1208,9 @@ class RuntimeWikiWorkflowAdapter:
             reversible=False,
             explicit_confirmation=apply_request.review_acknowledged,
         )
-        return _model_result(outcome, WikiIngestApplyResponse)
+        response = _model_result(outcome, WikiIngestApplyResponse)
+        wiki_workflow_service(self.request).validate_ingest_application(response.run_id)
+        return response
 
 
 async def _execute_registered_action(
@@ -2795,6 +2914,10 @@ def _wiki_ingest_confirm_adapter(request: Request | AppContext):
 def _wiki_ingest_confirm_reader(request: Request | AppContext):
     def read(receipt: ExecutionReceipt) -> dict[str, object] | None:
         run_id = _stable_effect_id("wiki-ingest", receipt.idempotency_key)
+        try:
+            wiki_workflow_service(request).validate_ingest_run(run_id)
+        except WikiWorkflowError:
+            return None
         with database(request).session() as conn:
             row = conn.execute(
                 "SELECT source_id, status, result_json FROM wiki_workflow_runs WHERE id = ? AND workflow_type = 'ingest'",
@@ -2850,7 +2973,10 @@ def _wiki_ingest_review_adapter(request: Request | AppContext):
 def _wiki_ingest_review_reader(request: Request | AppContext):
     def read(receipt: ExecutionReceipt) -> dict[str, object] | None:
         review_id = _stable_effect_id("wiki-review", receipt.idempotency_key)
-        response = wiki_workflow_service(request).get_ingest_review(review_id)
+        try:
+            response = wiki_workflow_service(request).get_ingest_review(review_id)
+        except WikiWorkflowError:
+            return None
         if response is None:
             return None
         return {
@@ -2949,7 +3075,6 @@ def _wiki_query_archive_has_partial_effect(
 
 def _wiki_query_archive_reader(request: Request | AppContext):
     def read(receipt: ExecutionReceipt) -> dict[str, object] | None:
-        expected = _receipt_expected_state(receipt)
         archive_id = _stable_effect_id("wiki-archive", receipt.idempotency_key)
         service = wiki_workflow_service(request)
         try:
@@ -2968,16 +3093,14 @@ def _wiki_query_archive_reader(request: Request | AppContext):
         parameters = _receipt_canonical_parameters(receipt)
         if parameters is not None:
             archive_request = QueryArchiveRequest.model_validate(parameters)
-            response = QueryArchiveResponse(
-                archive_id=archive_id,
-                page=detail.page,
-                lint=service.lint_query_archive(archive_request),
-            )
         else:
-            response_raw = expected.get("response")
-            if not isinstance(response_raw, Mapping):
-                return None
-            response = QueryArchiveResponse.model_validate(response_raw)
+            archive_request = QueryArchiveRequest(
+                question=detail.question, answer=detail.answer, citations=detail.citations,
+            )
+        lint = service.lint_query_archive(archive_request)
+        if not lint.passed:
+            return None
+        response = QueryArchiveResponse(archive_id=archive_id, page=detail.page, lint=lint)
         return {
             "archive_id": archive_id,
             "target_path": detail.target_path,
@@ -3185,6 +3308,10 @@ def _wiki_ingest_apply_reader(request: Request | AppContext):
             run_id = str(params.get("run_id") or "")
         if not run_id:
             return None
+        try:
+            wiki_workflow_service(request).validate_ingest_application(run_id)
+        except WikiWorkflowError:
+            return None
         with database(request).session() as conn:
             row = conn.execute(
                 "SELECT status, result_json FROM wiki_workflow_runs WHERE id = ? AND workflow_type = 'ingest'",
@@ -3308,8 +3435,8 @@ def _wiki_answer_summary_adapter(request: Request | AppContext):
                     or ["companion-summary", "auto-wiki", "chat-distilled"],
                     "links": _string_values(policy.canonical_parameters.get("links")),
                     "source_message_id": proposal.source_message_id,
-                    "type": "source",
-                    "confidence": "medium",
+                    "type": "report",
+                    "confidence": "unverified",
                     "authors": _string_values(policy.canonical_parameters.get("authors"))
                     or ["chat_answer_wiki_summary_agent"],
                     "sources": _string_values(policy.canonical_parameters.get("sources")),
@@ -4446,6 +4573,7 @@ def agent_runtime(request: Request) -> LangGraphAgentRuntime:
             continuity=RuntimeContinuityAdapter(request, action_lifecycle),
             wiki=RuntimeWikiAdapter(request, action_lifecycle),
             wiki_workflow=RuntimeWikiWorkflowAdapter(request, action_lifecycle),
+            wiki_reader=RuntimeWikiReadAdapter(request),
             companion_retrieval_reports=companion_retrieval_report_store(request),
             model_registry=registry if registry.clients else None,
             automation_settings=automation,

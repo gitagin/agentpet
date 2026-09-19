@@ -106,6 +106,27 @@ class WikiIngestApplyResponse(BaseModel):
     run_id: str; status: str; pages_written: int = 0; page_results: list[WikiIngestPageResult] = Field(default_factory=list); index_updated: bool = False; log_appended: bool = False; lint_summary: dict[str, object] = Field(default_factory=dict)
 
 
+class WikiPageReadRequest(BaseModel):
+    relative_path: str = Field(min_length=1, max_length=1024)
+    generation: str | None = Field(default=None, min_length=1, max_length=128)
+    expected_version: str | None = Field(default=None, min_length=1, max_length=128)
+    section: str | None = Field(default=None, min_length=1, max_length=300)
+    max_chars: int = Field(default=12000, ge=1, le=32000)
+
+
+class WikiPageReadResponse(BaseModel):
+    generation: str
+    relative_path: str
+    content_hash: str
+    title: str
+    content: str
+    start_line: int
+    end_line: int
+    links: list[str]
+    backlinks: list[str]
+    line_basis: Literal["markdown_body"] = "markdown_body"
+
+
 class WikiSynthesizeRequest(BaseModel):
     title: str = Field(min_length=1); content: str = Field(min_length=1); source_paths: list[str] = Field(default_factory=list); target_path: str | None = None; tags: list[str] = Field(default_factory=list); links: list[str] = Field(default_factory=list); page_type: Literal["synthesis", "comparison", "decision", "report"] = "synthesis"; user_decision: str | None = None; evidence_ids: list[str] = Field(default_factory=list); entity_ids: list[str] = Field(default_factory=list); fact_ids: list[str] = Field(default_factory=list)
     target_content_hash: str | None = None

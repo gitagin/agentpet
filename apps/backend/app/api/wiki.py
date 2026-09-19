@@ -46,6 +46,10 @@ from ..services.wiki_workflows import (
     WikiWorkflowService,
 )
 from .services.adapters import RuntimeWikiAdapter, RuntimeWikiWorkflowAdapter
+from .services.factory import wiki_snapshot_reader_dependency
+from ..models.wiki import WikiPageReadRequest, WikiPageReadResponse
+from ..services.wiki.generations import WikiGenerationError
+from ..services.wiki.snapshot_reader import WikiSnapshotReader
 from .wiring import (
     audit_reason,
     production_action_lifecycle,
@@ -56,6 +60,37 @@ from .wiring import (
 )
 
 router = APIRouter(prefix="/wiki", tags=["wiki"])
+
+
+@router.post("/pages/read", response_model=WikiPageReadResponse)
+def read_wiki_page(
+    page_request: WikiPageReadRequest,
+    request: Request,
+    reader: WikiSnapshotReader = Depends(wiki_snapshot_reader_dependency),
+) -> WikiPageReadResponse:
+    from dataclasses import asdict
+
+    try:
+        pin = reader.pin(page_request.generation)
+        page = reader.read(
+            pin, page_request.relative_path, expected_version=page_request.expected_version,
+            section=page_request.section, max_chars=page_request.max_chars,
+        )
+    except (WikiGenerationError, WikiWorkflowError, MarkdownWriteError, OSError, ValueError) as exc:
+        reason = str(exc)
+        exposed = {
+            "wiki_snapshot_version_mismatch",
+            "wiki_snapshot_read_budget_exhausted",
+            "wiki_snapshot_section_missing_or_ambiguous",
+        }
+        code = reason if reason in exposed else "wiki_snapshot_read_unavailable"
+        record_audit(request, action="wiki.snapshot.read", result="denied", reason=code)
+        raise AppError(
+            code=code, message="无法读取所请求的 Wiki 快照，请检查版本、权限或阅读范围。",
+            status_code=409 if code == "wiki_snapshot_version_mismatch" else 422 if code in exposed else 403,
+        ) from exc
+    record_audit(request, action="wiki.snapshot.read", result="success", target_path=page.relative_path)
+    return WikiPageReadResponse(**asdict(page))
 
 
 @router.get("/pages", response_model=WikiPageListResponse)

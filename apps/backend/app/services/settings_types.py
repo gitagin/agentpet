@@ -53,6 +53,7 @@ OPENAI_COMPATIBLE_PROVIDER_ALIASES = {
 SUPPORTED_MODEL_PROVIDERS = {"openai", "openai-compatible"}
 TTS_SETTINGS_STATE_KEY = "tts_settings"
 LOCAL_PRIVACY_MODE_STATE_KEY = "local_privacy_mode"
+WIKI_SHADOW_ENABLED_STATE_KEY = "wiki_shadow_enabled"
 PROACTIVE_TRIGGER_FREQUENCY_STATE_KEY = "proactive_trigger_frequency"
 TTS_KEY_STATE_PREFIX = "tts_key:"
 XIAOMI_MIMO_TTS_PROVIDER = "xiaomi-mimo"

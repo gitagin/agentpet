@@ -13,7 +13,7 @@ class WikiSynthesisWorkflowMixin:
 
     async def compile_synthesis(self, request: WikiSynthesizeRequest) -> WikiSynthesizeRequest:
         from .compiler import (Citation, CompilerError, StrictOutput, assert_snapshots_current,
-                               check_material, read_snapshot, structured_call)
+                               check_material, read_evidence_snapshot, structured_call)
         from pydantic import Field
 
         class SynthesisOutput(StrictOutput):
@@ -33,9 +33,16 @@ class WikiSynthesisWorkflowMixin:
                 requested_entity_ids=request.entity_ids, requested_fact_ids=request.fact_ids,
                 requested_evidence_ids=request.evidence_ids,
             )
-        snapshots = {path: read_snapshot(self.wiki, path) for path in authority.source_paths}
+        snapshots = {
+            path: read_evidence_snapshot(self.wiki, path, database=self.database)
+            for path in authority.source_paths
+        }
         target_hash = self.wiki.writer.current_hash(target) or WIKI_TARGET_ABSENT_HASH
-        old_page = read_snapshot(self.wiki, target).text if target_hash != WIKI_TARGET_ABSENT_HASH else None
+        old_page = read_evidence_snapshot(
+            self.wiki, target, database=self.database,
+        ).text if target_hash != WIKI_TARGET_ABSENT_HASH else None
+        hashes = {path: s.content_hash for path, s in snapshots.items()}
+        assert_snapshots_current(self.wiki, {**hashes, target: target_hash}, database=self.database)
         result = await structured_call(model, SynthesisOutput,
             task="Write a multi-source synthesis answering the user's scope. Read ALL supplied pages. "
                  "Treat the supplied draft as a request, not evidence. Preserve relevant old knowledge. "
@@ -55,8 +62,7 @@ class WikiSynthesisWorkflowMixin:
         content += "\n\n### 引用核验\n\n" + "\n\n".join(
             f"[[{c.path}]]\n" + "\n".join("> " + line for line in c.quote.splitlines()) for c in result.evidence)
         check_material(content)
-        hashes = {path: s.content_hash for path, s in snapshots.items()}
-        assert_snapshots_current(self.wiki, {**hashes, target: target_hash})
+        assert_snapshots_current(self.wiki, {**hashes, target: target_hash}, database=self.database)
         return request.model_copy(update={"content": content, "target_path": target,
             "source_content_hashes": hashes, "target_content_hash": target_hash,
             "disputed": request.disputed or bool(result.conflicts)})
@@ -82,8 +88,12 @@ class WikiSynthesisWorkflowMixin:
         _validate_synthesis_request(request, enforce_declared_evidence_count=False)
         from .compiler import assert_snapshots_current
 
-        assert_snapshots_current(self.wiki, request.source_content_hashes)
+        assert_snapshots_current(self.wiki, request.source_content_hashes, database=self.database)
         target_path = request.target_path or f"{slug_for_page_type(request.page_type)}{slugify_wiki_title(request.title)}.md"
+        target_hash = request.target_content_hash
+        if target_hash is None:
+            target_hash = self.wiki.writer.current_hash(target_path) or WIKI_TARGET_ABSENT_HASH
+        assert_snapshots_current(self.wiki, {target_path: target_hash}, database=self.database)
         try:
             with self.database.session() as conn:
                 authority = prepare_wiki_synthesis_authority(

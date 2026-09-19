@@ -3,6 +3,7 @@ from __future__ import annotations
 from app.models.enums import AgentId
 from app.services.wiki import WikiService
 from app.storage.database import Database
+from app.services.retrieval import RetrievalService
 
 from .common import ReviewModelResolver, WikiReviewModelProtocol
 from .ingest import WikiIngestWorkflowMixin
@@ -25,9 +26,11 @@ class WikiWorkflowService(
         review_model: WikiReviewModelProtocol | None = None,
         review_agent_id: AgentId | str | None = None,
         review_model_resolver: ReviewModelResolver | None = None,
+        retrieval: RetrievalService | None = None,
     ) -> None:
         self.database = database
         self.wiki = wiki
         self.review_model = review_model
         self.review_agent_id = AgentId(review_agent_id or AgentId.ACTION_AGENT)
         self.review_model_resolver = review_model_resolver
+        self.retrieval = retrieval if retrieval is not None else RetrievalService(database)

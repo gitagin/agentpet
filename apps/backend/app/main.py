@@ -14,6 +14,7 @@ from .api.health import router as health_router
 from .api.chat import recover_interrupted_chat_runs, recover_post_reply_memory_jobs, shutdown_post_reply_tasks
 from .api.services.adapters import RuntimeReminderDeliveryAdapter, production_action_lifecycle
 from .api.services.factory import AppContext, expire_chat_runs
+from .api.services.wiki_shadow import WikiShadowRuntime
 from .config import get_settings
 from .errors import register_error_handlers
 from .scheduler import APSchedulerReminderScheduler, ReminderSchedulerProtocol
@@ -27,6 +28,7 @@ from .services.fts_bigram_backfill import ensure_bigram_fts
 from .agents.reflection_graph import ReflectionJobManager
 from .services.tasks import TaskService, TaskStore
 from .services.wiki_reconciler import reconcile_all_vaults
+from .services.wiki.shadow import ShadowMetricStore
 from .storage.database import Database, MigrationRunner
 
 
@@ -54,6 +56,7 @@ def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         ensure_app_services(app)
+        await _prune_shadow_metrics(app)
         app.state.reflection_jobs.recover_orphans()
         recovered_post_reply_jobs = recover_post_reply_memory_jobs(app)
         if recovered_post_reply_jobs:
@@ -90,6 +93,7 @@ def create_app() -> FastAPI:
         try:
             yield
         finally:
+            await app.state.wiki_shadow.shutdown()
             cleanup_task.cancel()
             try:
                 await cleanup_task
@@ -131,10 +135,13 @@ def create_app() -> FastAPI:
     app.state.chat_runs_expires_at = {}
     app.state.chat_runs_lock = threading.Lock()
     app.state.reflection_jobs = ReflectionJobManager()
+    app.state.wiki_shadow = WikiShadowRuntime(AppContext(app))
 
     @app.middleware("http")
     async def request_id_middleware(request: Request, call_next):
         ensure_app_services(request.app)
+        if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+            app.state.wiki_shadow.preempt()
         request_id = request.headers.get("X-Request-ID") or str(uuid4())
         request.state.request_id = request_id
         response = await call_next(request)
@@ -162,6 +169,15 @@ async def _cleanup_expired_chat_runs(app: FastAPI) -> None:
     while True:
         await asyncio.sleep(_CHAT_RUN_CLEANUP_INTERVAL_SECONDS)
         expire_chat_runs(AppContext(app))
+        await _prune_shadow_metrics(app)
+
+
+async def _prune_shadow_metrics(app: FastAPI) -> None:
+    try:
+        await asyncio.to_thread(ShadowMetricStore(app.state.database).prune)
+    except Exception:
+        # Do not include persisted data or database exception text in logs.
+        logger.warning("Wiki Shadow metric retention cleanup failed; retry on next cleanup cycle")
 
 
 def ensure_app_services(app: FastAPI) -> None:

@@ -36,6 +36,7 @@ from ..services.embeddings import (
     build_local_onnx_embeddings,
 )
 from ..services.chat_model import ChatModelError, LangChainGraphChatClient
+from ..services.wiki.shadow import ShadowMetricStore
 from ..services.health import component_health_from_vector_index
 from ..services.retrieval_factory import close_vector_index
 from ..services.settings import (
@@ -140,6 +141,7 @@ async def get_settings_status(
         vault_configured=vault_configured,
         agent_models=_agent_model_responses(store),
         automation=automation,
+        wiki_shadow_metrics=ShadowMetricStore(database(request)).summary(),
         tts_settings=tts_settings,
     )
 

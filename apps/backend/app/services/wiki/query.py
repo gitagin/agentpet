@@ -12,7 +12,25 @@ from app.storage.markdown import read_markdown
 class WikiQueryWorkflowMixin:
 
     def lint_query_archive(self, request: QueryArchiveRequest) -> QueryArchiveLintResponse:
-        return _lint_query_archive(request)
+        root = str(self.wiki.writer.vault_root.resolve())
+        with self.database.session() as conn:
+            vault = conn.execute("SELECT id FROM vaults WHERE root_path = ?", (root,)).fetchone()
+        if vault is None:
+            citations, errors = [], ["archive_citation_vault_unavailable"]
+        else:
+            citations, errors = self.retrieval.restore_citations(
+                vault_id=str(vault["id"]), citations=request.citations,
+            )
+        lint = _lint_query_archive(request.model_copy(update={"citations": citations}))
+        if errors:
+            return lint.model_copy(update={
+                "passed": False, "errors": [*errors, *lint.errors], "markdown_preview": "",
+            })
+        if lint.passed:
+            lint = lint.model_copy(update={"warnings": [
+                *lint.warnings, "archive_references_verified_answer_not_verified",
+            ]})
+        return lint
 
     def plan_query_archive(self, request: QueryArchiveRequest) -> WikiQueryArchiveProposal:
         lint = self.lint_query_archive(request)
@@ -89,6 +107,7 @@ class WikiQueryWorkflowMixin:
                     parsed=read_markdown(
                         self.wiki.writer.vault_root.joinpath(*page.relative_path.split("/"))
                     ),
+                    status="quarantined",
                 )
             finally:
                 graph.close()

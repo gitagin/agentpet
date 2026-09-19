@@ -157,6 +157,7 @@ declare global {
 }
 
 export type ChatMessage = {
+  answer_basis?: import("./features/chat/answerBasis").AnswerBasis;
   id: string;
   role: "user" | "assistant" | "system";
   content: string;
@@ -452,6 +453,7 @@ export type ChatAcceptedResponse = {
 };
 
 export type ChatDailyHistoryMessage = {
+  answer_basis?: import("./features/chat/answerBasis").AnswerBasis;
   id: string;
   conversation_id: string;
   role: "user" | "assistant" | string;
@@ -1232,6 +1234,7 @@ export type AutomationSettings = {
   auto_structured_memory: boolean;
   auto_long_term_memory: boolean;
   auto_wiki_organize: boolean;
+  wiki_shadow_enabled?: boolean;
   local_privacy_mode: boolean;
   proactive_trigger_frequency: ProactiveTriggerFrequency;
   use_negotiation: boolean;
@@ -1246,6 +1249,7 @@ export type AutomationSettingsUpdateRequest = Pick<
   | "auto_structured_memory"
   | "auto_long_term_memory"
   | "auto_wiki_organize"
+  | "wiki_shadow_enabled"
   | "local_privacy_mode"
   | "proactive_trigger_frequency"
   | "use_negotiation"
@@ -1414,6 +1418,7 @@ export type SettingsStatusResponse = {
   vault_configured: boolean;
   agent_models?: AgentModelSettings[];
   automation: AutomationSettings;
+  wiki_shadow_metrics?: import("./types.gen").components["schemas"]["WikiShadowSummary"];
   tts_settings?: TtsSettingsResponse;
 };
 

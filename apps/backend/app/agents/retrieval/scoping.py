@@ -10,7 +10,7 @@ from app.models.enums import AgentIntent
 from ..events_helpers import _agent_state
 from ..runtime_helpers import _strip_search_command
 from ..state import AgentState, SemanticAnalysisResult
-from ..memory_router import MemoryRoute
+from ..memory_router import MemoryRoute, explicit_memory_read_scopes
 from ..semantic import _fallback_semantic_analysis
 from .compression import filter_search_response
 
@@ -83,6 +83,8 @@ def _source_scope_from_memory_route(route: MemoryRoute) -> str:
         return "none"
     if not route.primary_scopes:
         return route.legacy_source_scope
+    if route.reason == "explicit_all_scope":
+        return route.legacy_source_scope
     first = route.primary_scopes[0] if route.primary_scopes else scopes[0]
     if first == "graph_facts":
         return "personal_memory" if len(scopes) == 1 else route.legacy_source_scope
@@ -100,6 +102,7 @@ def _memory_aggregation_scopes(state: AgentState, semantic: SemanticAnalysisResu
     if route.reason not in {
         "long_term_preference",
         "personal_experience_or_emotional_continuity",
+        "explicit_all_scope",
     }:
         return ()
     scopes = _tool_scopes_from_memory_route(route)
@@ -119,6 +122,7 @@ def _force_search_memory_source_scope(
     *,
     forced_source_scope: str | None = None,
     forced_top_k: int | None = None,
+    allowed_source_scopes: tuple[str, ...] | None = None,
 ) -> list[StructuredTool]:
     """Force the retrieval scope onto search_memory.
 
@@ -133,6 +137,7 @@ def _force_search_memory_source_scope(
         tools,
         forced_source_scope=source_scope,
         forced_top_k=forced_top_k,
+        allowed_source_scopes=allowed_source_scopes,
     )
 
 
@@ -153,7 +158,14 @@ def _guard_search_memory_tools(
     *,
     forced_source_scope: str | None = None,
     forced_top_k: int | None = None,
+    allowed_source_scopes: tuple[str, ...] | None = None,
 ) -> list[StructuredTool]:
+    if allowed_source_scopes is not None and (
+        not allowed_source_scopes
+        or any(scope not in {"knowledge_base", "personal_memory", "daily_chat", "diary_objects"}
+               for scope in allowed_source_scopes)
+    ):
+        raise ValueError("invalid_explicit_retrieval_scopes")
     wrapped = []
     for tool in tools:
         if tool.name != "search_memory":
@@ -176,18 +188,39 @@ def _guard_search_memory_tools(
             _tool=tool,
             _forced_scope: str = forced_scope,
             _forced_top_k: int | None = forced_top_k,
+            _allowed_scopes: tuple[str, ...] | None = allowed_source_scopes,
         ):
             effective_scope = _forced_scope or source_scope or "all"
-            response = await _tool.ainvoke(
-                {
-                    "query": query,
-                    "top_k": _forced_top_k if _forced_top_k is not None else top_k,
-                    "source_scope": effective_scope,
-                }
+            if _allowed_scopes is not None:
+                if effective_scope == "all":
+                    scopes = tuple(dict.fromkeys(_allowed_scopes))
+                elif effective_scope in _allowed_scopes:
+                    scopes = (effective_scope,)
+                else:
+                    raise ValueError("retrieval_scope_not_authorized")
+            else:
+                scopes = (effective_scope,)
+            responses = []
+            for scope in scopes:
+                response = await _tool.ainvoke(
+                    {"query": query, "top_k": _forced_top_k if _forced_top_k is not None else top_k,
+                     "source_scope": scope}
+                )
+                if isinstance(response, MemorySearchResponse):
+                    response = filter_search_response(response)
+                responses.append(response)
+            if len(responses) == 1:
+                return responses[0]
+            if not all(isinstance(response, MemorySearchResponse) for response in responses):
+                raise ValueError("invalid_scoped_search_response")
+            results = {}
+            for response in responses:
+                for item in response.results:
+                    results.setdefault((item.source_scope, item.note_id, item.chunk_id), item)
+            return MemorySearchResponse(
+                results=list(results.values()),
+                metadata={"enforced_source_scopes": list(scopes)},
             )
-            if isinstance(response, MemorySearchResponse):
-                return filter_search_response(response)
-            return response
 
         wrapped.append(
             StructuredTool.from_function(
@@ -198,6 +231,11 @@ def _guard_search_memory_tools(
             )
         )
     return wrapped
+
+
+def _explicit_tool_scopes(state: AgentState) -> tuple[str, ...] | None:
+    scopes = explicit_memory_read_scopes(state.user_message)
+    return scopes or None
 
 
 def _source_scope_from_prompt(system_prompt: str) -> str | None:

@@ -1,6 +1,7 @@
 import { extractSseText } from "../chatStreamUtils";
 import { stripAssistantActionDirectivesFromMarkdown } from "../assistantActionDirectives";
 import type { StreamHandlerInput } from "../streamDispatcher";
+import { normalizeAnswerBasis } from "../answerBasis";
 
 export function doneHandler({ messageId, sseEvent, payload, context }: StreamHandlerInput) {
   const { petChat, setMessages } = context;
@@ -33,6 +34,7 @@ export function doneHandler({ messageId, sseEvent, payload, context }: StreamHan
             content: rawReplyText || message.content,
             live2d_action_hints: petActionHints.length > 0 ? petActionHints : message.live2d_action_hints,
             status: "completed",
+            answer_basis: normalizeAnswerBasis(payload?.answer_basis),
           }
         : message,
     ),

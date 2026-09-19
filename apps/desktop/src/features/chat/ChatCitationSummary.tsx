@@ -1,4 +1,5 @@
 import type { ChatMessage, Citation } from "../../types";
+import { answerBasisLabel } from "./answerBasis";
 import { formatCitationRetrievalMode, formatCitationSourceScope, formatCitationSourceScopes } from "./chatFormatters";
 
 type ChatCitationSummaryProps = {
@@ -12,7 +13,8 @@ export function ChatCitationSummary({ message }: ChatCitationSummaryProps) {
   const citations = message.citations || [];
   const shouldShow =
     message.role === "assistant" &&
-    (citations.length > 0 || Boolean(message.retrieval_attempted && message.status !== "partial"));
+    (citations.length > 0 || Boolean(message.retrieval_attempted && message.status !== "partial")
+      || Boolean(message.answer_basis && message.status === "completed"));
 
   if (!shouldShow) {
     return null;
@@ -32,6 +34,8 @@ export function ChatCitationSummary({ message }: ChatCitationSummaryProps) {
         <strong>为什么这样回答</strong>
         <small>{hasCitations ? `${citations.length} 条引用` : "没有可展示引用"}</small>
       </div>
+      <p className="message-citation-scope">{answerBasisLabel(message.status === "completed" ? message.answer_basis : undefined)}</p>
+      {hasCitations || message.retrieval_attempted ? (
       <div className="message-citation-scope">
         <strong>检索范围</strong>
         <span>{searchedScopeLabel || "本轮没有收到检索范围事件"}</span>
@@ -42,6 +46,7 @@ export function ChatCitationSummary({ message }: ChatCitationSummaryProps) {
           </small>
         ) : null}
       </div>
+      ) : null}
       {hasCitations ? (
         <>
           <ol className="message-citation-list">
@@ -70,10 +75,12 @@ export function ChatCitationSummary({ message }: ChatCitationSummaryProps) {
         <p className="message-citation-empty">
           {retrievalFailed
             ? "这轮检索或回答没有完成，因此没有可追溯的引用。"
-            : `${searchedScopeLabel ? `本轮已检索 ${searchedScopeLabel}，` : ""}没有找到可引用的本地记忆或知识，回答里没有附带本地来源。`}
+            : message.answer_basis === "local_evidence_context"
+              ? "生成时使用过本地证据上下文；当前记录没有恢复引用明细，不表示来源现在仍有效。"
+              : `${searchedScopeLabel ? `本轮已检索 ${searchedScopeLabel}，` : ""}当前记录没有附带可展示的本地来源。`}
         </p>
       )}
-      {!hasCitations || retrievalFailed ? (
+      {retrievalFailed || (message.retrieval_attempted && !hasCitations) ? (
         <p className="message-citation-hint">可以检查是否已设置保存位置、重新整理索引，或换用更具体的关键词后再问。</p>
       ) : null}
     </section>

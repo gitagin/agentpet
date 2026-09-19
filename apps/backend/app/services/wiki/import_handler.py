@@ -1,5 +1,12 @@
 from .common import *
 from .utility import _asset_markdown, _base_import_metadata, _is_binary_asset, _is_hidden_relative, _read_text_file, _resolve_import_path, _supplied_web_content, _title_from_url, _unique
+from app.storage.markdown import parse_markdown
+from app.services.evidence_policy import derived_document_source_type
+
+
+def _imported_wiki_source_type(path: Path, content: str) -> str | None:
+    frontmatter = parse_markdown(content, fallback_title=path.stem).frontmatter
+    return derived_document_source_type(path.as_posix(), frontmatter)
 
 def _import_preview_request(request: WikiSourceImportPreviewRequest) -> WikiIngestPreviewRequest:
     if request.source_kind == "file":
@@ -34,7 +41,7 @@ def _file_import_preview_request(request: WikiSourceImportPreviewRequest) -> Wik
     return WikiIngestPreviewRequest(
         title=title,
         content=content,
-        source_type="file",
+        source_type=_imported_wiki_source_type(path, content) or "file",
         source_uri=str(path),
         tags=_unique(["import/file", *request.tags]),
         links=request.links,
@@ -56,6 +63,7 @@ def _folder_import_preview_request(request: WikiSourceImportPreviewRequest) -> W
         raise WikiSourceImportRejectedError("source_folder_empty")
     sections: list[str] = []
     file_metadata: list[dict[str, object]] = []
+    contains_derived = False
     for path in files:
         relative = path.relative_to(folder).as_posix()
         if _is_binary_asset(path):
@@ -64,6 +72,7 @@ def _folder_import_preview_request(request: WikiSourceImportPreviewRequest) -> W
         else:
             text = _read_text_file(path)
             kind = "text"
+            contains_derived = contains_derived or _imported_wiki_source_type(path, text) is not None
         sections.extend([f"## {relative}", "", text.strip(), ""])
         file_metadata.append(
             {
@@ -85,7 +94,7 @@ def _folder_import_preview_request(request: WikiSourceImportPreviewRequest) -> W
     return WikiIngestPreviewRequest(
         title=title,
         content="\n".join(sections).strip(),
-        source_type="folder",
+        source_type="compiled_wiki" if contains_derived else "folder",
         source_uri=str(folder),
         tags=_unique(["import/folder", *request.tags]),
         links=request.links,

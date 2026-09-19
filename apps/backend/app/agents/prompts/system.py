@@ -21,7 +21,14 @@ def _semantic_system_prompt() -> str:
         "Do not answer the user. Decide once whether the message needs retrieval or a local action. "
         "For a destructive or broad local change, copy an explicit target_path from the user message; "
         "never invent a missing target, broaden its scope, or grant execution authority. "
-        "Downstream nodes must only execute your decision."
+        "A concept question mentioning Wiki, RAG or documentation is not by itself a request "
+        "to search the user's local library. Distinguish general explanations from questions "
+        "about this user's project, personal history or explicitly named local sources. "
+        "Personal/project facts require local evidence; mixed personal and project questions "
+        "may need both scopes. A retrieval decision never authorizes a write. "
+        "Questions about how writing works and negated write requests are not action commands. "
+        "Your action classification is only a proposal; downstream permission and approval "
+        "checks remain authoritative."
     )
 
 

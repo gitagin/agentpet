@@ -26,12 +26,14 @@ Agent Pet 是面向 Windows 单用户的本地个人 LLM Wiki 与记忆图谱桌
 
 ## 从源码运行
 
-安装后端（含本地向量运行时）：
+安装后端（Windows x64 / Python 3.10 锁定基线，含测试、本地向量和打包依赖）：
 
 ```powershell
 cd apps\backend
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -e ".[vector,local-vector]"
+py -3.10 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --no-deps -r requirements-win-py310.lock
+.\.venv\Scripts\python.exe -m pip install --no-deps --no-build-isolation -e ".[packaging,vector,local-vector]"
+.\.venv\Scripts\python.exe -m pip check
 ```
 
 下载内置向量与重排模型（仅首次，模型文件不入仓库）：
@@ -54,11 +56,12 @@ npm run dev
 
 ## 构建 Windows 发布包
 
-安装后端打包依赖：
+使用同一锁定环境安装后端打包依赖，不使用全局 Python：
 
 ```powershell
 cd apps\backend
-.\.venv\Scripts\python.exe -m pip install -e ".[packaging,vector,local-vector]"
+.\.venv\Scripts\python.exe -m pip install --no-deps -r requirements-win-py310.lock
+.\.venv\Scripts\python.exe -m pip install --no-deps --no-build-isolation -e ".[packaging,vector,local-vector]"
 ```
 
 构建前先下载内置模型（`scripts/download-embedding-model.ps1` 与 `scripts/download-reranker-model.ps1`），构建脚本会把模型随 sidecar 一起打进发布包。
@@ -72,6 +75,13 @@ npm run package:win
 ```
 
 发布产物生成在 `apps\desktop\release`。
+
+开发启动和 sidecar 构建默认使用 `apps/backend/.venv`。显式设置
+`AGENT_PET_PYTHON` 可覆盖解释器，但需要自行验证版本与锁文件一致。
+锁文件固定依赖版本，不承诺跨平台或二进制构建逐字节一致。
+后端回归从仓库根目录运行
+`apps\backend\.venv\Scripts\python.exe -m pytest apps/backend/tests -q`。
+LLM Wiki 重构的完成边界与未通过门槛见[实施状态](docs/wiki-reconstruction-status.md)。
 
 ## 项目结构
 

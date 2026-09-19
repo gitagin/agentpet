@@ -5,11 +5,13 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from app.models.api import MemorySearchResult
+from app.models.answer_basis import AnswerBasis
 from app.models.enums import AgentIntent, AgentRunStatus
 from app.services.prompt_context_types import PromptRecentTurn
 
 from .immediate_understanding import ImmediateUnderstanding
 from .memory_router import MemoryRoute
+from .retrieval.wiki_gate import WikiEvidenceGate
 from .contracts import (
     ActionProposal,
     ExecutionReceipt,
@@ -92,7 +94,9 @@ class AgentState(BaseModel):
     verification_results: list[VerificationResult] = Field(default_factory=list)
     immediate_understanding: ImmediateUnderstanding | None = None
     citations: list[MemorySearchResult] = Field(default_factory=list)
+    wiki_evidence_gate: WikiEvidenceGate | None = None
     grounding_validation: Literal["not_applicable", "passed", "failed"] = "not_applicable"
+    answer_basis: AnswerBasis = "not_assessed"
     recent_turns: list[PromptRecentTurn] = Field(default_factory=list)
     response_text: str = ""
     proposal_id: str | None = None
