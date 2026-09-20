@@ -48,6 +48,15 @@ class WikiGenerationStore:
             vault = conn.execute("SELECT root_path FROM vaults WHERE id = ?", (vault_id,)).fetchone()
             if vault is None:
                 raise WikiGenerationError("wiki_generation_unknown_vault")
+            if workflow_run_id is not None:
+                # draft 幂等(设计 §3.1-5):同一 run 已有 staged draft 时复用同一 generation
+                existing = conn.execute(
+                    """SELECT id FROM wiki_generations
+                       WHERE vault_id = ? AND workflow_run_id = ? AND status = 'staged'""",
+                    (vault_id, workflow_run_id),
+                ).fetchone()
+                if existing is not None:
+                    return str(existing["id"])
         writer = SafeMarkdownWriter(vault["root_path"])
         prepared: dict[str, tuple[str, bytes] | None] = {}
         for path, body in changes.items():
@@ -118,6 +127,17 @@ class WikiGenerationStore:
             from .projections import build_generation_projection
 
             build_generation_projection(conn, vault_id, generation)
+            if workflow_run_id is not None:
+                # draft 生命周期(D1):入 draft 即 draft_pending_review(不覆盖已推进的状态)
+                conn.execute(
+                    """UPDATE wiki_workflow_runs
+                       SET result_json = json_set(
+                           result_json, '$.publication.status', 'draft_pending_review')
+                       WHERE id = ? AND COALESCE(
+                           json_extract(result_json, '$.publication.status'), '')
+                             NOT IN ('published', 'draft_approved', 'draft_rejected', 'draft_reviewing')""",
+                    (workflow_run_id,),
+                )
         return generation
 
     def promote(

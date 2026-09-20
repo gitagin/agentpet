@@ -506,7 +506,21 @@ def wiki_snapshot_reader_dependency(request: Request):
     def authorize(vault_id: str, relative_path: str) -> bool:
         if vault_id != active_vault_id(request):
             return False
-        snapshot = read_evidence_snapshot(wiki, relative_path, database=db)
+        # 版本化权限(设计 §4.2-1/4.2-2,行为收紧登记 t9 §4.3):binding 非 active 或已撤销
+        # (revoked_at)即拒绝,deny-by-default —— forgotten/撤销立即使旧 generation 不可读。
+        with db.session(read_only=True) as conn:
+            binding = conn.execute(
+                """SELECT status, revoked_at FROM wiki_page_bindings
+                   WHERE vault_id = ? AND wiki_relative_path = ?""",
+                (vault_id, relative_path),
+            ).fetchone()
+            if binding is None or binding["status"] != "active" or binding["revoked_at"] is not None:
+                return False
+        try:
+            snapshot = read_evidence_snapshot(wiki, relative_path, database=db)
+        except Exception:
+            # 证据快照(含根来源校验)不可用一律拒绝 —— 避免 CompilerError 从检索路径逃逸
+            return False
         predicate = retrieval_service(request).candidate_filter
         if predicate is None:
             return True

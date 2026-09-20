@@ -585,6 +585,16 @@ record below (Phase A 2026-09-20) supersedes the "still pending" statements
 above; the read-path binding/revocation gates listed in the T1 row remain open
 and are scoped to Phase B.
 
+Update 2026-09-20 (Phase B): the T1-row read-path binding/revocation gates are
+now delivered by draft-first publication: authorize checks binding status and
+revocation on every read (factory.py), `_scope` rejects revoked generations,
+and migration 036 adds generation/binding-level revocation timestamps; the
+Phase B record below supersedes the "remain open" wording above. Still open in
+the T1 row: complete persisted provenance/permission model incl. verification
+status/expiry enforcement (Phase C), non-document evidence restoration and the
+generation-aware archive adapter, compiler draft API wiring (stage_draft/
+publish_draft are service-layer only), and generation retention/lease policy.
+
 ## Verification
 
 2026-09-19 Shadow settings UI/summary slice: two new backend cases passed in
@@ -1254,4 +1264,168 @@ the compiler. Follow-ups from this record: enforcement readers for
 `verification_status`/expiry/revocation (Known Limitation 1), optional
 `source_version` on agent proposal fields, and explicit `source_version` in
 publication stamps/watermark if finer change detection is required.
+
+## Phase B 2026-09-20 Draft-first Publication
+
+Date: 2026-09-20. Phase B of the source-identity workstream: draft-first
+publication over the compiler output and versioned authority on the read path
+(design: `docs/draft-first-publication-design.md` (t9); failing tests:
+`tests/test_draft_first_faults.py` (B3, red before B5); implementation: B5;
+regression and P0 acceptance: B7; localization pass: B6 (t20); migration design
+pre-check: B4 (t18); code-fact verification: B1 (t15)).
+
+### Task
+
+- Draft Generation → Validate → Review → Promote → sync Editable Markdown, with
+  drafts invisible to official queries and old generations readable while N+1
+  is constructed or fails.
+- Versioned authority: decouple immutable historical bodies from live source
+  permissions — forgotten/revoked/privacy changes make the corresponding facts
+  unavailable immediately (read-path binding status checks + revocation effect).
+
+### Files Changed
+
+Modified (`git diff f306676`):
+- `apps/backend/app/api/services/factory.py` — authorize now deny-by-default:
+  binding must be `status='active'` with `revoked_at IS NULL`; evidence-snapshot
+  exceptions (incl. root validation) are rejected instead of escaping retrieval.
+- `apps/backend/app/services/wiki/snapshot_reader.py` — `_scope` adds
+  `revoked_at IS NULL` (generation-level revocation makes a whole version unreadable).
+- `apps/backend/app/services/wiki/source_watermark.py` — watermark input adds a
+  bindings dimension (status + revocation) so `source_observation` can perceive
+  forgetting/revocation.
+- `apps/backend/app/services/wiki/generations.py` — stage: run-level idempotency
+  (same run + staged reuses the same generation, per the 032 unique index) and
+  `draft_pending_review` lifecycle write (does not overwrite advanced states).
+- `apps/backend/app/services/wiki/ingest_review.py` — `_mark_draft_status`:
+  review start → `draft_reviewing`; reviewed → `draft_approved` (only for runs
+  with a staged draft; failure keeps `draft_reviewing` for retry).
+- `apps/backend/app/services/wiki/publication.py` — `stage_draft(run_id,
+  approved_targets)` (planned pages → draft in DB, no disk write, no binding;
+  dependencies deferred to re-capture) and `publish_draft(run_id)` (Plan A:
+  1 write via `target_content_hash` gate → 2 memory-closure finalize →
+  3 bind active + index_refresh → 4 page_updates written / run applied →
+  5 re-capture double-hash + rebuild the draft manifest from disk truth
+  (clear old rows, re-insert bodies/deps, rebuild projection) → 6 promote).
+
+New:
+- `apps/backend/migrations/036_source_revocation.sql`.
+- `apps/backend/tests/test_draft_first_faults.py` (B3, 9 cases).
+
+### Implementation Content
+
+- Migration 036: pure ADD COLUMN (4 columns, nullable, default NULL:
+  `revoked_at`/`revoked_reason` on `wiki_generations` and
+  `wiki_page_bindings`), column-count + existing-NULL reconcile guards,
+  single transaction, no table rebuild / no CHECK change / no FK change
+  (SQLite 3.37.2; per t15 §3 and t18 §1).
+- Draft lifecycle lives in `wiki_workflow_runs.result_json.$.publication.status`
+  (pure JSON domain, no CHECK): `draft_pending_review` /`draft_reviewing` /
+  `draft_approved` /`draft_rejected`; the existing 'published' guard
+  (`COALESCE(...) != 'published'`) is compatible (`draft_*` never equals
+  'published'). `workflow_type='ingest'` retained for draft runs (t18 §2.3).
+- Revocation is a state event: setting the timestamp revokes; rows, bodies and
+  audit are preserved; no dependency stamp is rewritten. Generation-level
+  revocation blocks the whole version (`_scope`); binding-level revocation
+  blocks reads (authorize).
+- Drafts are invisible to pin/search/read because `_scope` only accepts
+  status='published' (existing guarantee, regression-locked by B3 case 1).
+
+### Known Limitations (accepted)
+
+1. `stage_draft`/`publish_draft` are service-layer entry points, NOT yet wired
+   to API endpoints or agent orchestration (design §3 full flow); `draft_rejected`
+   is written by the approver using the same pattern (demo-level approve via
+   validator). Recorded as later-phase integration; does not block this phase.
+2. Narrow retry gap (B7 risk 1): if `publish_draft` fails after step 4 (run
+   already 'applied'), a direct retry via `publish_draft` is refused
+   (`run_not_planned`) and `publish_ingest` retry fails closed
+   (`dependency_changed` because binding hash no longer matches the planned
+   manifest). No half-product is ever published and G1 stays readable; recovery
+   currently needs manual run reset. Recommended fix when wiring API endpoints:
+   write `publication.status='blocked'` on failure and allow a documented
+   operator reset back to 'planned'.
+3. Three new internal draft-path error identifiers were added (not present in
+   HEAD): `wiki_publication_run_not_planned`, `wiki_publication_draft_not_approved`,
+   `wiki_publication_draft_missing` (publication.py:142/188/191/199). They are
+   service-layer only — no API endpoint raises them today, so they are not
+   API-visible; captain to decide reuse-vs-contract-list when wiring the API.
+4. Behavior tightening (registered, design §4.3): authorize now rejects
+   forgotten/stale/quarantined/revoked bindings, so old snapshots behind a
+   forgotten binding change from readable to denied (locked by B3 case 4).
+5. Phase A limitation still open: `verification_status`/expiry enforcement
+   remains Phase C work; the revocation mechanism delivered here covers
+   generation-level and binding-level revocation only.
+
+### Safety Boundary
+
+- Drafts (staged) cannot answer queries: pin/search/read all reject them
+  (B3 case 1); only published generations are scoped.
+- G1 stays byte-identical and readable while G2 is staged and after G2 publish
+  failures in two modes (validator error, tampered dependency stamp)
+  (B3 cases 2-3); promoted heads switch via the existing single-point CAS.
+- Forgotten roots and revoked generations/bindings are denied on the live read
+  path (authorize + `_scope`), with bodies preserved (B3 cases 4-5, 7).
+- External edits during the write step hit the `target_content_hash` gate:
+  the manual edit is preserved, apply reports failed/partial, G1 body and
+  generation stay intact (B3 case 6).
+- Interruption/retry: stage and promote remain single transactions with CAS;
+  run-level stage reuse is idempotent (B3 case 8); migration 036 rolls back as
+  one transaction on any guard failure.
+
+### Localization Check (B6/t20)
+
+Zero code changes required. Verified by per-hunk review of
+`git diff f306676` (6 app files +284/-3, 036 SQL, B3 tests) plus an automated
+residual scan (added English prose filtered to code/identifiers/SQL/JSON keys):
+all new docstrings/comments are Simplified Chinese or necessary technical
+English; error codes, JSON keys (`$.publication.status`), `draft_*` values,
+API field names and enums remain English; no new raise message, logger message
+or Field(description) was introduced. Rerun: 41 passed (73.6s).
+
+### Test Commands And Results (B7)
+
+Run from the repository root with the isolated interpreter:
+
+```powershell
+cd E:/agentproject
+apps/backend/.venv/Scripts/python.exe -m pytest apps/backend/tests/test_draft_first_faults.py apps/backend/tests/test_wiki_generations.py apps/backend/tests/test_wiki_publication.py apps/backend/tests/test_wiki_snapshot_reader.py apps/backend/tests/test_wiki_snapshot_api.py apps/backend/tests/test_wiki_compilation.py apps/backend/tests/test_wiki_workflows.py apps/backend/tests/test_wiki_synthesis_roots.py apps/backend/tests/test_wiki_provenance.py apps/backend/tests/test_wiki_source_scope.py apps/backend/tests/test_wiki_ingest_source_identity.py apps/backend/tests/test_source_identity_migration.py apps/backend/tests/test_migration_repair.py apps/backend/tests/test_wiki_source_watermark.py apps/backend/tests/test_wiki_archive_authority.py apps/backend/tests/test_wiki_shadow_lifecycle.py apps/backend/tests/test_wiki_shadow_runtime.py apps/backend/tests/test_openapi_snapshot.py apps/backend/tests/test_wiki_read_tools.py apps/backend/tests/test_wiki_query_node.py -q
+# 252 passed, 1 skipped (357s) — includes B3 9/9
+
+apps/backend/.venv/Scripts/python.exe .tmp/t21-verify-migrations.py
+# 11/11 PASS — 035+036 on fresh DB and legacy DB (001-029 -> 030-036),
+# 035 backfill still effective, idempotent second apply
+```
+
+- Broad regression: YES (252 passed across 20 affected suites)
+- Real-model tests: NO
+- Frontend checks: NO
+
+### Public Interface Changes
+
+None. No API path, JSON/SSE field name, error code (existing codes unchanged),
+enum value, Tool name or JSON key changed; `test_openapi_snapshot` passes.
+Three new internal draft-path error identifiers are service-layer only and not
+API-visible (Known Limitation 3). `draft_*` are new JSON values inside an
+existing JSON domain, not schema or contract changes.
+
+### Database Migration
+
+`036_source_revocation` — pure ADD COLUMN (revoked_at/revoked_reason on
+wiki_generations and wiki_page_bindings), nullable, no rebuild / no CHECK / no
+FK change, reconcile guards, single-transaction rollback, verified on both
+fresh and legacy databases (11/11 PASS). Rolling back = restore backup (035
+pattern).
+
+### Next Steps
+
+Phase C: new-query-path correctness completion — enforcement readers for
+`verification_status`/expiry (Phase A limitation 1), API wiring and proxy
+orchestration for `stage_draft`/`publish_draft` (including the retry reset
+semantics from Known Limitation 2 and the error-code decision from Limitation
+3), generation-aware archive restoration (retrieval.py:613-614), and
+generation retention/lease policy. Follow-ups carried from Phase A: optional
+`source_version` on agent proposal fields; explicit `source_version` in
+publication stamps if finer change detection is required.
+
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 
 from app.services.wiki import WikiService
 from app.storage.database import Database
@@ -120,6 +120,225 @@ class WikiPublicationService:
             )
         self.store.promote(vault_id, generation, validate=self._validate)
         return generation
+
+    def stage_draft(self, run_id: str, approved_targets: Sequence[str] | None = None) -> str:
+        """方案 A 阶段 1:把运行的规划页面作为 draft 入库(不写盘、不建 binding)。
+
+        changes 直接取 wiki_workflow_page_updates 的规划内容;依赖在 publish_draft
+        写盘后以捕获结果重建(re-capture),draft 阶段不跑权威校验(设计 §3.2)。
+        """
+        from app.repositories.storage import VaultRepository as _VaultRepository
+
+        with self.database.session(read_only=True) as conn:
+            run = conn.execute(
+                """SELECT r.status AS run_status, s.vault_id, v.root_path
+                   FROM wiki_workflow_runs r
+                   JOIN wiki_sources s ON s.id = r.source_id JOIN vaults v ON v.id = s.vault_id
+                   WHERE r.id = ? AND r.workflow_type = 'ingest'""", (run_id,),
+            ).fetchone()
+            if run is None or run["root_path"] != str(self.wiki.writer.vault_root.resolve()):
+                raise WikiGenerationError("wiki_publication_run_scope")
+            if run["run_status"] != "planned":
+                raise WikiGenerationError("wiki_publication_run_not_planned")
+            vault_id = run["vault_id"]
+            rows = conn.execute(
+                """SELECT * FROM wiki_workflow_page_updates
+                   WHERE run_id = ? AND status = 'planned' ORDER BY created_at, target_path""", (run_id,),
+            ).fetchall()
+        if approved_targets is not None:
+            allowed = set(approved_targets)
+            rows = [row for row in rows if str(row["target_path"]) in allowed]
+        if not rows:
+            raise WikiGenerationError("wiki_publication_no_pages")
+        base = self.store.active(vault_id)
+        changes = {
+            str(row["target_path"]): str(row["content"]).encode("utf-8")
+            for row in rows
+        }
+        return self.store.stage(
+            vault_id, base_generation=base, changes=changes, dependencies={},
+            workflow_run_id=run_id,
+        )
+
+    def publish_draft(self, run_id: str) -> str:
+        """方案 A(设计 §3.4):draft_approved 后执行 写盘→bind→index→written/applied→re-capture→promote。
+
+        写盘走 write_page 的 target_content_hash 门禁;外部编辑冲突 →
+        wiki_publication_working_copy_changed,人工修改保留、同一 run 的 staged draft 保留待重试。
+        """
+        from app.models.wiki import WikiPageWriteRequest
+        from app.repositories.storage import VaultRepository as _VaultRepository
+        from app.services.memory_entity_graph import MemoryEntityGraphStore
+        from app.services.wiki import WIKI_TARGET_ABSENT_HASH, WikiConflictError
+        from app.services.wiki.contracts import page_type_for_path
+        from app.services.wiki_reconciler import bind_authoritative_wiki_page
+        from app.storage.markdown import read_markdown as _read_markdown
+
+        with self.database.session(read_only=True) as conn:
+            run = conn.execute(
+                """SELECT r.status AS run_status, r.source_id, r.request_json,
+                          s.vault_id, v.root_path, r.result_json
+                   FROM wiki_workflow_runs r
+                   JOIN wiki_sources s ON s.id = r.source_id JOIN vaults v ON v.id = s.vault_id
+                   WHERE r.id = ? AND r.workflow_type = 'ingest'""", (run_id,),
+            ).fetchone()
+            if run is None or run["root_path"] != str(self.wiki.writer.vault_root.resolve()):
+                raise WikiGenerationError("wiki_publication_run_scope")
+            if run["run_status"] != "planned":
+                raise WikiGenerationError("wiki_publication_run_not_planned")
+            publication = json.loads(str(run["result_json"] or "{}")).get("publication") or {}
+            if str(publication.get("status") or "") != "draft_approved":
+                raise WikiGenerationError("wiki_publication_draft_not_approved")
+            vault_id = run["vault_id"]
+            generation = conn.execute(
+                """SELECT id FROM wiki_generations
+                   WHERE vault_id = ? AND workflow_run_id = ? AND status = 'staged'""",
+                (vault_id, run_id),
+            ).fetchone()
+            if generation is None:
+                raise WikiGenerationError("wiki_publication_draft_missing")
+            rows = conn.execute(
+                """SELECT * FROM wiki_workflow_page_updates
+                   WHERE run_id = ? AND status = 'planned' ORDER BY created_at, target_path""", (run_id,),
+            ).fetchall()
+        if not rows:
+            raise WikiGenerationError("wiki_publication_no_pages")
+        written_paths = [str(row["target_path"]) for row in rows]
+
+        # 0) 内存闭包准备(写盘前持久化来源身份与候选,与 apply_ingest 的语义一致),
+        #    闭包定案在写盘后执行以创建 page entity/binding/documented_in 关系
+        from app.models.wiki import WikiIngestPreviewRequest as _PreviewRequest
+        from .memory_closure import (
+            finalize_wiki_memory_closure as _finalize_closure,
+            prepare_wiki_memory_closure as _prepare_closure,
+        )
+
+        with self.database.session() as conn:
+            source_row = conn.execute(
+                "SELECT * FROM wiki_sources WHERE id = ? AND vault_id = ?",
+                (run["source_id"], vault_id),
+            ).fetchone()
+        request = _PreviewRequest.model_validate(json.loads(str(run["request_json"])))
+        source_path = next(
+            (path for path in written_paths if path.startswith("Wiki/Sources/")),
+            written_paths[0],
+        )
+        with self.database.session() as conn:
+            closure = _prepare_closure(
+                conn,
+                vault_root=self.wiki.writer.vault_root,
+                source_id=str(run["source_id"]),
+                source_hash=str(source_row["source_hash"]),
+                source_title=request.title,
+                source_type=request.source_type,
+                raw_content=request.content,
+                source_path=source_path,
+                source_metadata=request.source_metadata,
+            )
+
+        # 1) 写盘:write_page 的 target_content_hash 门禁拒绝外部修改,人工修改保留
+        for row in rows:
+            path = str(row["target_path"])
+            try:
+                self.wiki.write_page(
+                    WikiPageWriteRequest(
+                        title=str(row["title"]),
+                        content=str(row["content"]),
+                        operation=str(row["operation"]),  # type: ignore[arg-type]
+                        target_path=path,
+                        section=row["section"],
+                        tags=json.loads(row["tags_json"] or "[]"),
+                        links=json.loads(row["links_json"] or "[]"),
+                        page_type=page_type_for_path(path),
+                        confidence="medium",
+                        sources=[source_path],
+                        target_content_hash=row["target_content_hash"] or WIKI_TARGET_ABSENT_HASH,
+                    )
+                )
+            except WikiConflictError as exc:
+                raise WikiGenerationError("wiki_publication_working_copy_changed") from exc
+        # 2) 闭包定案:page entity/binding/documented_in 关系(读路径解析依赖)
+        with self.database.session() as conn:
+            _finalize_closure(
+                conn, preparation=closure, vault_root=self.wiki.writer.vault_root,
+                source_type=request.source_type, written_paths=tuple(written_paths),
+            )
+
+        # 3) bind(active)+ index_refresh
+        with self.database.session() as conn:
+            vault_binding_id = _VaultRepository(conn).upsert(
+                self.wiki.writer.vault_root, name=self.wiki.writer.vault_root.name or "Vault",
+            )
+            conn.commit()
+            graph = MemoryEntityGraphStore(conn)
+            try:
+                for path in written_paths:
+                    page_path = self.wiki.writer.vault_root.joinpath(*path.split("/"))
+                    bind_authoritative_wiki_page(
+                        graph, vault_id=vault_binding_id, relative_path=path,
+                        parsed=_read_markdown(page_path), status="active",
+                    )
+            finally:
+                graph.close()
+        if self.wiki.index_refresh is not None:
+            for path in written_paths:
+                self.wiki.index_refresh(path)
+
+        # 4) page_updates → written,run → applied(现有语义,触发点移到方案 A 写盘后)
+        with self.database.session() as conn:
+            for path in written_paths:
+                conn.execute(
+                    "UPDATE wiki_workflow_page_updates SET status = 'written', updated_at = datetime('now') WHERE run_id = ? AND target_path = ?",
+                    (run_id, path),
+                )
+            conn.execute(
+                "UPDATE wiki_workflow_runs SET status = 'applied', updated_at = datetime('now') WHERE id = ?",
+                (run_id,),
+            )
+
+        # 5) re-capture(双 hash)+ 以磁盘真相重建 draft 清单(正文含写盘 frontmatter,
+        #    依赖以捕获为准替换规划期存根);冲突由写盘门禁与 capture 双 hash 共同拦截
+        from .projections import build_generation_projection
+
+        bodies, dependencies = self._capture(vault_id, {path: None for path in written_paths})
+        written_set = set(written_paths)
+        bodies = {path: body for path, body in bodies.items() if path in written_set}
+        dependencies = {path: dep for path, dep in dependencies.items() if path in written_set}
+        with self.database.session() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            conn.execute(
+                "DELETE FROM wiki_generation_pages WHERE vault_id = ? AND generation = ?",
+                (vault_id, str(generation["id"])),
+            )
+            conn.execute(
+                "DELETE FROM wiki_generation_dependencies WHERE vault_id = ? AND generation = ?",
+                (vault_id, str(generation["id"])),
+            )
+            for path, body in bodies.items():
+                digest = sha256_bytes_hex(body)
+                conn.execute(
+                    "INSERT OR IGNORE INTO wiki_page_bodies(vault_id, content_hash, body) VALUES (?, ?, ?)",
+                    (vault_id, digest, body),
+                )
+                conn.execute(
+                    "INSERT INTO wiki_generation_pages VALUES (?, ?, ?, ?)",
+                    (vault_id, str(generation["id"]), path, digest),
+                )
+            for path, dependency in dependencies.items():
+                conn.execute(
+                    "INSERT INTO wiki_generation_dependencies VALUES (?, ?, ?, ?)",
+                    (vault_id, str(generation["id"]), path, json.dumps(dependency, sort_keys=True)),
+                )
+            # 重建投影(清旧行避免 UNIQUE 冲突;links 随 pages 删除级联清理)
+            conn.execute(
+                "DELETE FROM wiki_generation_projection WHERE vault_id = ? AND generation = ?",
+                (vault_id, str(generation["id"])),
+            )
+            build_generation_projection(conn, vault_id, str(generation["id"]))
+
+        # 6) promote(validator 复用既有权威校验)
+        self.store.promote(vault_id, str(generation["id"]), validate=self._validate)
+        return str(generation["id"])
 
     def _capture(self, vault_id, paths):
         from .source_watermark import source_watermark

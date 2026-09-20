@@ -198,7 +198,7 @@ class WikiSnapshotReader:
     def _scope(self, conn, pin):
         row = conn.execute(
             """SELECT g.id FROM wiki_generations g JOIN vaults v ON v.id = g.vault_id
-               WHERE g.id = ? AND g.vault_id = ? AND g.status = 'published' AND v.root_path = ?""",
+               WHERE g.id = ? AND g.vault_id = ? AND g.status = 'published' AND g.revoked_at IS NULL AND v.root_path = ?""",
             (pin.generation, pin.vault_id, str(self.wiki.writer.vault_root.resolve())),
         ).fetchone()
         if row is None:
