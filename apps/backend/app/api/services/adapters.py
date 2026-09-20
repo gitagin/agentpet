@@ -186,6 +186,16 @@ class RuntimeWikiReadAdapter:
                 raise WikiGenerationError("wiki_snapshot_version_mismatch")
             return reader, self._pin
 
+    # 新鲜度派生(设计 phase-c-query-node-design.md §1.1):向节点暴露只读数据库与 pin
+    @property
+    def database(self):
+        reader, _pin = self._reader_and_pin()
+        return reader.database
+
+    def pin(self, generation=None):
+        reader, pin = self._reader_and_pin(generation)
+        return pin
+
     async def search_pages(self, query: str, top_k: int = 8) -> dict:
         from dataclasses import asdict
 

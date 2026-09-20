@@ -112,7 +112,12 @@ def test_failed_publication_can_resume_without_rewriting_working_copy(published)
     before = path.read_bytes()
     generation = WikiPublicationService(service.database, service.wiki).publish_ingest(result.run_id)
     assert store.active(vault) == generation
-    assert publication_record(service, result.run_id) == {"status": "published", "generation": generation}
+    receipt = publication_record(service, result.run_id)
+    assert receipt["status"] == "published"
+    assert receipt["generation"] == generation
+    # 登记链(阶段C设计 §1.2):publish 成功即登记 freshness=unknown + 相关性待检查
+    assert receipt["freshness"] == "unknown"
+    assert receipt["freshness_reason"] == "source_relevance_check_pending"
     assert path.read_bytes() == before
 
 

@@ -192,7 +192,14 @@ class WikiGenerationStore:
                        SET result_json = json_set(result_json, '$.publication', json(?)),
                            updated_at = datetime('now')
                        WHERE id = ? AND workflow_type = 'ingest' AND status = 'applied'""",
-                    (json.dumps({"status": "published", "generation": generation}), row["workflow_run_id"]),
+                    (json.dumps({
+                        "status": "published",
+                        "generation": generation,
+                        # 新鲜度登记(设计 phase-c-query-node-design.md §1.2-1):
+                        # 登记即 unknown + 相关性待检查(035 列 verification_status='unverified' 为待检查位)
+                        "freshness": "unknown",
+                        "freshness_reason": "source_relevance_check_pending",
+                    }), row["workflow_run_id"]),
                 )
                 if receipt.rowcount != 1:
                     raise WikiGenerationError("wiki_publication_run_not_applied")

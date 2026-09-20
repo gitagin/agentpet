@@ -2,18 +2,21 @@
 
 import asyncio
 import time
+from dataclasses import dataclass
+from typing import Literal
 
 from app.models.api import MemorySearchResponse, MemorySearchResult
 from app.models.wiki import WikiPageReadRequest
 from app.models.enums import AgentId
 from app.services.chat_model import AgentModelNotConfiguredError
 from app.utils.hash import sha256_hex
+from app.utils.time import utc_now_iso
 
 from ..events_helpers import _agent_state, _emit_tool_results
 from ..retrieval.compression import gate_evidence
 from ..retrieval.wiki_gate import (
     ASSESSMENT_POLICY, WikiEvidenceGate, apply_assessment, assessment_input,
-    parse_assessment, reconcile_assessment, update_budget,
+    derive_source_freshness, parse_assessment, reconcile_assessment, update_budget,
 )
 from ..retrieval.scoping import _effective_retrieval_source_scope, _retrieval_query
 from ..semantic import _fallback_semantic_analysis
@@ -21,7 +24,93 @@ from ..services import WikiFallbackServiceProtocol, WikiSourceWatermarkProtocol
 from ..tools import AgentToolResult, AgentToolSet
 
 
-async def wiki_knowledge_retrieval_node(graph_state, services):
+@dataclass(frozen=True)
+class ReadProfile:
+    """深读模式参数档位(设计 phase-c-query-node-design.md §3.1,替代内联常量)。"""
+
+    mode: Literal["balanced", "deep"]
+    max_pages: int
+    max_depth: int
+    max_rounds: int
+    deadline_sec: float
+    budget_chars: int
+
+
+# 均衡档 = 现状(默认);深读档显式开启(设计 §3.1 参数表)
+BALANCED_PROFILE = ReadProfile(
+    mode="balanced", max_pages=8, max_depth=2, max_rounds=3,
+    deadline_sec=30, budget_chars=12000,
+)
+DEEP_PROFILE = ReadProfile(
+    mode="deep", max_pages=24, max_depth=3, max_rounds=6,
+    deadline_sec=90, budget_chars=32000,
+)
+
+# 价值函数(设计 §2.1):V = relevance × freshness × coverage,三档权重
+_FRESHNESS_VALUE = {"fresh": 1.0, "unknown": 0.6, "stale": 0.2}
+_COVERAGE_VALUE = {"model_assessed_complete": 1.0, "partial": 0.8, "not_assessed": 0.7}
+
+
+def _citation_value(score: float, freshness: str, coverage: str) -> float:
+    return (
+        float(score or 1.0)
+        * _FRESHNESS_VALUE.get(freshness, 0.6)
+        * _COVERAGE_VALUE.get(coverage, 0.7)
+    )
+
+
+def _resolve_citation_freshness(reader, citations, observation: str):
+    """逐来源新鲜度(设计 §1.1):经 binding→documented_in→source 归属解析 035 列;
+    取最差档(fail-closed:任一 stale → stale,否则任一 unknown → unknown,其余 fresh)。"""
+    if reader is None or not hasattr(reader, "database"):
+        return None
+    try:
+        # 由 reader 解析当前 vault(节点自身不持有 vault_id)
+        vault_id = reader.pin().vault_id
+    except Exception:
+        return None
+    with reader.database.session(read_only=True) as conn:
+        rows = []
+        for item in citations:
+            row = conn.execute(
+                """SELECT s.verification_status, s.expires_at, s.revoked_at
+                   FROM wiki_page_bindings b
+                   JOIN memory_entities pe ON pe.id = b.page_entity_id
+                   JOIN memory_graph_facts r ON r.object_entity_id = pe.id
+                    AND r.relation_type = 'documented_in' AND r.subject_entity_id IS NOT NULL
+                   JOIN memory_entities se ON se.id = r.subject_entity_id
+                   JOIN wiki_sources s ON s.id = json_extract(se.metadata_json, '$.source_id')
+                   WHERE b.vault_id = ? AND b.wiki_relative_path = ? LIMIT 1""",
+                (vault_id, item.relative_path),
+            ).fetchone()
+            if row is not None:
+                rows.append(row)
+    if not rows:
+        return None
+    rank = {"stale": 2, "unknown": 1, "fresh": 0}
+    worst: tuple[str, str] = ("unknown", "source_relevance_check_pending")
+    best_rank = -1
+    for row in rows:
+        freshness, reason = derive_source_freshness(
+            verification_status=row["verification_status"],
+            expires_at=row["expires_at"],
+            revoked_at=row["revoked_at"],
+            observation=observation,
+        )
+        if rank.get(freshness, 1) > best_rank:
+            best_rank, worst = rank.get(freshness, 1), (freshness, reason)
+    return worst
+
+
+def _apply_gate_freshness(gate, reader, citations, observation: str) -> None:
+    """把逐来源新鲜度写入 gate(确定性赋值点,模型不可设置)。"""
+    resolved = _resolve_citation_freshness(reader, citations, observation)
+    if resolved is not None:
+        gate.freshness, gate.freshness_reason = resolved
+    gate.freshness_checked_at = utc_now_iso()
+
+
+async def wiki_knowledge_retrieval_node(graph_state, services, read_profile: ReadProfile | None = None):
     state = _agent_state(graph_state)
     semantic = state.semantic_analysis or _fallback_semantic_analysis(state)
     if state.local_privacy_mode or _effective_retrieval_source_scope(state, semantic) not in {"all", "knowledge_base"}:
@@ -30,14 +119,20 @@ async def wiki_knowledge_retrieval_node(graph_state, services):
     if services.wiki_reader is None:
         graph_state["wiki_reading"] = {"stop_reason": "reader_unavailable"}
         return graph_state
+    # 深读模式档位(设计 §3.1):默认均衡档 = 现状;显式 read_profile 覆盖
+    profile = read_profile if read_profile is not None else BALANCED_PROFILE
+    if profile.mode not in ("balanced", "deep"):
+        raise ValueError("wiki_unknown_read_profile")
+    escalated = False
     tools = AgentToolSet(wiki_reader=services.wiki_reader)
-    deadline = time.monotonic() + 30
-    remaining = 12000
+    deadline = time.monotonic() + profile.deadline_sec
+    remaining = profile.budget_chars
     citations = []
     gate = WikiEvidenceGate()
     state.wiki_evidence_gate = gate
     report = {"retrieved": [], "read": [], "used_chars": 0, "assessment_calls": 0,
-              "coverage": "not_assessed", "stop_reason": "candidates_exhausted"}
+              "coverage": "not_assessed", "stop_reason": "candidates_exhausted",
+              "profile": profile.mode}
     try:
         model = services.model_registry.get(AgentId.RETRIEVAL_AGENT) if services.model_registry else None
     except AgentModelNotConfiguredError:
@@ -50,9 +145,10 @@ async def wiki_knowledge_retrieval_node(graph_state, services):
         report["generation"] = candidates.generation
         known = {item["relative_path"]: (item["content_hash"], 0) for item in candidates.candidates}
         report["retrieved"] = list(known)
-        pending = [(item["relative_path"], item.get("heading")) for item in candidates.candidates[:8]]
+        pending = [(item["relative_path"], item.get("heading")) for item in candidates.candidates[:profile.max_pages]]
         attempted = set()
-        for round_index in range(3):
+        held_scores: dict[str, float] = {}
+        for round_index in range(profile.max_rounds):
             report["rounds"] = round_index + 1
             for path, section in pending:
                 if (path, section) in attempted:
@@ -81,10 +177,11 @@ async def wiki_knowledge_retrieval_node(graph_state, services):
                     raise ValueError("wiki_query_version_mismatch")
                 remaining -= len(page.content)
                 report["read"].append(path)
-                if depth < 2:
+                if depth < profile.max_depth:
                     for neighbor in [*page.links, *page.backlinks]:
                         known.setdefault(neighbor, (None, depth + 1))
                 identity = sha256_hex(f"{page.generation}:{path}:{page.content_hash}:{page.start_line}:{page.end_line}")
+                held_scores[path] = float(0.0)
                 citations.append(MemorySearchResult(
                     note_id=f"wiki-page:{identity}", chunk_id=f"wiki-read:{identity}",
                     relative_path=path, title=page.title, heading=section, snippet=page.content,
@@ -93,7 +190,67 @@ async def wiki_knowledge_retrieval_node(graph_state, services):
                     wiki_generation=page.generation, wiki_section=section,
                     wiki_start_line=page.start_line, wiki_end_line=page.end_line,
                 ))
+            # 价值预检准入(设计 §2.2):预算内高价值候选可越过 max_pages 首轮上限,
+            # 未钉住的低价值上下文被替换(替换计数/被置换清单写入报告,引用仍可追踪)
+            for extra in candidates.candidates[profile.max_pages:]:
+                extra_path = str(extra["relative_path"])
+                if extra_path in attempted or extra_path in held_scores:
+                    continue
+                if remaining <= 0 or time.monotonic() >= deadline:
+                    break
+                candidate_value = _citation_value(
+                    float(extra.get("score") or 1.0), gate.freshness, gate.coverage,
+                )
+                min_held = min(
+                    _citation_value(score, gate.freshness, gate.coverage)
+                    for score in held_scores.values()
+                ) if held_scores else 0.0
+                if candidate_value <= min_held:
+                    continue
+                expected_version, _depth = known.get(extra_path, (None, 0))
+                try:
+                    page = await asyncio.wait_for(
+                        tools.read_wiki_page(
+                            extra_path, generation=candidates.generation,
+                            expected_version=expected_version, section=extra.get("heading"),
+                            max_chars=remaining,
+                        ), timeout=max(0.01, deadline - time.monotonic()),
+                    )
+                except asyncio.TimeoutError:
+                    report["stop_reason"] = "time_budget_exhausted"
+                    break
+                except Exception:
+                    report.setdefault("unread", []).append(extra_path)
+                    continue
+                if page.generation != candidates.generation or (
+                    expected_version and page.content_hash != expected_version
+                ):
+                    raise ValueError("wiki_query_version_mismatch")
+                remaining -= len(page.content)
+                report["read"].append(extra_path)
+                identity = sha256_hex(
+                    f"{page.generation}:{extra_path}:{page.content_hash}:{page.start_line}:{page.end_line}")
+                held_scores[extra_path] = float(extra.get("score") or 1.0)
+                citations.append(MemorySearchResult(
+                    note_id=f"wiki-page:{identity}", chunk_id=f"wiki-read:{identity}",
+                    relative_path=extra_path, title=page.title, heading=extra.get("heading"),
+                    snippet=page.content, score=1.0, content_hash=page.content_hash,
+                    source_scope="knowledge_base", retrieval_mode="wiki_snapshot",
+                    lifecycle_status="active", wiki_generation=page.generation,
+                    wiki_section=extra.get("heading"), wiki_start_line=page.start_line,
+                    wiki_end_line=page.end_line,
+                ))
+                # 替换记账:剔除注入集中价值最低且未被本批保留的页面
+                displaced = min(held_scores, key=lambda p: held_scores[p])
+                if displaced != extra_path:
+                    report["replaced"] = report.get("replaced", 0) + 1
+                    report.setdefault("displaced", []).append(displaced)
+                    citations = [c for c in citations if c.relative_path != displaced]
             citations = [item.result for item in gate_evidence(citations).accepted]
+            # 新鲜度派生(设计 §1.1):确定性赋值,模型不可设置;在预算/模型门之前先行,
+            # 保证无评估路径(模型未配置/预算耗尽)也能得到三态判定
+            _apply_gate_freshness(gate, tools.wiki_reader, citations,
+                                  gate.source_observation)
             if remaining <= 0 or time.monotonic() >= deadline:
                 report["stop_reason"] = "budget_exhausted"
                 break
@@ -109,7 +266,6 @@ async def wiki_knowledge_retrieval_node(graph_state, services):
             )
             if observation:
                 gate.source_observation = observation["status"]
-                gate.freshness_reason = "source_relevance_check_pending"
             try:
                 report["assessment_calls"] += 1
                 response = await asyncio.wait_for(
@@ -128,6 +284,18 @@ async def wiki_knowledge_retrieval_node(graph_state, services):
                 report["stop_reason"] = "assessment_failed"
                 break
             apply_assessment(gate, assessment)
+            # 升级路由(设计 §3.1):均衡轮内出现覆盖缺口/未消解冲突且剩余 >= 40% → 单次升级深读
+            if (
+                profile.mode == "balanced" and not escalated
+                and (gate.coverage == "partial" or gate.conflict == "disputed")
+                and (deadline - time.monotonic()) >= profile.deadline_sec * 0.4
+            ):
+                profile = DEEP_PROFILE
+                escalated = True
+                report["profile"] = "deep"
+                report["escalated"] = True
+                deadline = time.monotonic() + DEEP_PROFILE.deadline_sec
+                remaining = max(remaining, DEEP_PROFILE.budget_chars)
             pending = [
                 (item.relative_path, item.section) for item in assessment.next_reads
                 if (item.relative_path, item.section) not in attempted
@@ -165,7 +333,8 @@ async def wiki_knowledge_retrieval_node(graph_state, services):
             )
             if observation:
                 gate.source_observation = observation["status"]
-                gate.freshness_reason = "source_relevance_check_pending"
+            _apply_gate_freshness(gate, tools.wiki_reader, citations,
+                                  gate.source_observation)
             gate.authority = "passed" if citations else "not_checked"
             _emit_tool_results(graph_state, [AgentToolResult(
                 name="search_memory", value=MemorySearchResponse(results=citations),
@@ -241,8 +410,8 @@ async def assess_combined_evidence(services, state, citations, *, model, deadlin
 
 async def supplement_vault_notes(services, state, citations, *, remaining, deadline, report):
     gate = state.wiki_evidence_gate
-    # Unknown freshness cannot certify sufficiency, even when old pages cover the question.
-    if gate.coverage == "model_assessed_complete" and gate.conflict != "disputed" and gate.freshness != "unknown":
+    # 仅 fresh 可证明充分(设计 §4.2):unknown/stale 均不能跳过 fallback,stale 须标注
+    if gate.coverage == "model_assessed_complete" and gate.conflict != "disputed" and gate.freshness == "fresh":
         return citations, remaining
     if not isinstance(services.retrieval, WikiFallbackServiceProtocol):
         report["vault_fallback"] = "unavailable"

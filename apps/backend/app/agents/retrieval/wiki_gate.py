@@ -49,8 +49,11 @@ class WikiAssessment(GatePayload):
 
 class WikiEvidenceGate(GatePayload):
     authority: Literal["not_checked", "passed", "denied"] = "not_checked"
-    freshness: Literal["unknown"] = "unknown"
+    # 新鲜度三态机器值(设计 phase-c-query-node-design.md §1.1;UI 映射中文见 FRESHNESS_UI_LABELS)
+    freshness: Literal["fresh", "unknown", "stale"] = "unknown"
     freshness_reason: str = "new_source_relevance_watermark_unavailable"
+    # 内部字段:最近一次新鲜度判定时间(不进 API 响应模型)
+    freshness_checked_at: str | None = None
     source_observation: Literal[
         "not_checked", "baseline_unknown", "changed_since_capture", "unchanged_since_capture"
     ] = "not_checked"
@@ -63,6 +66,42 @@ class WikiEvidenceGate(GatePayload):
     budget_exhausted: bool = False
     stop_reason: str = "not_started"
     used_for_answer: list[str] = Field(default_factory=list)
+
+
+# UI 中文映射(机器值保留英文;展示层按此表渲染)
+FRESHNESS_UI_LABELS: dict[str, str] = {
+    "fresh": "资料为当前版本",
+    "unknown": "新鲜度尚未确认",
+    "stale": "资料可能已经过时",
+}
+
+
+def derive_source_freshness(
+    *,
+    verification_status: str | None,
+    expires_at: str | None,
+    revoked_at: str | None,
+    observation: str = "not_checked",
+    now: str | None = None,
+) -> tuple[str, str]:
+    """新鲜度按序短路派生(设计 §1.1):stale(撤销/过期)→ fresh(验证有效+未过期)→ unknown。
+
+    不引入新表/列,复用 035 既有列 + 查询期 source_observation(观测变化标记待检查,不自动判 stale)。
+    """
+    from app.utils.time import utc_now_iso
+
+    if revoked_at is not None:
+        return "stale", "source_revoked"
+    # 观测变化(如新增笔记)只标记待检查,不自动判 stale(既有语义:不假设无变化 ≠ 已过时)
+    reference = now or utc_now_iso()
+    if expires_at and reference > expires_at:
+        return "stale", "source_expired"
+    if (
+        str(verification_status or "") == "verified"
+        and observation in {"unchanged_since_capture", "not_checked"}
+    ):
+        return "fresh", "source_verified_current"
+    return "unknown", "source_relevance_check_pending"
 
 
 ASSESSMENT_POLICY = (

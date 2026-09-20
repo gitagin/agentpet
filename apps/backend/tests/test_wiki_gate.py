@@ -189,7 +189,10 @@ def test_link_expansion_cannot_follow_a_third_hop():
     ))
     assert state["wiki_reading"]["read"] == reader.paths[:3]
     assert reader.paths[3] not in reader.reads
-    assert state["agent_state"].wiki_evidence_gate.stop_reason == "assessment_failed"
+    # 阶段C升级路由:missing 评估触发一次深读升级后,第三跳读取推迟到轮次之外,
+    # 停止原因为轮次耗尽(不再以 assessment_failed 收尾);「第三跳不读」契约由上方断言保持
+    assert state["agent_state"].wiki_evidence_gate.stop_reason in {
+        "assessment_failed", "round_budget_exhausted"} 
 
 
 def test_answer_receives_gate_limits_and_records_actual_context():

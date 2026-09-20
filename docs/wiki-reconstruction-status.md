@@ -595,6 +595,16 @@ status/expiry enforcement (Phase C), non-document evidence restoration and the
 generation-aware archive adapter, compiler draft API wiring (stage_draft/
 publish_draft are service-layer only), and generation retention/lease policy.
 
+Update 2026-09-20 (Phase C): the T3-row freshness gate and the query-path
+completion items (freshness state machine, context replacement, deep-read
+profiles, Gate completion) are delivered; the Phase C record below supersedes
+the "query-node default integration ... remains outstanding" wording above.
+Default chat routing is still NOT switched (Shadow/independent evaluation path
+only). Still open: verification-status/expiry enforcement readers, deep-read
+API exposure and lazy relevance-check wiring, stage_draft/publish_draft API
+wiring, generation-aware archive adapter, retention/lease policy, and the
+Phase D/E rollout gates.
+
 ## Verification
 
 2026-09-19 Shadow settings UI/summary slice: two new backend cases passed in
@@ -1346,10 +1356,7 @@ New:
    write `publication.status='blocked'` on failure and allow a documented
    operator reset back to 'planned'.
 3. Three new internal draft-path error identifiers were added (not present in
-   HEAD): `wiki_publication_run_not_planned`, `wiki_publication_draft_not_approved`,
-   `wiki_publication_draft_missing` (publication.py:142/188/191/199). They are
-   service-layer only — no API endpoint raises them today, so they are not
-   API-visible; captain to decide reuse-vs-contract-list when wiring the API.
+   HEAD): `wiki_publication_run_not_planned` (publication.py:142/188 — stage_draft/publish_draft gate on run status), `wiki_publication_draft_not_approved` (publication.py:191 — publish_draft requires draft_approved), `wiki_publication_draft_missing` (publication.py:199 — publish_draft requires an existing staged draft). They are service-layer only — no API endpoint raises them today, so they are not API-visible. Accepted ruling: the red line means "no change to existing error codes" — adding internal codes modifies no existing code and breaks no contract. **When wiring API endpoints, the boundary layer must map these internal codes onto existing public error codes (e.g. the generic 422/409 contracts) and must never expose internal identifiers.**
 4. Behavior tightening (registered, design §4.3): authorize now rejects
    forgotten/stale/quarantined/revoked bindings, so old snapshots behind a
    forgotten binding change from readable to denied (locked by B3 case 4).
@@ -1427,5 +1434,176 @@ semantics from Known Limitation 2 and the error-code decision from Limitation
 generation retention/lease policy. Follow-ups carried from Phase A: optional
 `source_version` on agent proposal fields; explicit `source_version` in
 publication stamps if finer change detection is required.
+## Phase C 2026-09-20 New Query Path Completion
+
+Date: 2026-09-20. Phase C of the source-identity workstream: completion of
+the new query path — freshness state machine, context replacement, deep-read
+mode and Evidence Gate completion (design:
+`docs/phase-c-query-node-design.md` (C3); failing tests:
+`tests/test_phase_c_query_node.py` (C4, red before C5: 9 failed / 6 passed;
+green after); implementation: C5; regression and safety acceptance: C7;
+localization pass: C6 (t28); recon: C1 (t23); research: C2 (t24)).
+
+### Task
+
+- Freshness three-state machine (fresh/unknown/stale) replacing the constant
+  "unknown", with the registration → pending relevance check → lazy check
+  chain, UI labels in Chinese mapped to English machine values.
+- Context replacement: evidence value function V = relevance x freshness x
+  coverage, submodular replacement with pinned supported/conflict citations,
+  and a guaranteed ninth-page admission for high-value evidence under a full
+  budget.
+- Deep-read mode: parameterized profiles (balanced = current behavior; deep =
+  24 pages / 3 hops / 6 rounds / 90s / 32000 chars), single-shot escalation
+  route, and unchanged permission gates.
+- Evidence Gate completion: freshness is a deterministic, model-unsettable
+  gate dimension; supplement skip only under fresh + complete + no conflict.
+
+### Files Changed
+
+Modified (`git diff d2a73d1`):
+- `apps/backend/app/agents/nodes/wiki_retrieval.py` — `ReadProfile`
+  (`BALANCED_PROFILE` = current limits, `DEEP_PROFILE`), `read_profile`
+  node parameter, value function `_citation_value`, per-citation freshness
+  resolution (`_resolve_citation_freshness`: binding → documented_in →
+  source 035 columns, worst-rank fail-closed) and deterministic gate
+  assignment (`_apply_gate_freshness`), ninth-page value-admission loop with
+  displacement accounting (`replaced`/`displaced` report fields), single
+  escalation to deep on coverage gap/conflict with >= 40% remaining.
+- `apps/backend/app/agents/retrieval/wiki_gate.py` — `freshness:
+  Literal["fresh","unknown","stale"]`, internal `freshness_checked_at`,
+  `FRESHNESS_UI_LABELS` (Chinese UI mapping, English machine values),
+  `derive_source_freshness` short-circuit derivation (revoked/expired →
+  stale, verified + unchanged → fresh, else unknown).
+- `apps/backend/app/api/services/adapters.py` — `RuntimeWikiReadAdapter`
+  exposes read-only `database` and `pin` for freshness resolution.
+- `apps/backend/app/services/wiki/generations.py` — publish receipt
+  registers `freshness: "unknown"` + `freshness_reason:
+  "source_relevance_check_pending"` (existing JSON domain).
+- `apps/backend/tests/test_wiki_gate.py`, `apps/backend/tests/test_wiki_publication.py`
+  — updated anchors for the extended literal and receipt fields.
+
+New:
+- `apps/backend/tests/test_phase_c_query_node.py` (C4, 15 cases).
+- `docs/phase-c-query-node-design.md` (C3), plus C1/C2 recon docs.
+
+### Implementation Content
+
+- Freshness is derived per source at query time from existing 035 columns
+  (`verification_status`/`verified_at`/`expires_at`/`revoked_at`) plus
+  query-period `source_observation` and binding status; no new table, no new
+  column, no schema change. `source_observation`/watermark keep their
+  observational meaning (two dimensions separated): a changed observation only
+  marks the source for recheck; it does not auto-judge stale.
+- Registration chain: apply/publish writes `freshness=unknown` +
+  `source_relevance_check_pending` into the publish receipt (existing JSON
+  domain); the lazy bounded relevance-check chain (writing `verified` and its
+  interaction with dependency stamps) is a registered follow-up, not built in
+  this phase.
+- Context replacement: token accounting splits read budget (12000) from
+  context injection budget; supported/conflict citations are pinned
+  (quote-validation semantics unchanged); citations are re-ordered by value and
+  the ninth-page admission loop reads high-value candidates beyond
+  `max_pages` when budget allows, replacing the lowest-value held context
+  (replacement/displacement counted in the report; displaced citations remain
+  traceable).
+- Deep-read: profiles replace inline constants; escalation happens at most
+  once per node run (balanced → deep) when a coverage gap or unresolved
+  conflict exists and >= 40% of the deadline remains; denied pages still fail
+  closed (permission gates untouched).
+- Gate: model schema keeps `extra="forbid"` — the model cannot set
+  `freshness` or `authority`; supplement skip now requires
+  `freshness == "fresh"` (unknown/stale always fall back; stale is explicitly
+  annotated in answer assembly injection).
+
+### Known Limitations (accepted)
+
+1. Lazy relevance-check chain (write-back of `verified` and its interaction
+   with dependency stamps) is not implemented — registered as a later design
+   point (C5/C7); registration + derivation work today, checking is manual or
+   future async queue work (no new resident service in this phase).
+2. `ReadProfile` is a node-level parameter; no API exposure of deep-read mode
+   yet (additive optional field pattern reserved for wiring).
+3. Design-code deviation (non-defect, recorded by C7): the ninth-page value
+   precheck initializes held scores to 0.0, so admission degenerates to
+   "score > 0" and the real gates are budget/deadline; the high-value ninth
+   page guarantee holds (and is stronger), but low-value extra pages are also
+   read while budget remains. Recommend seeding held scores from candidate
+   retrieval scores at wiring time.
+4. Escalation to deep mode can change `stop_reason` (e.g. third-hop test:
+   `assessment_failed` → `round_budget_exhausted`); the 11-value
+   `stop_reason` domain is unchanged (registered in C5).
+5. Freshness observation changes only mark for recheck; they do not
+   auto-degrade to stale (maintained "do not assume no change" semantics).
+
+### Safety Boundary
+
+- Model cannot influence freshness or authority (GatePayload
+  `extra="forbid"`, deterministic assignment points only).
+- stale sources cannot certify sufficiency: supplement skip requires fresh;
+  unknown keeps the existing fallback behavior (no regression).
+- Deep-read mode does not bypass privacy/permission gates: denied pages are
+  unreadable and uncited even at 32000-char budgets (C4 case 9).
+- Expired/revoked sources short-circuit to stale (C4 cases 4-5); the stale
+  machine value reaches answer assembly injection (C4 case 5).
+- Default chat routing is NOT switched: `wiki_knowledge_retrieval_node` is
+  referenced only by `services/wiki/shadow.py` (independent evaluation
+  pipeline); registry/default routing has no reference (verified by grep).
+
+### Localization Check (C6/t28)
+
+Zero code changes required. Per-hunk review of `git diff d2a73d1` (4 app
+files +253/-3, C4 tests, 2 anchor test updates) plus automated residual scan:
+all new docstrings/comments are Simplified Chinese (including the old English
+comment near the supplement condition, which was also localized); machine
+values (fresh/unknown/stale) and status-machine values stay English with
+Chinese UI mapping (`FRESHNESS_UI_LABELS`); no new error message, logger
+message or Field(description) was introduced.
+
+### Test Commands And Results (C7)
+
+Run from the repository root with the isolated interpreter:
+
+```powershell
+cd E:/agentproject
+apps/backend/.venv/Scripts/python.exe -m pytest apps/backend/tests/test_phase_c_query_node.py apps/backend/tests/test_wiki_query_node.py apps/backend/tests/test_wiki_gate.py apps/backend/tests/test_wiki_source_watermark.py apps/backend/tests/test_wiki_shadow.py apps/backend/tests/test_wiki_shadow_lifecycle.py apps/backend/tests/test_wiki_shadow_runtime.py apps/backend/tests/test_wiki_shadow_summary.py apps/backend/tests/test_retrieval_source_identity.py apps/backend/tests/test_answer_basis.py apps/backend/tests/test_wiki_workflows.py apps/backend/tests/test_wiki_compilation.py apps/backend/tests/test_wiki_synthesis_roots.py apps/backend/tests/test_wiki_provenance.py apps/backend/tests/test_wiki_source_scope.py apps/backend/tests/test_wiki_ingest_source_identity.py apps/backend/tests/test_source_identity_migration.py apps/backend/tests/test_draft_first_faults.py apps/backend/tests/test_wiki_generations.py apps/backend/tests/test_wiki_publication.py apps/backend/tests/test_wiki_snapshot_reader.py apps/backend/tests/test_migration_repair.py apps/backend/tests/test_wiki_read_tools.py apps/backend/tests/test_openapi_snapshot.py -q
+# 261 passed, 1 skipped (274s) — includes C4 15/15 (9 red -> green)
+```
+
+- Broad regression: YES (261 passed across 24 affected suites incl. Phase A/B
+  anchors)
+- Real-model tests: NO
+- Frontend checks: NO
+
+### Public Interface Changes
+
+None. No API path, JSON/SSE field name, error code (existing codes unchanged),
+enum value, Tool name or JSON key changed; `test_openapi_snapshot` passes.
+Freshness values `fresh`/`stale` are internal state values inside the
+existing gate JSON field (not in API response models); the publish receipt
+gains `freshness`/`freshness_reason` keys inside the existing internal JSON
+domain. One new internal validation string `wiki_unknown_read_profile`
+(node parameter check, no reachable API endpoint; same ruling pattern as the
+Phase B internal error identifiers — internal values do not break the
+contract).
+
+### Database Migration
+
+None for Phase C (no schema change; freshness derives from existing 035
+columns).
+
+### Next Steps
+
+- Phase D: Shadow answer-quality evaluation — ShadowMetrics freshness counters
+  (fresh/unknown/stale occurrences and replacement counts) are internal
+  observables already present; run quality assessment with the extended gates.
+- Phase E: formal switch of the default chat route to the completed query path
+  (gated rollout), including: API exposure of deep-read mode (additive
+  optional field), lazy relevance-check chain wiring (verification write-back
+  + dependency-stamp interaction), held-score seeding from candidate scores
+  (Known Limitation 3), and the Phase B follow-ups (stage_draft/publish_draft
+  API wiring with retry-reset semantics, generation-aware archive restoration,
+  retention/lease policy).
+
 
 
