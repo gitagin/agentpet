@@ -577,6 +577,14 @@ scope checks do not establish complete root permissions throughout ordinary
 retrieval, compiler related-page reads, all graph recall paths, or historical
 active page bindings; those remain T1 release gates.
 
+Update 2026-09-20: migration `035_source_identity` resolves the global
+`wiki_sources.source_hash` uniqueness constraint (non-unique index), adds
+`source_version`/verification columns and the version-history ledger, and
+backfills source identity into legacy graph metadata. The identity migration
+record below (Phase A 2026-09-20) supersedes the "still pending" statements
+above; the read-path binding/revocation gates listed in the T1 row remain open
+and are scoped to Phase B.
+
 ## Verification
 
 2026-09-19 Shadow settings UI/summary slice: two new backend cases passed in
@@ -1053,3 +1061,197 @@ itself trustworthy. Local regression tests cover spoofed origin labels,
 claimed verification metadata, legacy summaries, compilation re-entry and
 normal original-material imports. No dependency API or version was changed
 on the basis of this guidance.
+
+## Phase A 2026-09-20 Source Identity Migration
+
+Date: 2026-09-20. Phase A of the source-identity workstream: separation of the
+stable source identity from the content fingerprint and the source version, so
+that two sources with identical bodies are distinct records. Design:
+`docs/source-identity-migration-design.md` (T3); failing acceptance tests:
+`tests/test_source_identity_migration.py` (T4, red before T5, green after);
+implementation: T5; regression and P0 acceptance: T7; localization pass: T6.
+
+### Task
+
+- Migration `035_source_identity`: drop the global `wiki_sources.source_hash`
+  UNIQUE constraint (keep a non-unique index), add `source_version`,
+  `verification_status`, `verified_at`, `verified_by`, `expires_at`,
+  `revoked_at`, `revoked_reason` columns and the `wiki_source_version_history`
+  ledger table; backfill source identity into legacy graph metadata.
+- v2 ingest identity rules behind the `source_identity_v2` app_state flag
+  (default off): identity-exact reuse, same-identity content change bumps the
+  source version (old content snapshotted into the ledger), no identity match
+  creates a new row (same-body multi-source storage), ambiguous/legacy
+  unverifiable identity fails closed with existing error codes.
+- Graph/evidence identity migration: wiki evidence IDs keyed by source_id,
+  `documented_in` relation source_text prefixed by source_id, synthesis roots
+  resolved by source_id, `source_version` recorded in candidate/evidence/fact
+  metadata.
+- Source page path unification for new writes (`Wiki/Sources/{slug}-{source_id[:12]}.md`)
+  plus dual body markers (`- 来源标识：` preferred, `- 来源哈希：` kept for
+  legacy readers) and the `resolve_source_page_path` read helper.
+- Contract extension: optional additive fields only.
+
+### Files Changed
+
+Modified:
+- `apps/backend/app/services/wiki/ingest.py` — v2 confirm identity rules,
+  version bump + ledger write, page-plan path/marker rewriting, compile
+  metadata path mapping.
+- `apps/backend/app/services/wiki/ingest_identity.py` — `source_identity_v2`
+  flag reader, `_identity_metadata_equal`.
+- `apps/backend/app/services/wiki/memory_closure.py` — evidence IDs,
+  relation source_text, synthesis source_ids/independence rule, double-marker
+  parsing, candidate/evidence `source_version` metadata.
+- `apps/backend/app/services/retrieval.py` — `_resolve_wiki_source_identity`
+  fills `source_id`/`source_version` on search results and restored citations.
+- `apps/backend/app/models/memory.py` / `apps/backend/app/models/wiki.py` —
+  optional `source_id`/`source_version` (MemorySearchResult),
+  `source_version` (WikiIngestPreviewResponse).
+- `apps/backend/app/storage/database.py` — MigrationRunner supports a
+  first-statement `PRAGMA foreign_keys = OFF` header for table-rebuild
+  migrations (switched outside the transaction, restored after commit/rollback).
+- `apps/backend/openapi.json` — regenerated (additive fields only).
+- `apps/backend/tests/test_migration_repair.py`,
+  `apps/backend/tests/test_wiki_ingest_idempotency.py`,
+  `apps/backend/tests/test_wiki_source_scope.py` — migration-runner and v2
+  coverage; the stale scope-migration assertion (apply() == ["030..."]) now
+  expects 030-035 with row/index/FK checks.
+
+New:
+- `apps/backend/migrations/035_source_identity.sql`.
+- `apps/backend/tests/test_source_identity_migration.py` (T4, 8 cases).
+- `apps/backend/tests/test_retrieval_source_identity.py` (3 cases).
+- `docs/source-identity-migration-design.md` (T3), plus T2/T11/T12/T13 docs.
+
+### Implementation Content
+
+- Migration 035 is a 12-step table rebuild inside one transaction: duplicate-hash
+  guard, row-count reconcile, post-rebuild foreign-key check (any violation
+  aborts and rolls back), non-unique `idx_wiki_sources_hash` and rebuilt
+  `idx_wiki_sources_vault`, version ledger table, and idempotent backfill of
+  `memory_evidence`/`memory_candidates`/`memory_graph_facts` metadata
+  (`source_id` + `source_version = 1`) only where `source_id` is absent and
+  the hash resolves uniquely (hashes outside wiki_sources, e.g. the diary/
+  companion hash family, are left untouched).
+- v2 confirm runs inside the existing `BEGIN IMMEDIATE` transaction: candidate
+  lookup by source_type/source_uri/vault, identity-metadata equality
+  (excluding compiler run fields), scope assertion, then reuse / version bump /
+  new row; more than one identity match or unverifiable legacy identity raises
+  the existing `wiki_ingest_source_identity_conflict` / scope error (no new
+  error codes). Legacy behavior is byte-identical when the flag is off.
+- New evidence IDs use source_id keys; legacy IDs are never rewritten and stay
+  readable; reuse requires matching recorded metadata (fail closed otherwise).
+- Synthesis: independent roots are counted by distinct source_id; duplicate
+  requested paths do not add independence; single-source synthesis is legal
+  under v2. Cycle detection (`synthesis_source_cycle`) and evidence union
+  de-duplication by root source remain covered by tests.
+
+### Known Limitations (accepted decisions)
+
+1. `verification_status`/`revoked_at`/`expires_at` are persisted but not yet
+   enforced on any read path. Accepted as a known limitation: enforcement is
+   Phase B/C work ("old content versions stay stable; old permissions do not
+   stay valid forever" — live per-read authority checks). Phase B core items
+   (see T9 draft): read-path binding status checks and revocation effect, with
+   the T11 gap locations: `snapshot_reader.py:207-239` `_load` /
+   `:224-226` authorize call, `factory.py:506-536` authorize does not check
+   `wiki_page_bindings.status`, and `source_watermark.py:7-24` omits binding
+   status/generation version. No API exists yet to set `revoked`, so there is
+   no repro path in this phase.
+2. Synthesis independence semantics changed with v2: roots counted by distinct
+   source_id; duplicate paths of the same source do not add independent
+   evidence (consistent with T4 acceptance case 5, covered by
+   `test_duplicate_sources_do_not_double_count_evidence`); cycle coverage:
+   `test_wiki_synthesis_roots.py:262` (`synthesis_source_cycle`) and :90
+   (`synthesis_sources_not_independent`).
+3. `AgentWikiProposalFields` does not yet carry `source_version` (additive
+   later; no test requires it).
+4. Publication dependency stamps and the source watermark do not explicitly
+   include `source_version`; a version bump changes `source_hash`/`raw_content`/
+   `updated_at`, which the existing fingerprints and watermark already observe.
+
+### Safety Boundary
+
+- Forged sources/references cannot gain trusted identity: ingest confirm
+  full-equality checks (scope, type/uri/metadata), closure-side
+  `sha256(raw_content) == source_hash`, candidate/entity/evidence dual-field
+  metadata checks, and query-time watermark changes all fail closed.
+- Summary cycles do not add evidence: `resolving` tuple detection raises
+  `synthesis_source_cycle`; duplicate-path requests raise
+  `synthesis_sources_not_independent`; evidence union de-duplicates by root
+  source (T4 case 5).
+- Forget/external-edit invalidation: a forgotten provenance candidate blocks
+  authority resolution (`source_candidate_not_activatable`, T4 case 4);
+  external page edits fail binding-hash, snapshot and restore checks
+  (`source_changed`/`synthesis_source_binding_hash_mismatch`). Revocation
+  enforcement is deferred (Known Limitation 1).
+- Interruption/concurrency/retry: ingest confirm remains serialized by
+  `BEGIN IMMEDIATE`; migration 035 is a single transaction with rollback on
+  any failed guard; `MigrationRunner` FK-off header support is covered by
+  new `test_migration_repair.py` cases (first-statement allowed,
+  mid-script still refused); apply requires review approval and post-write
+  hash verification.
+
+### Localization Check (T6)
+
+T6 = zero code changes. Verified: no API path, JSON/SSE field name, error
+code, enum value, Tool name or JSON key changed; new comments/docstrings are
+Chinese or necessary technical English; no new user-facing error message or
+logger string was introduced.
+
+### Test Commands And Results (T7)
+
+Run from the repository root with the isolated interpreter (tests import
+`apps.backend.tests._schema`, which requires the root namespace package on
+sys.path):
+
+```powershell
+cd E:/agentproject
+apps/backend/.venv/Scripts/python.exe -m pytest apps/backend/tests/test_source_identity_migration.py apps/backend/tests/test_retrieval_source_identity.py apps/backend/tests/test_wiki_source_scope.py apps/backend/tests/test_wiki_ingest_source_identity.py apps/backend/tests/test_wiki_source_binding_identity.py apps/backend/tests/test_wiki_synthesis_roots.py apps/backend/tests/test_wiki_provenance.py apps/backend/tests/test_wiki_evidence_policy.py apps/backend/tests/test_wiki_source_watermark.py apps/backend/tests/test_wiki_publication.py apps/backend/tests/test_wiki_compilation.py apps/backend/tests/test_wiki_workflows.py apps/backend/tests/test_migration_repair.py apps/backend/tests/test_wiki_ingest_idempotency.py apps/backend/tests/test_openapi_snapshot.py -q
+# 247 passed, 1 skipped (233s)
+
+apps/backend/.venv/Scripts/python.exe -m pytest apps/backend/tests/test_wiki_*.py apps/backend/tests/test_llmwiki_*.py apps/backend/tests/test_retrieval_*.py apps/backend/tests/test_answer_basis.py apps/backend/tests/test_answer_basis_history.py apps/backend/tests/test_memory_entity_extraction.py -q
+# 536 passed, 1 skipped (390s, 48 files)
+
+apps/backend/.venv/Scripts/python.exe -m pytest apps/backend/tests/test_memory_graph_kuzu.py apps/backend/tests/test_memory_graph_migration.py apps/backend/tests/test_memory_graph_projection.py apps/backend/tests/test_memory_graph_services.py apps/backend/tests/test_persistence_mvp.py -q
+# 54 passed, 5 skipped (163s)
+```
+
+Explicit migration verification (script `.tmp/t7-verify-035.py`): 13/13 PASS —
+fresh DB (035 applied; new columns; non-unique hash index; ledger table; FK
+enforced after apply) and legacy DB 001-029 (030-035 all applied; legacy row
+preserved with version 1; evidence/candidate metadata backfilled; zero FK
+violations; second apply idempotent-empty). T4 suite went from 8 failed
+(pre-T5) to 8 passed.
+
+- Broad regression: YES
+- Real-model tests: NO
+- Frontend checks: NO
+
+### Public Interface Changes
+
+Only additive optional fields: `MemorySearchResult.source_id`,
+`MemorySearchResult.source_version`, `WikiIngestPreviewResponse.source_version`
+(default None; old clients unaffected). `openapi.json` regenerated; the
+OpenAPI snapshot test passes. No existing field, path, error code, enum or
+Tool name changed.
+
+### Database Migration
+
+`035_source_identity` (single transaction, table rebuild, guards, backfill,
+ledger) — described under Implementation Content; legacy DBs migrate in place
+with no data loss and no silent identity guessing.
+
+### Next Steps
+
+T9 Phase B draft: Draft-first Publication + versioned authority. Core items:
+read-path binding status checks in the snapshot authorize callback
+(`factory.py:506-536`) and `snapshot_reader` `_load` (`:207-239`), the
+revocation effect on published generations, watermark extension with binding
+status (T11 §3.3 gap locations), and the draft-first publication pipeline over
+the compiler. Follow-ups from this record: enforcement readers for
+`verification_status`/expiry/revocation (Known Limitation 1), optional
+`source_version` on agent proposal fields, and explicit `source_version` in
+publication stamps/watermark if finer change detection is required.
+

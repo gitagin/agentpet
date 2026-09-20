@@ -71,7 +71,7 @@ class WikiIngestPreviewRequest(BaseModel):
 
 
 class WikiIngestPreviewResponse(BaseModel):
-    run_id: str; source_id: str; source_hash: str; status: str; page_plans: list[WikiIngestPagePlan]; summary: str; source_metadata: dict[str, object] = Field(default_factory=dict); preview_token: str | None = None
+    run_id: str; source_id: str; source_hash: str; status: str; page_plans: list[WikiIngestPagePlan]; summary: str; source_metadata: dict[str, object] = Field(default_factory=dict); preview_token: str | None = None; source_version: int | None = None
 
 
 class WikiIngestConfirmRequest(BaseModel):

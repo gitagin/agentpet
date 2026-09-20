@@ -1,3 +1,5 @@
+import re
+
 from .common import *
 from .common import _CachedIngestPreview
 from .contracts import page_type_for_path
@@ -6,8 +8,10 @@ from .utility import _dumps_list, _dumps_object, _preview_text, _source_hash, _u
 
 from .import_handler import _import_preview_request
 from .ingest_identity import (
+    _identity_metadata_equal,
     assert_ingest_source_matches,
     assert_ingest_source_scope,
+    source_identity_v2_enabled,
     wiki_ingest_intent_key,
 )
 from .markdown import _ingest_log_details, _summary_from_source
@@ -143,15 +147,91 @@ class WikiIngestWorkflowMixin(WikiIngestReviewMixin, WikiIngestStorageMixin):
                     or original_request != ingest_request
                 ):
                     raise WikiWorkflowError("wiki_ingest_run_identity_conflict")
-            existing = conn.execute(
-                "SELECT * FROM wiki_sources WHERE source_hash = ?",
-                (preview.source_hash,),
-            ).fetchone()
             source_id = preview.source_id
-            if existing is not None:
-                assert_ingest_source_scope(conn, existing, self.wiki.writer.vault_root)
-                assert_ingest_source_matches(existing, ingest_request)
-                source_id = str(existing["id"])
+            v2_enabled = source_identity_v2_enabled(conn)
+            matched: sqlite3.Row | None = None
+            # 身份全等但内容变化 → (新 hash, 新 raw, 新 preview),触发版本 bump 写账本
+            bumped: tuple[str, str, str] | None = None
+            if v2_enabled:
+                # v2 身份规则(设计 §5.1-3):身份全等+内容全等→复用;身份全等+内容变→
+                # 同 id 版本 bump(旧内容快照入 wiki_source_version_history);身份无匹配→
+                # 新建行(同 hash 多行合法);多候选命中同身份或 legacy 行身份不可判定→
+                # fail closed(复用既有错误码,不新增)。
+                candidates = conn.execute(
+                    """
+                    SELECT s.* FROM wiki_sources s
+                    LEFT JOIN vaults v ON v.id = s.vault_id
+                    WHERE s.source_type = ?
+                      AND COALESCE(s.source_uri, '') = COALESCE(?, '')
+                      AND (s.vault_id IS NULL OR v.root_path = ?)
+                    """,
+                    (
+                        ingest_request.source_type,
+                        ingest_request.source_uri,
+                        str(self.wiki.writer.vault_root.resolve()),
+                    ),
+                ).fetchall()
+                identity_matches = [
+                    row for row in candidates if _identity_metadata_equal(row, ingest_request)
+                ]
+                if len(identity_matches) > 1:
+                    raise WikiWorkflowError("wiki_ingest_source_identity_conflict")
+                if identity_matches:
+                    matched = identity_matches[0]
+                    assert_ingest_source_scope(conn, matched, self.wiki.writer.vault_root)
+                    if (
+                        str(matched["source_hash"]) != preview.source_hash
+                        or (matched["raw_content"] or None) != ingest_request.content
+                    ):
+                        bumped = (
+                            preview.source_hash,
+                            ingest_request.content,
+                            _preview_text(ingest_request.content),
+                        )
+                else:
+                    # 身份无匹配 → 新建行:preview.source_id 是 hash 召回得到的旧行 id,
+                    # 不能复用,必须分配全新 id(同 hash 多行各自独立)。
+                    source_id = new_id()
+            else:
+                # legacy 行为(hash-first 复用,与 v2 开关关闭时完全一致)
+                existing = conn.execute(
+                    "SELECT * FROM wiki_sources WHERE source_hash = ?",
+                    (preview.source_hash,),
+                ).fetchone()
+                if existing is not None:
+                    assert_ingest_source_scope(conn, existing, self.wiki.writer.vault_root)
+                    assert_ingest_source_matches(existing, ingest_request)
+                    matched = existing
+            if matched is not None:
+                source_id = str(matched["id"])
+                if bumped is not None:
+                    # 版本 bump:旧内容快照入账本,同 id 原地更新内容与版本号
+                    conn.execute(
+                        """
+                        INSERT INTO wiki_source_version_history(
+                            source_id, source_version, content_hash, content_preview,
+                            raw_content, reason, recorded_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            source_id,
+                            matched["source_version"],
+                            str(matched["source_hash"]),
+                            matched["content_preview"],
+                            matched["raw_content"],
+                            "content_updated",
+                            now,
+                        ),
+                    )
+                    conn.execute(
+                        """
+                        UPDATE wiki_sources
+                        SET source_hash = ?, raw_content = ?, content_preview = ?,
+                            source_version = source_version + 1, updated_at = ?
+                        WHERE id = ?
+                        """,
+                        (*bumped, now, source_id),
+                    )
             else:
                 vault_id = VaultRepository(conn).upsert(self.wiki.writer.vault_root)
                 conn.execute(
@@ -179,12 +259,51 @@ class WikiIngestWorkflowMixin(WikiIngestReviewMixin, WikiIngestStorageMixin):
                         vault_id,
                     ),
                 )
+            if v2_enabled:
+                # v2 页面路径统一(设计 §2.4/§2.5):来源页统一为 {slug}-{source_id[:12]}.md,
+                # 正文注入「来源标识」双标记(版本号随行),旧「来源哈希」标记继续保留;
+                # 派生页内容中引用的旧来源路径同步替换为新路径。
+                version_row = conn.execute(
+                    "SELECT source_version FROM wiki_sources WHERE id = ?", (source_id,)
+                ).fetchone()
+                source_version = int(version_row["source_version"]) if version_row else 1
+                legacy_target: str | None = None
+                v2_target: str | None = None
+                rewritten_plans = []
+                for plan in preview.page_plans:
+                    if (
+                        legacy_target is None
+                        and plan.target_path.startswith("Wiki/Sources/")
+                        and plan.target_path.endswith(".md")
+                    ):
+                        slug = plan.target_path[len("Wiki/Sources/"):-len(".md")]
+                        slug = re.sub(r"-[0-9a-f]{12}$", "", slug)
+                        legacy_target = plan.target_path
+                        v2_target = f"Wiki/Sources/{slug}-{source_id[:12]}.md"
+                        content = plan.content
+                        if "- 来源标识：" not in content:
+                            content = content.replace(
+                                "- 来源哈希：",
+                                "- 来源标识：`" + source_id + "`（版本 " + str(source_version) + "）\n- 来源哈希：",
+                                1,
+                            )
+                        plan = plan.model_copy(update={"target_path": v2_target, "content": content})
+                    elif v2_target is not None and plan.target_path != legacy_target:
+                        plan = plan.model_copy(update={
+                            "content": plan.content.replace(legacy_target, v2_target),
+                        })
+                    rewritten_plans.append(plan)
+                preview = preview.model_copy(update={"page_plans": rewritten_plans})
+            version_row = conn.execute(
+                "SELECT source_version FROM wiki_sources WHERE id = ?", (source_id,)
+            ).fetchone()
             confirmed = preview.model_copy(
                 update={
                     "run_id": run_id or preview.run_id,
                     "source_id": source_id,
                     "status": "planned",
                     "preview_token": None,
+                    "source_version": int(version_row["source_version"]) if version_row else None,
                 }
             )
             conn.execute(
@@ -307,7 +426,17 @@ class WikiIngestWorkflowMixin(WikiIngestReviewMixin, WikiIngestStorageMixin):
             ingest_request = self._validated_ingest_request(conn, run["request_json"], source_row)
             assert_independent_ingest_source(ingest_request.source_type)
             source_title = ingest_request.title
-            source_path = f"Wiki/Sources/{slugify_wiki_title(source_title)}.md"
+            # 来源页路径以运行记录为准(v2 下已统一为 {slug}-{source_id[:12]}.md)
+            source_path = next(
+                (
+                    str(row["target_path"])
+                    for row in rows
+                    if str(row["target_path"]).startswith("Wiki/Sources/")
+                ),
+                f"Wiki/Sources/{slugify_wiki_title(source_title)}.md",
+            )
+            v2_enabled = source_identity_v2_enabled(conn)
+            source_id_for_path = str(run["source_id"])
             source_hash = str(source_row["source_hash"])
             source_type = ingest_request.source_type
             raw_content = ingest_request.content
@@ -318,6 +447,13 @@ class WikiIngestWorkflowMixin(WikiIngestReviewMixin, WikiIngestStorageMixin):
         compilation = source_metadata.get(COMPILER_KEY, {})
         if compilation:
             source_path = compilation["source_path"]
+            if v2_enabled and source_path not in approved:
+                # v2:来源页路径已统一为 source_id 后缀,编译元数据中的旧 hash12 路径同步映射
+                slug = source_path[len("Wiki/Sources/"):-len(".md")]
+                slug = re.sub(r"-[0-9a-f]{12}$", "", slug)
+                mapped = f"Wiki/Sources/{slug}-{source_id_for_path[:12]}.md"
+                if mapped in approved:
+                    source_path = mapped
             if source_path not in approved:
                 raise CompilerError("wiki_compilation_source_must_be_approved")
             # Written targets use their persisted post-write hash on retry; other read dependencies

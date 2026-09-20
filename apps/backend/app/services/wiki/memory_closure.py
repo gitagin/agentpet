@@ -123,6 +123,7 @@ class WikiSynthesisAuthority:
     page_type: str
     source_paths: tuple[str, ...]
     source_hashes: tuple[str, ...]
+    source_ids: tuple[str, ...]
     source_entity_ids: tuple[str, ...]
     entity_ids: tuple[str, ...]
     fact_ids: tuple[str, ...]
@@ -140,6 +141,7 @@ class WikiSynthesisAuthority:
 @dataclass(frozen=True, slots=True)
 class _ResolvedWikiSource:
     source_hashes: tuple[str, ...]
+    source_ids: tuple[str, ...]
     source_entity_ids: tuple[str, ...]
     fact_ids: tuple[str, ...]
     evidence_ids: tuple[str, ...]
@@ -236,6 +238,7 @@ def prepare_wiki_memory_closure(
                 graph,
                 resolved,
                 source_entity=source_entity,
+                source_id=source_id,
                 source_hash=source_hash,
                 raw_content=raw_content,
                 source_type=source_type,
@@ -376,14 +379,14 @@ def finalize_wiki_memory_closure(
                 page_bindings.append(page_binding_id)
 
                 page_evidence_id = _page_evidence_id(
-                    source_hash=preparation.source_hash,
+                    source_id=preparation.source_id,
                     relative_path=relative_path,
                 )
                 source_doc = graph.create_relation(
                     relation_type="documented_in",
                     subject_entity_id=source_entity.id,
                     object_entity_id=page_entity.id,
-                    source_text=f"{preparation.source_hash}:{relative_path}",
+                    source_text=f"{preparation.source_id}:{relative_path}",
                     source_type="wiki_binding",
                     confidence=1.0,
                     evidence_id=page_evidence_id,
@@ -404,11 +407,11 @@ def finalize_wiki_memory_closure(
                         relation_type="documented_in",
                         subject_entity_id=entity.id,
                         object_entity_id=page_entity.id,
-                        source_text=f"{preparation.source_hash}:{relative_path}",
+                        source_text=f"{preparation.source_id}:{relative_path}",
                         source_type="wiki_binding",
                         confidence=1.0,
                         evidence_id=_entity_page_evidence_id(
-                            preparation.source_hash,
+                            preparation.source_id,
                             entity.id,
                             relative_path,
                         ),
@@ -427,7 +430,7 @@ def finalize_wiki_memory_closure(
                         source_id=preparation.source_id,
                         provenance="wiki_binding",
                         evidence_ids=(_entity_page_evidence_id(
-                            preparation.source_hash, entity.id, relative_path,
+                            preparation.source_id, entity.id, relative_path,
                         ),),
                     )
 
@@ -453,11 +456,11 @@ def finalize_wiki_memory_closure(
                         relation_type="documented_in",
                         subject_fact_id=fact_id,
                         object_entity_id=page_entity.id,
-                        source_text=f"{preparation.source_hash}:{relative_path}",
+                        source_text=f"{preparation.source_id}:{relative_path}",
                         source_type="wiki_binding",
                         confidence=1.0,
                         evidence_id=_fact_page_evidence_id(
-                            preparation.source_hash,
+                            preparation.source_id,
                             fact_id,
                             relative_path,
                         ),
@@ -470,7 +473,7 @@ def finalize_wiki_memory_closure(
                         source_id=preparation.source_id,
                         provenance="wiki_binding",
                         evidence_ids=(_fact_page_evidence_id(
-                            preparation.source_hash, fact_id, relative_path,
+                            preparation.source_id, fact_id, relative_path,
                         ),),
                     )
 
@@ -526,7 +529,16 @@ def prepare_wiki_synthesis_authority(
                 for source_hash in resolved.source_hashes
             )
         )
-        if page_type in {"synthesis", "comparison"} and len(source_hashes) < 2:
+        source_ids = tuple(
+            dict.fromkeys(
+                source_id
+                for resolved in resolved_sources
+                for source_id in resolved.source_ids
+            )
+        )
+        # 独立根判定按稳定来源身份:同一来源路径被重复请求(去重后数量减少)→ 不独立;
+        # 单来源合成在 v2 下合法(每个来源可独立支撑其证据)。
+        if page_type in {"synthesis", "comparison"} and len(normalized_sources) < len(source_paths):
             raise WikiMemoryClosureError("synthesis_sources_not_independent")
         source_entity_ids = tuple(
             dict.fromkeys(
@@ -589,6 +601,7 @@ def prepare_wiki_synthesis_authority(
             page_type=page_type,
             source_paths=normalized_sources,
             source_hashes=source_hashes,
+            source_ids=source_ids,
             source_entity_ids=source_entity_ids,
             entity_ids=entity_ids,
             fact_ids=tuple(dict.fromkeys((*derived_fact_ids, *requested_fact_ids))),
@@ -650,7 +663,7 @@ def finalize_wiki_synthesis_authority(
                         relation_type="documented_in",
                         subject_entity_id=source_entity.id,
                         object_entity_id=page_entity.id,
-                        source_text=f"{':'.join(authority.source_hashes)}:{authority.target_path}",
+                        source_text=f"{':'.join(authority.source_ids)}:{authority.target_path}",
                         source_type="wiki_binding",
                         confidence=1.0,
                         evidence_id=_stable_id(
@@ -676,7 +689,7 @@ def finalize_wiki_synthesis_authority(
                         relation_type="documented_in",
                         subject_fact_id=fact_id,
                         object_entity_id=page_entity.id,
-                        source_text=f"{':'.join(authority.source_hashes)}:{authority.target_path}",
+                        source_text=f"{':'.join(authority.source_ids)}:{authority.target_path}",
                         source_type="wiki_binding",
                         confidence=1.0,
                         evidence_id=_stable_id("wiki-synthesis-page-evidence", fact_id, authority.target_path),
@@ -696,7 +709,7 @@ def finalize_wiki_synthesis_authority(
                         relation_type="documented_in",
                         subject_entity_id=decision_entity.id,
                         object_entity_id=page_entity.id,
-                        source_text=f"{':'.join(authority.source_hashes)}:{authority.target_path}",
+                        source_text=f"{':'.join(authority.source_ids)}:{authority.target_path}",
                         source_type="wiki_binding",
                         confidence=1.0,
                         evidence_id=_stable_id(
@@ -768,6 +781,11 @@ def _direct_source_for_page(
     hashes = tuple(dict.fromkeys(raw_hashes))
     if len(hashes) > 1:
         raise WikiMemoryClosureError("synthesis_source_hash_ambiguous")
+    # v2 双标记(设计 §2.5):优先解析「来源标识」,哈希标记仅作一致性校验
+    raw_ids = re.findall(r"(?m)^- 来源标识：`([^`]+)`(?:\s*（版本\s*\d+）)?\s*$", parsed.body)
+    source_ids = tuple(dict.fromkeys(raw_ids))
+    if len(source_ids) > 1:
+        raise WikiMemoryClosureError("synthesis_source_identity_ambiguous")
     rows = conn.execute(
         """SELECT DISTINCT input.*, source.id AS source_entity_id,
                   source.status AS entity_status,
@@ -794,6 +812,7 @@ def _direct_source_for_page(
         or sha256_hex(row["raw_content"]) != row["source_hash"]
         or row["entity_hash"] != row["source_hash"]
         or (hashes and hashes[0] != row["source_hash"])
+        or (source_ids and source_ids[0] != row["id"])
     ):
         raise WikiMemoryClosureError("synthesis_source_hash_not_authoritative")
     rejection = independent_source_rejection_reason(row["source_type"])
@@ -884,6 +903,7 @@ def _resolve_authoritative_wiki_source(
     if direct_source is not None:
         resolved = _ResolvedWikiSource(
             source_hashes=(str(direct_source["source_hash"]),),
+            source_ids=(str(direct_source["id"]),),
             source_entity_ids=(str(direct_source["source_entity_id"]),),
             fact_ids=page_fact_ids,
             evidence_ids=_evidence_ids_for_source(conn, str(direct_source["id"]), vault_id),
@@ -919,6 +939,9 @@ def _resolve_authoritative_wiki_source(
         )),
         source_hashes=tuple(
             dict.fromkeys(source_hash for parent in parents for source_hash in parent.source_hashes)
+        ),
+        source_ids=tuple(
+            dict.fromkeys(source_id for parent in parents for source_id in parent.source_ids)
         ),
         source_entity_ids=tuple(
             dict.fromkeys(entity_id for parent in parents for entity_id in parent.source_entity_ids)
@@ -1155,6 +1178,10 @@ def _ensure_source_provenance_candidate(
         stored = candidates.get_candidate(str(legacy[0]["id"]))
         _validate_source_candidate(stored, source_id, source_hash, source_type)
         normalized_value = stored.normalized_value
+    version_row = graph.conn.execute(
+        "SELECT source_version FROM wiki_sources WHERE id = ?", (source_id,)
+    ).fetchone()
+    source_version = int(version_row["source_version"]) if version_row else 1
     candidate = candidates.create_candidate(
         MemoryCandidateCreate(
             memory_kind=MemoryKind.FACT,
@@ -1169,6 +1196,7 @@ def _ensure_source_provenance_candidate(
             metadata={
                 "source_hash": source_hash,
                 "source_id": source_id,
+                "source_version": source_version,
                 "source_type": source_type,
                 "source_title": source_title,
                 "provenance_kind": source_provenance_kind(source_type),
@@ -1183,6 +1211,16 @@ def _ensure_source_provenance_candidate(
     ).fetchone()
     if row is None:
         raise WikiMemoryClosureError("source_evidence_missing")
+    # 证据行元数据回注来源身份(幂等:仅当 source_id 缺失时写入),供证据按身份检索
+    with graph.conn:
+        graph.conn.execute(
+            """UPDATE memory_evidence
+               SET metadata_json = json_set(
+                   metadata_json, '$.source_id', ?, '$.source_hash', ?, '$.source_version', ?
+               )
+               WHERE id = ? AND json_extract(metadata_json, '$.source_id') IS NULL""",
+            (source_id, source_hash, source_version, str(row["id"])),
+        )
     return candidate, str(row["id"])
 
 
@@ -1204,6 +1242,7 @@ def _bind_source_provenance_edges(
     resolved: ResolvedExtraction,
     *,
     source_entity: MemoryEntity,
+    source_id: str,
     source_hash: str,
     raw_content: str,
     source_type: str,
@@ -1216,7 +1255,7 @@ def _bind_source_provenance_edges(
             source_text=raw_content,
             source_type=source_type,
             confidence=1.0,
-            evidence_id=_entity_source_evidence_id(source_hash, entity.id),
+            evidence_id=_entity_source_evidence_id(source_id, entity.id),
         )
         if relation.status.value == "active":
             graph.update_status(relation.id, "candidate", reason="wiki_extraction_candidate")
@@ -1228,7 +1267,7 @@ def _bind_source_provenance_edges(
             source_text=raw_content,
             source_type=source_type,
             confidence=1.0,
-            evidence_id=_fact_source_evidence_id(source_hash, fact_id),
+            evidence_id=_fact_source_evidence_id(source_id, fact_id),
         )
         if relation.status.value == "active":
             graph.update_status(relation.id, "candidate", reason="wiki_extraction_candidate")
@@ -1260,9 +1299,14 @@ def _annotate_fact_provenance(
                 if not isinstance(metadata, dict):
                     metadata = {}
                 existing_source = metadata.get("source_id")
+                version_row = conn.execute(
+                    "SELECT source_version FROM wiki_sources WHERE id = ?", (source_id,)
+                ).fetchone()
+                source_version = int(version_row["source_version"]) if version_row else 1
                 attribution = {
                     "source_hash": source_hash,
                     "source_id": source_id,
+                    "source_version": source_version,
                     "wiki_extraction_provenance": provenance,
                 }
                 if existing_source in {None, source_id}:
@@ -1368,21 +1412,21 @@ def _stable_id(prefix: str, *parts: str) -> str:
     return f"{prefix}-{sha256_hex(payload)[:40]}"
 
 
-def _entity_source_evidence_id(source_hash: str, entity_id: str) -> str:
-    return _stable_id("wiki-entity-source-evidence", source_hash, entity_id)
+def _entity_source_evidence_id(source_id: str, entity_id: str) -> str:
+    return _stable_id("wiki-entity-source-evidence", source_id, entity_id)
 
 
-def _fact_source_evidence_id(source_hash: str, fact_id: str) -> str:
-    return _stable_id("wiki-fact-source-evidence", source_hash, fact_id)
+def _fact_source_evidence_id(source_id: str, fact_id: str) -> str:
+    return _stable_id("wiki-fact-source-evidence", source_id, fact_id)
 
 
-def _page_evidence_id(*, source_hash: str, relative_path: str) -> str:
-    return _stable_id("wiki-page-evidence", source_hash, relative_path)
+def _page_evidence_id(*, source_id: str, relative_path: str) -> str:
+    return _stable_id("wiki-page-evidence", source_id, relative_path)
 
 
-def _entity_page_evidence_id(source_hash: str, entity_id: str, relative_path: str) -> str:
-    return _stable_id("wiki-entity-page-evidence", source_hash, entity_id, relative_path)
+def _entity_page_evidence_id(source_id: str, entity_id: str, relative_path: str) -> str:
+    return _stable_id("wiki-entity-page-evidence", source_id, entity_id, relative_path)
 
 
-def _fact_page_evidence_id(source_hash: str, fact_id: str, relative_path: str) -> str:
-    return _stable_id("wiki-fact-page-evidence", source_hash, fact_id, relative_path)
+def _fact_page_evidence_id(source_id: str, fact_id: str, relative_path: str) -> str:
+    return _stable_id("wiki-fact-page-evidence", source_id, fact_id, relative_path)

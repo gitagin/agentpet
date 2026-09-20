@@ -5050,10 +5050,32 @@
             "title": "Snippet",
             "type": "string"
           },
+          "source_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Id"
+          },
           "source_scope": {
             "default": "knowledge_base",
             "title": "Source Scope",
             "type": "string"
+          },
+          "source_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Version"
           },
           "title": {
             "title": "Title",
@@ -9154,6 +9176,17 @@
             "additionalProperties": true,
             "title": "Source Metadata",
             "type": "object"
+          },
+          "source_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Version"
           },
           "status": {
             "title": "Status",

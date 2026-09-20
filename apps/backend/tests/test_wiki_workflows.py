@@ -1433,6 +1433,13 @@ def test_wiki_workflow_api_writes_and_audits(api_client: tuple[TestClient, Path]
     assert second_apply.status_code == 200
     assert second_apply.json()["pages_written"] == 1
 
+    # 取消后台索引刷新定时器:ingest apply 会以 0.5s 延迟调度 rebuild_index,一旦在
+    # indexed_citation 之后触发,note/chunk 会被替换成新 id,使归档引用的 id 失效
+    # (验证期 not_current)。此处让测试与后台定时器解耦,避免时序竞态。
+    for timer in list(client.app.state.index_refresh_timers.values()):
+        timer.cancel()
+    client.app.state.index_refresh_timers.clear()
+
     from tests.wiki_fixtures import indexed_citation
 
     archive_citation = indexed_citation(Database(db_path), vault_root, "Wiki/Sources/API-Source.md").model_dump()

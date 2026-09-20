@@ -17,6 +17,18 @@ INGEST_ACTION_TYPES = (
 )
 
 
+def _enable_source_identity_v2(client) -> None:
+    # v2 语义:跨 vault 同正文、同正文不同身份均各自新建(legacy 下分别被
+    # scope_unverified/identity_conflict 拒绝)。仅对本用例开启,不影响同文件
+    # 其他锁定 legacy 复用行为的用例。
+    with sqlite3.connect(client.app.state.database.path) as conn:
+        conn.execute(
+            "INSERT INTO app_state(key, value) VALUES ('source_identity_v2', ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (json.dumps(True),),
+        )
+
+
 def test_repeated_complete_ingest_reuses_workflow_and_receipts(
     client_factory,
     tmp_path: Path,
@@ -57,6 +69,7 @@ def test_same_ingest_in_different_vaults_has_distinct_effect_identity(
     tmp_path: Path,
 ) -> None:
     with client_factory(data_dir=tmp_path / "data") as client:
+        _enable_source_identity_v2(client)
         first_vault = tmp_path / "First Vault"
         second_vault = tmp_path / "Second Vault"
         request_body = _ingest_request(source_metadata={"origin": "explicit_user"})
@@ -74,12 +87,16 @@ def test_same_ingest_in_different_vaults_has_distinct_effect_identity(
                 "SELECT COUNT(*) FROM agent_actions WHERE action_type LIKE 'wiki.ingest.%'"
             ).fetchone()[0]
 
-    relative_path = str(first["apply"]["page_results"][0]["relative_path"])
+    # v2 语义:两个 vault 的来源身份独立,来源页各自使用本 vault 的 source_id 后缀,
+    # 因此路径不同但都真实落盘。
+    first_relative_path = str(first["apply"]["page_results"][0]["relative_path"])
+    second_relative_path = str(second["apply"]["page_results"][0]["relative_path"])
     assert first["confirm"]["run_id"] != second["confirm"]["run_id"]
     assert workflow_count == 2
     assert action_count == 6
-    assert first_vault.joinpath(*relative_path.split("/")).is_file()
-    assert second_vault.joinpath(*relative_path.split("/")).is_file()
+    assert first_vault.joinpath(*first_relative_path.split("/")).is_file()
+    assert second_vault.joinpath(*second_relative_path.split("/")).is_file()
+    assert first_relative_path != second_relative_path
 
 
 @pytest.mark.parametrize(
@@ -98,6 +115,7 @@ def test_distinct_ingest_intents_create_distinct_workflows(
     change: dict[str, object],
 ) -> None:
     with client_factory(data_dir=tmp_path / "data") as client:
+        _enable_source_identity_v2(client)
         _bind_vault(client, tmp_path / "Vault")
         base_request = _ingest_request(source_metadata={"origin": "explicit_user"})
         first = _preview_and_confirm(client, base_request)

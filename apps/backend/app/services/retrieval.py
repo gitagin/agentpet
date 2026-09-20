@@ -554,6 +554,14 @@ class RetrievalService:
             unavailable_reason = vector_health.get("unavailability_reason")
             if unavailable_reason:
                 metadata["vector_unavailable_reason"] = unavailable_reason
+        # 写入侧填充 wiki 来源身份(设计 §2.7):主检索会话已关闭,这里用独立只读会话
+        with self.database.session(read_only=True) as identity_conn:
+            wiki_source_identities = {
+                fused.payload.relative_path: _resolve_wiki_source_identity(
+                    identity_conn, vault_id, fused.payload.relative_path,
+                )
+                for fused in results
+            }
         response = MemorySearchResponse(
             results=[
                 MemorySearchResult(
@@ -565,6 +573,8 @@ class RetrievalService:
                     snippet=_sanitize_snippet(fused.payload.snippet),
                     score=fused.score,
                     content_hash=fused.content_hash,
+                    source_id=wiki_source_identities[fused.payload.relative_path][0],
+                    source_version=wiki_source_identities[fused.payload.relative_path][1],
                     source_scope=(
                         fused.source_scope
                         if fused.source_scope == "graph"
@@ -672,12 +682,16 @@ class RetrievalService:
                     reject("not_authorized")
                     continue
                 candidate = candidates[0]
+                restored_source_id, restored_source_version = _resolve_wiki_source_identity(
+                    conn, vault_id, candidate.relative_path,
+                )
                 restored.append(MemorySearchResult(
                     note_id=candidate.note_id, chunk_id=candidate.chunk_id,
                     relative_path=candidate.relative_path, title=parsed.title,
                     heading=candidate.heading, snippet=candidate.content or "",
                     score=1.0, content_hash=candidate.content_hash,
                     source_scope=scope, retrieval_mode="authority_restore", lifecycle_status=lifecycle,
+                    source_id=restored_source_id, source_version=restored_source_version,
                 ))
         return restored, errors
 
@@ -1134,6 +1148,40 @@ def _effective_mode(*, requested_mode: str, completed_channels: list[str], vecto
     if "fts" in completed_channels:
         return "fts"
     return "vector"
+
+
+def _resolve_wiki_source_identity(
+    conn: sqlite3.Connection,
+    vault_id: str,
+    relative_path: str,
+) -> tuple[str | None, int | None]:
+    """Wiki 来源页 → 权威来源身份(经 documented_in 关系解析),非来源页返回 (None, None)。
+
+    设计 §2.7:MemorySearchResult 的 source_id/source_version 在写入侧按权威数据填充;
+    派生页(概念/合成)为多根来源,保持 None。
+    """
+    if not relative_path.startswith("Wiki/Sources/") or not relative_path.endswith(".md"):
+        return None, None
+    row = conn.execute(
+        """
+        SELECT s.id, s.source_version
+        FROM wiki_page_bindings binding
+        JOIN memory_entities page_entity ON page_entity.id = binding.page_entity_id
+        JOIN memory_graph_facts relation
+          ON relation.object_entity_id = page_entity.id
+         AND relation.relation_type = 'documented_in'
+         AND relation.subject_entity_id IS NOT NULL
+         AND relation.status = 'active'
+        JOIN memory_entities source_entity ON source_entity.id = relation.subject_entity_id
+        JOIN wiki_sources s ON s.id = json_extract(source_entity.metadata_json, '$.source_id')
+        WHERE binding.vault_id = ? AND binding.wiki_relative_path = ?
+        LIMIT 1
+        """,
+        (vault_id, relative_path),
+    ).fetchone()
+    if row is None:
+        return None, None
+    return str(row["id"]), int(row["source_version"])
 
 
 def _classify_source_scope(relative_path: str) -> str:

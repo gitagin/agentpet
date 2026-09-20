@@ -159,6 +159,13 @@ class MigrationRunner:
     # rebuild, and neither may be swallowed as "ran but changed nothing".
     _CONNECTION_SATISFIED_PRAGMAS = frozenset({"foreign_keys = on"})
     _TRANSACTION_SENSITIVE_PRAGMAS = frozenset({"foreign_keys", "journal_mode"})
+    # 重建类迁移(如 035_source_identity)以 PRAGMA foreign_keys = OFF 作为脚本首条语句
+    # (允许前置 -- 注释行)。匹配后由 apply() 在 BEGIN 之前关闭外键、提交/回滚后恢复;
+    # 事务内切换外键是静默空操作,SQLite 要求事务外切换。
+    _FK_OFF_HEADER_RE = re.compile(
+        r"^\s*(?:--[^\n]*\n\s*)*PRAGMA\s+foreign_keys\s*=\s*OFF\s*;",
+        re.IGNORECASE,
+    )
 
     def __init__(self, database: Database, migrations_dir: str | Path | None = None) -> None:
         self.database = database
@@ -198,6 +205,17 @@ class MigrationRunner:
                     continue
                 script = migration.read_text(encoding="utf-8")
                 statements = self._split_sql_statements(script)
+                # 重建类迁移(如 035_source_identity)以 PRAGMA foreign_keys = OFF 作为
+                # 脚本首条语句:SQLite 要求外键开关只能在事务外切换(事务内是空操作),故在
+                # BEGIN 之前关闭、迁移提交/回滚后再恢复 —— 12 步重建表流程依赖此机制;
+                # 其余位置出现 foreign_keys pragma 仍按下方策略拒绝,避免静默空操作。
+                disable_fk = bool(self._FK_OFF_HEADER_RE.match(script))
+                if disable_fk:
+                    conn.execute("PRAGMA foreign_keys = OFF")
+                    statements = [
+                        s for s in statements
+                        if not self._is_foreign_keys_pragma(s)
+                    ]
                 transactional, post_commit = self._partition_migration_statements(statements)
                 try:
                     # sqlite3.Connection.executescript() commits any pending
@@ -214,7 +232,12 @@ class MigrationRunner:
                     conn.commit()
                 except BaseException:
                     conn.rollback()
+                    if disable_fk:
+                        conn.execute("PRAGMA foreign_keys = ON")
                     raise
+                if disable_fk:
+                    # 同一连接会继续执行后续迁移,必须恢复外键强制
+                    conn.execute("PRAGMA foreign_keys = ON")
 
                 # VACUUM is a database maintenance command and SQLite rejects
                 # it while a transaction is active.  Run it only after the
@@ -260,6 +283,11 @@ class MigrationRunner:
             except sqlite3.OperationalError as exc:
                 if not self._is_duplicate_add_column_error(exc, statement):
                     raise
+
+    @classmethod
+    def _is_foreign_keys_pragma(cls, statement: str) -> bool:
+        body = cls._pragma_body(statement)
+        return body is not None and cls._pragma_name(body) == "foreign_keys"
 
     @staticmethod
     def _pragma_body(statement: str) -> str | None:

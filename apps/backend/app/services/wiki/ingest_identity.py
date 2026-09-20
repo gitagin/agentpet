@@ -64,6 +64,46 @@ def assert_ingest_source_matches(
         raise WikiWorkflowError("wiki_ingest_source_identity_conflict")
 
 
+# v2 功能开关(设计 §5.1-2):存于 app_state,默认关;关 = 完全保持 legacy hash 复用行为。
+SOURCE_IDENTITY_V2_KEY = "source_identity_v2"
+
+
+def source_identity_v2_enabled(conn: sqlite3.Connection) -> bool:
+    row = conn.execute(
+        "SELECT value FROM app_state WHERE key = ?", (SOURCE_IDENTITY_V2_KEY,)
+    ).fetchone()
+    if row is None:
+        return False
+    try:
+        return json.loads(row["value"]) is True
+    except (TypeError, ValueError):
+        return False
+
+
+def _identity_metadata_equal(
+    row: sqlite3.Row, request: WikiIngestPreviewRequest
+) -> bool:
+    """身份元数据全等比较(排除编译期运行字段,与 assert_ingest_source_matches 同口径)。"""
+    from .compiler import COMPILER_KEY
+
+    try:
+        stored_metadata = json.loads(row["metadata_json"])
+    except (TypeError, ValueError):
+        return False
+    if not isinstance(stored_metadata, dict):
+        return False
+    run_fields = {COMPILER_KEY, "compilation_status"}
+    stored_identity = {k: v for k, v in stored_metadata.items() if k not in run_fields}
+    requested_identity = {
+        k: v for k, v in request.source_metadata.items() if k not in run_fields
+    }
+    return (
+        row["source_type"] == request.source_type
+        and (row["source_uri"] or None) == request.source_uri
+        and stored_identity == requested_identity
+    )
+
+
 def wiki_ingest_intent_key(
     request: WikiIngestPreviewRequest,
     page_plans: Sequence[WikiIngestPagePlan],

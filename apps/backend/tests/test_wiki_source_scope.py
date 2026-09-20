@@ -63,6 +63,9 @@ def test_new_source_uses_server_vault_identity(services):
 
 
 def test_same_hash_in_other_vault_is_not_reused_or_disclosed(services):
+    # v2 语义说明:本用例锁定 legacy(source_identity_v2 关闭)行为——跨 vault 同正文
+    # 仍被拒绝复用(scope_unverified)。v2 开启后跨 vault 同正文各自新建,由
+    # test_source_identity_migration.py::test_same_body_in_different_vaults_is_independent 覆盖。
     first, other = services
     confirmed = confirm(first)
     preview = other.preview_ingest(ingest_request())
@@ -316,12 +319,33 @@ def test_scope_migration_preserves_legacy_rows_and_foreign_keys(tmp_path, inject
             assert conn.execute(
                 "SELECT 1 FROM schema_migrations WHERE version = '030_wiki_source_vault_scope'"
             ).fetchone() is None
-    assert MigrationRunner(database).apply() == ["030_wiki_source_vault_scope"]
+    # legacy 库(001-029)升级后,030-034 应全部执行并记录在 schema_migrations
+    MigrationRunner(database).apply()
+    with database.session() as conn:
+        recorded = {
+            row["version"]
+            for row in conn.execute("SELECT version FROM schema_migrations").fetchall()
+        }
+    assert {
+        "030_wiki_source_vault_scope",
+        "031_wiki_generations",
+        "032_wiki_publication_dependencies",
+        "033_wiki_snapshot_projections",
+        "034_message_answer_basis",
+    } <= recorded
     assert MigrationRunner(database).apply() == []
     with database.session() as conn:
         row = conn.execute("SELECT * FROM wiki_sources WHERE id = 'source'").fetchone()
         assert row["vault_id"] is None and row["raw_content"] == "body"
         assert conn.execute("SELECT source_id FROM wiki_workflow_runs").fetchone()[0] == "source"
+        # 030 的 vault 外键与索引已生效:legacy 行保留、外键引用正确、非法 vault 被拒
         assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
+        fks = conn.execute("PRAGMA foreign_key_list(wiki_sources)").fetchall()
+        assert any(
+            fk["table"] == "vaults" and fk["from"] == "vault_id" and fk["to"] == "id"
+            for fk in fks
+        )
+        indexes = {row["name"] for row in conn.execute("PRAGMA index_list(wiki_sources)")}
+        assert "idx_wiki_sources_vault" in indexes
         with pytest.raises(sqlite3.IntegrityError):
             conn.execute("UPDATE wiki_sources SET vault_id = 'missing' WHERE id = 'source'")
