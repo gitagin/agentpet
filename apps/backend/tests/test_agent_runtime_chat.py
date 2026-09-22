@@ -11,7 +11,9 @@ from tests.agent_runtime_fakes import (
     FakeMemory,
     FakeMultiScopeRetrieval,
     FakeNonToolCallingChatModel,
+    FakeRegistryChatModel,
     FakeRetrieval,
+    FakeSemanticModel,
     FakeToolCallingChatModel,
     FakeWiki,
     FailingChatModel,
@@ -421,7 +423,9 @@ def test_langgraph_chat_agent_does_not_search_for_plain_question_when_model_skip
     retrieval, chat_model, events = asyncio.run(run_case())
 
     assert retrieval.calls == []
-    assert chat_model.calls[0][2] == ["search_memory", "get_current_time", "manage_wiki_page"]
+    # 聊天工具集只含只读工具：写操作走 action lifecycle，不再作为聊天工具下发
+    # （设计意图见 app/agents/retrieval/router.py::_chat_agent_tool_names）。
+    assert chat_model.calls[0][2] == ["search_memory", "get_current_time"]
     assert events[0].event == "status"
     assert events[-1].event == "done"
     token_text = "".join(event.text for event in events if event.event == "token")
@@ -488,14 +492,43 @@ def test_langgraph_chat_agent_does_not_treat_candidate_memory_as_confirmed() -> 
     assert "citation" not in event_names
 
 
-def test_langgraph_chat_agent_can_surface_wiki_manager_for_obsidian_note_request() -> None:
-    async def run_case():
+def test_langgraph_chat_agent_writes_wiki_page_via_action_lifecycle_for_obsidian_note_request() -> None:
+    """把「整理成 Obsidian 笔记」的请求落到 Wiki 写入：经 action lifecycle，而非聊天写工具。
+
+    聊天工具集只含只读工具（app/agents/retrieval/router.py::_chat_agent_tool_names），
+    写操作由动作生命周期执行；auto_wiki_organize 关闭时退化为提案，不写盘。
+    """
+    async def run_case(auto_wiki_organize: bool):
         wiki = FakeWiki()
-        chat_model = FakeToolCallingChatModel("manage_wiki_page", "I organized it into the Wiki.")
+        semantic_model = FakeSemanticModel(
+            {
+                "intent": "action",
+                "retrieval_scope": None,
+                "retrieval_query": None,
+                "action_type": "wiki",
+                "action_params": {
+                    "kind": "page",
+                    "title": "Runtime",
+                    "content": "Wiki content",
+                },
+                "confidence": 0.99,
+                "reason": "explicit_wiki_write",
+            }
+        )
         runtime = LangGraphAgentRuntime(
             AgentRuntimeServices(
                 wiki=wiki,
-                model_registry=AgentModelRegistry({AgentId.CHAT_AGENT: chat_model}),
+                model_registry=AgentModelRegistry(
+                    {
+                        AgentId.SEMANTIC_ANALYSIS_AGENT: semantic_model,
+                        AgentId.ACTION_AGENT: FakeRegistryChatModel(None, "model skipped wiki tool"),
+                        AgentId.CHAT_AGENT: FakeRegistryChatModel(None, "I organized it into the Wiki."),
+                    }
+                ),
+                automation_settings=SimpleNamespace(
+                    auto_wiki_organize=auto_wiki_organize, use_negotiation=False
+                ),
+                allow_ephemeral_lifecycle=True,
             )
         )
 
@@ -506,16 +539,21 @@ def test_langgraph_chat_agent_can_surface_wiki_manager_for_obsidian_note_request
             )
         ]
 
-        return wiki, chat_model, events
+        return wiki, events
 
-    wiki, chat_model, events = asyncio.run(run_case())
-
-    assert chat_model.calls[0][2] == ["search_memory", "get_current_time", "manage_wiki_page"]
+    # 授权打开：动作生命周期真正写入，动作类型为 wiki.page.write
+    wiki, events = asyncio.run(run_case(True))
+    action = first_event(events, "agent_action")
+    assert action.action_type == "wiki.page.write"
+    assert action.decision == "auto"
+    assert action.target_paths == ["Wiki/Runtime.md"]
+    assert len(wiki.requests) == 1
     assert wiki.requests[0].title == "Runtime"
-    assert wiki.requests[0].content == "Wiki content"
-    assert_langgraph_events(events, ["agent_action", "token", "done"])
-    assert first_event(events, "agent_action").action_type == "wiki.page.write"
-    assert first_event(events, "token").text == "I organized it into the Wiki."
+
+    # 授权关闭：退化为提案，不写盘
+    wiki_off, events_off = asyncio.run(run_case(False))
+    assert first_event(events_off, "wiki_proposal") is not None
+    assert wiki_off.requests == []
 
 
 def test_langgraph_chat_agent_executes_text_search_tool_call_instead_of_echoing() -> None:

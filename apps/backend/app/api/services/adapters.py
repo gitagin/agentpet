@@ -1588,6 +1588,21 @@ def _stable_effect_id(prefix: str, idempotency_key: str) -> str:
     return f"{prefix}-{idempotency_key}"
 
 
+# 校验期望状态中**不纳入**的字段:由**时间驱动子系统**拥有的状态。
+#
+# 验证要求「执行时记录的值 == 校验时读到的值」。而提醒调度器会在 remind_at 到期时
+# **自主**把提醒状态从 scheduled 改为 triggered(**不需要任何外部动作**)。
+# ⇒ 把该字段纳入不变量,则提醒只要落在「执行 → 校验」窗口内到期,就必然 mismatch
+#   ⇒ RuntimeError("action_lifecycle_verification_mismatch") ⇒ POST 返回 500,
+#   而**动作其实已经生效**(任务与提醒都已落库、提醒已触发) —— 调用方据 500 重试可能重复创建。
+#
+# ⚠ 排除范围**仅限时间驱动**的字段,不是「凡可变即排除」:
+#   任务自身的 status 同样可变,但只能由**显式的并发动作**(complete/cancel)改变,
+#   属另一类(概率低得多),故**保留在校验内**,以免削弱校验力。
+#   逐字段论证见 t33 报告;若将来某字段改由时间驱动子系统拥有,应加入本集合并给出理由。
+_SCHEDULER_OWNED_STATE_KEYS = frozenset({"reminder_status", "reminder_states", "triggered_at"})
+
+
 def _task_action_adapter(request: Request):
     async def execute(
         proposal: ActionProposal,
@@ -1618,22 +1633,32 @@ def _task_action_adapter(request: Request):
             "due_at": created.task.due_at_utc,
             "target_ref": f"task:{created.task.id}",
         }
+        # 提醒的**创建时**状态单独记录,**不进入校验期望** —— 它由调度器拥有
+        # (逐字段论证见 _SCHEDULER_OWNED_STATE_KEYS):提醒到期后该状态会被自主改写,
+        # 而校验要求「执行时 == 校验时」,纳入它就会在窗口内到期时必然 mismatch。
+        reminder_status: str | None = None
         if created.reminder is not None:
             expected_state["reminder_id"] = created.reminder.id
-            expected_state["reminder_status"] = created.reminder.status.value
             expected_state["remind_at"] = created.reminder.remind_at_utc
             expected_state["timezone"] = created.reminder.time_parse_timezone
             expected_state["timezone_label"] = display_timezone_name(created.reminder.time_parse_timezone)
+            reminder_status = created.reminder.status.value
         else:
             expected_state.update(
                 {
                     "reminder_id": None,
-                    "reminder_status": None,
                     "remind_at": None,
                     "timezone": created.metadata.get("timezone"),
                     "timezone_label": created.metadata.get("timezone_label"),
                 }
             )
+        # 统一施加规则(与 task 变更适配器同一常量):即使将来有人把调度器拥有的字段
+        # 加进上面这个 dict,也会在此被剔除 —— 规则**被强制**而不是靠作者记得。
+        expected_state = {
+            key: value
+            for key, value in expected_state.items()
+            if key not in _SCHEDULER_OWNED_STATE_KEYS
+        }
         return AdapterExecutionResult(
             result={
                 "expected_state": expected_state,
@@ -1641,6 +1666,8 @@ def _task_action_adapter(request: Request):
                 # projection remains useful after recovery, when there is no
                 # adapter response to unwrap.
                 **expected_state,
+                # 记录用、不参与校验:调用方仍从 result 读它(RuntimeTaskAdapter.create)。
+                "reminder_status": reminder_status,
                 "metadata": created.metadata,
             },
             after_snapshot=expected_state,
@@ -1738,11 +1765,23 @@ def _task_mutation_adapter(request: Request):
         service = task_service(request)
         try:
             task = _apply_task_mutation(service, policy.action_type, task_id, params)
-            expected_state = _task_mutation_state(service, policy.action_type, task)
+            observed_state = _task_mutation_state(service, policy.action_type, task)
         finally:
             service.close()
+        # 逐字段论证(与 task.create 同源,但**按本动作语义定制**):
+        #   本动作**拥有**:任务的状态迁移(status)与 approve/reject 结果 —— 它正是这些迁移的执行者;
+        #   本动作**不拥有**:reminder_states 里每个提醒的 status —— 提醒可能在动作执行与校验之间
+        #     被**调度器**自主改写(scheduled → triggered),那是时间驱动子系统拥有的状态。
+        #   已有的 untriggered_reminders_cancelled 本身就是**容忍式**谓词(TRIGGERED 与 CANCELLED
+        #     都算可接受终态),它才是本动作对提醒的**真实主张**,故保留在校验内。
+        expected_state = {
+            key: value
+            for key, value in observed_state.items()
+            if key not in _SCHEDULER_OWNED_STATE_KEYS
+        }
         return AdapterExecutionResult(
-            result={"expected_state": expected_state, **expected_state},
+            # 记录保留**全量** observed_state(含 reminder_states);校验只用 expected_state。
+            result={"expected_state": expected_state, **observed_state},
             after_snapshot=expected_state,
         )
 

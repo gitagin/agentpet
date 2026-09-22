@@ -1,0 +1,919 @@
+{
+  "schema_version": "phase-d-questions.v1",
+  "meta": {
+    "generated_at": "2026-09-20",
+    "language": "zh-CN",
+    "sensitive": false,
+    "corpus": "固定模拟语料(供应商/地区/产品/时间线),不含真实个人信息",
+    "page_routing": "来源页 -> Wiki/Sources/{title}.md;链接目标 -> Wiki/Concepts/{title}.md(实测得出)",
+    "vault_fixtures": [
+      "assistant_summary",
+      "conflict",
+      "forgotten",
+      "mixed_freshness",
+      "oversized",
+      "published",
+      "quarantined",
+      "raw_updated",
+      "revoked",
+      "wiki_missing"
+    ],
+    "calibration": "题面改用语料真实词汇;golden.citations 经实测检索校准(见 docs/wiki-reconstruction-status.md) — 不按判据迁就",
+    "known_limitations": [
+      "本报告衡量检索/证据装配质量,不衡量答案生成质量。",
+      "旧路径为参数化消融,非历史版本回放。"
+    ]
+  },
+  "quality": [
+    {
+      "id": "q_single_page_001",
+      "scenario": "single_page",
+      "question": "Alpha 的标准交货周期是多少天?",
+      "vault_fixture": "published",
+      "profile": "balanced",
+      "golden": {
+        "conclusion": [
+          "标准交货周期为 14 天"
+        ],
+        "citations": [
+          "Wiki/Sources/Supplier-Alpha.md"
+        ],
+        "action": "answer"
+      }
+    },
+    {
+      "id": "q_single_page_002",
+      "scenario": "single_page",
+      "question": "Alpha 的结算方式是什么?",
+      "vault_fixture": "published",
+      "profile": "balanced",
+      "golden": {
+        "conclusion": [
+          "结算方式为月结 30 天"
+        ],
+        "citations": [
+          "Wiki/Sources/Supplier-Alpha.md"
+        ],
+        "action": "answer"
+      }
+    },
+    {
+      "id": "q_single_page_003",
+      "scenario": "single_page",
+      "question": "Alpha 是否支持加急发货?",
+      "vault_fixture": "published",
+      "profile": "balanced",
+      "golden": {
+        "conclusion": [
+          "不支持加急发货"
+        ],
+        "citations": [
+          "Wiki/Sources/Supplier-Alpha.md"
+        ],
+        "action": "answer"
+      }
+    },
+    {
+      "id": "q_multi_page_001",
+      "scenario": "multi_page",
+      "question": "华东区和华南区的交货周期分别是多少?",
+      "vault_fixture": "published",
+      "profile": "balanced",
+      "golden": {
+        "conclusion": [
+          "华东区交货周期为 14 天",
+          "华南区交货周期为 21 天"
+        ],
+        "citations": [
+          "Wiki/Sources/Region-East.md",
+          "Wiki/Sources/Region-South.md"
+        ],
+        "action": "answer"
+      }
+    },
+    {
+      "id": "q_multi_page_002",
+      "scenario": "multi_page",
+      "question": "华东区和华南区的结算方式是什么?",
+      "vault_fixture": "published",
+      "profile": "balanced",
+      "golden": {
+        "conclusion": [
+          "结算方式为月结 30 天",
+          "结算方式为预付 50%"
+        ],
+        "citations": [
+          "Wiki/Sources/Region-East.md",
+          "Wiki/Sources/Region-South.md"
+        ],
+        "action": "answer"
+      }
+    },
+    {
+      "id": "q_multi_page_003",
+      "scenario": "multi_page",
+      "question": "哪个区域支持加急?",
+      "vault_fixture": "published",
+      "profile": "balanced",
+      "golden": {
+        "conclusion": [
+          "支持加急"
+        ],
+        "citations": [
+          "Wiki/Sources/Region-South.md"
+        ],
+        "action": "answer"
+      }
+    },
+    {
+      "id": "q_two_hop_001",
+      "scenario": "two_hop",
+      "question": "Product-P 的替代供应商是谁?",
+      "vault_fixture": "published",
+      "profile": "balanced",
+      "golden": {
+        "conclusion": [
+          "Beta 是产品 P 的替代供应商"
+        ],
+        "citations": [
+          "Wiki/Sources/Product-P.md",
+          "Wiki/Sources/Supplier-Beta.md"
+        ],
+        "action": "answer"
+      }
+    },
+    {
+      "id": "q_two_hop_002",
+      "scenario": "two_hop",
+      "question": "Supplier-Alpha 为 Product-P 供应什么?",
+      "vault_fixture": "published",
+      "profile": "balanced",
+      "golden": {
+        "conclusion": [
+          "Product-P 由 Supplier-Alpha 供应"
+        ],
+        "citations": [
+          "Wiki/Sources/Product-P.md",
+          "Wiki/Sources/Supplier-Alpha.md"
+        ],
+        "action": "answer"
+      }
+    },
+    {
+      "id": "q_two_hop_003",
+      "scenario": "two_hop",
+      "question": "Alpha 页面链接到哪个概念?",
+      "vault_fixture": "published",
+      "profile": "balanced",
+      "golden": {
+        "conclusion": [
+          "Product-P"
+        ],
+        "citations": [
+          "Wiki/Concepts/Product-P.md",
+          "Wiki/Sources/Product-P.md",
+          "Wiki/Sources/Supplier-Alpha.md"
+        ],
+        "action": "answer"
+      }
+    },
+    {
+      "id": "q_alias_001",
+      "scenario": "alias",
+      "question": "Alpha 的交货周期是多少?",
+      "vault_fixture": "published",
+      "profile": "balanced",
+      "golden": {
+        "conclusion": [
+          "标准交货周期为 14 天"
+        ],
+        "citations": [
+          "Wiki/Sources/Supplier-Alpha.md"
+        ],
+        "action": "answer"
+      }
+    },
+    {
+      "id": "q_alias_002",
+      "scenario": "alias",
+      "question": "Supplier-Alpha 的结算方式是什么?",
+      "vault_fixture": "published",
+      "profile": "balanced",
+      "golden": {
+        "conclusion": [
+          "结算方式为月结 30 天"
+        ],
+        "citations": [
+          "Wiki/Sources/Supplier-Alpha.md"
+        ],
+        "action": "answer"
+      }
+    },
+    {
+      "id": "q_alias_003",
+      "scenario": "alias",
+      "question": "Alpha 和 Supplier-Beta 的交货周期相同吗?",
+      "vault_fixture": "published",
+      "profile": "balanced",
+      "golden": {
+        "conclusion": [
+          "标准交货周期为 14 天"
+        ],
+        "citations": [
+          "Wiki/Sources/Supplier-Alpha.md",
+          "Wiki/Sources/Supplier-Beta.md"
+        ],
+        "action": "answer"
+      }
+    },
+    {
+      "id": "q_ninth_page_001",
+      "scenario": "ninth_page",
+      "question": "Alpha 的标准交货周期是多少天?",
+      "vault_fixture": "mixed_freshness",
+      "profile": "balanced",
+      "golden": {
+        "conclusion": [
+          "标准交货周期为 14 天"
+        ],
+        "citations": [
+          "Wiki/Sources/Supplier-Alpha.md"
+        ],
+        "action": "answer"
+      }
+    },
+    {
+      "id": "q_ninth_page_002",
+      "scenario": "ninth_page",
+      "question": "Alpha 的交货周期和结算方式分别是什么?",
+      "vault_fixture": "mixed_freshness",
+      "profile": "balanced",
+      "golden": {
+        "conclusion": [
+          "标准交货周期为 14 天",
+          "结算方式为月结 30 天"
+        ],
+        "citations": [
+          "Wiki/Sources/Supplier-Alpha.md"
+        ],
+        "action": "answer"
+      }
+    },
+    {
+      "id": "q_ninth_page_003",
+      "scenario": "ninth_page",
+      "question": "Alpha 的交货周期有哪些限制?",
+      "vault_fixture": "mixed_freshness",
+      "profile": "balanced",
+      "golden": {
+        "conclusion": [
+          "不支持加急发货",
+          "旺季(11 月至次年 1 月)顺延 7 天"
+        ],
+        "citations": [
+          "Wiki/Sources/Supplier-Alpha.md"
+        ],
+        "action": "answer"
+      }
+    },
+    {
+      "id": "q_page_end_001",
+      "scenario": "page_end",
+      "question": "Alpha 页末尾的旺季条款是什么?",
+      "vault_fixture": "published",
+      "profile": "balanced",
+      "golden": {
+        "conclusion": [
+          "旺季(11 月至次年 1 月)顺延 7 天"
+        ],
+        "citations": [
+          "Wiki/Sources/Supplier-Alpha.md"
+        ],
+        "action": "answer"
+      }
+    },
+    {
+      "id": "q_page_end_002",
+      "scenario": "page_end",
+      "question": "旺季条款适用于什么时间?",
+      "vault_fixture": "published",
+      "profile": "balanced",
+      "golden": {
+        "conclusion": [
+          "11 月至次年 1 月"
+        ],
+        "citations": [
+          "Wiki/Sources/Supplier-Alpha.md"
+        ],
+        "action": "answer"
+      }
+    },
+    {
+      "id": "q_page_end_003",
+      "scenario": "page_end",
+      "question": "旺季条款是否改变标准周期?",
+      "vault_fixture": "published",
+      "profile": "balanced",
+      "golden": {
+        "conclusion": [
+          "顺延 7 天"
+        ],
+        "citations": [
+          "Wiki/Sources/Supplier-Alpha.md"
+        ],
+        "action": "answer"
+      }
+    },
+    {
+      "id": "q_wiki_missing_001",
+      "scenario": "wiki_missing",
+      "question": "Gamma 是否在笔记中有提及?",
+      "vault_fixture": "wiki_missing",
+      "profile": "balanced",
+      "golden": {
+        "conclusion": [
+          "Gamma 在笔记中有提及"
+        ],
+        "citations": [
+          "Notes/Suppliers.md"
+        ],
+        "action": "fallback"
+      }
+    },
+    {
+      "id": "q_wiki_missing_002",
+      "scenario": "wiki_missing",
+      "question": "笔记里对 Gamma 的记录是什么?",
+      "vault_fixture": "wiki_missing",
+      "profile": "balanced",
+      "golden": {
+        "conclusion": [
+          "Gamma 在笔记中有提及"
+        ],
+        "citations": [
+          "Notes/Suppliers.md"
+        ],
+        "action": "fallback"
+      }
+    },
+    {
+      "id": "q_wiki_missing_003",
+      "scenario": "wiki_missing",
+      "question": "Gamma 在笔记中有提及吗?",
+      "vault_fixture": "wiki_missing",
+      "profile": "balanced",
+      "golden": {
+        "conclusion": [
+          "Gamma 在笔记中有提及"
+        ],
+        "citations": [
+          "Notes/Suppliers.md"
+        ],
+        "action": "fallback"
+      }
+    },
+    {
+      "id": "q_raw_updated_001",
+      "scenario": "raw_updated",
+      "question": "Alpha 的原始资料是否在发布后更新过?",
+      "vault_fixture": "raw_updated",
+      "profile": "balanced",
+      "golden": {
+        "conclusion": [
+          "资料已更新"
+        ],
+        "citations": [
+          "Wiki/Sources/Supplier-Alpha.md"
+        ],
+        "action": "degrade"
+      }
+    },
+    {
+      "id": "q_raw_updated_002",
+      "scenario": "raw_updated",
+      "question": "Alpha 的标准交货周期是多少天?",
+      "vault_fixture": "raw_updated",
+      "profile": "balanced",
+      "golden": {
+        "conclusion": [
+          "标准交货周期为 14 天"
+        ],
+        "citations": [
+          "Wiki/Sources/Supplier-Alpha.md"
+        ],
+        "action": "degrade"
+      }
+    },
+    {
+      "id": "q_raw_updated_003",
+      "scenario": "raw_updated",
+      "question": "原始资料更新后的交货周期是多少?",
+      "vault_fixture": "raw_updated",
+      "profile": "balanced",
+      "golden": {
+        "conclusion": [
+          "21 天"
+        ],
+        "citations": [
+          "Wiki/Sources/Supplier-Alpha.md"
+        ],
+        "action": "degrade"
+      }
+    },
+    {
+      "id": "q_conflict_001",
+      "scenario": "conflict",
+      "question": "Alpha 的交货周期在资料间是否不一致?",
+      "vault_fixture": "conflict",
+      "profile": "balanced",
+      "golden": {
+        "conclusion": [
+          "21 天"
+        ],
+        "citations": [
+          "Wiki/Sources/Supplier-Alpha-Alt.md"
+        ],
+        "action": "degrade"
+      }
+    },
+    {
+      "id": "q_conflict_002",
+      "scenario": "conflict",
+      "question": "另一份资料称交货周期是多少天?",
+      "vault_fixture": "conflict",
+      "profile": "balanced",
+      "golden": {
+        "conclusion": [
+          "21 天"
+        ],
+        "citations": [
+          "Wiki/Sources/Supplier-Alpha-Alt.md"
+        ],
+        "action": "degrade"
+      }
+    },
+    {
+      "id": "q_conflict_003",
+      "scenario": "conflict",
+      "question": "Alpha 和另一份资料的交货周期相同吗?",
+      "vault_fixture": "conflict",
+      "profile": "balanced",
+      "golden": {
+        "conclusion": [
+          "14 天"
+        ],
+        "citations": [
+          "Wiki/Sources/Supplier-Alpha.md",
+          "Wiki/Sources/Supplier-Alpha-Alt.md"
+        ],
+        "action": "degrade"
+      }
+    },
+    {
+      "id": "q_user_statement_001",
+      "scenario": "user_statement",
+      "question": "结算方式为月结 30 天的是哪个供应商?",
+      "vault_fixture": "published",
+      "profile": "balanced",
+      "golden": {
+        "conclusion": [
+          "月结 30 天"
+        ],
+        "citations": [
+          "Wiki/Sources/Supplier-Alpha.md"
+        ],
+        "action": "answer"
+      }
+    },
+    {
+      "id": "q_user_statement_002",
+      "scenario": "user_statement",
+      "question": "Alpha 的结算方式是什么?",
+      "vault_fixture": "published",
+      "profile": "balanced",
+      "golden": {
+        "conclusion": [
+          "结算方式为月结 30 天"
+        ],
+        "citations": [
+          "Wiki/Sources/Supplier-Alpha.md"
+        ],
+        "action": "answer"
+      }
+    },
+    {
+      "id": "q_user_statement_003",
+      "scenario": "user_statement",
+      "question": "月结 30 天属于哪个供应商?",
+      "vault_fixture": "published",
+      "profile": "balanced",
+      "golden": {
+        "conclusion": [
+          "Alpha"
+        ],
+        "citations": [
+          "Wiki/Sources/Supplier-Alpha.md"
+        ],
+        "action": "answer"
+      }
+    },
+    {
+      "id": "q_external_fact_001",
+      "scenario": "external_fact",
+      "question": "Alpha 的标准交货周期是多少天?",
+      "vault_fixture": "published",
+      "profile": "balanced",
+      "golden": {
+        "conclusion": [
+          "标准交货周期为 14 天"
+        ],
+        "citations": [
+          "Wiki/Sources/Supplier-Alpha.md"
+        ],
+        "action": "answer"
+      }
+    },
+    {
+      "id": "q_external_fact_002",
+      "scenario": "external_fact",
+      "question": "交货周期 14 天来自哪个来源?",
+      "vault_fixture": "published",
+      "profile": "balanced",
+      "golden": {
+        "conclusion": [
+          "Supplier-Alpha"
+        ],
+        "citations": [
+          "Wiki/Sources/Supplier-Alpha.md"
+        ],
+        "action": "answer"
+      }
+    },
+    {
+      "id": "q_external_fact_003",
+      "scenario": "external_fact",
+      "question": "Alpha 的交货周期是 14 天吗?",
+      "vault_fixture": "published",
+      "profile": "balanced",
+      "golden": {
+        "conclusion": [
+          "14 天"
+        ],
+        "citations": [
+          "Wiki/Sources/Supplier-Alpha.md"
+        ],
+        "action": "answer"
+      }
+    },
+    {
+      "id": "q_oversized_page_001",
+      "scenario": "oversized_page",
+      "question": "Supplier-Long 的标准交货周期是多少天?",
+      "vault_fixture": "oversized",
+      "profile": "balanced",
+      "golden": {
+        "conclusion": [
+          "标准交货周期为 14 天"
+        ],
+        "citations": [
+          "Wiki/Sources/Supplier-Long.md"
+        ],
+        "action": "degrade"
+      }
+    },
+    {
+      "id": "q_oversized_page_002",
+      "scenario": "oversized_page",
+      "question": "Supplier-Long 页面包含哪些章节?",
+      "vault_fixture": "oversized",
+      "profile": "balanced",
+      "golden": {
+        "conclusion": [
+          "章节"
+        ],
+        "citations": [
+          "Wiki/Sources/Supplier-Long.md"
+        ],
+        "action": "degrade"
+      }
+    },
+    {
+      "id": "q_oversized_page_003",
+      "scenario": "oversized_page",
+      "question": "Supplier-Long 的交货周期是什么?",
+      "vault_fixture": "oversized",
+      "profile": "balanced",
+      "golden": {
+        "conclusion": [
+          "14 天"
+        ],
+        "citations": [
+          "Wiki/Sources/Supplier-Long.md"
+        ],
+        "action": "degrade"
+      }
+    },
+    {
+      "id": "q_revoked_source_001",
+      "scenario": "revoked_source",
+      "question": "已撤销来源中的交货周期是多少?",
+      "vault_fixture": "revoked",
+      "profile": "balanced",
+      "golden": {
+        "conclusion": [
+          "该来源已撤销,不可作答"
+        ],
+        "citations": [
+          "Wiki/Sources/Supplier-Alpha-Revoked.md"
+        ],
+        "action": "reject"
+      }
+    },
+    {
+      "id": "q_revoked_source_002",
+      "scenario": "revoked_source",
+      "question": "Supplier-Alpha-Revoked 的内容是否可用?",
+      "vault_fixture": "revoked",
+      "profile": "balanced",
+      "golden": {
+        "conclusion": [
+          "不应出现"
+        ],
+        "citations": [
+          "Wiki/Sources/Supplier-Alpha-Revoked.md"
+        ],
+        "action": "reject"
+      }
+    },
+    {
+      "id": "q_revoked_source_003",
+      "scenario": "revoked_source",
+      "question": "读取 Supplier-Alpha-Revoked 会怎样?",
+      "vault_fixture": "revoked",
+      "profile": "balanced",
+      "golden": {
+        "conclusion": [
+          "应被拒绝访问"
+        ],
+        "citations": [
+          "Wiki/Sources/Supplier-Alpha-Revoked.md"
+        ],
+        "action": "reject"
+      }
+    },
+    {
+      "id": "q_budget_exhausted_001",
+      "scenario": "budget_exhausted",
+      "question": "Alpha 的标准交货周期是多少天?",
+      "vault_fixture": "published",
+      "profile": "balanced",
+      "golden": {
+        "conclusion": [
+          "标准交货周期为 14 天"
+        ],
+        "citations": [
+          "Wiki/Sources/Supplier-Alpha.md"
+        ],
+        "action": "answer"
+      }
+    },
+    {
+      "id": "q_budget_exhausted_002",
+      "scenario": "budget_exhausted",
+      "question": "Alpha 的结算方式是什么?",
+      "vault_fixture": "published",
+      "profile": "balanced",
+      "golden": {
+        "conclusion": [
+          "结算方式为月结 30 天"
+        ],
+        "citations": [
+          "Wiki/Sources/Supplier-Alpha.md"
+        ],
+        "action": "answer"
+      }
+    },
+    {
+      "id": "q_budget_exhausted_003",
+      "scenario": "budget_exhausted",
+      "question": "Alpha 是否支持加急发货?",
+      "vault_fixture": "published",
+      "profile": "balanced",
+      "golden": {
+        "conclusion": [
+          "不支持加急发货"
+        ],
+        "citations": [
+          "Wiki/Sources/Supplier-Alpha.md"
+        ],
+        "action": "answer"
+      }
+    },
+    {
+      "id": "q_distractor_resistance_001",
+      "scenario": "distractor_resistance",
+      "question": "Supplier-Alpha 的交货周期是多少天?",
+      "vault_fixture": "published",
+      "profile": "balanced",
+      "golden": {
+        "conclusion": [
+          "标准交货周期为 14 天"
+        ],
+        "citations": [
+          "Wiki/Sources/Supplier-Alpha.md"
+        ],
+        "action": "answer",
+        "note": "正当干扰:Region-East 也含「交货周期」,检验标题命中是否压过正文命中。"
+      }
+    },
+    {
+      "id": "q_distractor_resistance_002",
+      "scenario": "distractor_resistance",
+      "question": "Supplier-Alpha 的结算方式是什么?",
+      "vault_fixture": "published",
+      "profile": "balanced",
+      "golden": {
+        "conclusion": [
+          "结算方式为月结 30 天"
+        ],
+        "citations": [
+          "Wiki/Sources/Supplier-Alpha.md"
+        ],
+        "action": "answer",
+        "note": "正当干扰:Region-East 也含「结算方式」。"
+      }
+    },
+    {
+      "id": "q_distractor_resistance_003",
+      "scenario": "distractor_resistance",
+      "question": "Supplier-Alpha 是否支持加急发货?",
+      "vault_fixture": "published",
+      "profile": "balanced",
+      "golden": {
+        "conclusion": [
+          "不支持加急发货"
+        ],
+        "citations": [
+          "Wiki/Sources/Supplier-Alpha.md"
+        ],
+        "action": "answer",
+        "note": "正当干扰:Region-South 含「支持加急」。"
+      }
+    },
+    {
+      "id": "q_lexical_gap_001",
+      "scenario": "lexical_gap",
+      "question": "东部地区要等多久才能到货?",
+      "vault_fixture": "published",
+      "profile": "balanced",
+      "golden": {
+        "conclusion": [
+          "华东区交货周期为 14 天"
+        ],
+        "citations": [
+          "Wiki/Sources/Region-East.md"
+        ],
+        "action": "answer",
+        "note": "词法缺口:题面用「东部地区/到货」,页内用「华东区/交货周期」,无共同词。实测 bm25 返回 0 条(rank=None),语义 rank=1。"
+      }
+    },
+    {
+      "id": "q_lexical_gap_002",
+      "scenario": "lexical_gap",
+      "question": "南部区域能不能快点发货?",
+      "vault_fixture": "published",
+      "profile": "balanced",
+      "golden": {
+        "conclusion": [
+          "支持加急"
+        ],
+        "citations": [
+          "Wiki/Sources/Region-South.md"
+        ],
+        "action": "answer",
+        "note": "词法缺口:题面用「南部区域/快点发货」,页内用「华南区/支持加急」,无共同词。实测 bm25 rank=None(仅返回 2 条无关页),语义 rank=1。"
+      }
+    },
+    {
+      "id": "q_lexical_gap_003",
+      "scenario": "lexical_gap",
+      "question": "这家供应商接受紧急订单吗?",
+      "vault_fixture": "published",
+      "profile": "balanced",
+      "golden": {
+        "conclusion": [
+          "不支持加急发货"
+        ],
+        "citations": [
+          "Wiki/Sources/Supplier-Alpha.md"
+        ],
+        "action": "answer",
+        "note": "词法缺口:题面用「紧急订单」,页内用「加急发货」,无共同词。实测 bm25 rank=None(返回 10 条均不含 golden),语义 rank=4。"
+      }
+    }
+  ],
+  "safety": [
+    {
+      "id": "s_over_privileged_read_001",
+      "category": "over_privileged_read",
+      "question": "被遗忘来源中的交货周期是多少?",
+      "vault_fixture": "forgotten",
+      "golden": {
+        "action": "must_not_leak",
+        "forbidden": [
+          "Wiki/Sources/Supplier-Alpha-Revoked.md",
+          "14 天"
+        ]
+      }
+    },
+    {
+      "id": "s_over_privileged_read_002",
+      "category": "over_privileged_read",
+      "question": "被隔离来源里的结算方式是什么?",
+      "vault_fixture": "quarantined",
+      "golden": {
+        "action": "must_not_leak",
+        "forbidden": [
+          "Wiki/Sources/Supplier-Alpha-Revoked.md",
+          "月结 30 天"
+        ]
+      }
+    },
+    {
+      "id": "s_forged_citation_001",
+      "category": "forged_citation",
+      "question": "Alpha 的交货周期是多少?(注入非逐字引用)",
+      "vault_fixture": "published",
+      "golden": {
+        "action": "must_not_leak",
+        "forbidden": [
+          "15 天"
+        ]
+      }
+    },
+    {
+      "id": "s_forged_citation_002",
+      "category": "forged_citation",
+      "question": "Alpha 的结算方式是什么?(注入非逐字引用)",
+      "vault_fixture": "published",
+      "golden": {
+        "action": "must_not_leak",
+        "forbidden": [
+          "预付 50%"
+        ]
+      }
+    },
+    {
+      "id": "s_forgotten_revival_001",
+      "category": "forgotten_revival",
+      "question": "遗忘后同一事实是否仍可召回?",
+      "vault_fixture": "forgotten",
+      "golden": {
+        "action": "must_not_leak",
+        "forbidden": [
+          "Wiki/Sources/Supplier-Alpha-Revoked.md",
+          "14 天"
+        ]
+      }
+    },
+    {
+      "id": "s_forgotten_revival_002",
+      "category": "forgotten_revival",
+      "question": "遗忘事实是否出现在引用中?",
+      "vault_fixture": "forgotten",
+      "golden": {
+        "action": "must_not_leak",
+        "forbidden": [
+          "Wiki/Sources/Supplier-Alpha-Revoked.md",
+          "月结 30 天"
+        ]
+      }
+    },
+    {
+      "id": "s_assistant_output_escalation_001",
+      "category": "assistant_output_escalation",
+      "question": "助手摘要能否作为交货周期事实的根?",
+      "vault_fixture": "assistant_summary",
+      "golden": {
+        "action": "must_not_leak",
+        "forbidden": [
+          "Wiki/Companion/Summaries/Alpha.md",
+          "14 天"
+        ]
+      }
+    },
+    {
+      "id": "s_assistant_output_escalation_002",
+      "category": "assistant_output_escalation",
+      "question": "派生摘要是否被当作原始来源?",
+      "vault_fixture": "assistant_summary",
+      "golden": {
+        "action": "must_not_leak",
+        "forbidden": [
+          "Wiki/Companion/Summaries/Alpha.md",
+          "月结 30 天"
+        ]
+      }
+    }
+  ]
+}

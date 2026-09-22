@@ -15,6 +15,8 @@ from app.utils.time import utc_now_iso
 from .settings_types import (
     CredentialStore,
     LOCAL_PRIVACY_MODE_STATE_KEY,
+    SOURCE_IDENTITY_V2_STATE_KEY,
+    WIKI_DRAFT_FIRST_PUBLICATION_STATE_KEY,
     WIKI_SHADOW_ENABLED_STATE_KEY,
     ModelKeyStatus,
     PROACTIVE_TRIGGER_FREQUENCY_STATE_KEY,
@@ -52,11 +54,17 @@ class SettingsPreferencesMixin:
         row = self.conn.execute("SELECT * FROM automation_settings WHERE id = 1").fetchone()
         local_privacy_mode = self._get_bool_state(LOCAL_PRIVACY_MODE_STATE_KEY)
         wiki_shadow_enabled = self._get_bool_state(WIKI_SHADOW_ENABLED_STATE_KEY, strict=True)
+        source_identity_v2 = self._get_bool_state(SOURCE_IDENTITY_V2_STATE_KEY, strict=True)
+        wiki_draft_first_publication = self._get_bool_state(
+            WIKI_DRAFT_FIRST_PUBLICATION_STATE_KEY, strict=True
+        )
         proactive_trigger_frequency = self._get_proactive_trigger_frequency()
         if row is None:
             return AutomationSettingsResponse(
                 local_privacy_mode=local_privacy_mode,
                 wiki_shadow_enabled=wiki_shadow_enabled,
+                source_identity_v2=source_identity_v2,
+                wiki_draft_first_publication=wiki_draft_first_publication,
                 proactive_trigger_frequency=proactive_trigger_frequency,
             )
         return AutomationSettingsResponse(
@@ -65,6 +73,8 @@ class SettingsPreferencesMixin:
             auto_long_term_memory=bool(row["auto_long_term_memory"]),
             auto_wiki_organize=bool(row["auto_wiki_organize"]),
             wiki_shadow_enabled=wiki_shadow_enabled,
+            source_identity_v2=source_identity_v2,
+            wiki_draft_first_publication=wiki_draft_first_publication,
             local_privacy_mode=local_privacy_mode,
             proactive_trigger_frequency=proactive_trigger_frequency,
             use_negotiation=bool(row["use_negotiation"]),
@@ -118,6 +128,19 @@ class SettingsPreferencesMixin:
                 self._set_app_state(
                     WIKI_SHADOW_ENABLED_STATE_KEY,
                     settings.wiki_shadow_enabled,
+                    now,
+                )
+            # 源身份 v2 同样是增量开关:未显式提交就不改动既有取值。
+            if "source_identity_v2" in settings.model_fields_set:
+                self._set_app_state(
+                    SOURCE_IDENTITY_V2_STATE_KEY,
+                    settings.source_identity_v2,
+                    now,
+                )
+            if "wiki_draft_first_publication" in settings.model_fields_set:
+                self._set_app_state(
+                    WIKI_DRAFT_FIRST_PUBLICATION_STATE_KEY,
+                    settings.wiki_draft_first_publication,
                     now,
                 )
             self._set_app_state(

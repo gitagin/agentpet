@@ -30,3 +30,49 @@ def test_review_prompt_includes_agents_md_schema() -> None:
     assert "页面类型" in prompt
     # 注入的是真实规范内容（不只是路径/标题）
     assert schema.splitlines()[0] in prompt
+
+
+def test_vault_schema_copy_tracks_canonical_resource(tmp_path) -> None:
+    """Vault 内的 schema 副本必须跟随规范资源。
+
+    既有 Vault 曾经永远停在旧版本：ensure_core_files 只做 write-if-missing，
+    而本文件的一致性测试只校验规范资源，所以规范新增的安全约束（例如
+    「助手摘要和问答报告不能独立支持其所述事实」）不会进入既有 Vault，且漂移
+    无法被发现。
+    """
+    from app.services.memory import SafeMarkdownWriter
+    from app.services.wiki import WikiService
+
+    vault = tmp_path / "vault"
+    (vault / "Wiki").mkdir(parents=True)
+    safety_sentence = "助手摘要和问答报告不能独立支持其所述事实。"
+    stale = _schema_markdown().replace(safety_sentence, "")
+    (vault / "Wiki" / "AGENTS.md").write_text(stale, encoding="utf-8")
+
+    service = WikiService(SafeMarkdownWriter(vault))
+    service.ensure_core_files()
+
+    copy = (vault / "Wiki" / "AGENTS.md").read_text(encoding="utf-8")
+    assert safety_sentence in copy
+    assert service.schema_drift is False
+
+    # 再次同步保持幂等
+    service.ensure_core_files()
+    assert (vault / "Wiki" / "AGENTS.md").read_text(encoding="utf-8") == copy
+
+
+def test_vault_schema_copy_preserves_user_edits_and_reports_drift(tmp_path) -> None:
+    """用户改过的 Vault 副本不得被静默覆盖，但漂移必须可见。"""
+    from app.services.memory import SafeMarkdownWriter
+    from app.services.wiki import WikiService
+
+    vault = tmp_path / "vault"
+    service = WikiService(SafeMarkdownWriter(vault))
+    service.ensure_core_files()
+    path = vault / "Wiki" / "AGENTS.md"
+    path.write_text(path.read_text(encoding="utf-8") + "\n用户自定义补充\n", encoding="utf-8")
+
+    service.ensure_core_files()
+
+    assert "用户自定义补充" in path.read_text(encoding="utf-8")
+    assert service.schema_drift is True

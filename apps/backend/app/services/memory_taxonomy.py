@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -20,6 +22,83 @@ class MemoryKind(_StrEnum):
     PROJECT_CONTEXT = "project_context"
     HISTORICAL = "historical"
     INFERENCE = "inference"
+
+
+# 记忆种类 -> 事实范畴(A4 两轴之「事实范畴轴」;与 ContentCategory 的字符串值对齐)。
+# 只有 PREFERENCE 落入用户权威类(preference),其余归事实类——
+# 这正是「用户偏好 vs 外部事实」的区分点,不可混淆。
+_KIND_TO_CONTENT_CATEGORY: dict[str, str] = {
+    MemoryKind.FACT: "fact",
+    MemoryKind.PREFERENCE: "preference",
+    MemoryKind.RECENT_STATE: "event",
+    MemoryKind.BOUNDARY: "rule",
+    MemoryKind.PROJECT_CONTEXT: "fact",
+    MemoryKind.HISTORICAL: "event",
+    MemoryKind.INFERENCE: "fact",
+}
+
+
+def content_category_for_kind(kind: object) -> str:
+    """把记忆种类归一为事实范畴(未知种类保守归 fact,不冒充用户权威)。"""
+    return _KIND_TO_CONTENT_CATEGORY.get(kind, "fact")
+
+
+def content_category_from_metadata(metadata: object) -> str | None:
+    """从持久化 metadata 读回事实范畴,作为检索期的读侧入口。
+
+    缺失、损坏或空值一律返回 None,**不**回退为 "fact":
+    读侧若凭空断言范畴,就会把「不知道」伪装成「已判定为外部事实」。
+    None 会让 evidence_policy.statement_authority 保守降级为 mixed,
+    这正是写入侧没带该字段时应有的行为。
+    """
+    if isinstance(metadata, Mapping):
+        raw = metadata.get("content_category")
+    else:
+        try:
+            parsed = json.loads(str(metadata or ""))
+        except (TypeError, ValueError):
+            return None
+        if not isinstance(parsed, Mapping):
+            return None
+        raw = parsed.get("content_category")
+    value = str(raw or "").strip()
+    return value or None
+
+
+# 关系类型 -> 事实范畴:只登记**语义唯一**的推导。
+# 目前只有 prefers 一条,依据是它的两个写入点都表示「偏好」:
+#   memory_consolidation.py 的 PREFERENCE 分支(memory_kind 已是 PREFERENCE 才走这里)
+#   chat_pipeline/entity_relation.py 的确定性偏好兜底(先断言 category == "preference")
+# 其余关系类型一律不登记 —— 尤其 avoids:「我不喜欢/回避 X」看似也是偏好,
+# 但**没有任何写入点**会为 PREFERENCE 产出 avoids,把它当偏好就是我在替代码发明规则。
+_RELATION_TO_CONTENT_CATEGORY: dict[str, str] = {
+    "prefers": "preference",
+}
+
+
+def content_category_for_relation(relation_type: object) -> str | None:
+    """从关系类型重建事实范畴;无法无歧义推导时返回 None(**不猜测**)。"""
+    return _RELATION_TO_CONTENT_CATEGORY.get(
+        str(relation_type or "").strip().casefold()
+    )
+
+
+def graph_fact_content_category(fact: object) -> str | None:
+    """读侧事实范畴:metadata 优先,仅在 metadata 沉默时才由关系类型重建。
+
+    为什么需要重建:create_relation 在修复前不落 metadata,所以**旧库**里的偏好
+    关系边 metadata 恒为 "{}"。若读侧只认 metadata,这批行的陈述权威轴永远失明。
+
+    为什么是「读侧重建」而不是「数据回填迁移」:两者对唯一消费者
+    (memory_read -> MemorySearchResult.content_category -> statement_authority)
+    的效果完全相同,但重建不写用户数据、不进启动迁移链、且天然覆盖所有年代的行。
+    优先级刻意不合并:metadata 写了就以它为准(那是写入期记录),
+    重建只是 metadata 沉默时的兜底,不会覆盖任何已记录的值。
+    """
+    recorded = content_category_from_metadata(getattr(fact, "metadata_json", None))
+    if recorded is not None:
+        return recorded
+    return content_category_for_relation(getattr(fact, "relation_type", None))
 
 
 class MemoryScope(_StrEnum):

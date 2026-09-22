@@ -74,6 +74,8 @@ def test_langgraph_runtime_uses_langchain_structured_tools_for_core_services() -
 
     assert all(isinstance(tool, StructuredTool) for tool in tools)
     assert [tool.name for tool in tools] == [
+        "search_wiki_pages",
+        "read_wiki_page",
         "search_memory",
         "propose_memory",
         "plan_wiki_ingest",

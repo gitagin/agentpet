@@ -115,12 +115,18 @@ def test_new_source_registration_receipt_marks_relevance_check_pending(read_tool
     assert publication.get("freshness_reason") == "source_relevance_check_pending"
 
 
-def test_unverified_source_remains_unknown_with_unchanged_watermark(read_tools):
-    # 无验证记录 → unknown(不假设无变化);watermark 未变仍是 unknown
+def test_unverified_source_is_lazily_verified_on_first_real_query(read_tools):
+    # 设计 §1.2 步骤 3:待核来源在**真实查询用到它**时被有界核验并写 verified,
+    # 核验结果在本轮 gate 生效。故首查即 fresh(此前恒 unknown 是核验链缺失)。
     tools, _events, service, _vault, _generation = read_tools
     _set_source(service, verification_status="unverified", expires_at=None)
     state = _run_node(tools.wiki_reader)
-    assert state["agent_state"].wiki_evidence_gate.freshness == "unknown"
+    gate = state["agent_state"].wiki_evidence_gate
+    assert gate.freshness == "fresh"
+    assert gate.freshness_reason == "source_verified_current"
+    with service.database.session(read_only=True) as conn:
+        row = conn.execute("SELECT verification_status FROM wiki_sources LIMIT 1").fetchone()
+    assert row["verification_status"] == "verified"
     
 
 def test_verified_unchanged_source_is_fresh(published_with_source_state):
@@ -307,3 +313,24 @@ def test_existing_stop_reasons_and_gate_behaviors_unchanged():
     assert anchor.coverage == "partial"
     assert anchor.conflict == "disputed"
     assert anchor.authority == "denied"
+
+
+def test_citations_carry_per_source_freshness_for_the_display_layer(published_with_source_state):
+    """设计 §1.1 步骤 4:逐来源新鲜度随 citation 出站,供展示层逐条渲染。
+
+    gate 仍取最差档(fail-closed),两者语义不同、不互相替代。
+    """
+    tools, _database = published_with_source_state(
+        verification_status="verified", verified_at="2026-09-20T00:00:00Z",
+        expires_at="2099-01-01T00:00:00Z",
+    )
+    state = _run_node(tools.wiki_reader)
+    gate = state["agent_state"].wiki_evidence_gate
+    citations = state["agent_state"].citations
+
+    assert citations
+    # 每条 citation 都带上自身来源的档位(而非 gate 的聚合值)
+    for citation in citations:
+        assert citation.freshness == "fresh"
+        assert citation.freshness_reason == "source_verified_current"
+    assert gate.freshness == "fresh"

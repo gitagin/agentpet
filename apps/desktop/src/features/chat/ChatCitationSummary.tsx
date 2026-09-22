@@ -1,6 +1,6 @@
 import type { ChatMessage, Citation } from "../../types";
 import { answerBasisLabel } from "./answerBasis";
-import { formatCitationRetrievalMode, formatCitationSourceScope, formatCitationSourceScopes } from "./chatFormatters";
+import { formatCitationFreshness, formatCitationRetrievalMode, formatCitationSourceScope, formatCitationSourceScopes } from "./chatFormatters";
 
 type ChatCitationSummaryProps = {
   message: ChatMessage;
@@ -53,6 +53,7 @@ export function ChatCitationSummary({ message }: ChatCitationSummaryProps) {
             {visibleCitations.map((citation, index) => {
               const sourceScope = formatCitationSourceScope(citation.source_scope);
               const retrievalMode = formatCitationRetrievalMode(citation.retrieval_mode);
+              const freshnessLabel = formatCitationFreshness(citation.freshness);
               return (
                 <li key={citationKey(message.id, citation, index)} className="message-citation-item">
                 <div className="message-citation-path">
@@ -63,6 +64,7 @@ export function ChatCitationSummary({ message }: ChatCitationSummaryProps) {
                   {sourceScope ? <span>来源：{sourceScope}</span> : null}
                   {retrievalMode ? <span>检索方式：{retrievalMode}</span> : null}
                   {citation.heading ? <span>标题：{citation.heading}</span> : null}
+                  {freshnessLabel ? <span>新鲜度：{freshnessLabel}</span> : null}
                 </div>
                 <p>{formatCitationSnippet(citation.snippet)}</p>
                 </li>

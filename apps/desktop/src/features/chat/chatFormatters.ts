@@ -18,6 +18,12 @@ const CITATION_RETRIEVAL_MODE_LABELS: Record<string, string> = {
   multi_source: "多源检索",
 };
 
+const CITATION_FRESHNESS_LABELS: Record<string, string> = {
+  fresh: "资料为当前版本",
+  unknown: "新鲜度尚未确认",
+  stale: "资料可能已经过时",
+};
+
 export function formatCitationSourceScope(sourceScope: Citation["source_scope"]): string | null {
   if (!sourceScope) {
     return null;
@@ -30,6 +36,13 @@ export function formatCitationRetrievalMode(retrievalMode: Citation["retrieval_m
     return null;
   }
   return CITATION_RETRIEVAL_MODE_LABELS[retrievalMode] || retrievalMode;
+}
+
+export function formatCitationFreshness(freshness: Citation["freshness"]): string | null {
+  if (!freshness) {
+    return null;
+  }
+  return CITATION_FRESHNESS_LABELS[freshness] || null;
 }
 
 export function formatCitationSourceLabel(citations: Citation[]): string {

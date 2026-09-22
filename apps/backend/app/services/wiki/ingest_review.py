@@ -16,6 +16,10 @@ class WikiIngestReviewMixin:
                 return existing
 
         run = self._load_ingest_run(request.run_id)
+        # 草稿先行发布(开关开启时):审查**开始**就把规划内容作为 draft 入库——
+        # 审查的对象就是这份草稿,且 _mark_draft_status 只在已存在 staged draft 时
+        # 命中,故必须先入库再标状态。默认关(False)时直接返回,现有行为不变。
+        self._stage_draft_if_enabled(request.run_id)
         # draft 生命周期(D1):审查开始即 draft_reviewing(仅命中 draft run 时推进)
         self._mark_draft_status(request.run_id, "draft_reviewing")
         reviewer_agent_id, review_model = self._resolve_review_model(request.reviewer_agent_id)
@@ -60,6 +64,15 @@ class WikiIngestReviewMixin:
             # draft 生命周期(D1):审查通过 → draft_approved;失败/未配置模型保持 draft_reviewing 待重试
             self._mark_draft_status(request.run_id, "draft_approved")
         return self._insert_review(response, review_id=review_id)
+
+    def _stage_draft_if_enabled(self, run_id: str) -> str | None:
+        """开关开启时把该 run 的规划页面作为 draft 入库(不写盘、不建 binding)。"""
+        from .publication import WikiPublicationService, draft_first_publication_enabled
+
+        with self.database.session(read_only=True) as conn:
+            if not draft_first_publication_enabled(conn):
+                return None
+        return WikiPublicationService(self.database, self.wiki).stage_draft(run_id)
 
     def _mark_draft_status(self, run_id: str, status: str) -> bool:
         """仅当该 run 存在 staged draft 时推进 result_json.publication.status,返回是否命中。"""

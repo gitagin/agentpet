@@ -7,6 +7,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.services.evidence_policy import statement_authority_sort_key
 from app.utils.sqlite import extract_json_object
 
 from .compression import UNTRUSTED_EVIDENCE_SYSTEM_POLICY, gate_evidence, stable_citation_id
@@ -68,12 +69,6 @@ class WikiEvidenceGate(GatePayload):
     used_for_answer: list[str] = Field(default_factory=list)
 
 
-# UI 中文映射(机器值保留英文;展示层按此表渲染)
-FRESHNESS_UI_LABELS: dict[str, str] = {
-    "fresh": "资料为当前版本",
-    "unknown": "新鲜度尚未确认",
-    "stale": "资料可能已经过时",
-}
 
 
 def derive_source_freshness(
@@ -117,6 +112,21 @@ ASSESSMENT_POLICY = (
 )
 
 
+def order_evidence_by_statement_authority(citations):
+    """证据门的权威排序(设计 source-identity-migration-design.md:205 指定落点)。
+
+    用户权威类(偏好类用户陈述)排在外部来源之前。sorted 稳定,同档位保持调用方
+    原有次序(读取序)。**只改顺序**:不增删证据、不授予读取权限、不判定事实真假。
+
+    诚实说明(勿把恒等变换当成增益):本门经手的引用目前全部来自 Wiki 快照与库内
+    笔记(vault fallback),来源性质为 COMPILED_WIKI/RAW_SOURCE,一律 external,
+    所以此处排序在**当前生产路径上是恒等变换**。真正产生次序差异的是图事实与 Wiki
+    引用混排的组装层(见 prompt_memory_assembler)。保留此函数是因为设计把落点
+    指定在这里,且它必须可被单测固定;它的行为在混排证据下才可观察。
+    """
+    return sorted(citations, key=statement_authority_sort_key)
+
+
 def assessment_input(question, citations, allowed_paths, *, previous=None):
     return json.dumps({
         "question": question,
@@ -125,7 +135,7 @@ def assessment_input(question, citations, allowed_paths, *, previous=None):
              "section": item.wiki_section or item.heading, "content": item.snippet,
              "retrieval_mode": item.retrieval_mode, "generation": item.wiki_generation,
              "content_hash": item.content_hash}
-            for item in citations
+            for item in order_evidence_by_statement_authority(citations)
         ],
         "allowed_paths": sorted(allowed_paths),
         "previous_assessment": previous.model_dump(mode="json") if previous else None,

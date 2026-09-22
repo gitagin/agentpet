@@ -3,7 +3,7 @@
   "source": {
     "openapiVersion": "3.1.0",
     "apiVersion": "0.0.1-alpha",
-    "sha256": "3b711842db92896eda3720d6359f36681c7ea3733e4643d2e99cc651aaf6433c"
+    "sha256": "04fd223ae92186c6d57696a92e664ac55fa23e76c96cd7596160ee263fd31743"
   },
   "routes": [
     {

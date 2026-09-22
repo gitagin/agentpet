@@ -1226,6 +1226,7 @@ class MemoryEntityGraphStore:
         source_type: str = "user_message",
         confidence: float = 0.7,
         evidence_id: str | None = None,
+        metadata: Mapping[str, object] | None = None,
     ) -> MemoryGraphFact:
         with self.atomic():
             return self._create_relation_impl(
@@ -1238,6 +1239,7 @@ class MemoryEntityGraphStore:
                 source_type=source_type,
                 confidence=confidence,
                 evidence_id=evidence_id,
+                metadata=metadata,
             )
 
     def _create_relation_impl(
@@ -1252,6 +1254,7 @@ class MemoryEntityGraphStore:
         source_type: str = "user_message",
         confidence: float = 0.7,
         evidence_id: str | None = None,
+        metadata: Mapping[str, object] | None = None,
     ) -> MemoryGraphFact:
         relation = _validated_relation(relation_type)
         subject_kind = _endpoint_kind(subject_entity_id, subject_fact_id)
@@ -1304,6 +1307,12 @@ class MemoryEntityGraphStore:
                         memory_type="relation",
                         subject_identity_key=subject_label,
                         object_identity_key=object_label,
+                        # 关系事实同样要带事实范畴(A4 事实范畴轴)：
+                        # 偏好类用户陈述走的就是 relation 分支，此前 metadata 恒为 "{}"，
+                        # 导致陈述权威轴对它最主要的存在场景失明。
+                        metadata_json=json.dumps(
+                            dict(metadata or {}), ensure_ascii=True, sort_keys=True
+                        ),
                     ),
                     detect_conflict=False,
                 )

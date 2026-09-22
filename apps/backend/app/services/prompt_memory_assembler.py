@@ -7,7 +7,7 @@ from app.agents.immediate_understanding import ImmediateUnderstanding, immediate
 from app.agents.retrieval.scoping import _source_scope_label
 from app.agents.state import ActionPlan, SemanticAnalysisResult
 from app.models.api import MemoryRecallPermissions, MemorySearchResult
-from app.services.evidence_policy import inactive_evidence_status
+from app.services.evidence_policy import inactive_evidence_status, statement_authority_sort_key
 from app.services.memory_permissions import (
     MemoryPromptSections,
     MemoryPromptUsage,
@@ -153,7 +153,16 @@ class PromptMemoryAssembler:
 
     def assemble(self, payload: PromptMemoryAssemblyInput) -> PromptMemoryAssembly:
         sections: list[PromptMemorySection] = []
-        safe_citations = tuple(_prompt_safe_result(result) for result in payload.citations)
+        # 组装层权威排序(设计 source-identity-migration-design.md:205 指定落点):
+        # 用户权威类(偏好类用户陈述)排在外部来源之前。sorted 稳定,同档位保持
+        # 调用方原有次序(检索分数序),所以这是**排序**而不是重新打分。
+        # 只改顺序:不增删证据、不改权限判定、不判定事实真假。
+        safe_citations = tuple(
+            sorted(
+                (_prompt_safe_result(result) for result in payload.citations),
+                key=statement_authority_sort_key,
+            )
+        )
         recall_sections = payload.recall_sections
         if recall_sections is None and safe_citations:
             recall_sections = split_recall_prompt_sections(safe_citations, query=payload.user_message)

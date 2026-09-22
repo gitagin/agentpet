@@ -54,6 +54,10 @@ SUPPORTED_MODEL_PROVIDERS = {"openai", "openai-compatible"}
 TTS_SETTINGS_STATE_KEY = "tts_settings"
 LOCAL_PRIVACY_MODE_STATE_KEY = "local_privacy_mode"
 WIKI_SHADOW_ENABLED_STATE_KEY = "wiki_shadow_enabled"
+# 与 app/services/wiki/ingest_identity.py 的 SOURCE_IDENTITY_V2_KEY 是同一个 app_state 键;
+# 单独定义是为了避免 settings 层反向依赖 wiki 服务层,由测试断言两者一致以防漂移。
+SOURCE_IDENTITY_V2_STATE_KEY = "source_identity_v2"
+WIKI_DRAFT_FIRST_PUBLICATION_STATE_KEY = "wiki_draft_first_publication"
 PROACTIVE_TRIGGER_FREQUENCY_STATE_KEY = "proactive_trigger_frequency"
 TTS_KEY_STATE_PREFIX = "tts_key:"
 XIAOMI_MIMO_TTS_PROVIDER = "xiaomi-mimo"

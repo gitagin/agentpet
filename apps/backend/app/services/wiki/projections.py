@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import threading
+from array import array
 from collections import defaultdict
 from pathlib import PurePosixPath
 
@@ -11,6 +13,118 @@ from app.storage.markdown import parse_markdown
 from app.utils.hash import sha256_bytes_hex
 
 from . import _legacy_wiki
+
+
+# ---------------------------------------------------------------------------
+# 阶段1(t31):发布期向量投影(仅本地嵌入器) + 逐代覆盖标记
+# ---------------------------------------------------------------------------
+_EMBEDDER_LOCK = threading.Lock()
+_EMBEDDER_CACHE: dict = {}
+
+
+def _local_embedder():
+    """**仅本地** ONNX 嵌入器(决策 1)。
+
+    **绝不复用 retrieval_factory 解析出的嵌入器** —— 检索用的向量索引可以是远端的
+    (用户 opt-in),复用会把 wiki 正文发往远端,削弱隐私保证。
+    拿不到 ⇒ 返回 None ⇒ 调用方**一条向量都不写**(决策 2:跳过向量、照常发布)。
+    """
+    from app.config import get_settings
+    from app.services import embeddings
+
+    model_dir = get_settings().local_embedding_dir
+    # 构造函数进缓存键:测试 monkeypatch 了它也能得到新解析,不吃旧缓存。
+    key = (str(model_dir), embeddings.build_local_onnx_embeddings)
+    with _EMBEDDER_LOCK:
+        if key not in _EMBEDDER_CACHE:
+            _EMBEDDER_CACHE[key] = embeddings.build_local_onnx_embeddings(model_dir)
+        return _EMBEDDER_CACHE[key]
+
+
+def _embedding_model_name() -> str:
+    from app.services.embeddings import LOCAL_EMBEDDING_MODEL_NAME
+
+    return LOCAL_EMBEDDING_MODEL_NAME
+
+
+def _chunk_texts(title: str, parsed) -> list:
+    return [
+        " ".join(part for part in (title, chunk.heading or "", chunk.content) if part)
+        for chunk in parsed.chunks
+    ]
+
+
+def _project_page_vectors(conn, vault_id: str, digest: str, title: str, parsed) -> bool:
+    """把该正文的块向量写入投影(按 content_hash 复用;已存在则跳过)。
+
+    返回是否写入。**任何异常都不得逃逸** —— 嵌入失败只意味着「跳过向量」。
+    """
+    embedder = _local_embedder()
+    if embedder is None:
+        return False
+    texts = _chunk_texts(title, parsed)
+    if not texts:
+        return False
+    existing = conn.execute(
+        "SELECT COUNT(*) AS n FROM wiki_body_vectors WHERE vault_id = ? AND content_hash = ?",
+        (vault_id, digest),
+    ).fetchone()["n"]
+    if existing >= len(texts):
+        return False
+    try:
+        vectors = embedder.embed_documents(texts)
+    except Exception:
+        return False
+    if not isinstance(vectors, list) or len(vectors) != len(texts):
+        return False
+    model = _embedding_model_name()
+    for index, vector in enumerate(vectors):
+        payload = array("f", [float(value) for value in vector])
+        conn.execute(
+            "INSERT OR REPLACE INTO wiki_body_vectors"
+            "(vault_id, content_hash, chunk_index, embedding_model, dimensions, vector)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            (vault_id, digest, index, model, len(vector), payload.tobytes()),
+        )
+    return True
+
+
+def _record_semantic_coverage(conn, vault_id: str, generation: str) -> None:
+    """记录该代的语义覆盖状态(complete / partial / unavailable)。
+
+    **刻意不参与 require_generation_projection 的完整性断言** ——
+    嵌入不可用是允许的,不得因此被误判为「投影不完整」而阻止发布。
+    """
+    model = _embedding_model_name()
+    expected = conn.execute(
+        """SELECT COALESCE(SUM(b.chunk_count), 0) AS n
+           FROM wiki_generation_pages p
+           JOIN wiki_body_projection b
+             ON b.vault_id = p.vault_id AND b.content_hash = p.content_hash
+           WHERE p.vault_id = ? AND p.generation = ?""",
+        (vault_id, generation),
+    ).fetchone()["n"]
+    stored = conn.execute(
+        """SELECT COUNT(*) AS n FROM wiki_body_vectors
+           WHERE vault_id = ? AND embedding_model = ?
+             AND content_hash IN (
+               SELECT content_hash FROM wiki_generation_pages
+               WHERE vault_id = ? AND generation = ?)""",
+        (vault_id, model, vault_id, generation),
+    ).fetchone()["n"]
+    if expected <= 0 or stored <= 0:
+        status = "unavailable"
+    elif stored >= expected:
+        status = "complete"
+    else:
+        status = "partial"
+    conn.execute(
+        """INSERT OR REPLACE INTO wiki_generation_semantic_coverage
+           (vault_id, generation, embedding_model, expected_chunks, stored_chunks, status, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, datetime('now'))""",
+        (vault_id, generation, model, expected, stored, status),
+    )
+
 
 
 def snapshot_text(body: bytes) -> str:
@@ -47,6 +161,7 @@ def build_generation_projection(conn, vault_id: str, generation: str) -> None:
                 "INSERT INTO wiki_body_projection VALUES (?, ?, ?, ?, ?)",
                 (vault_id, digest, parsed.title, json.dumps(parsed.links), len(parsed.chunks)),
             )
+            _project_page_vectors(conn, vault_id, digest, parsed.title, parsed)
             title, links = parsed.title, parsed.links
         else:
             title, links = projected["title"], json.loads(projected["links_json"])
@@ -54,6 +169,7 @@ def build_generation_projection(conn, vault_id: str, generation: str) -> None:
             title=title or PurePosixPath(row["relative_path"]).stem,
             relative_path=row["relative_path"], links=links, frontmatter={},
         ))
+    _record_semantic_coverage(conn, vault_id, generation)
     by_title, by_slug, by_path = defaultdict(list), defaultdict(list), defaultdict(list)
     for page in pages:
         by_title[page.title.casefold()].append(page)

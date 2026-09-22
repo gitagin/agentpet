@@ -153,6 +153,13 @@ class MigrationRunner:
         re.IGNORECASE,
     )
     _DUPLICATE_COLUMN_RE = re.compile(r"duplicate column name:\s*(?P<column>\w+)", re.IGNORECASE)
+    # 迁移链自己声明过的表，却在本库尚未创建：跳过该语句并记账（见
+    # _declared_missing_table_name）。
+    _MISSING_TABLE_RE = re.compile(r"no such table:\s*(?P<table>[A-Za-z_][A-Za-z0-9_]*)", re.IGNORECASE)
+    _CREATE_TABLE_RE = re.compile(
+        r"create\s+table\s+(?:if\s+not\s+exists\s+)?[\"\x27\`\[]?(?P<table>[A-Za-z_][A-Za-z0-9_]*)",
+        re.IGNORECASE,
+    )
     # SQLite applies these only outside a transaction; inside one they are silent
     # no-ops.  A migration that carries one must be seen: either it is redundant
     # (the connection already enables foreign keys) or it needs a real table
@@ -170,6 +177,9 @@ class MigrationRunner:
     def __init__(self, database: Database, migrations_dir: str | Path | None = None) -> None:
         self.database = database
         self.migrations_dir = Path(migrations_dir) if migrations_dir else self._default_dir()
+        # 被跳过的语句(审计可见):形如 DECLARED-MISSING:<table>
+        self.skipped_statements: list[str] = []
+        self._declared_tables_cache: frozenset[str] | None = None
 
     def apply(self) -> list[str]:
         """Apply pending migrations in file order, each in its own transaction.
@@ -186,6 +196,7 @@ class MigrationRunner:
         changing nothing.
         """
         applied: list[str] = []
+        self.skipped_statements = []
         with self.database.session() as conn:
             conn.execute(
                 """
@@ -281,6 +292,13 @@ class MigrationRunner:
             try:
                 conn.execute(statement)
             except sqlite3.OperationalError as exc:
+                missing_table = self._declared_missing_table_name(exc, statement)
+                if missing_table is not None:
+                    # 该表由迁移链中更早的迁移声明，却在本库尚未创建(历史安装的版本
+                    # 标记缺失，或测试夹具刻意截断迁移链)。跳过该语句但本迁移照常
+                    # 记账，后续 update 不再重试 —— Liquibase onFail="MARK_RAN" 语义。
+                    self.skipped_statements.append(f"DECLARED-MISSING:{missing_table}")
+                    continue
                 if not self._is_duplicate_add_column_error(exc, statement):
                     raise
 
@@ -319,6 +337,45 @@ class MigrationRunner:
         if duplicate is None or add_column is None:
             return False
         return self._normalize_identifier(add_column.group("column")) == duplicate.group("column").casefold()
+
+    def _declared_missing_table_name(
+        self, exc: sqlite3.OperationalError, statement: str
+    ) -> str | None:
+        """返回被容忍的缺失表名，否则 None。
+
+        容忍被严格限制在「迁移链自己声明过的表」上：真正会发生的 no such table
+        只有一种 —— 该表由更早的迁移创建，而那条迁移在这个库上没有跑过。笔误
+        表名不会出现在任何迁移的 CREATE TABLE 中，因此仍会正常报错。
+        """
+        match = self._MISSING_TABLE_RE.search(str(exc))
+        if match is None:
+            return None
+        table = match.group("table").casefold()
+        if table not in " ".join(statement.split()).casefold():
+            return None
+        if table not in self._declared_table_names():
+            return None
+        return table
+
+    def _declared_table_names(self) -> frozenset[str]:
+        """迁移链中所有 CREATE TABLE 声明的表名(小写)，只扫描一次。
+
+        同时扫描本次使用的目录与项目自带的规范迁移目录：真实 legacy 升级里，
+        被应用的目录可能只包含迁移链的一段(测试夹具刻意截断，或历史安装只跑了
+        部分迁移)，而表是否属于迁移链的合法成员，应按完整迁移链判断。
+        """
+        cached = self._declared_tables_cache
+        if cached is None:
+            names: set[str] = set()
+            directories = {self.migrations_dir, self._default_dir()}
+            for directory in directories:
+                for migration in sorted(directory.glob("*.sql")):
+                    script = migration.read_text(encoding="utf-8")
+                    for declared in self._CREATE_TABLE_RE.finditer(script):
+                        names.add(declared.group("table").casefold())
+            cached = frozenset(names)
+            self._declared_tables_cache = cached
+        return cached
 
     @staticmethod
     def _split_sql_statements(script: str) -> list[str]:

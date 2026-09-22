@@ -452,9 +452,19 @@
             "title": "Proactive Trigger Frequency",
             "type": "string"
           },
+          "source_identity_v2": {
+            "default": false,
+            "title": "Source Identity V2",
+            "type": "boolean"
+          },
           "use_negotiation": {
             "default": false,
             "title": "Use Negotiation",
+            "type": "boolean"
+          },
+          "wiki_draft_first_publication": {
+            "default": false,
+            "title": "Wiki Draft First Publication",
             "type": "boolean"
           },
           "wiki_shadow_enabled": {
@@ -516,6 +526,11 @@
             "title": "Proactive Trigger Frequency",
             "type": "string"
           },
+          "source_identity_v2": {
+            "default": false,
+            "title": "Source Identity V2",
+            "type": "boolean"
+          },
           "updated_at": {
             "anyOf": [
               {
@@ -530,6 +545,11 @@
           "use_negotiation": {
             "default": false,
             "title": "Use Negotiation",
+            "type": "boolean"
+          },
+          "wiki_draft_first_publication": {
+            "default": false,
+            "title": "Wiki Draft First Publication",
             "type": "boolean"
           },
           "wiki_shadow_enabled": {
@@ -4903,6 +4923,17 @@
             "title": "Citation Refs",
             "type": "array"
           },
+          "content_category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Category"
+          },
           "content_hash": {
             "anyOf": [
               {
@@ -4949,6 +4980,28 @@
               }
             ],
             "title": "Filtered Reason"
+          },
+          "freshness": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Freshness"
+          },
+          "freshness_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Freshness Reason"
           },
           "heading": {
             "anyOf": [
@@ -5065,6 +5118,17 @@
             "default": "knowledge_base",
             "title": "Source Scope",
             "type": "string"
+          },
+          "source_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Type"
           },
           "source_version": {
             "anyOf": [

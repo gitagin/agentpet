@@ -261,3 +261,36 @@ def test_http_stream_schedules_opted_in_shadow_after_reply(client_factory, monke
         assert reply.status_code == 200 and "foreground answer" in reply.text
         assert evaluated.wait(timeout=2)
         assert observed == [("supplier", True, "")]
+
+
+def test_shadow_read_only_services_expose_database_and_pin() -> None:
+    """shadow 路径必须能解析逐来源新鲜度：此前 _ReadOnlyServices 缺 database/pin，"""
+    """导致 _resolve_citation_freshness 恒 return None，评测永远只看到 unknown。"""
+    from app.services.wiki.shadow import _ReadOnlyServices
+
+    class _Reader:
+        database = "DB"
+
+        def pin(self, *args, **kwargs):
+            return SimpleNamespace(vault_id="vault-a")
+
+    services = SimpleNamespace(wiki_reader=_Reader(), retrieval=None)
+    reader = _ReadOnlyServices(services, model=None, permitted=lambda: True)
+
+    assert reader.database == "DB"
+    assert reader.pin().vault_id == "vault-a"
+
+    # 权限撤回后必须拒绝，不得借新暴露的能力绕过
+    denied = _ReadOnlyServices(services, model=None, permitted=lambda: False)
+    with pytest.raises(PermissionError):
+        _ = denied.database
+    with pytest.raises(PermissionError):
+        denied.pin()
+
+
+def test_shadow_metrics_accept_three_state_freshness() -> None:
+    """ShadowMetrics.freshness 必须与 gate 三态一致，否则拿到 fresh/stale 时校验失败。"""
+    from app.services.wiki.shadow import ShadowMetrics
+
+    for value in ("fresh", "unknown", "stale"):
+        assert ShadowMetrics(freshness=value).freshness == value

@@ -236,9 +236,35 @@ class WikiService:
         return pages
 
     def ensure_core_files(self) -> None:
-        self._write_if_missing(WIKI_SCHEMA_PATH, _canonical_schema_markdown())
+        self._sync_schema_file()
         self._write_if_missing(WIKI_INDEX_PATH, _render_index([]))
         self._write_if_missing(WIKI_LOG_PATH, "# Wiki Log\n\n")
+
+    def _sync_schema_file(self) -> None:
+        """把 Vault 内的 schema 副本同步到规范资源。
+
+        `Wiki/AGENTS.md` 只是规范资源的 Vault 副本，必须跟随规范演进——否则新增的
+        安全约束(例如助手摘要不得独立支撑事实)不会进入既有 Vault。但直接覆盖会丢弃
+        用户改动，所以用副本内的内容校验标记判断是否被改过：未被改过就刷新，被改过
+        则保留其内容并把漂移暴露到 self.schema_drift，不静默覆盖。
+        """
+        canonical = _canonical_schema_markdown()
+        path = self.writer.resolve_markdown_path(WIKI_SCHEMA_PATH)
+        if not path.exists():
+            self.writer.write(WIKI_SCHEMA_PATH, _with_schema_marker(canonical))
+            self.schema_drift = False
+            return
+        current = _read_text(path)
+        recorded = _schema_marker_hash(current)
+        # 无标记 = 引入标记机制之前由本方法写入的旧副本：按应用生成物处理并开始跟踪；
+        # 有标记但内容对不上 = 用户改过，必须保留。
+        user_edited = recorded is not None and recorded != sha256_hex(_strip_schema_marker(current))
+        if not user_edited:
+            self.writer.write(WIKI_SCHEMA_PATH, _with_schema_marker(canonical))
+            self.schema_drift = False
+            return
+        # 用户改过副本：保留其内容，只登记漂移。
+        self.schema_drift = True
 
     def get_schema_status(self) -> WikiSchemaStatus:
         self.ensure_core_files()
@@ -394,6 +420,9 @@ class WikiService:
             "wiki_pages": len(page_paths),
             "missing_index_entries": len(missing_index_entries),
         }
+
+    # Vault 内的 schema 副本被用户改过、因而未跟随规范刷新
+    schema_drift: bool = False
 
     def _write_if_missing(self, relative_path: str, markdown: str) -> None:
         path = self.writer.resolve_markdown_path(relative_path)
@@ -631,6 +660,25 @@ def _page_title(path: Path) -> str:
     except UnicodeDecodeError:
         return path.stem
     return path.stem
+
+
+_SCHEMA_MARKER_RE = re.compile(r"<!--\s*wiki-schema-sha256:\s*(?P<hash>[0-9a-f]{64})\s*-->")
+
+
+def _strip_schema_marker(markdown: str) -> str:
+    """去掉校验标记后的正文，用于判断 Vault 副本是否被用户改过。"""
+    return _SCHEMA_MARKER_RE.sub("", markdown).rstrip() + "\n"
+
+
+def _schema_marker_hash(markdown: str) -> str | None:
+    match = _SCHEMA_MARKER_RE.search(markdown)
+    return match.group("hash") if match else None
+
+
+def _with_schema_marker(markdown: str) -> str:
+    """写入规范资源内容，并附上内容校验标记。"""
+    body = markdown.rstrip() + "\n"
+    return f"{body}\n<!-- wiki-schema-sha256: {sha256_hex(body)} -->\n"
 
 
 def _read_text(path: Path) -> str:

@@ -192,12 +192,15 @@ def test_langgraph_semantic_agent_drives_memory_retrieval_before_chat() -> None:
 def test_langgraph_semantic_agent_drives_knowledge_retrieval_before_chat() -> None:
     async def run_case():
         retrieval = FakeScopedRetrieval()
+        # 语义模型现在输出 classifier 格式(intent/retrieval_scope/retrieval_query);
+        # 旧的 legacy needs_context/source_scope/query 载荷已不被解析
+        # (见 tests/agent_runtime_fakes.py::FakeKeywordSemanticModel 的说明)。
         semantic_model = FakeSemanticModel(
             {
-                "needs_context": True,
-                "source_scope": "knowledge_base",
-                "query": "runtime docs",
-                "answer_style": "grounded",
+                "intent": "need_retrieval",
+                "retrieval_scope": "knowledge_base",
+                "retrieval_query": "runtime docs",
+                "action_type": None,
                 "confidence": 0.92,
                 "reason": "knowledge-base question",
             }
@@ -224,7 +227,10 @@ def test_langgraph_semantic_agent_drives_knowledge_retrieval_before_chat() -> No
     retrieval, retrieval_model, chat_model, events = asyncio.run(run_case())
 
     assert retrieval_model.calls[0][2] == ["search_memory"]
-    assert retrieval.calls == [("runtime docs", 5, "hybrid", "knowledge_base")]
+    # 消息里显式限定了知识来源时,确定性守卫 _semantic_with_forced_scope
+    # (app/agents/semantic.py) 会强制 source_scope 并用**原始消息**作为检索查询
+    # (reason=explicit_source_scope_constraint),模型给的 retrieval_query 不生效。
+    assert retrieval.calls == [("search docs for runtime", 5, "hybrid", "knowledge_base")]
     assert "Wiki/Runtime.md" in chat_model.calls[-1][0]
     assert_langgraph_events(events, ["citation", "token", "done"])
 

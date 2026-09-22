@@ -11,6 +11,7 @@ draft 生命周期/run 级 stage 复用未实现——这些用例先红,由 B5 
 
 from __future__ import annotations
 
+import asyncio
 import json
 import sqlite3
 from pathlib import Path
@@ -20,6 +21,7 @@ import pytest
 
 from app.api.services import factory
 from app.services.wiki.generations import WikiGenerationError, WikiGenerationStore
+from app.storage.database import Database
 from app.services.wiki.snapshot_reader import WikiSnapshotReader
 from tests.test_wiki_workflows import AUTH_HEADERS
 
@@ -295,3 +297,129 @@ def test_draft_lifecycle_transitions_and_stage_reuse_for_same_run(published):
             (run_id,),
         ).fetchone()[0]
     assert status == "published"
+
+def test_publish_draft_end_to_end_executes_write_bind_and_promote(client_factory, tmp_path) -> None:
+    """publish_draft 全流程必须真的可执行(写盘→bind→index→applied→re-capture→promote)。
+
+    此前 stage_draft/publish_draft 是零生产调用方的不可达代码,221 行从未被执行;
+    本用例是接线前必须拿到的执行证据。
+    """
+    from app.services.memory import SafeMarkdownWriter
+    from app.services.wiki import WikiService
+    from app.services.wiki.publication import WikiPublicationService
+
+    vault_root = tmp_path / "Vault"
+    with client_factory(data_dir=tmp_path / "data") as client:
+        _init_vault(client, vault_root)
+        preview = client.post("/api/wiki/ingest/preview", headers=AUTH_HEADERS,
+            json={"title": "草稿来源", "content": "# 草稿来源\n\n草稿先行发布。\n\n[[草稿概念]]", "max_pages": 2})
+        assert preview.status_code == 200, preview.text
+        confirmed = client.post("/api/wiki/ingest/confirm", headers=AUTH_HEADERS,
+            json={"preview_token": preview.json()["preview_token"], "user_confirmed": True})
+        assert confirmed.status_code == 200, confirmed.text
+        run_id = confirmed.json()["run_id"]
+        reviewed = client.post("/api/wiki/ingest/review", headers=AUTH_HEADERS,
+            json={"run_id": run_id})
+        assert reviewed.status_code == 200, reviewed.text
+
+        database = client.app.state.database
+        with sqlite3.connect(database.path) as conn:
+            vault_id = conn.execute("SELECT id FROM vaults LIMIT 1").fetchone()[0]
+        assert WikiGenerationStore(database).active(vault_id) is None
+
+        service = WikiPublicationService(database, WikiService(SafeMarkdownWriter(vault_root)))
+        draft = service.stage_draft(run_id)
+        assert draft
+
+        # 审批(模拟审批器写 draft_approved;真实审批走 ingest_review)
+        with database.session() as conn:
+            conn.execute(
+                """UPDATE wiki_workflow_runs
+                   SET result_json = json_set(COALESCE(result_json, '{}'),
+                       '$.publication.status', 'draft_approved')
+                   WHERE id = ?""", (run_id,),
+            )
+
+        published = service.publish_draft(run_id)
+        assert published
+
+        # 1) 活动指针切到新 generation
+        assert WikiGenerationStore(database).active(vault_id) == published
+        # 2) Markdown 真的落盘
+        written = [p for p in vault_root.joinpath("Wiki").rglob("*.md")]
+        assert any("草稿来源" in p.read_text(encoding="utf-8") for p in written)
+        # 3) 运行进入 applied 且发布状态为 published
+        with sqlite3.connect(database.path) as conn:
+            row = conn.execute(
+                "SELECT status, result_json FROM wiki_workflow_runs WHERE id = ?", (run_id,)
+            ).fetchone()
+        assert row[0] == "applied"
+        assert json.loads(row[1])["publication"]["status"] == "published"
+
+def test_draft_first_flag_on_service_flow_stages_then_publishes(tmp_path: Path) -> None:
+    """开关开启时 ingest 必须走 draft-first：review 落草稿(写盘前) → apply 经 publish_draft 发布。
+
+    服务级驱动(而非 API 级)是因为 API 级需要配置审查模型才能走到审批；这里复用
+    test_wiki_workflows 的 FakeReviewModel 与 _workflow_service。
+    """
+    from app.utils.time import utc_now_iso
+    from tests.test_wiki_workflows import (
+        FakeReviewModel,
+        _confirm_ingest,
+        _workflow_service,
+    )
+    from app.models.wiki import (
+        WikiIngestApplyRequest,
+        WikiIngestPreviewRequest,
+        WikiIngestReviewRequest,
+    )
+
+    database = Database(tmp_path / "state.sqlite3")
+    vault_root = tmp_path / "Vault"
+    model = FakeReviewModel('{"summary": "Draft first review", "findings": [], "recommended_targets": []}')
+    service = _workflow_service(database, vault_root, review_model=model)
+    with database.session() as conn:
+        conn.execute(
+            """INSERT INTO app_state(key, value, updated_at) VALUES (?, ?, ?)
+               ON CONFLICT(key) DO UPDATE SET value = excluded.value""",
+            ("wiki_draft_first_publication", "true", utc_now_iso()),
+        )
+        conn.commit()
+
+    preview = service.preview_ingest(
+        WikiIngestPreviewRequest(
+            title="开关来源", content="# 开关来源\n\n草稿先行。\n\n[[开关概念]]",
+            links=["开关概念"], max_pages=2,
+        )
+    )
+    preview = _confirm_ingest(service, preview)
+    review = asyncio.run(service.review_ingest(WikiIngestReviewRequest(run_id=preview.run_id)))
+    assert review.status == "reviewed"
+
+    # 关键顺序：草稿已入库，但内容页尚未写盘
+    with database.connect() as conn:
+        staged = conn.execute(
+            "SELECT COUNT(*) FROM wiki_generations WHERE workflow_run_id = ? AND status = 'staged'",
+            (preview.run_id,),
+        ).fetchone()[0]
+    assert staged == 1
+    assert not (vault_root / "Wiki" / "Sources").exists()
+
+    applied = service.apply_ingest(
+        WikiIngestApplyRequest(
+            run_id=preview.run_id,
+            approved_targets=[plan.target_path for plan in preview.page_plans],
+            review_id=review.review_id, review_acknowledged=True,
+        )
+    )
+    assert applied.status == "applied"
+    assert applied.pages_written >= 1
+
+    with database.connect() as conn:
+        vault_id = conn.execute("SELECT id FROM vaults LIMIT 1").fetchone()[0]
+        row = conn.execute(
+            "SELECT status, result_json FROM wiki_workflow_runs WHERE id = ?", (preview.run_id,)
+        ).fetchone()
+    assert WikiGenerationStore(database).active(vault_id) is not None
+    assert row[0] == "applied"
+    assert json.loads(row[1])["publication"]["status"] == "published"

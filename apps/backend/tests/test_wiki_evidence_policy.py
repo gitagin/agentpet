@@ -171,3 +171,38 @@ def test_reviewed_write_cannot_reactivate_forgotten_binding(tmp_path):
         assert graph.list_wiki_bindings(vault_id="vault-1")[0]["status"] == "forgotten"
     finally:
         graph.close()
+
+
+def test_statement_authority_two_axis_policy() -> None:
+    """陈述权威轴与事实范畴轴正交（设计 source-identity-migration-design.md:198-206）。"""
+    from app.services.evidence_policy import (
+        ProvenanceKind,
+        statement_authority,
+        user_statement_overrides_external,
+    )
+
+    # 偏好类用户陈述：用户是唯一权威，外部来源不能纠正
+    for category in ("preference", "identity", "relationship", "health", "crisis"):
+        assert statement_authority(ProvenanceKind.USER_STATEMENT, category) == "user"
+        assert user_statement_overrides_external(ProvenanceKind.USER_STATEMENT, category) is True
+
+    # 外部事实类用户陈述：只权威于「用户确实说过这话」，不与外部来源互相覆盖
+    for category in ("fact", "event", "rule", "goal"):
+        assert statement_authority(ProvenanceKind.USER_STATEMENT, category) == "mixed"
+        assert user_statement_overrides_external(ProvenanceKind.USER_STATEMENT, category) is False
+
+    # 外部来源：陈述权威在外部
+    for kind in (ProvenanceKind.RAW_SOURCE, ProvenanceKind.COMPILED_WIKI, ProvenanceKind.SYNTHESIS):
+        assert statement_authority(kind, "preference") == "external"
+        assert user_statement_overrides_external(kind, "preference") is False
+
+    # 类别缺失/未知：保守降为 mixed，且不优先
+    assert statement_authority(ProvenanceKind.USER_STATEMENT) == "mixed"
+    assert statement_authority(ProvenanceKind.USER_STATEMENT, "unknown_category") == "mixed"
+    assert user_statement_overrides_external(ProvenanceKind.USER_STATEMENT, None) is False
+
+    # 大小写与空白归一
+    assert statement_authority(ProvenanceKind.USER_STATEMENT, "  Preference  ") == "user"
+
+    # 未知来源性质：不授予用户权威
+    assert statement_authority(None, "preference") == "external"

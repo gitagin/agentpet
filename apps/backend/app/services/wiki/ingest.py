@@ -372,6 +372,46 @@ class WikiIngestWorkflowMixin(WikiIngestReviewMixin, WikiIngestStorageMixin):
             conn.commit()
         return confirmed
 
+    def _draft_first_publication_enabled(self) -> bool:
+        from .publication import draft_first_publication_enabled
+
+        with self.database.session(read_only=True) as conn:
+            return draft_first_publication_enabled(conn)
+
+    def _apply_ingest_via_draft(self, request: WikiIngestApplyRequest) -> WikiIngestApplyResponse:
+        """开关开启时的 apply:发布已入库的 draft,并据其落库结果构造响应。
+
+        publish_draft 自身完成 写盘 → 内存闭包 → bind → index → run=applied →
+        re-capture → promote,因此这里不重复这些步骤,只把结果读回来。
+        """
+        from .generations import WikiGenerationError
+        from .publication import WikiPublicationService
+
+        try:
+            WikiPublicationService(self.database, self.wiki).publish_draft(request.run_id)
+        except (WikiGenerationError, WikiWorkflowError, WikiMemoryClosureError) as exc:
+            raise WikiWorkflowError(str(exc)) from exc
+        with self.database.session(read_only=True) as conn:
+            written = conn.execute(
+                """SELECT title, target_path, operation, index_job_id, error
+                   FROM wiki_workflow_page_updates
+                   WHERE run_id = ? AND status = 'written'
+                   ORDER BY created_at, target_path""",
+                (request.run_id,),
+            ).fetchall()
+        results = [
+            WikiIngestPageResult(
+                title=str(row["title"]), relative_path=str(row["target_path"]),
+                status="updated", operation=str(row["operation"]),
+                index_job_id=row["index_job_id"], error=row["error"],
+            )
+            for row in written
+        ]
+        return WikiIngestApplyResponse(
+            run_id=request.run_id, status="applied", pages_written=len(results),
+            page_results=results, index_updated=True, log_appended=True, lint_summary={},
+        )
+
     def apply_ingest(
         self,
         request: WikiIngestApplyRequest,
@@ -464,6 +504,13 @@ class WikiIngestWorkflowMixin(WikiIngestReviewMixin, WikiIngestStorageMixin):
                     expected_hashes[str(row["target_path"])] = str(row["target_content_hash"])
             assert_snapshots_current(self.wiki, expected_hashes, database=self.database)
             plans.sort(key=lambda plan: plan.target_path != source_path)
+
+        # 草稿先行发布(开关开启时):draft 已在 review 阶段入库,这里直接发布——
+        # 写盘、内存闭包、bind、index、promote 全部由 publish_draft 完成,故不再
+        # 走下面的写盘循环与 publish_ingest。默认关(False)时逐字走原路径。
+        if self._draft_first_publication_enabled():
+            return self._apply_ingest_via_draft(request)
+
         try:
             with self.database.session() as conn:
                 closure = prepare_wiki_memory_closure(

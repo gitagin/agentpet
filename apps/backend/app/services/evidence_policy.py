@@ -54,6 +54,84 @@ def independent_source_rejection_reason(source_type: str | None) -> str | None:
     return None
 
 
+# 两轴正交(设计 docs/source-identity-migration-design.md:198-206)：
+#   1. 陈述权威轴(谁说的)：用户陈述 > 外部来源；
+#   2. 事实范畴轴(关于什么)：偏好类 vs 外部事实类。
+# 用户对自己的偏好/身份等有唯一权威；用户转述的外部事实只权威于「用户确实说过这话」，
+# 既不赋予外部事实权威，也不与外部来源互相覆盖(冲突时保留双方声明)。
+_USER_AUTHORITY_CATEGORIES = frozenset(
+    {"preference", "identity", "relationship", "health", "crisis"}
+)
+
+
+def _normalized_category(content_category: object) -> str:
+    return str(content_category or "").strip().casefold()
+
+
+def statement_authority(
+    kind: ProvenanceKind | None, content_category: object = None
+) -> str:
+    """陈述权威轴的取值：user | external | mixed。
+
+    只描述「谁对这条主张有权威」，不授予读取权限，也不判定事实真假。
+    """
+    if kind is ProvenanceKind.USER_STATEMENT:
+        if _normalized_category(content_category) in _USER_AUTHORITY_CATEGORIES:
+            return "user"
+        return "mixed"
+    return "external"
+
+
+def user_statement_overrides_external(
+    kind: ProvenanceKind | None, content_category: object = None
+) -> bool:
+    """偏好类用户陈述是否优先于外部来源。
+
+    仅偏好类(用户对自己的偏好/身份/关系/健康/危机)成立——此时用户是唯一权威，
+    外部来源不能「纠正」用户偏好；外部事实类一律返回 False(保留双方声明)。
+    """
+    return (
+        kind is ProvenanceKind.USER_STATEMENT
+        and _normalized_category(content_category) in _USER_AUTHORITY_CATEGORIES
+    )
+
+
+_STATEMENT_AUTHORITY_ORDER = {"user": 0, "mixed": 1, "external": 2}
+
+
+def statement_authority_of(source_type: object, content_category: object) -> str:
+    """两轴汇合点:由**已记录**的来源标签与事实范畴推出陈述权威。
+
+    source_type 是写入期记录的原始 ingress 标签(不是派生结论);
+    缺失/未知标签经 source_provenance_kind() 归一为 None,此时权威轴保守判 external。
+    """
+    kind = source_provenance_kind(None if source_type is None else str(source_type))
+    return statement_authority(kind, content_category)
+
+
+def statement_authority_order(authority: object) -> int:
+    """权威排序键:user(0) < mixed(1) < external(2);未知值排最后(3)。
+
+    只决定**稳定排序**的相对次序。不授予读取权限,不判定事实真假,
+    也不改变任何准入集合——排序永远不是权限决定。
+    """
+    return _STATEMENT_AUTHORITY_ORDER.get(str(authority or "").strip().casefold(), 3)
+
+
+def statement_authority_sort_key(item: object) -> int:
+    """给带 source_type/content_category 的检索结果算权威排序键。
+
+    故意鸭子类型(不 import 结果模型):证据门与提示词组装层都要用同一个键,
+    而它们分属不同层,不该为此互相依赖。缺属性一律按未知处理(排最后)。
+    """
+    return statement_authority_order(
+        statement_authority_of(
+            getattr(item, "source_type", None),
+            getattr(item, "content_category", None),
+        )
+    )
+
+
 def derived_document_source_type(relative_path: str, frontmatter: Mapping[str, object]) -> str | None:
     normalized = "/" + relative_path.replace("\\", "/").casefold().lstrip("/")
     if "/wiki/companion/summaries/" in normalized:

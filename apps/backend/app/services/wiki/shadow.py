@@ -35,7 +35,9 @@ class ShadowMetrics(BaseModel):
     assessment_calls: int = Field(default=0, ge=0)
     latency_ms: int = Field(default=0, ge=0)
     authority: Literal["not_checked", "passed", "denied"] = "not_checked"
-    freshness: Literal["unknown"] = "unknown"
+    # 与 gate 三态一致:此前恒为 Literal["unknown"],导致评测一旦拿到 fresh/stale
+    # 就校验失败落入 failed —— 评测在结构上看不到新鲜度(静默失真)。
+    freshness: Literal["fresh", "unknown", "stale"] = "unknown"
     coverage: Literal["not_assessed", "partial", "model_assessed_complete"] = "not_assessed"
     conflict: Literal["not_assessed", "disputed", "none_detected_by_model"] = "not_assessed"
     budget_exhausted: bool = False
@@ -180,6 +182,21 @@ class _ReadOnlyServices:
     def _check(self):
         if self._permitted() is not True:
             raise PermissionError("shadow_no_longer_allowed")
+
+    @property
+    def database(self):
+        """只读库句柄:查询节点据此解析逐来源新鲜度(与真实读适配器一致)。
+
+        此前未暴露,导致 _resolve_citation_freshness 恒 return None,评测永远
+        只看到 unknown。调用方只使用 session(read_only=True)。
+        """
+        self._check()
+        return self._services.wiki_reader.database
+
+    def pin(self, *args, **kwargs):
+        """同步钉版:与真实读适配器一致,查询节点用它取当前 vault。"""
+        self._check()
+        return self._services.wiki_reader.pin(*args, **kwargs)
 
     async def _call(self, method, *args, **kwargs):
         self._check()

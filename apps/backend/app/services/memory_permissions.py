@@ -151,6 +151,8 @@ def result_with_activation_permissions(
     query: str,
     fact_id: str | None = None,
     candidate_id: str | None = None,
+    content_category: str | None = None,
+    source_type: str | None = None,
 ) -> MemorySearchResult:
     permissions = permissions_from_activation_decision(decision, query=query)
     item = decision.item
@@ -166,6 +168,11 @@ def result_with_activation_permissions(
             "risk_tier": item.risk_tier.value,
             "fact_id": fact_id,
             "candidate_id": candidate_id,
+            # A4 两轴的唯一读侧收口点:图事实的 metadata 与来源标签在此带上检索结果。
+            # 只搬**输入**(范畴 + 来源性质),不搬派生值——statement_authority 仍由
+            # 消费点推导,避免同一语义存两份而漂移。
+            "content_category": content_category,
+            "source_type": source_type,
         }
     )
 

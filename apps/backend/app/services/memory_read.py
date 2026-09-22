@@ -22,6 +22,7 @@ from app.services.memory_activation import (
 from app.services.memory_graph import MemoryGraphFact, MemoryGraphStore
 from app.services.memory_entity_graph import MemoryEntityGraphStore
 from app.services.memory_permissions import result_with_activation_permissions
+from app.services.memory_taxonomy import graph_fact_content_category
 from app.services.retrieval_fusion import (
     FusionCandidate,
     FUSION_POLICY_VERSION,
@@ -270,6 +271,12 @@ class GraphMemorySourceAdapter:
                 decision,
                 query=query,
                 fact_id=fact.id,
+                # metadata 优先,沉默时才由 relation_type 无歧义重建 —— 旧库里
+                # 修复前落库的偏好关系边 metadata 恒为 "{}",只认 metadata 会让它们永远失明。
+                content_category=graph_fact_content_category(fact),
+                # 来源性质是两轴的另一个输入:偏好类用户陈述在此记的是 explicit_user,
+                # 消费点据此把权威判为 user;缺了它,权威轴只剩范畴、无法区分谁说的。
+                source_type=fact.source_type,
             )
             items.append(memory_item_from_search_result(result, source=self.channel))
 

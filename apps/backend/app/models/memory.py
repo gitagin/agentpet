@@ -31,6 +31,22 @@ class MemorySearchResult(BaseModel):
     # 来源身份可选字段(设计 §2.7):Wiki 检索结果落库时填充,旧读者按缺省处理
     source_id: str | None = None
     source_version: int | None = None
+    # 逐来源新鲜度(设计 phase-c-query-node-design.md §1.1 步骤 4):机器值英文,
+    # 展示层映射中文。挂在 citation 上而非新增 SSE 事件——既保住逐来源粒度,
+    # 又复用既有 AgentCitationEvent 传输(裁定见 docs/wiki-reconstruction-status.md)。
+    freshness: str | None = None
+    freshness_reason: str | None = None
+    # 事实范畴(A4 两轴之「事实范畴轴」,设计 source-identity-migration-design.md:198-206):
+    # 写入期落库、检索期读回。**只存范畴,不存派生值**——`statement_authority` 由
+    # evidence_policy.statement_authority(kind, content_category) 在消费点推导,
+    # 避免同一语义存两份而漂移。
+    content_category: str | None = None
+    # 来源性质(陈述权威轴的另一个输入,设计 source-identity-migration-design.md:198-206):
+    # 存的是**写入期记录的原始 ingress 标签**(如 explicit_user / wiki / file),不是派生结论。
+    # 消费点用既有的 evidence_policy.source_provenance_kind() 归一为 ProvenanceKind,
+    # 再与 content_category 一起交给 statement_authority() —— 两轴在此汇合。
+    # 缺省 None 时 source_provenance_kind() 返回 None,权威轴保守判为 external。
+    source_type: str | None = None
     note_id: str; chunk_id: str; relative_path: str; title: str; heading: str | None = None; snippet: str; score: float; content_hash: str | None = None; source_scope: str = "knowledge_base"; retrieval_mode: str = "fts"; retrieval_channels: list[str] = Field(default_factory=list); channel_ranks: dict[str, int] = Field(default_factory=dict); retrieval_contributions: list[RetrievalContribution] = Field(default_factory=list); recall_permissions: MemoryRecallPermissions = Field(default_factory=MemoryRecallPermissions); activation_score: float | None = None; score_breakdown: dict[str, float] = Field(default_factory=dict); filtered_reason: str | None = None; memory_kind: str | None = None; memory_scope: str | None = None; lifecycle_status: str | None = None; risk_tier: str | None = None; fact_id: str | None = None; candidate_id: str | None = None; entity_refs: list[str] = Field(default_factory=list); evidence_refs: list[str] = Field(default_factory=list); citation_refs: list[str] = Field(default_factory=list)
 
 

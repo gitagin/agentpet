@@ -146,6 +146,13 @@ class AutomationSettingsRequest(BaseModel):
     auto_long_term_memory: bool = False
     auto_wiki_organize: bool = False
     wiki_shadow_enabled: StrictBool = False
+    # 源身份 v2(设计 docs/source-identity-migration-design.md):默认关=保持 legacy
+    # hash 复用行为。此前该开关只被读取、没有任何写入路径,导致已实现的源身份语义
+    # 在生产中不可达;这里按设计接入既有 settings 机制。
+    source_identity_v2: StrictBool = False
+    # 草稿先行发布(设计 docs/draft-first-publication-design.md):默认关=保持
+    # 现有「先写盘再 capture」路径;开启后 ingest 走 draft→审批→publish_draft。
+    wiki_draft_first_publication: StrictBool = False
     local_privacy_mode: bool = False
     proactive_trigger_frequency: ProactiveTriggerFrequency = DEFAULT_PROACTIVE_TRIGGER_FREQUENCY
     use_negotiation: bool = False

@@ -1984,10 +1984,20 @@ export interface components {
              */
             proactive_trigger_frequency: "off" | "low" | "normal" | "high";
             /**
+             * Source Identity V2
+             * @default false
+             */
+            source_identity_v2: boolean;
+            /**
              * Use Negotiation
              * @default false
              */
             use_negotiation: boolean;
+            /**
+             * Wiki Draft First Publication
+             * @default false
+             */
+            wiki_draft_first_publication: boolean;
             /**
              * Wiki Shadow Enabled
              * @default false
@@ -2037,6 +2047,11 @@ export interface components {
              * @enum {string}
              */
             proactive_trigger_frequency: "off" | "low" | "normal" | "high";
+            /**
+             * Source Identity V2
+             * @default false
+             */
+            source_identity_v2: boolean;
             /** Updated At */
             updated_at?: string | null;
             /**
@@ -2044,6 +2059,11 @@ export interface components {
              * @default false
              */
             use_negotiation: boolean;
+            /**
+             * Wiki Draft First Publication
+             * @default false
+             */
+            wiki_draft_first_publication: boolean;
             /**
              * Wiki Shadow Enabled
              * @default false
@@ -3714,6 +3734,8 @@ export interface components {
             chunk_id: string;
             /** Citation Refs */
             citation_refs?: string[];
+            /** Content Category */
+            content_category?: string | null;
             /** Content Hash */
             content_hash?: string | null;
             /** Entity Refs */
@@ -3724,6 +3746,10 @@ export interface components {
             fact_id?: string | null;
             /** Filtered Reason */
             filtered_reason?: string | null;
+            /** Freshness */
+            freshness?: string | null;
+            /** Freshness Reason */
+            freshness_reason?: string | null;
             /** Heading */
             heading?: string | null;
             /** Lifecycle Status */
@@ -3756,11 +3782,17 @@ export interface components {
             };
             /** Snippet */
             snippet: string;
+            /** Source Id */
+            source_id?: string | null;
             /**
              * Source Scope
              * @default knowledge_base
              */
             source_scope: string;
+            /** Source Type */
+            source_type?: string | null;
+            /** Source Version */
+            source_version?: number | null;
             /** Title */
             title: string;
             /** Wiki End Line */
@@ -5351,6 +5383,8 @@ export interface components {
             source_metadata?: {
                 [key: string]: unknown;
             };
+            /** Source Version */
+            source_version?: number | null;
             /** Status */
             status: string;
             /** Summary */

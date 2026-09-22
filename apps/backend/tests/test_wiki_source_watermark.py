@@ -74,7 +74,8 @@ def test_new_note_during_answer_blocks_output_without_revoking_old_roots(read_to
     gate = state["agent_state"].wiki_evidence_gate
     assert state["agent_state"].citations
     assert gate.source_observation == "unchanged_since_capture"
-    assert gate.freshness == "unknown"
+    # 待核来源在本次真实查询中被惰性核验(设计 §1.2 步骤 3)→ fresh
+    assert gate.freshness == "fresh"
 
     class Model:
         async def complete(self, **kwargs):

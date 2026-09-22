@@ -22,6 +22,7 @@ from app.services.memory_entity_graph import (
 )
 from app.services.memory_policy import evaluate_memory_content
 from app.services.memory_taxonomy import (
+    content_category_for_kind,
     LifecycleStatus,
     MemoryKind,
     MemoryScope,
@@ -530,6 +531,8 @@ class MemoryConsolidationService:
         )
         metadata = {
             **dict(spec.metadata or {}),
+            # A4 两轴需要事实范畴,而它此前**从未落库**(write_policy 解析后仅用于裁决)。
+            "content_category": content_category_for_kind(spec.memory_kind),
             "consolidation_reason": spec.reason,
             "taxonomy_reasons": list(taxonomy.reasons),
             "recall_permissions": _permissions_dict(taxonomy),
@@ -664,6 +667,18 @@ class MemoryConsolidationService:
                 source_type="explicit_user",
                 confidence=candidate.confidence,
                 evidence_id=evidence.id,
+                # 偏好类用户陈述走的是 relation 分支(不是 claim 分支)。
+                # 而 kind->category 映射里只有 PREFERENCE 产出用户权威类 "preference",
+                # 所以这条边正是陈述权威轴最主要的存在场景:此处不带,
+                # 检索期读 metadata 就只能得到 "{}",权威轴对整个偏好场景失明。
+                metadata={
+                    "candidate_id": candidate.id,
+                    "content_category": content_category_for_kind(candidate.memory_kind),
+                    "conversation_id": conversation_id,
+                    "user_message_id": user_message_id,
+                    "agent_run_id": agent_run_id,
+                    "source_track": SourceTrack.EXPLICIT_USER.value,
+                },
             )
             graph.bind_entity_evidence(entity_id=preference_entity.id, evidence_id=evidence.id, role="describes")
             self.store.attach_fact(candidate.id, fact.id)
@@ -686,6 +701,8 @@ class MemoryConsolidationService:
                 evidence_id=evidence.id,
                 metadata={
                     "candidate_id": candidate.id,
+                    # 事实侧也要带:检索期经事实读该字段做权威排序。
+                    "content_category": content_category_for_kind(candidate.memory_kind),
                     "conversation_id": conversation_id,
                     "user_message_id": user_message_id,
                     "agent_run_id": agent_run_id,

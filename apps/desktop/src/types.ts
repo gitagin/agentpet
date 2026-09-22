@@ -264,6 +264,9 @@ export type Citation = {
   score?: number;
   source_scope?: "personal_memory" | "diary_objects" | "daily_chat" | "knowledge_base" | "pending_memory" | "all" | string;
   retrieval_mode?: "graph" | "vector" | "fts" | "hybrid" | string;
+  // 逐来源新鲜度(机器值英文,展示层映射中文;裁定见 docs/wiki-reconstruction-status.md)
+  freshness?: "fresh" | "unknown" | "stale" | string | null;
+  freshness_reason?: string | null;
 };
 
 export type ChatToolEvent = {

@@ -211,6 +211,9 @@ def test_automation_settings_api_roundtrip(client: TestClient) -> None:
         "auto_structured_memory": False,
         "auto_long_term_memory": False,
         "auto_wiki_organize": False,
+        "wiki_shadow_enabled": False,
+        "source_identity_v2": False,
+        "wiki_draft_first_publication": False,
         "local_privacy_mode": False,
         "proactive_trigger_frequency": "low",
         "use_negotiation": False,
@@ -1966,11 +1969,15 @@ def test_chat_stream_auto_summarizes_useful_answer_to_wiki(
 
     page_path = vault.joinpath(*wiki_action["target_paths"][0].split("/"))
     page = read_markdown(page_path)
-    assert page.frontmatter["page_type"] == "source"
+    # 规范已把 Wiki/Companion/Summaries/ 的助手摘要定为 report，不再是 source
+    # （见 app/resources/wiki/AGENTS.md 的 report 段落）。
+    assert page.frontmatter["page_type"] == "report"
     assert page.frontmatter["sources"]
     assert "## 来源摘要" in page.body
     assert "单来源聊天摘要" in page.body
-    assert "## 证据状态" in page.body
+    # report 页契约的必需段落是「证据」（app/services/wiki/contracts.py 的 report 项），
+    # 摘要写入器也输出 `## 证据`；`证据状态` 在应用代码中不存在。
+    assert "## 证据" in page.body
     assert "## 来源" in page.body
     assert "## 更新记录" in page.body
     assert "agent_run_id" in page.body
@@ -2422,3 +2429,62 @@ def test_sensitive_memory_chat_stream_rejects_without_proposal(
     pending = client.get("/api/memory/proposals", headers=auth())
     assert pending.status_code == 200
     assert pending.json()["proposals"] == []
+
+def test_source_identity_v2_flag_is_reachable_from_settings_api(client: TestClient) -> None:
+    """源身份 v2 必须能从既有 settings 机制开启。
+
+    此前该开关只被 ingest 读取、没有任何写入路径，导致已实现的源身份语义在生产中
+    不可达（设计 docs/source-identity-migration-design.md 要求它走 settings 既有机制）。
+    """
+    from app.services.settings_types import SOURCE_IDENTITY_V2_STATE_KEY
+    from app.services.wiki.ingest_identity import SOURCE_IDENTITY_V2_KEY
+
+    # 两个模块各自定义同一个 app_state 键，必须保持一致（防止漂移）
+    assert SOURCE_IDENTITY_V2_STATE_KEY == SOURCE_IDENTITY_V2_KEY
+
+    defaults = client.get("/api/settings/automation", headers=auth())
+    assert defaults.status_code == 200
+    assert defaults.json()["source_identity_v2"] is False
+
+    enabled = client.put(
+        "/api/settings/automation",
+        headers=auth(),
+        json={"source_identity_v2": True},
+    )
+    assert enabled.status_code == 200
+    assert enabled.json()["source_identity_v2"] is True
+
+    # 未显式提交该字段时不得改动既有取值（老客户端兼容）
+    other = client.put(
+        "/api/settings/automation",
+        headers=auth(),
+        json={"max_rounds": 3},
+    )
+    assert other.status_code == 200
+    assert other.json()["source_identity_v2"] is True
+
+def test_wiki_draft_first_publication_flag_is_reachable_from_settings_api(client: TestClient) -> None:
+    "草稿先行发布开关必须能从既有 settings 机制开启,且默认关(保持现有路径)。"
+    from app.services.settings_types import WIKI_DRAFT_FIRST_PUBLICATION_STATE_KEY
+    from app.services.wiki.publication import DRAFT_FIRST_PUBLICATION_KEY
+
+    assert WIKI_DRAFT_FIRST_PUBLICATION_STATE_KEY == DRAFT_FIRST_PUBLICATION_KEY
+
+    defaults = client.get("/api/settings/automation", headers=auth())
+    assert defaults.status_code == 200
+    assert defaults.json()["wiki_draft_first_publication"] is False
+
+    enabled = client.put(
+        "/api/settings/automation",
+        headers=auth(),
+        json={"wiki_draft_first_publication": True},
+    )
+    assert enabled.status_code == 200
+    assert enabled.json()["wiki_draft_first_publication"] is True
+
+    other = client.put(
+        "/api/settings/automation",
+        headers=auth(),
+        json={"max_rounds": 3},
+    )
+    assert other.json()["wiki_draft_first_publication"] is True

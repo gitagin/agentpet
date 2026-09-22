@@ -48,6 +48,15 @@ def _dependency_stamp(conn, vault_id: str, pages: Mapping[str, str], entities: l
             raise WikiGenerationError("wiki_publication_root_missing")
         source_state = dict(source)
         source_state["raw_content"] = sha256_hex(source_state["raw_content"] or "")
+        # 依赖戳承载**内容完整性**语义,故剔除下面三类非内容字段。剔除理由**各不相同**:
+        #   verification_status / verified_at —— 查询期惰性核验会写它们;若纳入戳,
+        #     核验动作本身就会让本轮引用校验失败(自相矛盾),**必须**剔除。
+        #   expires_at —— 是**有效性**字段而非「何时检查过」。查询期 derive_source_freshness
+        #     会读它并判 stale,故完整性不因剔除而削弱;反之若纳入戳,「设置一个未来的
+        #     过期时间」会立刻让已发布页失效,属误伤。
+        # 注:revoked_at **保留**在戳内——撤销是**权威**变更,本就应当使已发布页失效。
+        for _meta_key in ("verification_status", "verified_at", "expires_at"):
+            source_state.pop(_meta_key, None)
         if source_state["raw_content"] != source_state["source_hash"]:
             raise WikiGenerationError("wiki_publication_root_changed")
         state["roots"].append({"entity": dict(entity), "source": source_state})
@@ -73,6 +82,28 @@ def validate_snapshot_dependency(conn, vault_id, path, dependency, normalized):
     current = _dependency_stamp(conn, vault_id, pages, dependency["root_entities"])
     if current != dependency["stamp"]:
         raise WikiGenerationError("wiki_publication_dependency_changed")
+
+
+DRAFT_FIRST_PUBLICATION_KEY = "wiki_draft_first_publication"
+
+
+def draft_first_publication_enabled(conn: sqlite3.Connection) -> bool:
+    """读取「草稿先行发布」开关。
+
+    与 settings 层写入的是同一个 app_state 键(services/settings_types.py 的
+    WIKI_DRAFT_FIRST_PUBLICATION_STATE_KEY);这里直接读库,避免 wiki 服务层
+    反向依赖 settings 层——与 ingest_identity.source_identity_v2_enabled 同构。
+    默认 False = 完全保持现有「先写盘再 capture」路径。
+    """
+    row = conn.execute(
+        "SELECT value FROM app_state WHERE key = ?", (DRAFT_FIRST_PUBLICATION_KEY,)
+    ).fetchone()
+    if row is None:
+        return False
+    try:
+        return json.loads(row["value"]) is True
+    except (TypeError, ValueError):
+        return False
 
 
 class WikiPublicationService:
