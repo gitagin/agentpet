@@ -14,6 +14,7 @@ import {
   useEdgesState,
   useInternalNode,
   useNodesState,
+  useStoreApi,
   type Edge,
   type EdgeProps,
   type Node,
@@ -319,6 +320,55 @@ function MemoryGraphEdge(props: EdgeProps) {
 const nodeTypes: NodeTypes = { memoryGraphNode: MemoryNode };
 const edgeTypes = { memoryGraphEdge: MemoryGraphEdge };
 
+/**
+ * 力导向布局每个 tick 都会产生新坐标。这里直接同步 React Flow 的内部节点位置，
+ * 不通过 nodes prop 提交新的受控节点对象，避免 React Flow 重新解析 handleBounds
+ * 时把连线所需的 handle 信息清空。
+ */
+function LayoutPositionSync({ positions }: { positions: ReadonlyMap<string, { x: number; y: number }> }) {
+  const store = useStoreApi<FlowNode, FlowEdge>();
+
+  useEffect(() => {
+    if (!positions.size) {
+      return;
+    }
+
+    const { nodeLookup } = store.getState();
+    let changed = false;
+    const nextLookup = new Map(nodeLookup);
+
+    for (const [id, position] of positions) {
+      const node = nextLookup.get(id);
+      if (!node) {
+        continue;
+      }
+      const current = node.internals.positionAbsolute;
+      if (current.x === position.x && current.y === position.y) {
+        continue;
+      }
+
+      const nextPosition = { x: position.x, y: position.y };
+      // 受控 nodes 数组和其中的用户节点对象保持同一引用；只更新位置字段。
+      node.internals.userNode.position = nextPosition;
+      nextLookup.set(id, {
+        ...node,
+        position: nextPosition,
+        internals: {
+          ...node.internals,
+          positionAbsolute: nextPosition,
+        },
+      });
+      changed = true;
+    }
+
+    if (changed) {
+      store.setState({ nodeLookup: nextLookup });
+    }
+  }, [positions, store]);
+
+  return null;
+}
+
 export function MemoryGraphWorkspace({
   graph,
   loading,
@@ -462,20 +512,7 @@ export function MemoryGraphWorkspace({
     setReactFlowEdges(baseEdges);
   }, [baseEdges, setReactFlowEdges]);
 
-  useEffect(() => {
-    setReactFlowNodes((prev) =>
-      prev.map((node) => {
-        const next = positions.get(node.id);
-        if (!next) {
-          return node;
-        }
-        if (node.position.x === next.x && node.position.y === next.y) {
-          return node;
-        }
-        return { ...node, position: { x: next.x, y: next.y } };
-      }),
-    );
-  }, [positions, setReactFlowNodes]);
+  // 布局坐标由 LayoutPositionSync 在 React Flow 内部同步，不走受控 nodes prop。
 
   const summary = graph?.summary || { total_nodes: 0, pending_count: 0, cleanup_count: 0, hidden_count: 0 };
   const hasMemory = nodes.some((node) => node.type !== "user");
@@ -558,6 +595,7 @@ export function MemoryGraphWorkspace({
               proOptions={{ hideAttribution: true }}
               className="llmwiki-react-flow"
             >
+              <LayoutPositionSync positions={positions} />
               <Background color="rgba(243,241,236,.12)" gap={24} size={1} />
               <Controls showInteractive={false} showFitView={false}>
                 <ControlButton onClick={handleResetLayout} title="重置布局" aria-label="重置布局">

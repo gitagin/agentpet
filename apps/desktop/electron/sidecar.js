@@ -23,6 +23,56 @@ function resolveReadyTimeoutMs() {
   return Number.isFinite(raw) && raw >= 1_000 ? raw : DEFAULT_READY_TIMEOUT_MS;
 }
 
+function createRuntimeNonce() {
+  return crypto.randomBytes(16).toString("hex");
+}
+
+function noncesMatch(received, expected) {
+  const receivedBytes = Buffer.from(received, "utf8");
+  const expectedBytes = Buffer.from(expected, "utf8");
+  return (
+    receivedBytes.length === expectedBytes.length &&
+    crypto.timingSafeEqual(receivedBytes, expectedBytes)
+  );
+}
+
+/**
+ * Decide whether a stdout runtime line really came from the process we spawned.
+ *
+ * The launcher mints a nonce per launch, hands it to the sidecar through its
+ * environment, and the sidecar echoes it back verbatim. A pid alone cannot
+ * prove identity: on Windows a venv redirector (.venv/Scripts/python.exe) runs
+ * the real interpreter as a child, so the pid the sidecar reports is never the
+ * pid this process spawned. Sidecar builds that predate the nonce still fall
+ * back to the pid check.
+ */
+function validateRuntimeIdentity(payload, { host, nonce, childPid }) {
+  if (payload.host !== host) {
+    return { ok: false, reason: `runtime host mismatch: ${String(payload.host)}` };
+  }
+
+  const port = Number(payload.port);
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+    return { ok: false, reason: `runtime port is invalid: ${String(payload.port)}` };
+  }
+
+  const reportedPid = Number(payload.pid);
+  const pid = Number.isInteger(reportedPid) ? reportedPid : null;
+  const reportedNonce = typeof payload.nonce === "string" ? payload.nonce : "";
+
+  if (reportedNonce) {
+    if (!nonce || !noncesMatch(reportedNonce, nonce)) {
+      return { ok: false, reason: "runtime nonce mismatch" };
+    }
+    return { ok: true, port, pid, verifiedBy: "nonce" };
+  }
+
+  if (pid === null || pid !== childPid) {
+    return { ok: false, reason: "runtime process identity is invalid" };
+  }
+  return { ok: true, port, pid, verifiedBy: "pid" };
+}
+
 function createSidecarManager({
   host,
   port,
@@ -182,10 +232,11 @@ function createSidecarManager({
     return pendingRecoveryIncidents.length !== previousLength;
   }
 
-  function getSidecarEnvironment() {
+  function getSidecarEnvironment(runtimeNonce) {
     const env = {
       ...process.env,
       AGENT_PET_SESSION_TOKEN: sessionToken,
+      AGENT_PET_SIDECAR_NONCE: runtimeNonce,
       AGENT_PET_BACKEND_HOST: portRuntime.host,
       AGENT_PET_BACKEND_PORT: String(portRuntime.port),
     };
@@ -692,11 +743,12 @@ function createSidecarManager({
       error: null,
     });
 
+    const runtimeNonce = createRuntimeNonce();
     let child;
     try {
       child = spawn(launch.command, launch.args, {
         cwd: launch.cwd,
-        env: getSidecarEnvironment(),
+        env: getSidecarEnvironment(runtimeNonce),
         stdio: ["ignore", "pipe", "pipe"],
         windowsHide: true,
       });
@@ -728,17 +780,13 @@ function createSidecarManager({
       try {
         const runtimePayload = parseControlPayload(line, RUNTIME_LINE_PREFIX);
         if (runtimePayload) {
-          const runtimePort = Number(runtimePayload.port);
-          const runtimePid = Number(runtimePayload.pid);
-          if (
-            runtimePayload.host !== portRuntime.host ||
-            !Number.isInteger(runtimePort) ||
-            runtimePort < 1 ||
-            runtimePort > 65_535 ||
-            !Number.isInteger(runtimePid) ||
-            runtimePid !== child.pid
-          ) {
-            throw new Error("runtime process identity is invalid");
+          const identity = validateRuntimeIdentity(runtimePayload, {
+            host: portRuntime.host,
+            nonce: runtimeNonce,
+            childPid: child.pid,
+          });
+          if (!identity.ok) {
+            throw new Error(identity.reason);
           }
           if (runtimeReceived || sidecarProcess !== child) {
             return;
@@ -747,7 +795,11 @@ function createSidecarManager({
           runtimeReceived = true;
           startupError = null;
           clearRuntimeHandshakeTimer();
-          updateRuntimePort(runtimePort);
+          updateRuntimePort(identity.port);
+          appendSidecarLog(
+            `Sidecar runtime verified by ${identity.verifiedBy} (port ${identity.port}, ` +
+              `interpreter pid ${String(identity.pid)}, spawned pid ${String(child.pid)}).\n`,
+          );
           setSidecarStatus({
             state: "starting",
             managed: true,
@@ -904,6 +956,11 @@ function createSidecarManager({
 
     runtimeHandshakeTimer = setTimeout(() => {
       if (sidecarProcess !== child || runtimeReceived) {
+        return;
+      }
+      if (startupError) {
+        // A specific startup failure is already reported; replacing it with the
+        // generic still-waiting copy would hide the real cause.
         return;
       }
       startupError = {

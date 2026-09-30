@@ -801,3 +801,31 @@ async def chat_pipeline_archive(client: TestClient, monkeypatch: pytest.MonkeyPa
         assistant_message_id="assistant-message-reflection-gate",
         assistant_answer="The checkpoint is recorded.",
     )
+
+
+@pytest.mark.asyncio
+async def test_entity_relation_stage_owns_its_own_extraction_failures() -> None:
+    """The runner must let the entity stage handle extraction failures itself.
+
+    ``archive_entity_relations`` reaches its deterministic preference fallback
+    only when the stage owns the failure.  Passing ``raise_errors=True`` made
+    that fallback unreachable, so a rejected model batch wrote no memory at all.
+    """
+    seen: dict[str, object] = {}
+
+    def entity_stage(**kwargs):
+        seen.update(kwargs)
+        return [_action("entity-action", "memory.entity_relation")]
+
+    runner = PostReplyMemoryJobRunner(
+        daily_diary_stage=lambda **_kwargs: (None, []),
+        structured_diary_stage=lambda **_kwargs: ((), []),
+        slow_consolidation_stage=lambda **_kwargs: [],
+        entity_relation_stage=entity_stage,
+        wiki_summary_stage=lambda **_kwargs: [],
+    )
+
+    run = await runner.run_with_actions(_payload(automation=_automation()))
+
+    assert seen["raise_errors"] is False
+    assert _stage_map(run.result)["entity_relation"].status == "succeeded"

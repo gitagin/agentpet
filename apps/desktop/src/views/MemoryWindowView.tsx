@@ -119,7 +119,7 @@ function SearchResultStrip({ results, query, onOpenSource }: { results: MemorySe
 
 export default function MemoryWindowView({
   api,
-  loading: _loading,
+  loading,
   error,
   entries,
   memorySearchQuery,
@@ -146,6 +146,13 @@ export default function MemoryWindowView({
   const selectedEdge = useMemo(() => graphState.graph?.edges?.find((edge) => edge.edge_id === graphState.selection.edgeId) || null, [graphState.graph?.edges, graphState.selection.edgeId]);
   const openSource = useMemo(() => createSourceOpener(), []);
 
+  // 记忆页的「刷新」要同时重载图谱投影和活动账本:聊天记忆由回复之后的后台任务
+  // 写入活动列表,只刷图谱会让它一直停在旧数据上。
+  function refreshWorkspace() {
+    graphState.refresh();
+    onRefresh();
+  }
+
   function openChat() {
     window.location.hash = "#chat";
     requestAnimationFrame(() => document.querySelector<HTMLInputElement>("textarea, input[type='text']")?.focus());
@@ -164,16 +171,16 @@ export default function MemoryWindowView({
       <main className="llmwiki-memory-shell" data-workspace={activeTab}>
         <header className="llmwiki-memory-header">
           <div className="llmwiki-memory-title"><p className="llmwiki-eyebrow">个人记忆档案室</p><h1>记忆图谱</h1><p>每一条可召回记忆都应该能回到来源，也能被你纠正或忘记。</p></div>
-          <div className="llmwiki-memory-header-status"><span><Database size={14} aria-hidden="true" />{summary.total_nodes} 个节点</span><span className={summary.pending_count ? "is-amber" : ""}><AlertCircle size={14} aria-hidden="true" />{summary.pending_count} 待确认</span><button type="button" className="icon-button" onClick={graphState.refresh} disabled={graphState.loading} aria-label="刷新记忆工作区" title="刷新"><RefreshCw size={16} className={graphState.loading ? "is-spinning" : ""} /></button></div>
+          <div className="llmwiki-memory-header-status"><span><Database size={14} aria-hidden="true" />{summary.total_nodes} 个节点</span><span className={summary.pending_count ? "is-amber" : ""}><AlertCircle size={14} aria-hidden="true" />{summary.pending_count} 待确认</span><button type="button" className="icon-button" onClick={refreshWorkspace} disabled={graphState.loading || loading} aria-label="刷新记忆工作区" title="刷新"><RefreshCw size={16} className={graphState.loading ? "is-spinning" : ""} /></button></div>
         </header>
         <GlobalSearch query={memorySearchQuery} status={memorySearchStatus} resultCount={memorySearchResults.length} onChange={onMemorySearchQueryChange} onSubmit={onRunMemorySearch} />
         {memorySearchQuery.trim() && memoryLastSearchQuery && memorySearchStatus === "empty" ? <p className="llmwiki-search-empty" role="status">没有找到“{memoryLastSearchQuery}”的本地来源。</p> : null}
         <SearchResultStrip results={memorySearchResults} query={memorySearchQuery} onOpenSource={openSource} />
         <WorkspaceTabs active={activeTab} onChange={setActiveTab} />
-        {globalError ? <div className="llmwiki-global-error" role="alert"><AlertCircle size={16} />{globalError}<button type="button" className="icon-button" onClick={onRefresh} aria-label="重新加载活动" title="重新加载"><RefreshCw size={14} /></button></div> : null}
+        {globalError ? <div className="llmwiki-global-error" role="alert"><AlertCircle size={16} />{globalError}<button type="button" className="icon-button" onClick={refreshWorkspace} aria-label="重新加载活动" title="重新加载"><RefreshCw size={14} /></button></div> : null}
         <section id={`llmwiki-memory-panel-${activeTab}`} className="llmwiki-memory-panel" role="tabpanel" aria-label={`记忆工作区：${activeTabLabel}`}>
           {activeTab === "graph" ? <div className="llmwiki-graph-layout"><MemoryGraphWorkspace graph={graphState.graph} loading={graphState.loading} error={graphState.error} query={memorySearchQuery} selectedNodeId={graphState.selection.nodeId} selectedEdgeId={graphState.selection.edgeId} onQueryChange={onMemorySearchQueryChange} onSelectNode={graphState.selectNode} onSelectEdge={graphState.selectEdge} onClearSelection={graphState.clearSelection} onRefresh={graphState.refresh} onOpenChat={openChat} onOpenSources={openSources} /><MemoryEvidenceRail node={selectedNode} edge={selectedEdge} nodeDetail={graphState.nodeDetail} edgeDetail={graphState.edgeDetail} claimDetail={graphState.claimDetail} endpointDetails={graphState.endpointDetails} loading={graphState.detailLoading} error={graphState.detailError} actionBusy={graphState.actionBusy} actionError={graphState.actionError} actionMessage={graphState.actionMessage} onClose={graphState.clearSelection} onApplyAction={graphState.applyAction} onOpenSource={openSource} /></div> : null}
-          {activeTab === "timeline" ? <div className="llmwiki-single-layout"><MemoryTimelineWorkspace graph={graphState.graph} entries={entries} proposals={memoryProposals} loading={graphState.loading} error={graphState.error} loadingProposals={loadingMemoryProposals} query={memorySearchQuery} proposalActionIds={memoryProposalActionIds} onSelectNode={graphState.selectNode} onSelectEdge={graphState.selectEdge} onRefresh={graphState.refresh} onLoadProposals={onLoadMemoryProposals} onProposalAction={onActOnMemoryProposal} onOpenChat={openChat} onOpenSources={openSources} renderEntry={renderEntry} /><MemoryEvidenceRail node={selectedNode} edge={selectedEdge} nodeDetail={graphState.nodeDetail} edgeDetail={graphState.edgeDetail} claimDetail={graphState.claimDetail} endpointDetails={graphState.endpointDetails} loading={graphState.detailLoading} error={graphState.detailError} actionBusy={graphState.actionBusy} actionError={graphState.actionError} actionMessage={graphState.actionMessage} onClose={graphState.clearSelection} onApplyAction={graphState.applyAction} onOpenSource={openSource} /></div> : null}
+          {activeTab === "timeline" ? <div className="llmwiki-single-layout"><MemoryTimelineWorkspace graph={graphState.graph} entries={entries} proposals={memoryProposals} loading={graphState.loading} error={graphState.error} loadingProposals={loadingMemoryProposals} query={memorySearchQuery} proposalActionIds={memoryProposalActionIds} onSelectNode={graphState.selectNode} onSelectEdge={graphState.selectEdge} onRefresh={refreshWorkspace} onLoadProposals={onLoadMemoryProposals} onProposalAction={onActOnMemoryProposal} onOpenChat={openChat} onOpenSources={openSources} renderEntry={renderEntry} /><MemoryEvidenceRail node={selectedNode} edge={selectedEdge} nodeDetail={graphState.nodeDetail} edgeDetail={graphState.edgeDetail} claimDetail={graphState.claimDetail} endpointDetails={graphState.endpointDetails} loading={graphState.detailLoading} error={graphState.detailError} actionBusy={graphState.actionBusy} actionError={graphState.actionError} actionMessage={graphState.actionMessage} onClose={graphState.clearSelection} onApplyAction={graphState.applyAction} onOpenSource={openSource} /></div> : null}
           {activeTab === "sources" ? <div className="llmwiki-single-layout"><MemorySourcesWorkspace graph={graphState.graph} searchQuery={memorySearchQuery} searchStatus={memorySearchStatus} searchResults={memorySearchResults} onSearchQueryChange={onMemorySearchQueryChange} onSearch={onRunMemorySearch} onSelectNode={graphState.selectNode} onOpenImport={openSources} onOpenSource={openSource} onRebuild={graphState.rebuild} rebuildBusy={graphState.rebuildBusy} rebuildMessage={graphState.rebuildMessage} onRefresh={graphState.refresh} loading={graphState.loading} error={graphState.error} /><MemoryEvidenceRail node={selectedNode} edge={selectedEdge} nodeDetail={graphState.nodeDetail} edgeDetail={graphState.edgeDetail} claimDetail={graphState.claimDetail} endpointDetails={graphState.endpointDetails} loading={graphState.detailLoading} error={graphState.detailError} actionBusy={graphState.actionBusy} actionError={graphState.actionError} actionMessage={graphState.actionMessage} onClose={graphState.clearSelection} onApplyAction={graphState.applyAction} onOpenSource={openSource} /></div> : null}
           {activeTab === "maintenance" ? <div className="llmwiki-maintenance-layout"><MemoryMaintenanceWorkspace api={maintenance} /></div> : null}
         </section>

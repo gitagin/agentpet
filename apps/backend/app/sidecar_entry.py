@@ -12,10 +12,25 @@ from pathlib import Path
 
 RUNTIME_LINE_PREFIX = "AGENT_PET_SIDECAR_RUNTIME "
 ERROR_LINE_PREFIX = "AGENT_PET_SIDECAR_ERROR "
+NONCE_ENV_VAR = "AGENT_PET_SIDECAR_NONCE"
 
 
 def control_line(prefix: str, payload: dict[str, object]) -> str:
     return prefix + json.dumps(payload, separators=(",", ":"), ensure_ascii=True)
+
+
+def runtime_payload(host: str, port: int, pid: int, nonce: str | None) -> dict[str, object]:
+    """Describe the listening sidecar for the desktop launcher.
+
+    The nonce is minted per launch by the launcher and echoed back verbatim,
+    so the launcher can prove the line came from the process it started. The
+    pid is reported for diagnostics only: a Windows venv redirector runs the
+    real interpreter as a child, so that pid is not the pid the launcher spawned.
+    """
+    payload: dict[str, object] = {"host": host, "port": port, "pid": pid}
+    if nonce:
+        payload["nonce"] = nonce
+    return payload
 
 
 def bind_available_socket(host: str, preferred_port: int, search_range: int) -> tuple[socket.socket, int]:
@@ -170,7 +185,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(
         control_line(
             RUNTIME_LINE_PREFIX,
-            {"host": args.host, "port": selected_port, "pid": os.getpid()},
+            runtime_payload(
+                args.host,
+                selected_port,
+                os.getpid(),
+                os.environ.get(NONCE_ENV_VAR),
+            ),
         ),
         flush=True,
     )

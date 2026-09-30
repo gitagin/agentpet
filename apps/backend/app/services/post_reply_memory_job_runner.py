@@ -242,7 +242,9 @@ class PostReplyMemoryJobRunner:
                     diary_object_ids=diary_object_ids,
                     automation=automation,
                     policy=policy,
-                    raise_errors=True,
+                    # 抽取失败必须留在阶段内部处理:那里有「我喜欢X」的确定性兜底。
+                    # 传 True 会让异常直接抛出,兜底永远不可达,图谱一条都写不进去。
+                    raise_errors=False,
                 )
                 entity_actions = tuple(entity_actions or ())
                 actions.extend(entity_actions)
@@ -315,6 +317,15 @@ class PostReplyMemoryJobRunner:
         started: float,
     ) -> PostReplyMemoryJobRun:
         completed_at = utc_now_iso()
+        failed_stages = [stage.key for stage in stages if stage.status == "failed"]
+        if failed_stages:
+            # 阶段失败以前只散落在各自的 traceback 里,任务照样报 completed,
+            # 「记忆是空的」因此被误当成显示问题排查;这里留一行可 grep 的汇总。
+            logger.warning(
+                "Post-reply memory job finished with failed stages for agent_run_id=%s: %s",
+                payload.state.agent_run_id,
+                ", ".join(failed_stages),
+            )
         result = PostReplyMemoryJobResult(
             job_id=payload.job_id,
             agent_run_id=payload.state.agent_run_id,

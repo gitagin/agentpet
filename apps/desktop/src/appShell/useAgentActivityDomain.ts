@@ -1,4 +1,4 @@
-import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import type {
   AgentAction,
   AgentCheckpointSummary,
@@ -14,6 +14,10 @@ import { useLatestCallback } from "../hooks/useLatestCallback";
 import type { AsyncStatus, Notice } from "./types";
 
 const AGENT_ACTION_ACTIVITY_LIMIT = 200;
+// 回复之后的后台整理任务是异步落库的,没有推送通道:只在 reply_ready 那一刻拉一次会
+// 刚好早于任务写入(见 useChatStreamingDomain 的 reply_ready 分支)。这里用同样的低速
+// 轮询兜住时序,与 useReflectionDomain 对建议队列的处理保持一致。
+const AGENT_ACTION_POLL_INTERVAL_MS = 20_000;
 
 type UseAgentActivityDomainOptions = {
   api: DesktopApi;
@@ -42,6 +46,8 @@ export function useAgentActivityDomain({
   const [pendingCheckpoints, setPendingCheckpoints] = useState<AgentCheckpointSummary[]>([]);
   const [decidingCheckpointIds, setDecidingCheckpointIds] = useState<Set<string>>(() => new Set());
   const [revertingActionIds, setRevertingActionIds] = useState<Set<string>>(() => new Set());
+  // 轮询与用户操作会并发发请求:只让最后发起的那次写状态,否则更早的响应会把列表写回去。
+  const loadRequest = useRef(0);
 
   function upsert(action: AgentAction) {
     setActions((current) => [action, ...current.filter((item) => item.action_id !== action.action_id)]
@@ -52,14 +58,22 @@ export function useAgentActivityDomain({
       .slice(0, AGENT_ACTION_ACTIVITY_LIMIT));
   }
 
-  async function load(options: { silent?: boolean; signal?: AbortSignal } = {}) {
-    setStatus("loading");
+  async function load(options: { silent?: boolean; background?: boolean; signal?: AbortSignal } = {}) {
+    const requestId = loadRequest.current + 1;
+    loadRequest.current = requestId;
+    // 后台轮询不改动加载态,否则记忆页每轮都会闪一次加载文案。
+    if (!options.background) {
+      setStatus("loading");
+    }
     setError("");
     if (!options.silent) {
       onNotice(null);
     }
     try {
       const response = await api.listAgentActions(AGENT_ACTION_ACTIVITY_LIMIT, null, options.signal);
+      if (loadRequest.current !== requestId) {
+        return;
+      }
       setActions(response.actions);
       setStatus(response.actions.length > 0 ? "success" : "empty");
       if (!options.silent) {
@@ -67,6 +81,9 @@ export function useAgentActivityDomain({
       }
     } catch (requestError) {
       if (requestError instanceof DOMException && requestError.name === "AbortError") {
+        return;
+      }
+      if (loadRequest.current !== requestId) {
         return;
       }
       const message = describeError(requestError, "最近自动整理活动加载失败");
@@ -225,6 +242,18 @@ export function useAgentActivityDomain({
     void loadEvent({ silent: true, signal: abort.signal });
     return () => abort.abort();
   }, [loadEvent]);
+
+  useEffect(() => {
+    // 流式回复期间不会有新的整理记录落库,而且此时列表正被流事件增量更新,
+    // 轮询的整表覆盖会把它冲掉;所以只在空闲时轮询。
+    if (!sidecarConnected || streaming) {
+      return;
+    }
+    const intervalId = window.setInterval(() => {
+      void loadEvent({ silent: true, background: true });
+    }, AGENT_ACTION_POLL_INTERVAL_MS);
+    return () => window.clearInterval(intervalId);
+  }, [loadEvent, sidecarConnected, streaming]);
 
   useEffect(() => {
     if (!sidecarConnected || streaming) {
