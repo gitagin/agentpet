@@ -3756,11 +3756,15 @@ export interface components {
             };
             /** Snippet */
             snippet: string;
+            /** Source Id */
+            source_id?: string | null;
             /**
              * Source Scope
              * @default knowledge_base
              */
             source_scope: string;
+            /** Source Version */
+            source_version?: number | null;
             /** Title */
             title: string;
             /** Wiki End Line */
@@ -5351,6 +5355,8 @@ export interface components {
             source_metadata?: {
                 [key: string]: unknown;
             };
+            /** Source Version */
+            source_version?: number | null;
             /** Status */
             status: string;
             /** Summary */
