@@ -28,7 +28,7 @@ jobs:
         run: ruff check apps/backend/app
 
       - name: Download local embedding model
-        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/download-embedding-model.ps1
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/download-embedding-model.ps1
 
       - name: Backend tests
         run: python -m pytest apps/backend/tests -q
